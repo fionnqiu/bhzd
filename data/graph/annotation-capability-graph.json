@@ -7,7 +7,7 @@
   "publication_state": "development",
   "generated_from": "data/graph/graph-catalog.json",
   "generated_by": "scripts/build_graph.py",
-  "catalog_sha256": "2030f54d12f65ddecc4b65128c30319c3f4e47c026f6c8065ca80173691cd245",
+  "catalog_sha256": "5ee7f4f759b00e30926d663867cf8b973905bcfe12a0792e44e1bcced3cc8865",
   "source_registry": "data/sources/source-registry.json",
   "teaching_units": "data/curriculum/teaching-units.json",
   "node_type_counts": {
@@ -950,26 +950,30 @@
     {
       "id": "KNG-IMG-BOX-TIGHTNESS-001",
       "label": "目标框紧致度",
-      "description": "目标框应覆盖可标区域并减少无关背景。",
+      "description": "本项目练习要求目标框覆盖可标区域并减少无关背景。",
       "data_types": [
         "image"
       ],
       "claim_type": "image_box_tightness_policy",
-      "claim_basis": "curriculum_draft",
-      "source_refs": [],
+      "claim_basis": "project_policy",
+      "source_refs": [
+        "SRC-POLICY-IMAGE-TASK3-001"
+      ],
       "type": "KNG",
       "status": "draft"
     },
     {
       "id": "KNG-IMG-CLASS-DEFINITION-001",
       "label": "图像类别定义",
-      "description": "类别需给出可观察判据和排除条件。",
+      "description": "本项目练习为类别给出可观察判据和排除条件。",
       "data_types": [
         "image"
       ],
       "claim_type": "image_class_policy",
-      "claim_basis": "curriculum_draft",
-      "source_refs": [],
+      "claim_basis": "project_policy",
+      "source_refs": [
+        "SRC-POLICY-IMAGE-TASK3-001"
+      ],
       "type": "KNG",
       "status": "draft"
     },
@@ -1035,15 +1039,15 @@
     },
     {
       "id": "KNG-IMG-OCCLUSION-TRUNCATION-001",
-      "label": "遮挡与截断字段",
-      "description": "CVAT 标注格式使用遮挡与画面外状态字段记录可见性。",
+      "label": "遮挡与截断判定",
+      "description": "本项目练习以被其他物体挡住为遮挡，以目标超出画面为截断；格式字段仅承载判定值。",
       "data_types": [
         "image"
       ],
-      "claim_type": "image_annotation_format",
-      "claim_basis": "external_reference",
+      "claim_type": "image_occlusion_policy",
+      "claim_basis": "project_policy",
       "source_refs": [
-        "SRC-CVAT-ANNOTATION-FORMAT-251"
+        "SRC-POLICY-IMAGE-TASK3-001"
       ],
       "type": "KNG",
       "status": "draft"
@@ -1051,13 +1055,15 @@
     {
       "id": "KNG-IMG-OVERLAP-ORDER-001",
       "label": "重叠目标轮廓顺序",
-      "description": "相邻实例的轮廓应分别闭合且不混用 ID。",
+      "description": "本项目练习要求相邻实例轮廓分别闭合且不混用 ID。",
       "data_types": [
         "image"
       ],
       "claim_type": "image_overlap_policy",
-      "claim_basis": "curriculum_draft",
-      "source_refs": [],
+      "claim_basis": "project_policy",
+      "source_refs": [
+        "SRC-POLICY-IMAGE-TASK3-001"
+      ],
       "type": "KNG",
       "status": "draft"
     },
@@ -1079,13 +1085,15 @@
     {
       "id": "KNG-IMG-QUALITY-METRICS-001",
       "label": "图像标注质量指标",
-      "description": "框、点和掩码使用与结构相适应的质量检查。",
+      "description": "本项目对框、点和掩码使用与结构相适应的质量检查。",
       "data_types": [
         "image"
       ],
       "claim_type": "image_quality_policy",
-      "claim_basis": "curriculum_draft",
-      "source_refs": [],
+      "claim_basis": "project_policy",
+      "source_refs": [
+        "SRC-POLICY-IMAGE-TASK3-001"
+      ],
       "type": "KNG",
       "status": "draft"
     },
@@ -1122,39 +1130,45 @@
     {
       "id": "KNG-IMG-SMALL-OBJECT-001",
       "label": "小目标标注阈值",
-      "description": "任务规则应声明小目标的最小可标尺寸。",
+      "description": "本项目任务规则声明小目标的最小可标尺寸。",
       "data_types": [
         "image"
       ],
       "claim_type": "image_small_object_policy",
-      "claim_basis": "curriculum_draft",
-      "source_refs": [],
+      "claim_basis": "project_policy",
+      "source_refs": [
+        "SRC-POLICY-IMAGE-TASK3-001"
+      ],
       "type": "KNG",
       "status": "draft"
     },
     {
       "id": "KNG-TXT-AMBIGUITY-SET-001",
       "label": "文本歧义允许答案集",
-      "description": "边界案例可声明多个允许答案及人工复核条件。",
+      "description": "本项目边界案例声明允许答案、部分得分和人工复核条件。",
       "data_types": [
         "text"
       ],
       "claim_type": "text_ambiguity_policy",
-      "claim_basis": "curriculum_draft",
-      "source_refs": [],
+      "claim_basis": "project_policy",
+      "source_refs": [
+        "SRC-POLICY-TEXT-TASK3-001"
+      ],
       "type": "KNG",
       "status": "draft"
     },
     {
       "id": "KNG-TXT-CLASS-EXCLUSION-001",
       "label": "文本类别互斥条件",
-      "description": "互斥类别不得在同一作用范围同时出现。",
+      "description": "本项目练习规定互斥类别不得在同一作用范围同时出现。",
       "data_types": [
         "text"
       ],
       "claim_type": "text_class_exclusion",
-      "claim_basis": "curriculum_draft",
-      "source_refs": [],
+      "claim_basis": "project_policy",
+      "source_refs": [
+        "SRC-POLICY-TEXT-TASK3-001"
+      ],
       "type": "KNG",
       "status": "draft"
     },
@@ -1204,13 +1218,15 @@
     {
       "id": "KNG-TXT-INTENT-HIERARCHY-001",
       "label": "意图层级体系",
-      "description": "细粒度意图应归属于稳定的上位意图。",
+      "description": "本项目练习将细粒度意图归入稳定的上位意图。",
       "data_types": [
         "text"
       ],
       "claim_type": "text_intent_taxonomy",
-      "claim_basis": "curriculum_draft",
-      "source_refs": [],
+      "claim_basis": "project_policy",
+      "source_refs": [
+        "SRC-POLICY-TEXT-TASK3-001"
+      ],
       "type": "KNG",
       "status": "draft"
     },
@@ -1245,13 +1261,15 @@
     {
       "id": "KNG-TXT-NESTED-ENTITY-001",
       "label": "嵌套实体处理",
-      "description": "任务规则决定重叠或嵌套选区是否允许。",
+      "description": "本项目练习明确声明重叠或嵌套选区是否允许。",
       "data_types": [
         "text"
       ],
       "claim_type": "text_nested_entity_policy",
-      "claim_basis": "curriculum_draft",
-      "source_refs": [],
+      "claim_basis": "project_policy",
+      "source_refs": [
+        "SRC-POLICY-TEXT-TASK3-001"
+      ],
       "type": "KNG",
       "status": "draft"
     },
@@ -1273,13 +1291,15 @@
     {
       "id": "KNG-TXT-SENTIMENT-POLARITY-001",
       "label": "情感极性判定",
-      "description": "情感标签必须绑定目标并依据完整上下文。",
+      "description": "本项目练习将情感标签绑定目标并依据完整上下文判定。",
       "data_types": [
         "text"
       ],
       "claim_type": "text_sentiment_policy",
-      "claim_basis": "curriculum_draft",
-      "source_refs": [],
+      "claim_basis": "project_policy",
+      "source_refs": [
+        "SRC-POLICY-TEXT-TASK3-001"
+      ],
       "type": "KNG",
       "status": "draft"
     },
@@ -2004,7 +2024,15 @@
       "type": "TSK",
       "status": "draft",
       "source_refs": [],
-      "teaching_unit_links": []
+      "teaching_unit_links": [
+        {
+          "unit_id": "TU-IMAGE-KEYPOINT-VISIBILITY-001",
+          "review_status": "draft",
+          "student_visible": false,
+          "in_student_visible_index": false,
+          "consumable": false
+        }
+      ]
     },
     {
       "id": "TSK-IMG-MASK-REVIEW-001",
@@ -2019,7 +2047,15 @@
       "type": "TSK",
       "status": "draft",
       "source_refs": [],
-      "teaching_unit_links": []
+      "teaching_unit_links": [
+        {
+          "unit_id": "TU-IMAGE-MASK-INSTANCE-001",
+          "review_status": "draft",
+          "student_visible": false,
+          "in_student_visible_index": false,
+          "consumable": false
+        }
+      ]
     },
     {
       "id": "TSK-IMG-OBJECT-BOX-001",
@@ -2034,7 +2070,15 @@
       "type": "TSK",
       "status": "draft",
       "source_refs": [],
-      "teaching_unit_links": []
+      "teaching_unit_links": [
+        {
+          "unit_id": "TU-IMAGE-OCCLUSION-TRUNCATION-001",
+          "review_status": "draft",
+          "student_visible": false,
+          "in_student_visible_index": false,
+          "consumable": false
+        }
+      ]
     },
     {
       "id": "TSK-IMG-POLYGON-TRACE-001",
@@ -2049,7 +2093,15 @@
       "type": "TSK",
       "status": "draft",
       "source_refs": [],
-      "teaching_unit_links": []
+      "teaching_unit_links": [
+        {
+          "unit_id": "TU-IMAGE-POLYGON-VERTICES-001",
+          "review_status": "draft",
+          "student_visible": false,
+          "in_student_visible_index": false,
+          "consumable": false
+        }
+      ]
     },
     {
       "id": "TSK-IMG-RECT-AUDIT-001",
@@ -2087,7 +2139,15 @@
       "type": "TSK",
       "status": "draft",
       "source_refs": [],
-      "teaching_unit_links": []
+      "teaching_unit_links": [
+        {
+          "unit_id": "TU-TEXT-DOCUMENT-CLASSIFY-001",
+          "review_status": "draft",
+          "student_visible": false,
+          "in_student_visible_index": false,
+          "consumable": false
+        }
+      ]
     },
     {
       "id": "TSK-TXT-INTENT-REVIEW-001",
@@ -2102,7 +2162,15 @@
       "type": "TSK",
       "status": "draft",
       "source_refs": [],
-      "teaching_unit_links": []
+      "teaching_unit_links": [
+        {
+          "unit_id": "TU-TEXT-INTENT-AMBIGUITY-001",
+          "review_status": "draft",
+          "student_visible": false,
+          "in_student_visible_index": false,
+          "consumable": false
+        }
+      ]
     },
     {
       "id": "TSK-TXT-LABEL-AUDIT-001",
@@ -2140,7 +2208,15 @@
       "type": "TSK",
       "status": "draft",
       "source_refs": [],
-      "teaching_unit_links": []
+      "teaching_unit_links": [
+        {
+          "unit_id": "TU-TEXT-NER-BOUNDARY-001",
+          "review_status": "draft",
+          "student_visible": false,
+          "in_student_visible_index": false,
+          "consumable": false
+        }
+      ]
     },
     {
       "id": "TSK-TXT-RELATION-LINK-001",
@@ -2155,7 +2231,15 @@
       "type": "TSK",
       "status": "draft",
       "source_refs": [],
-      "teaching_unit_links": []
+      "teaching_unit_links": [
+        {
+          "unit_id": "TU-TEXT-RELATION-DIRECTION-001",
+          "review_status": "draft",
+          "student_visible": false,
+          "in_student_visible_index": false,
+          "consumable": false
+        }
+      ]
     },
     {
       "id": "TSK-VID-ACTION-EVENT-001",

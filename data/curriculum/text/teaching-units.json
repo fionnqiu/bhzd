@@ -1,0 +1,726 @@
+{
+  "schema_version": "1.1.0",
+  "data_type": "text",
+  "units": [
+    {
+      "id": "TU-TEXT-DOCUMENT-CLASSIFY-001",
+      "data_type": "text",
+      "title": "按任务配置完成文档分类",
+      "learning_objectives": [
+        "区分外部标注工具的选项格式与本项目的类别语义",
+        "按照题目声明的单标签约束提交唯一类别"
+      ],
+      "prerequisites": [],
+      "rule_refs": [
+        "KNG-TXT-SINGLE-MULTI-LABEL-001",
+        "KNG-TXT-CLASS-EXCLUSION-001"
+      ],
+      "source_refs": [
+        "SRC-LS-CHOICES-PINNED-001",
+        "SRC-POLICY-TEXT-TASK3-001"
+      ],
+      "rule_explanation": "外部格式事实：Label Studio Choices 候选文档用于说明任务可以配置可选项以及单选或多选形式，但不定义本练习的类别含义。当地项目语义策略：SRC-POLICY-TEXT-TASK3-001 仅为本项目草稿政策；本单元声明为单标签任务，物流进度询问归入 shipping_query，且只能提交一个配置内标签。",
+      "positive_examples": [
+        {
+          "id": "EX-TEXT-DOCUMENT-POS-001",
+          "asset_ref": "ASSET-SELF-TEXT-DOCUMENT-001",
+          "input": {
+            "text": "订单已经付款，请问大约什么时候发货？",
+            "configured_labels": [
+              "account_issue",
+              "refund_request",
+              "shipping_query"
+            ],
+            "selection_mode": "single"
+          },
+          "expected": {
+            "labels": [
+              "shipping_query"
+            ]
+          },
+          "explanation": "文本只询问发货进度；按本项目类别定义选择唯一的 shipping_query。",
+          "source_ref": "SRC-POLICY-TEXT-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-TEXT-DOCUMENT-NEG-001",
+          "asset_ref": "ASSET-SELF-TEXT-DOCUMENT-002",
+          "input": {
+            "text": "订单已经付款，请问大约什么时候发货？",
+            "configured_labels": [
+              "account_issue",
+              "refund_request",
+              "shipping_query"
+            ],
+            "selection_mode": "single",
+            "submitted_labels": [
+              "refund_request",
+              "shipping_query"
+            ]
+          },
+          "expected": {
+            "valid": false,
+            "error": "invalid_label_cardinality"
+          },
+          "explanation": "本题明确为单标签任务，提交两个标签违反本项目的基数约束；外部 Choices 格式本身不决定该语义结论。",
+          "source_ref": "SRC-POLICY-TEXT-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "asset_ref": "ASSET-SELF-TEXT-DOCUMENT-EXERCISE-001",
+        "input": {
+          "text": "我的包裹三天没有更新物流了，想知道什么时候送到。",
+          "configured_labels": [
+            "account_issue",
+            "refund_request",
+            "shipping_query"
+          ],
+          "selection_mode": "single"
+        },
+        "student_action": "提交 JSON：在 labels 数组中给出唯一的配置内类别。",
+        "answer": {
+          "labels": [
+            "shipping_query"
+          ]
+        },
+        "evaluation": {
+          "method": "exact_match",
+          "version": "1.1.0",
+          "normalization": "JSON 对象键顺序忽略；labels 数组的元素和值必须与标准答案完全一致",
+          "incorrect_feedback": {
+            "error_type": "document_classification_mismatch",
+            "feedback": "提交结果未同时满足类别语义和单标签约束。",
+            "remediation": [
+              "先确认 selection_mode，再只依据文本的主要诉求从 configured_labels 中选择一个标签。"
+            ]
+          }
+        },
+        "data_version": "1.1.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": [
+          "CAP-TXT-CLASSIFY-001"
+        ],
+        "error_types": [
+          "document_classification_mismatch",
+          "invalid_label_cardinality",
+          "label_not_in_configured_set"
+        ],
+        "asset_authorization": {
+          "type": "self-authored",
+          "student_use_allowed": true
+        }
+      },
+      "common_errors": [
+        "把外部工具的可选项格式误当作本项目的类别定义",
+        "在单标签任务中提交多个类别",
+        "提交 configured_labels 之外的自由文本"
+      ],
+      "remediation": [
+        "先核对 selection_mode 和 configured_labels，再根据本地类别说明完成同规则练习"
+      ],
+      "review_records": [],
+      "review_status": "draft",
+      "student_visible": false
+    },
+    {
+      "id": "TU-TEXT-INTENT-AMBIGUITY-001",
+      "data_type": "text",
+      "title": "处理意图歧义与允许答案集",
+      "learning_objectives": [
+        "识别同时包含多个意图信号的边界案例",
+        "按照确定性允许答案集区分满分答案、部分得分答案与人工复核"
+      ],
+      "prerequisites": [],
+      "rule_refs": [
+        "KNG-TXT-INTENT-HIERARCHY-001",
+        "KNG-TXT-AMBIGUITY-SET-001"
+      ],
+      "source_refs": [
+        "SRC-LS-CHOICES-PINNED-001",
+        "SRC-POLICY-TEXT-TASK3-001"
+      ],
+      "rule_explanation": "外部格式事实：Label Studio Choices 候选文档仅说明可配置和提交选项，不规定用户意图层级、正确答案或得分。当地项目语义策略：SRC-POLICY-TEXT-TASK3-001 仅为本项目草稿政策；当退款状态是显式主诉求而订单状态是背景信息时，refund_status 为满分主意图；若两个意图均被识别但优先级未解决，则固定得 0.5 分并要求人工复核。",
+      "positive_examples": [
+        {
+          "id": "EX-TEXT-INTENT-POS-001",
+          "asset_ref": "ASSET-SELF-TEXT-INTENT-001",
+          "input": {
+            "text": "退款申请已经通过，钱什么时候到账？",
+            "configured_intents": [
+              "order_status",
+              "refund_status"
+            ]
+          },
+          "expected": {
+            "primary_intent": "refund_status",
+            "secondary_intents": [],
+            "ambiguity": "none"
+          },
+          "explanation": "退款到账是唯一明确诉求，按本项目意图政策无需人工复核。",
+          "source_ref": "SRC-POLICY-TEXT-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-TEXT-INTENT-NEG-001",
+          "asset_ref": "ASSET-SELF-TEXT-INTENT-002",
+          "input": {
+            "text": "订单还显示处理中，退款到底什么时候到账？",
+            "configured_intents": [
+              "order_status",
+              "refund_status"
+            ],
+            "submitted": {
+              "primary_intent": "order_status",
+              "secondary_intents": [],
+              "ambiguity": "none"
+            }
+          },
+          "expected": {
+            "valid": false,
+            "error": "ambiguous_intent_ignored"
+          },
+          "explanation": "提交忽略了显式退款诉求及订单状态背景，未按本地政策记录歧义信息。",
+          "source_ref": "SRC-POLICY-TEXT-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "asset_ref": "ASSET-SELF-TEXT-INTENT-EXERCISE-001",
+        "input": {
+          "text": "订单还显示处理中，我申请的退款到底什么时候到账？",
+          "configured_intents": [
+            "order_status",
+            "refund_status"
+          ],
+          "policy_hint": "显式询问的业务结果优先；未能确定优先级时必须进入人工复核"
+        },
+        "student_action": "提交 JSON：给出 primary_intent、secondary_intents 和 ambiguity。",
+        "answer": {
+          "primary_intent": "refund_status",
+          "secondary_intents": [
+            "order_status"
+          ],
+          "ambiguity": "resolved_by_explicit_refund"
+        },
+        "evaluation": {
+          "method": "allowed_answers",
+          "version": "1.1.0",
+          "normalization": "JSON 对象键顺序忽略；数组顺序和值必须完全一致；仅命中下列允许答案时获得对应固定分数",
+          "allowed_answers": [
+            {
+              "answer": {
+                "primary_intent": "refund_status",
+                "secondary_intents": [
+                  "order_status"
+                ],
+                "ambiguity": "resolved_by_explicit_refund"
+              },
+              "score": 1.0,
+              "manual_review_required": false,
+              "error_type": null,
+              "feedback": "已识别退款为显式主诉求，并保留订单状态这一背景意图。",
+              "remediation": [
+                "无需补强；继续使用相同优先级规则处理下一题。"
+              ]
+            },
+            {
+              "answer": {
+                "primary_intent": "order_status",
+                "secondary_intents": [
+                  "refund_status"
+                ],
+                "ambiguity": "unresolved"
+              },
+              "score": 0.5,
+              "manual_review_required": true,
+              "error_type": "ambiguous_intent_priority_unresolved",
+              "feedback": "已识别两个意图，但未按本地优先级规则确定显式退款诉求。",
+              "remediation": [
+                "复核显式问句指向的业务结果；若证据仍冲突，保留 unresolved 并提交人工裁决。"
+              ]
+            }
+          ],
+          "manual_review_conditions": [
+            {
+              "condition": "命中分数小于 1.0 且 manual_review_required 为 true 的允许答案",
+              "action": "保留确定性部分得分并进入人工裁决队列"
+            },
+            {
+              "condition": "文本同时出现两个配置内意图，且本地优先级规则无法从显式问句确定主意图",
+              "action": "不得自动判为满分；标记 unresolved 并人工复核"
+            }
+          ],
+          "incorrect_feedback": {
+            "error_type": "intent_answer_not_allowed",
+            "feedback": "提交未命中本单元声明的任何允许答案。",
+            "remediation": [
+              "对照 configured_intents 与本地优先级规则，保留所有被文本支持的意图后重新提交。"
+            ]
+          }
+        },
+        "data_version": "1.1.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": [
+          "CAP-TXT-INTENT-001",
+          "CAP-TXT-AMBIGUITY-001"
+        ],
+        "error_types": [
+          "intent_answer_not_allowed",
+          "ambiguous_intent_ignored",
+          "ambiguous_intent_priority_unresolved"
+        ],
+        "asset_authorization": {
+          "type": "self-authored",
+          "student_use_allowed": true
+        }
+      },
+      "common_errors": [
+        "把外部选项格式误当作意图语义权威",
+        "只保留一个意图而丢失有文本证据的次要意图",
+        "将需要裁决的部分得分答案自动判为满分"
+      ],
+      "remediation": [
+        "逐句标出意图信号，再按本地优先级规则匹配允许答案和人工复核条件"
+      ],
+      "review_records": [],
+      "review_status": "draft",
+      "student_visible": false
+    },
+    {
+      "id": "TU-TEXT-LABEL-VOCAB-001",
+      "data_type": "text",
+      "title": "校验封闭文本标签集",
+      "learning_objectives": [
+        "识别提交标签是否属于任务配置的封闭标签集",
+        "拒绝未配置的自由文本标签"
+      ],
+      "prerequisites": [],
+      "rule_refs": [
+        "KNG-TXT-LABEL-VOCAB-001"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001",
+        "SRC-POLICY-TEXT-TASK3-001"
+      ],
+      "rule_explanation": "外部格式事实：Label Studio Labels 文档说明区域标签来自任务配置的标签选项，但不替本项目决定字符串归一化规则。当地项目语义策略：SRC-POLICY-TEXT-TASK3-001 仅为本项目草稿政策；本单元采用区分大小写且不自动去除空格的完全匹配，提交值必须原样出现在 configured_labels 中。",
+      "positive_examples": [
+        {
+          "id": "EX-TEXT-POS-001",
+          "asset_ref": "ASSET-SELF-TEXT-LABEL-001",
+          "input": {
+            "configured_labels": [
+              "person",
+              "organization"
+            ],
+            "submitted_label": "person"
+          },
+          "expected": {
+            "valid": true
+          },
+          "explanation": "submitted_label 与已配置标签 person 完全一致。",
+          "source_ref": "SRC-LS-TEXT-LABELS-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-TEXT-NEG-001",
+          "asset_ref": "ASSET-SELF-TEXT-LABEL-002",
+          "input": {
+            "configured_labels": [
+              "person",
+              "organization"
+            ],
+            "submitted_label": "location"
+          },
+          "expected": {
+            "valid": false
+          },
+          "explanation": "location 未出现在本题配置的封闭标签集中。",
+          "source_ref": "SRC-LS-TEXT-LABELS-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "asset_ref": "ASSET-SELF-TEXT-EXERCISE-001",
+        "input": {
+          "configured_labels": [
+            "positive",
+            "negative"
+          ],
+          "submitted_label": "negative"
+        },
+        "student_action": "提交 JSON：判断 submitted_label 是否属于 configured_labels。",
+        "answer": {
+          "valid": true
+        },
+        "evaluation": {
+          "method": "exact_match",
+          "version": "1.1.0",
+          "normalization": "JSON 对象键顺序忽略，布尔值必须完全一致",
+          "incorrect_feedback": {
+            "error_type": "label_not_in_configured_set",
+            "feedback": "提交的有效性判断与封闭标签集检查结果不一致。",
+            "remediation": [
+              "逐项对比 submitted_label 与 configured_labels；不要新增、改写或自动归一化标签。"
+            ]
+          }
+        },
+        "data_version": "1.1.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": [
+          "CAP-TXT-LABEL-VALIDATE-001"
+        ],
+        "error_types": [
+          "label_not_in_configured_set"
+        ],
+        "asset_authorization": {
+          "type": "self-authored",
+          "student_use_allowed": true
+        }
+      },
+      "common_errors": [
+        "把标签说明文字当作可提交标签",
+        "忽略大小写或空格导致不完全匹配"
+      ],
+      "remediation": [
+        "重新核对本题 configured_labels 后完成同规则练习"
+      ],
+      "review_records": [],
+      "review_status": "draft",
+      "student_visible": false
+    },
+    {
+      "id": "TU-TEXT-NER-BOUNDARY-001",
+      "data_type": "text",
+      "title": "按字符偏移标注实体边界",
+      "learning_objectives": [
+        "使用字符起止偏移表达实体选区",
+        "根据本地边界政策判断应包含的名称成分和应排除的标点"
+      ],
+      "prerequisites": [],
+      "rule_refs": [
+        "KNG-TXT-SPAN-OFFSET-001",
+        "KNG-TXT-ENTITY-BOUNDARY-001",
+        "KNG-TXT-ENTITY-TYPE-001"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-SPANS-PINNED-001",
+        "SRC-POLICY-TEXT-TASK3-001"
+      ],
+      "rule_explanation": "外部格式事实：Label Studio 文本选区候选文档用于说明文本区域以起止字符位置记录，并可绑定区域标签；它不规定具体语料中实体应圈到哪里。当地项目语义策略：SRC-POLICY-TEXT-TASK3-001 仅为本项目草稿政策；偏移采用从 0 开始、end 不含末位的区间，组织全称包含名称后缀，句末标点不计入实体。",
+      "boundary_cases": [
+        {
+          "id": "BC-TEXT-NER-INCLUDE-001",
+          "case_type": "include",
+          "fragment": "有限公司",
+          "rule": "当文本明确给出完整组织名称时，组织类型后缀属于 ORG 实体边界。",
+          "source_ref": "SRC-POLICY-TEXT-TASK3-001"
+        },
+        {
+          "id": "BC-TEXT-NER-EXCLUDE-001",
+          "case_type": "exclude",
+          "fragment": "。",
+          "rule": "句末标点用于句法分隔，不属于本项目 ORG 或 PERSON 实体边界。",
+          "source_ref": "SRC-POLICY-TEXT-TASK3-001"
+        }
+      ],
+      "positive_examples": [
+        {
+          "id": "EX-TEXT-NER-POS-001",
+          "asset_ref": "ASSET-SELF-TEXT-NER-001",
+          "input": {
+            "text": "李明在上海交通大学学习。",
+            "annotation": {
+              "start": 3,
+              "end": 9,
+              "label": "ORG",
+              "text": "上海交通大学"
+            }
+          },
+          "expected": {
+            "valid": true
+          },
+          "explanation": "区间 [3, 9) 完整包含组织名称并排除后续动词和句末标点。",
+          "source_ref": "SRC-POLICY-TEXT-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-TEXT-NER-NEG-001",
+          "asset_ref": "ASSET-SELF-TEXT-NER-002",
+          "input": {
+            "text": "李明在上海交通大学学习。",
+            "annotation": {
+              "start": 3,
+              "end": 7,
+              "label": "ORG",
+              "text": "上海交通"
+            }
+          },
+          "expected": {
+            "valid": false,
+            "error": "entity_boundary_incomplete"
+          },
+          "explanation": "选区漏掉了组织全称中的“大学”，违反本项目的完整名称边界政策。",
+          "source_ref": "SRC-POLICY-TEXT-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "asset_ref": "ASSET-SELF-TEXT-NER-EXERCISE-001",
+        "input": {
+          "text": "王芳加入星河科技有限公司。",
+          "labels": [
+            "PERSON",
+            "ORG"
+          ],
+          "offset_convention": "zero_based_end_exclusive"
+        },
+        "student_action": "提交 JSON：按文本顺序给出 PERSON 和 ORG 的 label、start、end 与 text。",
+        "answer": {
+          "entities": [
+            {
+              "label": "PERSON",
+              "start": 0,
+              "end": 2,
+              "text": "王芳"
+            },
+            {
+              "label": "ORG",
+              "start": 4,
+              "end": 12,
+              "text": "星河科技有限公司"
+            }
+          ]
+        },
+        "evaluation": {
+          "method": "exact_match",
+          "version": "1.1.0",
+          "normalization": "JSON 对象键顺序忽略；entities 数组顺序及所有标签、偏移和文本值必须完全一致",
+          "incorrect_feedback": {
+            "error_type": "entity_boundary_mismatch",
+            "feedback": "至少一个实体的标签、字符边界、表面文本或排列顺序与标准答案不一致。",
+            "remediation": [
+              "逐字符编号后重新检查 end 不含末位、组织后缀应包含且句末标点应排除。"
+            ]
+          }
+        },
+        "data_version": "1.1.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": [
+          "CAP-TXT-ENTITY-BOUNDARY-001",
+          "CAP-TXT-ENTITY-TYPE-001"
+        ],
+        "error_types": [
+          "entity_boundary_mismatch",
+          "entity_boundary_incomplete",
+          "entity_boundary_includes_punctuation",
+          "entity_type_mismatch"
+        ],
+        "asset_authorization": {
+          "type": "self-authored",
+          "student_use_allowed": true
+        }
+      },
+      "common_errors": [
+        "把 end 当成包含末位的下标",
+        "漏掉组织名称后缀",
+        "把句末标点圈入实体"
+      ],
+      "remediation": [
+        "给原文逐字符编号，并分别执行必要成分包含检查和标点排除检查"
+      ],
+      "review_records": [],
+      "review_status": "draft",
+      "student_visible": false
+    },
+    {
+      "id": "TU-TEXT-RELATION-DIRECTION-001",
+      "data_type": "text",
+      "title": "核对实体关系方向与端点",
+      "learning_objectives": [
+        "区分关系的源实体与目标实体",
+        "按照本地关系语义提交有向实体连边"
+      ],
+      "prerequisites": [],
+      "rule_refs": [
+        "KNG-TXT-RELATION-DIRECTION-001"
+      ],
+      "source_refs": [
+        "SRC-LS-RELATIONS-PINNED-001",
+        "SRC-POLICY-TEXT-TASK3-001"
+      ],
+      "rule_explanation": "外部格式事实：Label Studio Relations 候选文档用于说明关系连接具有起点、终点和方向，但不定义 works_for 等关系的业务语义。当地项目语义策略：SRC-POLICY-TEXT-TASK3-001 仅为本项目草稿政策；works_for 固定从 PERSON 源实体指向 ORG 目标实体，反向连边不等价。",
+      "positive_examples": [
+        {
+          "id": "EX-TEXT-RELATION-POS-001",
+          "asset_ref": "ASSET-SELF-TEXT-RELATION-001",
+          "input": {
+            "text": "赵婷任职于澄海设计院。",
+            "entities": [
+              {
+                "id": "E1",
+                "label": "PERSON",
+                "text": "赵婷"
+              },
+              {
+                "id": "E2",
+                "label": "ORG",
+                "text": "澄海设计院"
+              }
+            ],
+            "relation": {
+              "from_id": "E1",
+              "to_id": "E2",
+              "type": "works_for"
+            }
+          },
+          "expected": {
+            "valid": true
+          },
+          "explanation": "E1 是 PERSON，E2 是 ORG；连边方向符合本项目 works_for 语义。",
+          "source_ref": "SRC-POLICY-TEXT-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-TEXT-RELATION-NEG-001",
+          "asset_ref": "ASSET-SELF-TEXT-RELATION-002",
+          "input": {
+            "text": "赵婷任职于澄海设计院。",
+            "entities": [
+              {
+                "id": "E1",
+                "label": "PERSON",
+                "text": "赵婷"
+              },
+              {
+                "id": "E2",
+                "label": "ORG",
+                "text": "澄海设计院"
+              }
+            ],
+            "relation": {
+              "from_id": "E2",
+              "to_id": "E1",
+              "type": "works_for"
+            }
+          },
+          "expected": {
+            "valid": false,
+            "error": "relation_direction_reversed"
+          },
+          "explanation": "关系端点被反转；外部格式允许表达方向，但错误结论来自本项目的 works_for 语义政策。",
+          "source_ref": "SRC-POLICY-TEXT-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "asset_ref": "ASSET-SELF-TEXT-RELATION-EXERCISE-001",
+        "input": {
+          "text": "周凯加入远山数据公司。",
+          "entities": [
+            {
+              "id": "E1",
+              "label": "PERSON",
+              "text": "周凯"
+            },
+            {
+              "id": "E2",
+              "label": "ORG",
+              "text": "远山数据公司"
+            }
+          ],
+          "available_relations": [
+            "works_for"
+          ]
+        },
+        "student_action": "提交 JSON：在 relations 数组中给出唯一有向关系的 from_id、to_id 和 type。",
+        "answer": {
+          "relations": [
+            {
+              "from_id": "E1",
+              "to_id": "E2",
+              "type": "works_for"
+            }
+          ]
+        },
+        "evaluation": {
+          "method": "exact_match",
+          "version": "1.1.0",
+          "normalization": "JSON 对象键顺序忽略；relations 数组顺序以及端点和关系类型必须完全一致",
+          "incorrect_feedback": {
+            "error_type": "relation_answer_mismatch",
+            "feedback": "关系类型、源端点或目标端点与本项目的有向关系定义不一致。",
+            "remediation": [
+              "先确认关系谓词的主语和宾语类型，再按 PERSON 到 ORG 的方向连接 works_for。"
+            ]
+          }
+        },
+        "data_version": "1.1.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": [
+          "CAP-TXT-RELATION-001"
+        ],
+        "error_types": [
+          "relation_answer_mismatch",
+          "relation_direction_reversed",
+          "relation_endpoint_mismatch"
+        ],
+        "asset_authorization": {
+          "type": "self-authored",
+          "student_use_allowed": true
+        }
+      },
+      "common_errors": [
+        "只检查两个实体是否相连而忽略方向",
+        "混淆 from_id 与 to_id",
+        "把外部关系格式误解为本项目关系语义"
+      ],
+      "remediation": [
+        "把关系改写为“PERSON works_for ORG”后逐项核对源端点、目标端点和关系类型"
+      ],
+      "review_records": [],
+      "review_status": "draft",
+      "student_visible": false
+    }
+  ]
+}

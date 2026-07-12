@@ -1,0 +1,645 @@
+{
+  "schema_version": "1.1.0",
+  "data_type": "image",
+  "units": [
+    {
+      "id": "TU-IMAGE-KEYPOINT-VISIBILITY-001",
+      "data_type": "image",
+      "title": "判定关键点可见性",
+      "learning_objectives": [
+        "区分可见、被遮挡和位于画面外的关键点状态",
+        "按本项目规则决定是否保留关键点坐标"
+      ],
+      "prerequisites": [],
+      "rule_refs": [
+        "KNG-IMG-KEYPOINT-VISIBILITY-001"
+      ],
+      "source_refs": [
+        "SRC-CVAT-ANNOTATION-FORMAT-251",
+        "SRC-POLICY-IMAGE-TASK3-001"
+      ],
+      "rule_explanation": "CVAT 格式事实：图像关键点可由点几何及其属性表达。该格式事实不规定本课程的可见性枚举。 本项目本地语义策略：关键点在画面内且可直接观察时记为 visible；在画面内但被其他物体遮挡时记为 occluded，并保留可确定的坐标；关键点在画面外时记为 outside_image，坐标必须为 null。",
+      "positive_examples": [
+        {
+          "id": "EX-IMAGE-KEYPOINT-POS-001",
+          "asset_ref": "ASSET-SELF-IMAGE-KEYPOINT-001",
+          "input": {
+            "keypoint": "left_wrist",
+            "in_image": true,
+            "directly_visible": false,
+            "position_determinable": true,
+            "coordinates": {"x": 148, "y": 203}
+          },
+          "expected": {
+            "visibility": "occluded",
+            "coordinates": {"x": 148, "y": 203}
+          },
+          "explanation": "手腕在画面内且位置可确定，但被前景物体遮挡，因此使用 occluded 并保留坐标。",
+          "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-IMAGE-KEYPOINT-NEG-001",
+          "asset_ref": "ASSET-SELF-IMAGE-KEYPOINT-002",
+          "input": {
+            "keypoint": "right_ankle",
+            "in_image": false,
+            "submitted": {
+              "visibility": "occluded",
+              "coordinates": {"x": 639, "y": 470}
+            }
+          },
+          "expected": {
+            "valid": false,
+            "error": "keypoint_visibility_misclassified",
+            "details": {
+              "required_visibility": "outside_image",
+              "required_coordinates": null
+            }
+          },
+          "explanation": "画面外关键点不是画面内遮挡，不能猜测边缘坐标；应标为 outside_image 且坐标为 null。",
+          "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "asset_ref": "ASSET-SELF-IMAGE-KEYPOINT-EXERCISE-001",
+        "input": {
+          "keypoint": "left_knee",
+          "in_image": true,
+          "directly_visible": false,
+          "position_determinable": true,
+          "coordinates": {"x": 212, "y": 356},
+          "allowed_visibility_values": ["visible", "occluded", "outside_image"]
+        },
+        "student_action": "提交 JSON：给出 visibility，并按本地策略给出 coordinates。",
+        "answer": {
+          "visibility": "occluded",
+          "coordinates": {"x": 212, "y": 356}
+        },
+        "evaluation": {
+          "method": "exact_match",
+          "version": "1.1.0",
+          "normalization": "JSON 对象键顺序忽略；visibility 字符串和坐标值必须完全一致",
+          "incorrect_feedback": {
+            "error_type": "keypoint_visibility_misclassified",
+            "feedback": "关键点状态或坐标保留规则与本地可见性策略不一致。",
+            "remediation": [
+              "先判断关键点是否在画面内，再判断是否直接可见；只有 outside_image 使用 null 坐标。"
+            ]
+          }
+        },
+        "data_version": "1.1.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": [
+          "CAP-IMG-KEYPOINT-001"
+        ],
+        "error_types": [
+          "keypoint_visibility_misclassified",
+          "keypoint_coordinates_dropped"
+        ],
+        "asset_authorization": {
+          "type": "self-authored",
+          "student_use_allowed": true
+        }
+      },
+      "common_errors": [
+        "把画面外关键点误判为画面内遮挡",
+        "对位置可确定的被遮挡关键点删除坐标"
+      ],
+      "remediation": [
+        "按在画面内、直接可见、位置可确定三个条件依次复核状态与坐标"
+      ],
+      "review_records": [],
+      "review_status": "draft",
+      "student_visible": false
+    },
+    {
+      "id": "TU-IMAGE-MASK-INSTANCE-001",
+      "data_type": "image",
+      "title": "区分语义掩码与实例掩码",
+      "learning_objectives": [
+        "区分语义分割的类别像素与实例分割的独立对象掩码",
+        "按本项目规则绑定实例 ID 和实例属性"
+      ],
+      "prerequisites": [],
+      "rule_refs": [
+        "KNG-IMG-SEMANTIC-MASK-001",
+        "KNG-IMG-INSTANCE-ID-001"
+      ],
+      "source_refs": [
+        "SRC-CVAT-ANNOTATION-FORMAT-251",
+        "SRC-POLICY-IMAGE-TASK3-001"
+      ],
+      "rule_explanation": "CVAT 格式事实：掩码几何可与标签一起保存，多个带标签的掩码实例可以分别保存。该格式事实不决定课程任务何时合并同类像素或如何命名实例。 本项目本地语义策略：semantic 模式只输出每个像素的 class_label，同类区域不分配 instance_id，且不绑定对象级属性；instance 模式为每个独立对象保留独立掩码和唯一 instance_id，required_attributes 必须绑定到对应实例，属性既不改变像素类别，也不替代 instance_id。",
+      "positive_examples": [
+        {
+          "id": "EX-IMAGE-MASK-POS-001",
+          "asset_ref": "ASSET-SELF-IMAGE-MASK-001",
+          "input": {
+            "mode": "semantic",
+            "region": "road_pixels",
+            "class_label": "road"
+          },
+          "expected": {
+            "class_label": "road",
+            "instance_id": null,
+            "attributes": {}
+          },
+          "explanation": "semantic 模式只保留像素类别，不为道路区域创建实例 ID 或对象级属性。",
+          "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        },
+        {
+          "id": "EX-IMAGE-MASK-POS-002",
+          "asset_ref": "ASSET-SELF-IMAGE-MASK-002",
+          "input": {
+            "mode": "instance",
+            "class_label": "car",
+            "object_index": 2,
+            "required_attributes": ["occluded"],
+            "observed_attributes": {"occluded": true}
+          },
+          "expected": {
+            "class_label": "car",
+            "instance_id": "car-02",
+            "attributes": {"occluded": true},
+            "merge_with_same_class": false
+          },
+          "explanation": "instance 模式保留第二辆车的独立掩码、唯一实例 ID 和该实例的必填属性。",
+          "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-IMAGE-MASK-NEG-001",
+          "asset_ref": "ASSET-SELF-IMAGE-MASK-003",
+          "input": {
+            "mode": "instance",
+            "same_class_objects": ["person-01", "person-02"],
+            "submitted": {
+              "class_label": "person",
+              "instance_id": null,
+              "merge_with_same_class": true
+            }
+          },
+          "expected": {
+            "valid": false,
+            "error": "instance_id_missing"
+          },
+          "explanation": "实例分割不能因为对象同类而合并掩码；每个对象都必须有独立 instance_id。",
+          "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        },
+        {
+          "id": "EX-IMAGE-MASK-NEG-002",
+          "asset_ref": "ASSET-SELF-IMAGE-MASK-004",
+          "input": {
+            "mode": "semantic",
+            "class_label": "sky",
+            "submitted": {
+              "instance_id": "sky-01",
+              "attributes": {"occluded": false}
+            }
+          },
+          "expected": {
+            "valid": false,
+            "error": "attribute_scope_invalid"
+          },
+          "explanation": "本地 semantic 模式不创建实例，也不承载对象级属性。",
+          "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "asset_ref": "ASSET-SELF-IMAGE-MASK-EXERCISE-001",
+        "input": {
+          "mode": "instance",
+          "class_label": "bicycle",
+          "object_index": 2,
+          "same_class_object_count": 2,
+          "required_attributes": ["occluded"],
+          "observed_attributes": {"occluded": false}
+        },
+        "student_action": "提交 JSON：给出掩码模式、类别、实例 ID、实例属性和是否与同类对象合并。",
+        "answer": {
+          "mask_mode": "instance",
+          "class_label": "bicycle",
+          "instance_id": "bicycle-02",
+          "attributes": {"occluded": false},
+          "merge_with_same_class": false
+        },
+        "evaluation": {
+          "method": "exact_match",
+          "version": "1.1.0",
+          "normalization": "JSON 对象键顺序忽略；模式、类别、实例 ID、属性和值必须完全一致",
+          "incorrect_feedback": {
+            "error_type": "mask_semantics_mismatch",
+            "feedback": "提交未同时满足实例模式、独立实例 ID 和属性绑定规则。",
+            "remediation": [
+              "先区分 semantic 与 instance，再仅对 instance 生成唯一 ID 并绑定全部 required_attributes。"
+            ]
+          }
+        },
+        "data_version": "1.1.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": [
+          "CAP-IMG-SEMANTIC-SEGMENT-001",
+          "CAP-IMG-INSTANCE-SEGMENT-001"
+        ],
+        "error_types": [
+          "mask_semantics_mismatch",
+          "instance_id_missing",
+          "attribute_scope_invalid"
+        ],
+        "asset_authorization": {
+          "type": "self-authored",
+          "student_use_allowed": true
+        }
+      },
+      "common_errors": [
+        "把同类实例合并成一个实例掩码",
+        "在 semantic 模式添加 instance_id",
+        "用对象属性替代类别或实例 ID"
+      ],
+      "remediation": [
+        "用同一输入分别写出 semantic 和 instance 输出，对照检查类别、实例 ID 与属性的作用域"
+      ],
+      "review_records": [],
+      "review_status": "draft",
+      "student_visible": false
+    },
+    {
+      "id": "TU-IMAGE-OCCLUSION-TRUNCATION-001",
+      "data_type": "image",
+      "title": "区分遮挡与画面截断",
+      "learning_objectives": [
+        "依据可见证据区分遮挡和画面截断",
+        "在两种情况同时出现时独立记录两个状态"
+      ],
+      "prerequisites": [],
+      "rule_refs": [
+        "KNG-IMG-OCCLUSION-TRUNCATION-001"
+      ],
+      "source_refs": [
+        "SRC-CVAT-ANNOTATION-FORMAT-251",
+        "SRC-POLICY-IMAGE-TASK3-001"
+      ],
+      "rule_explanation": "CVAT 格式事实：标注格式可保存 occlusion 以及目标位于画面外的状态信息。该格式事实不等于本课程的判定语义。 本项目本地语义策略：occlusion 表示目标仍在图像范围内，但部分区域被其他物体遮住；truncation 表示目标真实范围延伸到图像边界之外。两个条件独立判断，因此同一目标可以同时为 occluded=true 和 truncated=true。",
+      "boundary_cases": [
+        {
+          "condition": "occlusion",
+          "evidence": "目标轮廓在画面内闭合，但中段被前景栏杆遮住",
+          "expected": {"occluded": true, "truncated": false}
+        },
+        {
+          "condition": "truncation",
+          "evidence": "目标未被其他物体遮挡，但下半部延伸出图像底边",
+          "expected": {"occluded": false, "truncated": true}
+        },
+        {
+          "condition": "both",
+          "evidence": "目标一侧被前景物体遮住，另一侧同时延伸出图像边界",
+          "expected": {"occluded": true, "truncated": true}
+        }
+      ],
+      "positive_examples": [
+        {
+          "id": "EX-IMAGE-OCCLUSION-POS-001",
+          "asset_ref": "ASSET-SELF-IMAGE-OCCLUSION-001",
+          "input": {
+            "interior_region_hidden_by_foreground": true,
+            "object_extends_beyond_image": false
+          },
+          "expected": {"occluded": true, "truncated": false},
+          "explanation": "目标只在画面内部被前景遮挡，没有延伸出画面。",
+          "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-IMAGE-OCCLUSION-NEG-001",
+          "asset_ref": "ASSET-SELF-IMAGE-OCCLUSION-002",
+          "input": {
+            "interior_region_hidden_by_foreground": false,
+            "object_extends_beyond_image": true,
+            "submitted": {"occluded": true, "truncated": false}
+          },
+          "expected": {
+            "valid": false,
+            "error": "occlusion_truncation_confusion",
+            "details": {"occluded": false, "truncated": true}
+          },
+          "explanation": "仅延伸出图像边界属于 truncation，不属于画面内部的 occlusion。",
+          "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "asset_ref": "ASSET-SELF-IMAGE-OCCLUSION-EXERCISE-001",
+        "input": {
+          "evidence": {
+            "interior_region_hidden_by_foreground": true,
+            "object_extends_beyond_image": true
+          }
+        },
+        "student_action": "提交 JSON：分别判断 occluded 和 truncated，不得把两个状态合并为单一标签。",
+        "answer": {"occluded": true, "truncated": true},
+        "evaluation": {
+          "method": "exact_match",
+          "version": "1.1.0",
+          "normalization": "JSON 对象键顺序忽略；两个布尔值必须分别完全一致",
+          "incorrect_feedback": {
+            "error_type": "occlusion_truncation_confusion",
+            "feedback": "遮挡与画面截断的两个独立状态未被正确记录。",
+            "remediation": [
+              "先检查画面内部是否被前景遮挡，再独立检查目标是否延伸出图像边界。"
+            ]
+          }
+        },
+        "data_version": "1.1.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": [
+          "CAP-IMG-OCCLUSION-001"
+        ],
+        "error_types": [
+          "occlusion_truncation_confusion",
+          "visibility_flags_incomplete"
+        ],
+        "asset_authorization": {
+          "type": "self-authored",
+          "student_use_allowed": true
+        }
+      },
+      "common_errors": [
+        "把出画目标一律标为 occluded",
+        "认为 occlusion 和 truncation 互斥而漏记其中一个状态"
+      ],
+      "remediation": [
+        "分别回答是否被前景挡住和是否超出图像边界，再组合两个布尔结果"
+      ],
+      "review_records": [],
+      "review_status": "draft",
+      "student_visible": false
+    },
+    {
+      "id": "TU-IMAGE-POLYGON-VERTICES-001",
+      "data_type": "image",
+      "title": "规范多边形有序顶点",
+      "learning_objectives": [
+        "理解多边形由有序顶点序列表达",
+        "按本项目规则确定起点、方向和闭合方式"
+      ],
+      "prerequisites": [],
+      "rule_refs": [
+        "KNG-IMG-POLYGON-VERTEX-001"
+      ],
+      "source_refs": [
+        "SRC-CVAT-ANNOTATION-FORMAT-251",
+        "SRC-POLICY-IMAGE-TASK3-001"
+      ],
+      "rule_explanation": "CVAT 格式事实：多边形几何由有序坐标点序列表达；点的顺序是几何数据的一部分。该格式事实不规定本课程采用哪个起点或遍历方向。 本项目本地语义策略：顶点序列从 (y, x) 字典序最小的顶点开始，在图像坐标系中按顺时针排列；答案不重复首点，闭合边由最后一个顶点连接回首点；自交序列无效。",
+      "positive_examples": [
+        {
+          "id": "EX-IMAGE-POLYGON-POS-001",
+          "asset_ref": "ASSET-SELF-IMAGE-POLYGON-001",
+          "input": {
+            "vertices": [
+              {"x": 20, "y": 20},
+              {"x": 100, "y": 20},
+              {"x": 100, "y": 80},
+              {"x": 20, "y": 80}
+            ],
+            "closure": "implicit_last_to_first"
+          },
+          "expected": {"valid": true, "ordered_clockwise": true, "closed": true},
+          "explanation": "序列从最上且最左的顶点开始，按顺时针经过其余顶点，最后隐式连接首点。",
+          "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-IMAGE-POLYGON-NEG-001",
+          "asset_ref": "ASSET-SELF-IMAGE-POLYGON-002",
+          "input": {
+            "vertices": [
+              {"x": 20, "y": 20},
+              {"x": 20, "y": 80},
+              {"x": 100, "y": 80},
+              {"x": 100, "y": 20}
+            ]
+          },
+          "expected": {
+            "valid": false,
+            "error": "vertex_order_mismatch",
+            "details": {"required_direction": "clockwise_in_image_coordinates"}
+          },
+          "explanation": "起点正确，但遍历方向为逆时针，不符合本地规范的有序顶点要求。",
+          "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "asset_ref": "ASSET-SELF-IMAGE-POLYGON-EXERCISE-001",
+        "input": {
+          "candidate_vertices": [
+            {"x": 90, "y": 70},
+            {"x": 10, "y": 10},
+            {"x": 10, "y": 70},
+            {"x": 90, "y": 10}
+          ],
+          "start_rule": "minimum_(y,x)",
+          "direction": "clockwise_in_image_coordinates",
+          "closure": "implicit_last_to_first"
+        },
+        "student_action": "提交 JSON：将全部顶点排成 ordered_vertices，并确认闭合；顶点顺序参与评分。",
+        "answer": {
+          "ordered_vertices": [
+            {"x": 10, "y": 10},
+            {"x": 90, "y": 10},
+            {"x": 90, "y": 70},
+            {"x": 10, "y": 70}
+          ],
+          "closed": true
+        },
+        "evaluation": {
+          "method": "ordered_exact_match",
+          "version": "1.1.0",
+          "normalization": "JSON 对象键顺序忽略；ordered_vertices 数组顺序、坐标值和 closed 必须完全一致",
+          "incorrect_feedback": {
+            "error_type": "vertex_order_mismatch",
+            "feedback": "顶点集合可能相同，但起点、顺时针顺序或闭合标记不符合本地规则。",
+            "remediation": [
+              "先选 (y, x) 最小点，再按图像坐标系顺时针排列，且不要在数组末尾重复首点。"
+            ]
+          }
+        },
+        "data_version": "1.1.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": [
+          "CAP-IMG-POLYGON-001"
+        ],
+        "error_types": [
+          "vertex_order_mismatch",
+          "polygon_not_closed",
+          "self_intersection"
+        ],
+        "asset_authorization": {
+          "type": "self-authored",
+          "student_use_allowed": true
+        }
+      },
+      "common_errors": [
+        "只比较顶点集合而忽略数组顺序",
+        "在末尾重复首点导致与本地闭合格式不一致",
+        "跨越轮廓连接顶点造成自交"
+      ],
+      "remediation": [
+        "标出规范起点并沿轮廓顺时针逐点复核，最后检查隐式闭合边"
+      ],
+      "review_records": [],
+      "review_status": "draft",
+      "student_visible": false
+    },
+    {
+      "id": "TU-IMAGE-RECT-BOUNDS-001",
+      "data_type": "image",
+      "title": "校验矩形框坐标边界",
+      "learning_objectives": [
+        "按本单元坐标规则判断矩形框是否有效",
+        "识别越界或零面积矩形框"
+      ],
+      "prerequisites": [],
+      "rule_refs": [
+        "KNG-IMG-RECT-BOUNDS-001"
+      ],
+      "source_refs": [
+        "SRC-CVAT-IMAGE-RECT-001",
+        "SRC-POLICY-IMAGE-TASK3-001"
+      ],
+      "rule_explanation": "CVAT 格式事实：矩形标注以图像上的矩形几何和坐标表达目标区域。该格式事实不替代项目的数值校验约定。 本项目本地语义策略：对 width x height 图像，必须满足 0 <= x_min < x_max <= width 且 0 <= y_min < y_max <= height；任一坐标越界或宽高为零均判为无效。",
+      "positive_examples": [
+        {
+          "id": "EX-IMAGE-POS-001",
+          "asset_ref": "ASSET-SELF-IMAGE-RECT-001",
+          "input": {
+            "image_size": {"width": 640, "height": 480},
+            "rectangle": {"x_min": 10, "y_min": 20, "x_max": 110, "y_max": 120}
+          },
+          "expected": {"valid": true},
+          "explanation": "坐标位于图像范围内，且 x_min < x_max、y_min < y_max。",
+          "source_ref": "SRC-CVAT-IMAGE-RECT-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-IMAGE-NEG-001",
+          "asset_ref": "ASSET-SELF-IMAGE-RECT-002",
+          "input": {
+            "image_size": {"width": 640, "height": 480},
+            "rectangle": {"x_min": 90, "y_min": 20, "x_max": 90, "y_max": 120}
+          },
+          "expected": {
+            "valid": false,
+            "error": "zero_area",
+            "details": {"dimension": "width"}
+          },
+          "explanation": "x_min 等于 x_max，矩形框宽度为零。",
+          "source_ref": "SRC-CVAT-IMAGE-RECT-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "asset_ref": "ASSET-SELF-IMAGE-EXERCISE-001",
+        "input": {
+          "rule": "0 <= x_min < x_max <= width 且 0 <= y_min < y_max <= height",
+          "image_size": {"width": 320, "height": 240},
+          "rectangle": {"x_min": 12, "y_min": 15, "x_max": 330, "y_max": 180}
+        },
+        "student_action": "提交 JSON：判断矩形框是否有效，并在无效时给出唯一错误码。",
+        "answer": {
+          "valid": false,
+          "error": "coordinate_out_of_bounds",
+          "details": {"field": "x_max", "value": 330, "maximum": 320}
+        },
+        "evaluation": {
+          "method": "exact_match",
+          "version": "1.1.0",
+          "normalization": "JSON 对象键顺序忽略，其余值完全一致",
+          "incorrect_feedback": {
+            "error_type": "coordinate_out_of_bounds",
+            "feedback": "矩形框有效性、错误码或越界详情与边界规则不一致。",
+            "remediation": [
+              "分别检查 x、y 坐标范围，再检查 x_min < x_max 和 y_min < y_max。"
+            ]
+          }
+        },
+        "data_version": "1.1.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": [
+          "CAP-IMG-RECT-VALIDATE-001"
+        ],
+        "error_types": [
+          "zero_area",
+          "coordinate_out_of_bounds"
+        ],
+        "asset_authorization": {
+          "type": "self-authored",
+          "student_use_allowed": true
+        }
+      },
+      "common_errors": [
+        "只检查左上角而未检查右下角",
+        "允许零宽或零高矩形框"
+      ],
+      "remediation": [
+        "按 x 轴、y 轴和面积三个步骤重新执行边界检查"
+      ],
+      "review_records": [],
+      "review_status": "draft",
+      "student_visible": false
+    }
+  ]
+}

@@ -148,3 +148,39 @@
 
 **Remaining verification:**
 - No new factual claims were introduced. Existing draft-source and human-release gates from the prior entry remain in force.
+
+## [2026-07-12 21:23] Implement Task 3 text and image curriculum candidates
+
+**Changed files:**
+- `data/curriculum/text/teaching-units.json`
+- `data/curriculum/image/teaching-units.json`
+- `data/curriculum/teaching-units.json`
+- `data/sources/source-registry.json`
+- `data/graph/graph-catalog.json`
+- `data/graph/annotation-capability-graph.json`
+- `data/graph/annotation-capability-graph.graphml`
+- `scripts/build_curriculum.py`
+- `scripts/evaluate_exercise.py`
+- `tests/content/test_text_image_evaluation.py`
+- `tests/content/test_teaching_units.py`
+- `docs/教学内容与图谱数据规范.md`
+- `docs/superpowers/plans/2026-07-12-annotation-teaching-agent.md`
+- `docs/logs/document-changelog.md`
+
+**Reason:**
+- Add five deterministic text candidates and five deterministic image candidates with explicit boundary, occlusion, truncation, ambiguity, error-feedback, and remediation rules.
+- Add a reusable standard-library evaluator for exact, ordered, allowed-answer, partial-credit, and manual-review outcomes, plus a deterministic per-domain curriculum aggregator with the Task 3 audio/video transition fallback.
+- Link all candidate units to existing TSK/CAP/KNG graph records without changing the fixed 166-node/240-edge graph size.
+- Record Context7 documentation verification separately from the blocked direct tag-license check, and identify all self-authored semantics as local project policy rather than external authority.
+
+**Verification:**
+- Captured the required initial RED with `PYTHONDONTWRITEBYTECODE=1 python -m pytest tests/content/test_text_image_evaluation.py -q -p no:cacheprovider`: 3 failed and 7 skipped because domain files, scripts, task links, and verification metadata were absent.
+- Rebuilt `data/curriculum/teaching-units.json` twice through the test harness and confirmed byte-identical output while preserving the prior audio/video unit objects through the explicit transition fallback.
+- Ran `PYTHONDONTWRITEBYTECODE=1 python -m pytest tests/content/test_text_image_evaluation.py -q -p no:cacheprovider`; all 10 tests passed.
+- Ran `PYTHONDONTWRITEBYTECODE=1 python scripts/validate_graph.py data/graph/annotation-capability-graph.json`; all graph checks passed with exactly 166 nodes and 240 edges.
+- Ran the graph suite with 30 passing tests and the complete suite with 48 passing tests, with bytecode and pytest cache generation disabled.
+
+**Remaining verification:**
+- All ten Task 3 candidates remain `draft`, `student_visible=false`, and have empty `review_records`. Plan Step 3 remains unchecked until a separate AI agent that did not implement this batch records an approved independent content review; no such approval is claimed here.
+- Context7 verified the stated documentation paths and content for Label Studio 1.19.0 and CVAT v2.51.0, but direct GitHub navigation to the matching tag license files remained blocked. The candidates therefore remain `publishable=false` pending tag-specific license verification.
+- Text ambiguity and image semantic/occlusion decisions are explicitly local project policies, not external standards. Final competition or real-student release still requires human domain-expert confirmation.

@@ -197,6 +197,7 @@ def test_exercises_define_a_deterministic_evaluation(teaching_units):
         assert exercise["evaluation"]["method"] in {
             "exact_match",
             "ordered_exact_match",
+            "allowed_answers",
         }
         assert exercise["evaluation"]["version"]
         assert isinstance(exercise["data_version"], str)

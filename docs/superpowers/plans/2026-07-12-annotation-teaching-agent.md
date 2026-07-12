@@ -44,9 +44,9 @@
 - Create: `tests/content/test_text_image_evaluation.py`
 - Modify: `data/curriculum/teaching-units.json`
 
-- [ ] **Step 1: 为文本和图像分别实现规则讲解、正反例、练习、标准答案与错误反馈，并关联图谱能力节点。**
-- [ ] **Step 2: 运行 `python -m pytest tests/content/test_text_image_evaluation.py -q`；预期结果为相同输入始终得到相同判定和规则引用。**
-- [ ] **Step 3: 由内容责任人复核边界案例、遮挡案例和歧义样例后，将通过条目状态改为 `published`。**
+- [x] **Step 1: 为文本和图像分别实现规则讲解、正反例、练习、标准答案与错误反馈，并关联图谱能力节点。**
+- [x] **Step 2: 运行 `python -m pytest tests/content/test_text_image_evaluation.py -q`；预期结果为相同输入始终得到相同判定和规则引用。**
+- [ ] **Step 3: 由未参与本批内容实现的独立 AI 审阅代理复核边界、遮挡和歧义样例，并按数据规范记录 `reviewer_type=ai_agent`、版本、结论、发现和剩余风险；只有 `decision=approved` 且剩余风险不阻断开发发布时才可将通过条目改为 `published`。不得表述为人工、教师或专家背书；正式赛事提交或真实学生发布仍须由人工领域专家确认。**
 
 ### Task 4: 实现语音深度教学链
 
