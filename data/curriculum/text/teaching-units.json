@@ -194,9 +194,9 @@
       "remediation": [
         "先核对 selection_mode 和 configured_labels，再根据本地类别说明完成同规则练习"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": ["REVIEW-TASK3-TEXT-06EEE9AA-002"],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-TEXT-INTENT-AMBIGUITY-001",
@@ -410,9 +410,9 @@
       "remediation": [
         "逐句标出意图信号，再按本地优先级规则匹配允许答案和人工复核条件"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": ["REVIEW-TASK3-TEXT-06EEE9AA-002"],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-TEXT-LABEL-VOCAB-001",
@@ -595,9 +595,9 @@
       "remediation": [
         "重新核对本题 configured_labels 后完成同规则练习"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": ["REVIEW-TASK3-TEXT-06EEE9AA-002"],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-TEXT-NER-BOUNDARY-001",
@@ -868,9 +868,9 @@
       "remediation": [
         "给原文逐字符编号，并分别执行必要成分包含检查和标点排除检查"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": ["REVIEW-TASK3-TEXT-06EEE9AA-002"],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-TEXT-RELATION-DIRECTION-001",
@@ -1089,9 +1089,9 @@
       "remediation": [
         "把关系改写为“PERSON works_for ORG”后逐项核对源端点、目标端点和关系类型"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": ["REVIEW-TASK3-TEXT-06EEE9AA-002"],
+      "review_status": "published",
+      "student_visible": true
     }
   ]
 }

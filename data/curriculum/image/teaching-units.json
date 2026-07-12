@@ -311,9 +311,9 @@
       "remediation": [
         "按在画面内、直接可见、位置可确定三个条件依次复核状态与坐标"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": ["REVIEW-TASK3-IMAGE-06EEE9A-001"],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-IMAGE-MASK-INSTANCE-001",
@@ -635,9 +635,9 @@
       "remediation": [
         "用同一输入分别写出 semantic 和 instance 输出，对照检查类别、实例 ID 与属性的作用域"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": ["REVIEW-TASK3-IMAGE-06EEE9A-001"],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-IMAGE-OCCLUSION-TRUNCATION-001",
@@ -776,9 +776,9 @@
       "remediation": [
         "分别回答是否被前景挡住和是否超出图像边界，再组合两个布尔结果"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": ["REVIEW-TASK3-IMAGE-06EEE9A-001"],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-IMAGE-POLYGON-VERTICES-001",
@@ -1062,9 +1062,9 @@
       "remediation": [
         "标出规范起点并沿轮廓顺时针逐点复核，最后检查隐式闭合边"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": ["REVIEW-TASK3-IMAGE-06EEE9A-001"],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-IMAGE-RECT-BOUNDS-001",
@@ -1286,9 +1286,9 @@
       "remediation": [
         "按 x 轴、y 轴和面积三个步骤重新执行边界检查"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": ["REVIEW-TASK3-IMAGE-06EEE9A-001"],
+      "review_status": "published",
+      "student_visible": true
     }
   ]
 }

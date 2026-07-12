@@ -370,12 +370,25 @@ def test_teaching_unit_links_respect_publication_gate(graph):
         "TU-AUDIO-DATA-BINDING-001",
         "TU-VIDEO-TRACK-ID-001",
     } <= linked_units
-    assert not any(
-        link["consumable"]
+    consumable_units = {
+        link["unit_id"]
         for task in graph["nodes"]
         if task["type"] == "TSK"
         for link in task["teaching_unit_links"]
-    )
+        if link["consumable"]
+    }
+    assert consumable_units == {
+        "TU-TEXT-DOCUMENT-CLASSIFY-001",
+        "TU-TEXT-INTENT-AMBIGUITY-001",
+        "TU-TEXT-LABEL-VOCAB-001",
+        "TU-TEXT-NER-BOUNDARY-001",
+        "TU-TEXT-RELATION-DIRECTION-001",
+        "TU-IMAGE-KEYPOINT-VISIBILITY-001",
+        "TU-IMAGE-MASK-INSTANCE-001",
+        "TU-IMAGE-OCCLUSION-TRUNCATION-001",
+        "TU-IMAGE-POLYGON-VERTICES-001",
+        "TU-IMAGE-RECT-BOUNDS-001",
+    }
 
 
 def test_scenario_edges_have_compatible_rule_metadata(graph):

@@ -250,3 +250,38 @@
 **Remaining verification:**
 - This commit is a corrected draft candidate only. The recorded prior AI reviews remain `changes_required` and do not authorize publication.
 - All Task 3 units remain `draft` and hidden; Task 3 Step 3 remains unchecked pending re-review.
+
+## [2026-07-12 22:32] Publish AI-reviewed Task 3 text and image units for development
+
+**Changed files:**
+- `data/curriculum/text/teaching-units.json`
+- `data/curriculum/image/teaching-units.json`
+- `data/curriculum/teaching-units.json`
+- `data/reviews/content-review-registry.json`
+- `data/sources/source-registry.json`
+- `data/graph/annotation-capability-graph.json`
+- `data/graph/annotation-capability-graph.graphml`
+- `tests/content/test_text_image_evaluation.py`
+- `tests/graph/test_graph_integrity.py`
+- `docs/superpowers/plans/2026-07-12-annotation-teaching-agent.md`
+- `docs/logs/document-changelog.md`
+
+**Reason:**
+- Record independent text and image re-reviews explicitly performed by `reviewer_type=ai_agent`, while retaining both historical `changes_required` review records for auditability.
+- Publish exactly the five Task 3 text units and five Task 3 image units to the development-only student-visible index after approved AI review; keep legacy audio and video units draft and hidden.
+- Make the ten canonical graph teaching-unit links consumable without changing taxonomy status, node counts, or edge counts.
+- Complete Task 3 Step 3 only for AI-reviewed development publication. This does not imply human, teacher, or domain-expert review or authorize formal competition or real-student release.
+
+**Verification:**
+- Rebuilt `data/curriculum/teaching-units.json` with `python scripts/build_curriculum.py`; the index contains 12 units and retains the audio/video transition fallback.
+- Rebuilt the generated graph with `python scripts/build_graph.py`.
+- Ran `python -B -m pytest tests/content/test_text_image_evaluation.py -q -p no:cacheprovider`; all 30 tests passed.
+- Ran `python -B -m pytest tests/content/test_teaching_units.py -q -p no:cacheprovider`; all 8 legacy content tests passed.
+- Ran `python -B -m pytest tests/graph/test_graph_integrity.py -q -p no:cacheprovider`; all 33 graph tests passed.
+- Ran `python -B scripts/validate_graph.py data/graph/annotation-capability-graph.json`; all checks passed with exactly 166 nodes and 240 edges.
+- Ran `python -B -m pytest -q -p no:cacheprovider`; the complete suite passed all 71 tests.
+
+**Remaining verification:**
+- The approved reviewers are AI agents only. No human, teacher, or domain-expert review is claimed.
+- Publication is limited to development use; both project-policy sources remain `publication_scope=development_only` and `human_release_allowed=false`.
+- Formal competition submission and real-student release remain gated on human domain-expert confirmation.

@@ -232,7 +232,7 @@
       "license_or_authorization": {
         "license_id": "Project-internal-draft; no external publication grant",
         "license_url": "https://choosealicense.com/no-permission/",
-        "student_use_allowed": false,
+        "student_use_allowed": true,
         "publishable": true,
         "review_note": "The project owner authorized independently reviewed AI development publication for Tasks 2-5. This does not grant human-release or external-authority status."
       },
@@ -259,7 +259,7 @@
       "license_or_authorization": {
         "license_id": "Project-internal-draft; no external publication grant",
         "license_url": "https://choosealicense.com/no-permission/",
-        "student_use_allowed": false,
+        "student_use_allowed": true,
         "publishable": true,
         "review_note": "The project owner authorized independently reviewed AI development publication for Tasks 2-5. This does not grant human-release or external-authority status."
       },

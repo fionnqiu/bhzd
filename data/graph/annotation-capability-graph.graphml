@@ -1377,7 +1377,7 @@
       <data key="n3">["image"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-IMG-KEYPOINT-001","primary_knowledge_ref":"KNG-IMG-KEYPOINT-VISIBILITY-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-IMAGE-KEYPOINT-VISIBILITY-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-IMG-KEYPOINT-001","primary_knowledge_ref":"KNG-IMG-KEYPOINT-VISIBILITY-001","student_visible":false,"teaching_unit_links":[{"consumable":true,"in_student_visible_index":true,"review_status":"published","student_visible":true,"unit_id":"TU-IMAGE-KEYPOINT-VISIBILITY-001"}]}</data>
     </node>
     <node id="TSK-IMG-MASK-REVIEW-001">
       <data key="n0">TSK</data>
@@ -1386,7 +1386,7 @@
       <data key="n3">["image"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-IMG-INSTANCE-SEGMENT-001","primary_knowledge_ref":"KNG-IMG-INSTANCE-ID-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-IMAGE-MASK-INSTANCE-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-IMG-INSTANCE-SEGMENT-001","primary_knowledge_ref":"KNG-IMG-INSTANCE-ID-001","student_visible":false,"teaching_unit_links":[{"consumable":true,"in_student_visible_index":true,"review_status":"published","student_visible":true,"unit_id":"TU-IMAGE-MASK-INSTANCE-001"}]}</data>
     </node>
     <node id="TSK-IMG-OBJECT-BOX-001">
       <data key="n0">TSK</data>
@@ -1395,7 +1395,7 @@
       <data key="n3">["image"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-IMG-BOX-ANNOTATE-001","primary_knowledge_ref":"KNG-IMG-OCCLUSION-TRUNCATION-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-IMAGE-OCCLUSION-TRUNCATION-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-IMG-BOX-ANNOTATE-001","primary_knowledge_ref":"KNG-IMG-OCCLUSION-TRUNCATION-001","student_visible":false,"teaching_unit_links":[{"consumable":true,"in_student_visible_index":true,"review_status":"published","student_visible":true,"unit_id":"TU-IMAGE-OCCLUSION-TRUNCATION-001"}]}</data>
     </node>
     <node id="TSK-IMG-POLYGON-TRACE-001">
       <data key="n0">TSK</data>
@@ -1404,7 +1404,7 @@
       <data key="n3">["image"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-IMG-POLYGON-001","primary_knowledge_ref":"KNG-IMG-POLYGON-VERTEX-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-IMAGE-POLYGON-VERTICES-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-IMG-POLYGON-001","primary_knowledge_ref":"KNG-IMG-POLYGON-VERTEX-001","student_visible":false,"teaching_unit_links":[{"consumable":true,"in_student_visible_index":true,"review_status":"published","student_visible":true,"unit_id":"TU-IMAGE-POLYGON-VERTICES-001"}]}</data>
     </node>
     <node id="TSK-IMG-RECT-AUDIT-001">
       <data key="n0">TSK</data>
@@ -1413,7 +1413,7 @@
       <data key="n3">["image"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-IMG-RECT-VALIDATE-001","primary_knowledge_ref":"KNG-IMG-RECT-BOUNDS-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-IMAGE-RECT-BOUNDS-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-IMG-RECT-VALIDATE-001","primary_knowledge_ref":"KNG-IMG-RECT-BOUNDS-001","student_visible":false,"teaching_unit_links":[{"consumable":true,"in_student_visible_index":true,"review_status":"published","student_visible":true,"unit_id":"TU-IMAGE-RECT-BOUNDS-001"}]}</data>
     </node>
     <node id="TSK-TXT-DOCUMENT-CLASSIFY-001">
       <data key="n0">TSK</data>
@@ -1422,7 +1422,7 @@
       <data key="n3">["text"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-TXT-CLASSIFY-001","primary_knowledge_ref":"KNG-TXT-SINGLE-MULTI-LABEL-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-TEXT-DOCUMENT-CLASSIFY-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-TXT-CLASSIFY-001","primary_knowledge_ref":"KNG-TXT-SINGLE-MULTI-LABEL-001","student_visible":false,"teaching_unit_links":[{"consumable":true,"in_student_visible_index":true,"review_status":"published","student_visible":true,"unit_id":"TU-TEXT-DOCUMENT-CLASSIFY-001"}]}</data>
     </node>
     <node id="TSK-TXT-INTENT-REVIEW-001">
       <data key="n0">TSK</data>
@@ -1431,7 +1431,7 @@
       <data key="n3">["text"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-TXT-INTENT-001","primary_knowledge_ref":"KNG-TXT-INTENT-HIERARCHY-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-TEXT-INTENT-AMBIGUITY-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-TXT-INTENT-001","primary_knowledge_ref":"KNG-TXT-INTENT-HIERARCHY-001","student_visible":false,"teaching_unit_links":[{"consumable":true,"in_student_visible_index":true,"review_status":"published","student_visible":true,"unit_id":"TU-TEXT-INTENT-AMBIGUITY-001"}]}</data>
     </node>
     <node id="TSK-TXT-LABEL-AUDIT-001">
       <data key="n0">TSK</data>
@@ -1440,7 +1440,7 @@
       <data key="n3">["text"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-TXT-LABEL-VALIDATE-001","primary_knowledge_ref":"KNG-TXT-LABEL-VOCAB-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-TEXT-LABEL-VOCAB-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-TXT-LABEL-VALIDATE-001","primary_knowledge_ref":"KNG-TXT-LABEL-VOCAB-001","student_visible":false,"teaching_unit_links":[{"consumable":true,"in_student_visible_index":true,"review_status":"published","student_visible":true,"unit_id":"TU-TEXT-LABEL-VOCAB-001"}]}</data>
     </node>
     <node id="TSK-TXT-NER-ANNOTATE-001">
       <data key="n0">TSK</data>
@@ -1449,7 +1449,7 @@
       <data key="n3">["text"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-TXT-ENTITY-BOUNDARY-001","primary_knowledge_ref":"KNG-TXT-ENTITY-BOUNDARY-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-TEXT-NER-BOUNDARY-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-TXT-ENTITY-BOUNDARY-001","primary_knowledge_ref":"KNG-TXT-ENTITY-BOUNDARY-001","student_visible":false,"teaching_unit_links":[{"consumable":true,"in_student_visible_index":true,"review_status":"published","student_visible":true,"unit_id":"TU-TEXT-NER-BOUNDARY-001"}]}</data>
     </node>
     <node id="TSK-TXT-RELATION-LINK-001">
       <data key="n0">TSK</data>
@@ -1458,7 +1458,7 @@
       <data key="n3">["text"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-TXT-RELATION-001","primary_knowledge_ref":"KNG-TXT-RELATION-DIRECTION-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-TEXT-RELATION-DIRECTION-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-TXT-RELATION-001","primary_knowledge_ref":"KNG-TXT-RELATION-DIRECTION-001","student_visible":false,"teaching_unit_links":[{"consumable":true,"in_student_visible_index":true,"review_status":"published","student_visible":true,"unit_id":"TU-TEXT-RELATION-DIRECTION-001"}]}</data>
     </node>
     <node id="TSK-VID-ACTION-EVENT-001">
       <data key="n0">TSK</data>

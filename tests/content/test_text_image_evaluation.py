@@ -34,6 +34,10 @@ IMAGE_UNIT_IDS = {
     "TU-IMAGE-KEYPOINT-VISIBILITY-001",
     "TU-IMAGE-MASK-INSTANCE-001",
 }
+APPROVED_REVIEW_IDS = {
+    "text": "REVIEW-TASK3-TEXT-06EEE9AA-002",
+    "image": "REVIEW-TASK3-IMAGE-06EEE9A-001",
+}
 RESULT_FIELDS = {
     "score",
     "passed",
@@ -390,7 +394,11 @@ def test_candidate_prerequisites_follow_graph_predecessors():
 def test_failed_ai_reviews_are_recorded_without_publication_authority():
     assert REVIEW_REGISTRY_PATH.exists(), "content review registry is missing"
     registry = load_json(REVIEW_REGISTRY_PATH)
-    records = {record["reviewer_id"]: record for record in registry["records"]}
+    records = {
+        record["reviewer_id"]: record
+        for record in registry["records"]
+        if record["decision"] == "changes_required"
+    }
     assert set(records) >= {
         "codex-task3-text-review",
         "codex-task3-image-review",
@@ -407,6 +415,84 @@ def test_failed_ai_reviews_are_recorded_without_publication_authority():
         assert record["finding_count"] == len(record["findings"])
         assert record["finding_count"] > 0
         assert record["remaining_risks"]
+
+
+def test_approved_ai_reviews_bind_clean_commit_versions_and_development_scope():
+    registry = load_json(REVIEW_REGISTRY_PATH)
+    records = {record["review_id"]: record for record in registry["records"]}
+    expected = {
+        APPROVED_REVIEW_IDS["text"]: {
+            "reviewer_id": "codex-task3-text-review",
+            "reviewed_at": "2026-07-12T22:23:13+08:00",
+            "unit_ids": TEXT_UNIT_IDS,
+        },
+        APPROVED_REVIEW_IDS["image"]: {
+            "reviewer_id": "codex-task3-image-review",
+            "reviewed_at": "2026-07-12",
+            "unit_ids": IMAGE_UNIT_IDS,
+        },
+    }
+    for review_id, expected_record in expected.items():
+        record = records[review_id]
+        assert record["reviewer_id"] == expected_record["reviewer_id"]
+        assert record["reviewer_type"] == "ai_agent"
+        assert record["independent_of_implementation"] is True
+        assert record["reviewed_at"] == expected_record["reviewed_at"]
+        assert record["reviewed_commit"] == (
+            "06eee9aa8a7c921bc9db4900bd52f72353fc84e2"
+        )
+        assert set(record["scope"]["unit_ids"]) == expected_record["unit_ids"]
+        assert record["decision"] == "approved"
+        assert record["findings"] == []
+        assert record["finding_count"] == 0
+        assert record["authorizes_publication"] is True
+        assert record["publication_scope"] == "development_only"
+        assert record["human_release_allowed"] is False
+        assert record["remaining_risks"]
+        versions = {version["unit_id"]: version for version in record["unit_versions"]}
+        assert set(versions) == expected_record["unit_ids"]
+        for version in versions.values():
+            assert version["data_version"] == "1.1.0"
+            assert version["evaluation_version"] == "1.1.0"
+
+
+def test_task3_development_publication_is_exact_and_legacy_stays_draft():
+    text = load_json(TEXT_UNITS_PATH)
+    image = load_json(IMAGE_UNITS_PATH)
+    central = load_json(CENTRAL_UNITS_PATH)
+    sources_document = load_json(SOURCE_REGISTRY_PATH)
+    sources = {
+        source["source_id"]: source for source in sources_document["sources"]
+    }
+    expected_visible = TEXT_UNIT_IDS | IMAGE_UNIT_IDS
+
+    for document in (text, image):
+        expected_review = APPROVED_REVIEW_IDS[document["data_type"]]
+        for unit in document["units"]:
+            assert unit["review_status"] == "published"
+            assert unit["student_visible"] is True
+            assert unit["review_records"] == [expected_review]
+            for source_ref in unit["source_refs"]:
+                source = sources[source_ref]
+                assert source["status"] == "verified"
+                assert source["license_or_authorization"]["publishable"] is True
+                assert source["usage_rights"]["citation_allowed"] is True
+
+    assert set(central["student_visible_unit_ids"]) == expected_visible
+    central_units = {unit["id"]: unit for unit in central["units"]}
+    for unit in text["units"] + image["units"]:
+        assert central_units[unit["id"]] == unit
+    for unit in central["units"]:
+        if unit["data_type"] in {"audio", "video"}:
+            assert unit["review_status"] == "draft"
+            assert unit["student_visible"] is False
+            assert unit["id"] not in central["student_visible_unit_ids"]
+
+    for source_id in (
+        "SRC-POLICY-TEXT-TASK3-001",
+        "SRC-POLICY-IMAGE-TASK3-001",
+    ):
+        assert sources[source_id]["human_release_allowed"] is False
 
 
 def test_semantic_tasks_use_local_policy_primary_knowledge():
@@ -661,6 +747,7 @@ def test_publication_contract_requires_eligible_sources_and_approved_review():
     unit["review_status"] = "reviewed"
     unit["student_visible"] = False
     unit["review_records"] = ["REVIEW-TASK3-TEXT-C05413A-001"]
+    reviewed["student_visible_unit_ids"].remove(unit["id"])
     eligible_sources = copy.deepcopy(sources)
     make_sources_eligible_for_unit(eligible_sources, unit)
 

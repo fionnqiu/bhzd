@@ -2115,10 +2115,10 @@
       "teaching_unit_links": [
         {
           "unit_id": "TU-IMAGE-KEYPOINT-VISIBILITY-001",
-          "review_status": "draft",
-          "student_visible": false,
-          "in_student_visible_index": false,
-          "consumable": false
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
         }
       ]
     },
@@ -2138,10 +2138,10 @@
       "teaching_unit_links": [
         {
           "unit_id": "TU-IMAGE-MASK-INSTANCE-001",
-          "review_status": "draft",
-          "student_visible": false,
-          "in_student_visible_index": false,
-          "consumable": false
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
         }
       ]
     },
@@ -2161,10 +2161,10 @@
       "teaching_unit_links": [
         {
           "unit_id": "TU-IMAGE-OCCLUSION-TRUNCATION-001",
-          "review_status": "draft",
-          "student_visible": false,
-          "in_student_visible_index": false,
-          "consumable": false
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
         }
       ]
     },
@@ -2184,10 +2184,10 @@
       "teaching_unit_links": [
         {
           "unit_id": "TU-IMAGE-POLYGON-VERTICES-001",
-          "review_status": "draft",
-          "student_visible": false,
-          "in_student_visible_index": false,
-          "consumable": false
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
         }
       ]
     },
@@ -2207,10 +2207,10 @@
       "teaching_unit_links": [
         {
           "unit_id": "TU-IMAGE-RECT-BOUNDS-001",
-          "review_status": "draft",
-          "student_visible": false,
-          "in_student_visible_index": false,
-          "consumable": false
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
         }
       ]
     },
@@ -2230,10 +2230,10 @@
       "teaching_unit_links": [
         {
           "unit_id": "TU-TEXT-DOCUMENT-CLASSIFY-001",
-          "review_status": "draft",
-          "student_visible": false,
-          "in_student_visible_index": false,
-          "consumable": false
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
         }
       ]
     },
@@ -2253,10 +2253,10 @@
       "teaching_unit_links": [
         {
           "unit_id": "TU-TEXT-INTENT-AMBIGUITY-001",
-          "review_status": "draft",
-          "student_visible": false,
-          "in_student_visible_index": false,
-          "consumable": false
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
         }
       ]
     },
@@ -2276,10 +2276,10 @@
       "teaching_unit_links": [
         {
           "unit_id": "TU-TEXT-LABEL-VOCAB-001",
-          "review_status": "draft",
-          "student_visible": false,
-          "in_student_visible_index": false,
-          "consumable": false
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
         }
       ]
     },
@@ -2299,10 +2299,10 @@
       "teaching_unit_links": [
         {
           "unit_id": "TU-TEXT-NER-BOUNDARY-001",
-          "review_status": "draft",
-          "student_visible": false,
-          "in_student_visible_index": false,
-          "consumable": false
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
         }
       ]
     },
@@ -2322,10 +2322,10 @@
       "teaching_unit_links": [
         {
           "unit_id": "TU-TEXT-RELATION-DIRECTION-001",
-          "review_status": "draft",
-          "student_visible": false,
-          "in_student_visible_index": false,
-          "consumable": false
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
         }
       ]
     },

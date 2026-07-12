@@ -1,6 +1,17 @@
 {
   "schema_version": "1.1.0",
-  "student_visible_unit_ids": [],
+  "student_visible_unit_ids": [
+    "TU-IMAGE-KEYPOINT-VISIBILITY-001",
+    "TU-IMAGE-MASK-INSTANCE-001",
+    "TU-IMAGE-OCCLUSION-TRUNCATION-001",
+    "TU-IMAGE-POLYGON-VERTICES-001",
+    "TU-IMAGE-RECT-BOUNDS-001",
+    "TU-TEXT-DOCUMENT-CLASSIFY-001",
+    "TU-TEXT-INTENT-AMBIGUITY-001",
+    "TU-TEXT-LABEL-VOCAB-001",
+    "TU-TEXT-NER-BOUNDARY-001",
+    "TU-TEXT-RELATION-DIRECTION-001"
+  ],
   "units": [
     {
       "id": "TU-AUDIO-DATA-BINDING-001",
@@ -539,9 +550,11 @@
       "remediation": [
         "按在画面内、直接可见、位置可确定三个条件依次复核状态与坐标"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": [
+        "REVIEW-TASK3-IMAGE-06EEE9A-001"
+      ],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-IMAGE-MASK-INSTANCE-001",
@@ -951,9 +964,11 @@
       "remediation": [
         "用同一输入分别写出 semantic 和 instance 输出，对照检查类别、实例 ID 与属性的作用域"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": [
+        "REVIEW-TASK3-IMAGE-06EEE9A-001"
+      ],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-IMAGE-OCCLUSION-TRUNCATION-001",
@@ -1118,9 +1133,11 @@
       "remediation": [
         "分别回答是否被前景挡住和是否超出图像边界，再组合两个布尔结果"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": [
+        "REVIEW-TASK3-IMAGE-06EEE9A-001"
+      ],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-IMAGE-POLYGON-VERTICES-001",
@@ -1546,9 +1563,11 @@
       "remediation": [
         "标出规范起点并沿轮廓顺时针逐点复核，最后检查隐式闭合边"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": [
+        "REVIEW-TASK3-IMAGE-06EEE9A-001"
+      ],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-IMAGE-RECT-BOUNDS-001",
@@ -1899,9 +1918,11 @@
       "remediation": [
         "按 x 轴、y 轴和面积三个步骤重新执行边界检查"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": [
+        "REVIEW-TASK3-IMAGE-06EEE9A-001"
+      ],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-TEXT-DOCUMENT-CLASSIFY-001",
@@ -2095,9 +2116,11 @@
       "remediation": [
         "先核对 selection_mode 和 configured_labels，再根据本地类别说明完成同规则练习"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": [
+        "REVIEW-TASK3-TEXT-06EEE9AA-002"
+      ],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-TEXT-INTENT-AMBIGUITY-001",
@@ -2311,9 +2334,11 @@
       "remediation": [
         "逐句标出意图信号，再按本地优先级规则匹配允许答案和人工复核条件"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": [
+        "REVIEW-TASK3-TEXT-06EEE9AA-002"
+      ],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-TEXT-LABEL-VOCAB-001",
@@ -2496,9 +2521,11 @@
       "remediation": [
         "重新核对本题 configured_labels 后完成同规则练习"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": [
+        "REVIEW-TASK3-TEXT-06EEE9AA-002"
+      ],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-TEXT-NER-BOUNDARY-001",
@@ -2769,9 +2796,11 @@
       "remediation": [
         "给原文逐字符编号，并分别执行必要成分包含检查和标点排除检查"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": [
+        "REVIEW-TASK3-TEXT-06EEE9AA-002"
+      ],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-TEXT-RELATION-DIRECTION-001",
@@ -2990,9 +3019,11 @@
       "remediation": [
         "把关系改写为“PERSON works_for ORG”后逐项核对源端点、目标端点和关系类型"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": [
+        "REVIEW-TASK3-TEXT-06EEE9AA-002"
+      ],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-VIDEO-TRACK-ID-001",

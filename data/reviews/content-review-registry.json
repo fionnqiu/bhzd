@@ -79,6 +79,80 @@
         "No AI or human approval exists for publication of the reviewed commit."
       ],
       "authorizes_publication": false
+    },
+    {
+      "review_id": "REVIEW-TASK3-TEXT-06EEE9AA-002",
+      "reviewer_id": "codex-task3-text-review",
+      "reviewer_type": "ai_agent",
+      "independent_of_implementation": true,
+      "reviewed_at": "2026-07-12T22:23:13+08:00",
+      "reviewed_commit": "06eee9aa8a7c921bc9db4900bd52f72353fc84e2",
+      "scope": {
+        "data_type": "text",
+        "publication_scope": "development_only",
+        "human_release_allowed": false,
+        "unit_ids": [
+          "TU-TEXT-DOCUMENT-CLASSIFY-001",
+          "TU-TEXT-INTENT-AMBIGUITY-001",
+          "TU-TEXT-LABEL-VOCAB-001",
+          "TU-TEXT-NER-BOUNDARY-001",
+          "TU-TEXT-RELATION-DIRECTION-001"
+        ]
+      },
+      "unit_versions": [
+        {"unit_id": "TU-TEXT-DOCUMENT-CLASSIFY-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
+        {"unit_id": "TU-TEXT-INTENT-AMBIGUITY-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
+        {"unit_id": "TU-TEXT-LABEL-VOCAB-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
+        {"unit_id": "TU-TEXT-NER-BOUNDARY-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
+        {"unit_id": "TU-TEXT-RELATION-DIRECTION-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"}
+      ],
+      "decision": "approved",
+      "findings": [],
+      "finding_count": 0,
+      "remaining_risks": [
+        "Approval is limited to development publication by an independent AI reviewer.",
+        "Formal competition and real-student release still require human domain-expert confirmation."
+      ],
+      "publication_scope": "development_only",
+      "human_release_allowed": false,
+      "authorizes_publication": true
+    },
+    {
+      "review_id": "REVIEW-TASK3-IMAGE-06EEE9A-001",
+      "reviewer_id": "codex-task3-image-review",
+      "reviewer_type": "ai_agent",
+      "independent_of_implementation": true,
+      "reviewed_at": "2026-07-12",
+      "reviewed_commit": "06eee9aa8a7c921bc9db4900bd52f72353fc84e2",
+      "scope": {
+        "data_type": "image",
+        "publication_scope": "development_only",
+        "human_release_allowed": false,
+        "unit_ids": [
+          "TU-IMAGE-KEYPOINT-VISIBILITY-001",
+          "TU-IMAGE-MASK-INSTANCE-001",
+          "TU-IMAGE-OCCLUSION-TRUNCATION-001",
+          "TU-IMAGE-POLYGON-VERTICES-001",
+          "TU-IMAGE-RECT-BOUNDS-001"
+        ]
+      },
+      "unit_versions": [
+        {"unit_id": "TU-IMAGE-KEYPOINT-VISIBILITY-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
+        {"unit_id": "TU-IMAGE-MASK-INSTANCE-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
+        {"unit_id": "TU-IMAGE-OCCLUSION-TRUNCATION-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
+        {"unit_id": "TU-IMAGE-POLYGON-VERTICES-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
+        {"unit_id": "TU-IMAGE-RECT-BOUNDS-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"}
+      ],
+      "decision": "approved",
+      "findings": [],
+      "finding_count": 0,
+      "remaining_risks": [
+        "Approval is limited to development publication by an independent AI reviewer.",
+        "Formal competition and real-student release still require human domain-expert confirmation."
+      ],
+      "publication_scope": "development_only",
+      "human_release_allowed": false,
+      "authorizes_publication": true
     }
   ]
 }
