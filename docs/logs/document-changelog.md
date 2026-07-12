@@ -63,3 +63,35 @@
 **Remaining verification:**
 - A named content owner or teacher must review the four draft teaching units before any unit is marked `published` or student-visible.
 - Mutable documentation and `develop`-branch license URLs must be pinned to a release/commit or retained as checksummed local archives before publication.
+
+## [2026-07-12 20:10] Complete Task 2 capability graph
+
+**Changed files:**
+- `data/graph/graph-catalog.json`
+- `data/graph/annotation-capability-graph.json`
+- `data/graph/annotation-capability-graph.graphml`
+- `scripts/build_graph.py`
+- `scripts/validate_graph.py`
+- `tests/graph/test_graph_integrity.py`
+- `.gitignore`
+- `tests/content/__pycache__/test_teaching_units.cpython-311-pytest-9.1.1.pyc` (removed)
+- `docs/教学内容与图谱数据规范.md`
+- `docs/superpowers/plans/2026-07-12-annotation-teaching-agent.md`
+- `docs/logs/document-changelog.md`
+
+**Reason:**
+- Build the approved, reproducible graph v1 catalog and synchronized JSON/GraphML artifacts for four annotation domains.
+- Resolve the graph/teaching-unit publication dependency by allowing draft taxonomy nodes while exposing only published, student-visible teaching-unit links as consumable.
+- Record the project-owner-approved AI-agent development review policy without representing AI review as human or expert endorsement.
+
+**Verification:**
+- Captured the expected TDD RED with `PYTHONDONTWRITEBYTECODE=1 python -m pytest tests/graph/test_graph_integrity.py -q -p no:cacheprovider`: 2 failed and 16 skipped because the catalog, artifacts, and scripts did not yet exist.
+- Rebuilt both artifacts with `PYTHONDONTWRITEBYTECODE=1 python scripts/build_graph.py`; output reported 166 nodes and 240 edges.
+- Ran `PYTHONDONTWRITEBYTECODE=1 python scripts/validate_graph.py data/graph/annotation-capability-graph.json`; schema/version, exact counts, unique IDs, endpoint/type rules, PRE acyclicity, task traceability, and scenario compatibility all passed.
+- Ran the targeted graph suite with 18 passed tests and the full suite with 26 passed tests, both with bytecode and pytest cache generation disabled.
+- Parsed GraphML and confirmed it contains the same 166 nodes and 240 edges as JSON; `git diff --check` returned no whitespace errors.
+
+**Remaining verification:**
+- Graph nodes, scenario overlays, and teaching-unit links remain development drafts and are not student-consumable. Domain-specific KNG claims and every `INSCN` override still require concept-level source expansion and independent content review before development publication.
+- `MAPCERT` is a non-authoritative curriculum display mapping; official certificate/occupational-standard alignment must be verified against pinned primary sources before external use.
+- Final competition submission or real-student release still requires human domain-expert confirmation in Tasks 6-9.

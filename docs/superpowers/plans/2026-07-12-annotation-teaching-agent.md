@@ -25,14 +25,16 @@
 ### Task 2: 构建并校验能力图谱
 
 **Files:**
+- Create: `data/graph/graph-catalog.json`
 - Create: `data/graph/annotation-capability-graph.json`
 - Create: `data/graph/annotation-capability-graph.graphml`
+- Create: `scripts/build_graph.py`
 - Create: `scripts/validate_graph.py`
 - Test: `tests/graph/test_graph_integrity.py`
 
-- [ ] **Step 1: 从已发布教学单元生成 CAP 40、KNG 60、TSK 20、SCN 4、RES 30、CERT 12 的 166 节点和 240 边，以及 PRE、ISA、SUP、REL、INSCN、MAPCERT 关系。**
-- [ ] **Step 2: 运行 `python scripts/validate_graph.py data/graph/annotation-capability-graph.json`；预期输出包含唯一 ID、端点完整、PRE 无环、任务可回溯和场景覆盖规则检查全部通过。**
-- [ ] **Step 3: 运行 `python -m pytest tests/graph/test_graph_integrity.py -q`；预期结果为全部通过。**
+- [x] **Step 1: 从机器可读图谱目录确定性生成 CAP 40、KNG 60、TSK 20、SCN 4、RES 30、CERT 12 的 166 节点和 240 边，以及 PRE、ISA、SUP、REL、INSCN、MAPCERT 关系；图谱分类节点可处于 `draft` 或 `reviewed`，教学应用只消费同时为 `published`、学生可见且进入可见索引的教学单元链接。**
+- [x] **Step 2: 运行 `python scripts/validate_graph.py data/graph/annotation-capability-graph.json`；预期输出包含唯一 ID、端点完整、PRE 无环、任务可回溯和场景覆盖规则检查全部通过。**
+- [x] **Step 3: 运行 `python -m pytest tests/graph/test_graph_integrity.py -q`；预期结果为全部通过。**
 
 ### Task 3: 实现文本与图像教学基线
 

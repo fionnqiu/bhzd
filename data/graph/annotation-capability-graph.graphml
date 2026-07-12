@@ -1,0 +1,2709 @@
+<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns">
+  <key id="n0" for="node" attr.name="type" attr.type="string" />
+  <key id="n1" for="node" attr.name="label" attr.type="string" />
+  <key id="n2" for="node" attr.name="description" attr.type="string" />
+  <key id="n3" for="node" attr.name="data_types" attr.type="string" />
+  <key id="n4" for="node" attr.name="status" attr.type="string" />
+  <key id="n5" for="node" attr.name="source_refs" attr.type="string" />
+  <key id="n6" for="node" attr.name="attributes" attr.type="string" />
+  <key id="e0" for="edge" attr.name="relation" attr.type="string" />
+  <key id="e1" for="edge" attr.name="label" attr.type="string" />
+  <key id="e2" for="edge" attr.name="metadata" attr.type="string" />
+  <graph id="annotation-capability-graph" edgedefault="directed">
+    <node id="CAP-AUD-CONFIG-VALIDATE-001">
+      <data key="n0">CAP</data>
+      <data key="n1">校验音频任务绑定</data>
+      <data key="n2">确认音频标签引用存在的任务数据字段。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-AUD-EMOTION-PARALING-001">
+      <data key="n0">CAP</data>
+      <data key="n1">标注情感与副语言</data>
+      <data key="n2">区分情感状态和笑声、叹气等副语言事件。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-AUD-EXPORT-QA-001">
+      <data key="n0">CAP</data>
+      <data key="n1">检查音频标注导出</data>
+      <data key="n2">核对标签、说话人、时间戳和区间覆盖。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-AUD-LANGUAGE-DIALECT-001">
+      <data key="n0">CAP</data>
+      <data key="n1">标注语种与方言</data>
+      <data key="n2">按可听特征标注语种、方言和混码片段。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-AUD-NOISE-OVERLAP-001">
+      <data key="n0">CAP</data>
+      <data key="n1">处理噪声与重叠语音</data>
+      <data key="n2">标注噪声区间并处理多人重叠说话。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-AUD-SEGMENT-ALIGN-001">
+      <data key="n0">CAP</data>
+      <data key="n1">切割音频并对齐</data>
+      <data key="n2">按话语边界切割并对齐文本时间戳。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-AUD-SPEAKER-001">
+      <data key="n0">CAP</data>
+      <data key="n1">区分说话人</data>
+      <data key="n2">识别说话人轮次并保持标签一致。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-AUD-TRANSCRIBE-PUNCT-001">
+      <data key="n0">CAP</data>
+      <data key="n1">转写并添加标点</data>
+      <data key="n2">按正字法规则转写可听语音并处理标点。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-AUD-WAKE-COMMAND-001">
+      <data key="n0">CAP</data>
+      <data key="n1">标注唤醒词与命令词</data>
+      <data key="n2">标记唤醒片段、命令边界与命令意图。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-CORE-ASSET-QUALITY-001">
+      <data key="n0">CAP</data>
+      <data key="n1">检查素材质量与授权</data>
+      <data key="n2">确认素材可用性、隐私边界和学生使用授权。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-CORE-EXPORT-QA-001">
+      <data key="n0">CAP</data>
+      <data key="n1">执行导出前质量检查</data>
+      <data key="n2">按版本、完整性和错误分类检查结构化交付物。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-CORE-LABEL-SCHEMA-001">
+      <data key="n0">CAP</data>
+      <data key="n1">读取标签体系</data>
+      <data key="n2">解释标签名称、互斥关系、属性和适用条件。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-CORE-TASK-SCOPE-001">
+      <data key="n0">CAP</data>
+      <data key="n1">界定标注任务范围</data>
+      <data key="n2">从任务目标、对象和交付物中识别标注边界。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-IMG-BOX-ANNOTATE-001">
+      <data key="n0">CAP</data>
+      <data key="n1">绘制紧致目标框</data>
+      <data key="n2">绘制覆盖目标且尽量减少背景的矩形框。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-IMG-EXPORT-QA-001">
+      <data key="n0">CAP</data>
+      <data key="n1">检查图像标注导出</data>
+      <data key="n2">核对坐标、类别、实例 ID 和掩码完整性。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-IMG-INSTANCE-SEGMENT-001">
+      <data key="n0">CAP</data>
+      <data key="n1">执行实例分割</data>
+      <data key="n2">区分同类实例并生成独立掩码。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-IMG-KEYPOINT-001">
+      <data key="n0">CAP</data>
+      <data key="n1">标注关键点</data>
+      <data key="n2">按骨架定义标记关键点位置与可见性。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-IMG-OBJECT-CLASS-001">
+      <data key="n0">CAP</data>
+      <data key="n1">判定图像目标类别</data>
+      <data key="n2">按可见证据与类别定义识别目标。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-IMG-OCCLUSION-001">
+      <data key="n0">CAP</data>
+      <data key="n1">处理遮挡与截断</data>
+      <data key="n2">按规则区分遮挡、截断和不可见区域。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-IMG-POLYGON-001">
+      <data key="n0">CAP</data>
+      <data key="n1">绘制多边形轮廓</data>
+      <data key="n2">沿可见边界布置顶点并保持轮廓有效。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-IMG-RECT-VALIDATE-001">
+      <data key="n0">CAP</data>
+      <data key="n1">校验矩形框坐标</data>
+      <data key="n2">检查矩形框范围、坐标顺序和非零面积。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-IMG-SEMANTIC-SEGMENT-001">
+      <data key="n0">CAP</data>
+      <data key="n1">执行语义分割</data>
+      <data key="n2">为每个有效像素分配语义类别。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-TXT-AMBIGUITY-001">
+      <data key="n0">CAP</data>
+      <data key="n1">处理文本歧义</data>
+      <data key="n2">使用允许答案集和复核条件处理边界案例。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-TXT-CLASSIFY-001">
+      <data key="n0">CAP</data>
+      <data key="n1">执行文本分类</data>
+      <data key="n2">按类别定义与互斥规则完成单标签或多标签分类。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-TXT-ENTITY-BOUNDARY-001">
+      <data key="n0">CAP</data>
+      <data key="n1">确定实体边界</data>
+      <data key="n2">用字符偏移准确圈定实体起止位置。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-TXT-ENTITY-TYPE-001">
+      <data key="n0">CAP</data>
+      <data key="n1">判定实体类型</data>
+      <data key="n2">依据标签本体为已圈定实体选择类型。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-TXT-EXPORT-QA-001">
+      <data key="n0">CAP</data>
+      <data key="n1">检查文本标注导出</data>
+      <data key="n2">核对偏移、标签、关系端点和导出模式。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-TXT-INTENT-001">
+      <data key="n0">CAP</data>
+      <data key="n1">标注用户意图</data>
+      <data key="n2">按层级意图体系区分请求、咨询与反馈。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-TXT-LABEL-VALIDATE-001">
+      <data key="n0">CAP</data>
+      <data key="n1">校验文本标签词表</data>
+      <data key="n2">判断提交标签是否属于任务配置的封闭集合。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-TXT-RELATION-001">
+      <data key="n0">CAP</data>
+      <data key="n1">标注实体关系</data>
+      <data key="n2">识别实体对及有向关系并避免重复连边。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-TXT-SENTIMENT-001">
+      <data key="n0">CAP</data>
+      <data key="n1">标注情感极性</data>
+      <data key="n2">根据目标对象和上下文判定情感标签。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-VID-ACTION-EVENT-001">
+      <data key="n0">CAP</data>
+      <data key="n1">标注行为事件</data>
+      <data key="n2">按行为本体标记参与者和事件类别。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-VID-EVENT-BOUNDARY-001">
+      <data key="n0">CAP</data>
+      <data key="n1">确定事件起止</data>
+      <data key="n2">依据可观察动作定义事件开始与结束帧。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-VID-EXPORT-QA-001">
+      <data key="n0">CAP</data>
+      <data key="n1">检查视频标注导出</data>
+      <data key="n2">核对帧号、轨迹、事件边界和导出一致性。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-VID-FRAME-ANNOTATE-001">
+      <data key="n0">CAP</data>
+      <data key="n1">执行视频帧标注</data>
+      <data key="n2">在选定帧上应用一致的图像标注规则。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-VID-FRAME-SAMPLE-001">
+      <data key="n0">CAP</data>
+      <data key="n1">制定抽帧策略</data>
+      <data key="n2">依据帧率、运动速度和事件密度选择帧。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-VID-OBJECT-TRACK-001">
+      <data key="n0">CAP</data>
+      <data key="n1">建立目标轨迹</data>
+      <data key="n2">用稳定轨迹 ID 连接跨帧目标观察。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-VID-OCCLUSION-REID-001">
+      <data key="n0">CAP</data>
+      <data key="n1">处理遮挡后重识别</data>
+      <data key="n2">判断遮挡前后目标是否保持同一轨迹。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-VID-TRACK-INTERPOLATE-001">
+      <data key="n0">CAP</data>
+      <data key="n1">插值轨迹关键帧</data>
+      <data key="n2">在满足运动假设时插值并复核中间帧。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CAP-VID-TRACK-VALIDATE-001">
+      <data key="n0">CAP</data>
+      <data key="n1">校验跨帧轨迹 ID</data>
+      <data key="n2">发现同一目标跨帧标注中的意外 ID 切换。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CERT-AIT-L4-MULTIMODAL-001">
+      <data key="n0">CERT</data>
+      <data key="n1">人工智能训练师四级：多模态处理映射</data>
+      <data key="n2">跨数据类型规则迁移能力的课程对照节点。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CERT-AIT-L4-QUALITY-CONTROL-001">
+      <data key="n0">CERT</data>
+      <data key="n1">人工智能训练师四级：质量控制映射</data>
+      <data key="n2">标注复核与质量管理能力的课程对照节点。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CERT-AIT-L4-SCHEMA-CONFIG-001">
+      <data key="n0">CERT</data>
+      <data key="n1">人工智能训练师四级：方案配置映射</data>
+      <data key="n2">标签体系与任务配置能力的课程对照节点。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CERT-AIT-L4-TASK-DELIVERY-001">
+      <data key="n0">CERT</data>
+      <data key="n1">人工智能训练师四级：任务交付映射</data>
+      <data key="n2">任务拆解与结构化交付能力的课程对照节点。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CERT-AIT-L5-AUDIO-ANNOTATION-001">
+      <data key="n0">CERT</data>
+      <data key="n1">人工智能训练师五级：语音标注映射</data>
+      <data key="n2">语音标注能力的课程对照节点，不代表发证。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CERT-AIT-L5-DATA-PREP-001">
+      <data key="n0">CERT</data>
+      <data key="n1">人工智能训练师五级：数据准备映射</data>
+      <data key="n2">课程能力与数据准备相关考核方向的展示映射。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CERT-AIT-L5-IMAGE-ANNOTATION-001">
+      <data key="n0">CERT</data>
+      <data key="n1">人工智能训练师五级：图像标注映射</data>
+      <data key="n2">图像标注能力的课程对照节点，不代表发证。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CERT-AIT-L5-TEXT-ANNOTATION-001">
+      <data key="n0">CERT</data>
+      <data key="n1">人工智能训练师五级：文本标注映射</data>
+      <data key="n2">文本标注能力的课程对照节点，不代表发证。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CERT-AIT-L5-VIDEO-ANNOTATION-001">
+      <data key="n0">CERT</data>
+      <data key="n1">人工智能训练师五级：视频标注映射</data>
+      <data key="n2">视频标注能力的课程对照节点，不代表发证。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CERT-DATA-ANNOTATION-FOUNDATION-001">
+      <data key="n0">CERT</data>
+      <data key="n1">数据标注基础能力映射</data>
+      <data key="n2">四类基础标注操作的课程对照节点。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CERT-DATA-ANNOTATION-QA-001">
+      <data key="n0">CERT</data>
+      <data key="n1">数据标注质量校验映射</data>
+      <data key="n2">错误识别与复核能力的课程对照节点。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="CERT-DATA-ANNOTATION-SCENARIO-001">
+      <data key="n0">CERT</data>
+      <data key="n1">数据标注场景应用映射</data>
+      <data key="n2">在行业规则覆盖下执行标注的课程对照节点。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-AUD-COMMAND-INTENT-001">
+      <data key="n0">KNG</data>
+      <data key="n1">命令词意图</data>
+      <data key="n2">命令词片段与标准化命令意图分别记录。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-AUDIO-TAG-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-AUD-DATA-BINDING-001">
+      <data key="n0">KNG</data>
+      <data key="n1">音频数据字段绑定</data>
+      <data key="n2">音频标签 value 必须引用存在的任务字段。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-AUDIO-TAG-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-AUD-EMOTION-LABEL-001">
+      <data key="n0">KNG</data>
+      <data key="n1">语音情感标签</data>
+      <data key="n2">情感分类依据可听声学和语义证据。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-AUDIO-TAG-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-AUD-EXPORT-FORMAT-001">
+      <data key="n0">KNG</data>
+      <data key="n1">音频标注导出格式</data>
+      <data key="n2">导出保留音频引用、标签、说话人和区间。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-AUDIO-TAG-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-AUD-LANGUAGE-DIALECT-001">
+      <data key="n0">KNG</data>
+      <data key="n1">语种方言与混码</data>
+      <data key="n2">按片段标注主语种、方言和语码切换。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-AUDIO-TAG-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-AUD-NOISE-OVERLAP-001">
+      <data key="n0">KNG</data>
+      <data key="n1">噪声与重叠说话</data>
+      <data key="n2">噪声类别和重叠说话区间需单独记录。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-AUDIO-TAG-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-AUD-PARALINGUISTIC-EVENT-001">
+      <data key="n0">KNG</data>
+      <data key="n1">副语言事件</data>
+      <data key="n2">笑声、叹气、咳嗽等事件与说话内容分开标注。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-AUDIO-TAG-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-AUD-PUNCTUATION-001">
+      <data key="n0">KNG</data>
+      <data key="n1">转写标点规则</data>
+      <data key="n2">标点依据语义与停顿，不用静音时长机械决定。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-AUDIO-TAG-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-AUD-SAMPLE-RATE-CHANNEL-001">
+      <data key="n0">KNG</data>
+      <data key="n1">采样率与声道</data>
+      <data key="n2">播放和时间换算需识别采样率及声道布局。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-AUDIO-TAG-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-AUD-SEGMENT-TIMESTAMP-001">
+      <data key="n0">KNG</data>
+      <data key="n1">音频切割时间戳</data>
+      <data key="n2">区间满足起点小于终点且不越过音频时长。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-AUDIO-TAG-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-AUD-SPEAKER-TURN-001">
+      <data key="n0">KNG</data>
+      <data key="n1">说话人轮次</data>
+      <data key="n2">说话人变化处建立轮次并保持身份标签一致。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-AUDIO-TAG-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001">
+      <data key="n0">KNG</data>
+      <data key="n1">语音转写正字法</data>
+      <data key="n2">统一数字、缩写、口语词和不可听片段写法。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-AUDIO-TAG-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-AUD-WAKEWORD-BOUNDARY-001">
+      <data key="n0">KNG</data>
+      <data key="n1">唤醒词边界</data>
+      <data key="n2">唤醒片段只覆盖实际发音并保留时间精度。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-AUDIO-TAG-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-CORE-ASSET-AUTH-001">
+      <data key="n0">KNG</data>
+      <data key="n1">素材授权与隐私边界</data>
+      <data key="n2">教学素材必须记录来源、授权和学生使用许可。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-TEXT-LABELS-001","SRC-CVAT-IMAGE-RECT-001","SRC-LS-AUDIO-TAG-001","SRC-CVAT-VIDEO-TRACK-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-CORE-DATA-SCHEMA-001">
+      <data key="n0">KNG</data>
+      <data key="n1">任务数据模式</data>
+      <data key="n2">输入字段与标注配置引用必须名称一致且类型兼容。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-TEXT-LABELS-001","SRC-CVAT-IMAGE-RECT-001","SRC-LS-AUDIO-TAG-001","SRC-CVAT-VIDEO-TRACK-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-CORE-ERROR-TAXONOMY-001">
+      <data key="n0">KNG</data>
+      <data key="n1">标注错误分类</data>
+      <data key="n2">稳定错误码用于确定性反馈与补强路径。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-TEXT-LABELS-001","SRC-CVAT-IMAGE-RECT-001","SRC-LS-AUDIO-TAG-001","SRC-CVAT-VIDEO-TRACK-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-CORE-EXPORT-VERSIONING-001">
+      <data key="n0">KNG</data>
+      <data key="n1">导出版本与清单</data>
+      <data key="n2">导出文件需绑定数据、规则和判定版本。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-TEXT-LABELS-001","SRC-CVAT-IMAGE-RECT-001","SRC-LS-AUDIO-TAG-001","SRC-CVAT-VIDEO-TRACK-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-CORE-LABEL-ONTOLOGY-001">
+      <data key="n0">KNG</data>
+      <data key="n1">标签本体与互斥关系</data>
+      <data key="n2">标签定义需说明层级、互斥、属性和边界。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-TEXT-LABELS-001","SRC-CVAT-IMAGE-RECT-001","SRC-LS-AUDIO-TAG-001","SRC-CVAT-VIDEO-TRACK-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-CORE-QUALITY-DIMENSIONS-001">
+      <data key="n0">KNG</data>
+      <data key="n1">标注质量维度</data>
+      <data key="n2">完整性、正确性、一致性和可追溯性共同决定质量。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-TEXT-LABELS-001","SRC-CVAT-IMAGE-RECT-001","SRC-LS-AUDIO-TAG-001","SRC-CVAT-VIDEO-TRACK-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-CORE-REVIEW-ADJUDICATION-001">
+      <data key="n0">KNG</data>
+      <data key="n1">复核与裁决流程</data>
+      <data key="n2">歧义或冲突标注应保留复核依据与裁决记录。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-TEXT-LABELS-001","SRC-CVAT-IMAGE-RECT-001","SRC-LS-AUDIO-TAG-001","SRC-CVAT-VIDEO-TRACK-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-CORE-TASK-OBJECTIVE-001">
+      <data key="n0">KNG</data>
+      <data key="n1">标注任务目标结构</data>
+      <data key="n2">任务目标应声明对象、动作、规则和交付格式。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-TEXT-LABELS-001","SRC-CVAT-IMAGE-RECT-001","SRC-LS-AUDIO-TAG-001","SRC-CVAT-VIDEO-TRACK-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-IMG-BOX-TIGHTNESS-001">
+      <data key="n0">KNG</data>
+      <data key="n1">目标框紧致度</data>
+      <data key="n2">目标框应覆盖可标区域并减少无关背景。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-IMAGE-RECT-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-IMG-CLASS-DEFINITION-001">
+      <data key="n0">KNG</data>
+      <data key="n1">图像类别定义</data>
+      <data key="n2">类别需给出可观察判据和排除条件。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-IMAGE-RECT-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-IMG-COORDINATE-SYSTEM-001">
+      <data key="n0">KNG</data>
+      <data key="n1">图像坐标系</data>
+      <data key="n2">坐标原点、轴方向和像素边界必须统一。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-IMAGE-RECT-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-IMG-EXPORT-FORMAT-001">
+      <data key="n0">KNG</data>
+      <data key="n1">图像标注导出格式</data>
+      <data key="n2">导出应保留图像尺寸、类别和几何数据。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-IMAGE-RECT-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-IMG-INSTANCE-ID-001">
+      <data key="n0">KNG</data>
+      <data key="n1">实例掩码标识</data>
+      <data key="n2">同类不同目标必须使用可区分的实例 ID。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-IMAGE-RECT-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-IMG-KEYPOINT-VISIBILITY-001">
+      <data key="n0">KNG</data>
+      <data key="n1">关键点可见性</data>
+      <data key="n2">关键点状态区分可见、遮挡和不可标注。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-IMAGE-RECT-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-IMG-OCCLUSION-TRUNCATION-001">
+      <data key="n0">KNG</data>
+      <data key="n1">遮挡与截断区别</data>
+      <data key="n2">遮挡来自其他物体，截断来自画面边界。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-IMAGE-RECT-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-IMG-OVERLAP-ORDER-001">
+      <data key="n0">KNG</data>
+      <data key="n1">重叠目标轮廓顺序</data>
+      <data key="n2">相邻实例的轮廓应分别闭合且不混用 ID。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-IMAGE-RECT-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-IMG-POLYGON-VERTEX-001">
+      <data key="n0">KNG</data>
+      <data key="n1">多边形顶点规则</data>
+      <data key="n2">顶点应沿边界布置且不得形成自交轮廓。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-IMAGE-RECT-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-IMG-QUALITY-METRICS-001">
+      <data key="n0">KNG</data>
+      <data key="n1">图像标注质量指标</data>
+      <data key="n2">框、点和掩码使用与结构相适应的质量检查。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-IMAGE-RECT-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-IMG-RECT-BOUNDS-001">
+      <data key="n0">KNG</data>
+      <data key="n1">矩形框边界约束</data>
+      <data key="n2">矩形框须在图像范围内且宽高均大于零。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-IMAGE-RECT-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-IMG-SEMANTIC-MASK-001">
+      <data key="n0">KNG</data>
+      <data key="n1">语义掩码类别</data>
+      <data key="n2">同一语义类别的像素使用相同类别值。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-IMAGE-RECT-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-IMG-SMALL-OBJECT-001">
+      <data key="n0">KNG</data>
+      <data key="n1">小目标标注阈值</data>
+      <data key="n2">任务规则应声明小目标的最小可标尺寸。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-IMAGE-RECT-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-TXT-AMBIGUITY-SET-001">
+      <data key="n0">KNG</data>
+      <data key="n1">文本歧义允许答案集</data>
+      <data key="n2">边界案例可声明多个允许答案及人工复核条件。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-TEXT-LABELS-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-TXT-CLASS-EXCLUSION-001">
+      <data key="n0">KNG</data>
+      <data key="n1">文本类别互斥条件</data>
+      <data key="n2">互斥类别不得在同一作用范围同时出现。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-TEXT-LABELS-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-TXT-ENTITY-BOUNDARY-001">
+      <data key="n0">KNG</data>
+      <data key="n1">实体边界规则</data>
+      <data key="n2">实体选区应包含必要成分并排除无关标点。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-TEXT-LABELS-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-TXT-ENTITY-TYPE-001">
+      <data key="n0">KNG</data>
+      <data key="n1">实体类型定义</data>
+      <data key="n2">实体类型由任务本体和上下文证据共同确定。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-TEXT-LABELS-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-TXT-EXPORT-SCHEMA-001">
+      <data key="n0">KNG</data>
+      <data key="n1">文本标注导出模式</data>
+      <data key="n2">导出需保留文本、标签、偏移和关系端点。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-TEXT-LABELS-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-TXT-INTENT-HIERARCHY-001">
+      <data key="n0">KNG</data>
+      <data key="n1">意图层级体系</data>
+      <data key="n2">细粒度意图应归属于稳定的上位意图。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-TEXT-LABELS-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-TXT-INTERANNOTATOR-001">
+      <data key="n0">KNG</data>
+      <data key="n1">文本标注一致性</data>
+      <data key="n2">一致性复核应定位标签、边界或关系分歧。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-TEXT-LABELS-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-TXT-LABEL-VOCAB-001">
+      <data key="n0">KNG</data>
+      <data key="n1">封闭文本标签集</data>
+      <data key="n2">提交值必须来自任务配置的文本标签集合。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-TEXT-LABELS-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-TXT-NESTED-ENTITY-001">
+      <data key="n0">KNG</data>
+      <data key="n1">嵌套实体处理</data>
+      <data key="n2">任务规则决定重叠或嵌套选区是否允许。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-TEXT-LABELS-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-TXT-RELATION-DIRECTION-001">
+      <data key="n0">KNG</data>
+      <data key="n1">关系方向与端点</data>
+      <data key="n2">有向关系必须区分源实体、目标实体和关系类型。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-TEXT-LABELS-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-TXT-SENTIMENT-POLARITY-001">
+      <data key="n0">KNG</data>
+      <data key="n1">情感极性判定</data>
+      <data key="n2">情感标签必须绑定目标并依据完整上下文。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-TEXT-LABELS-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-TXT-SINGLE-MULTI-LABEL-001">
+      <data key="n0">KNG</data>
+      <data key="n1">单标签与多标签分类</data>
+      <data key="n2">任务配置决定样本可选择一个或多个标签。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-TEXT-LABELS-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-TXT-SPAN-OFFSET-001">
+      <data key="n0">KNG</data>
+      <data key="n1">字符偏移约定</data>
+      <data key="n2">起止偏移与文本编码约定共同决定选区。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-LS-TEXT-LABELS-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-VID-ACTION-TAXONOMY-001">
+      <data key="n0">KNG</data>
+      <data key="n1">行为事件本体</data>
+      <data key="n2">事件类别需声明参与者、动作和排除条件。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-VIDEO-TRACK-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-VID-EVENT-START-END-001">
+      <data key="n0">KNG</data>
+      <data key="n1">事件起止规则</data>
+      <data key="n2">事件边界由首个和末个满足条件的可观察帧确定。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-VIDEO-TRACK-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-VID-EXPORT-FORMAT-001">
+      <data key="n0">KNG</data>
+      <data key="n1">视频标注导出格式</data>
+      <data key="n2">导出保留帧号、轨迹 ID、几何和事件区间。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-VIDEO-TRACK-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-VID-FRAME-ANNOTATION-001">
+      <data key="n0">KNG</data>
+      <data key="n1">视频帧标注规则</data>
+      <data key="n2">帧上几何标注遵守统一图像坐标与类别规则。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-VIDEO-TRACK-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-VID-FRAME-RATE-001">
+      <data key="n0">KNG</data>
+      <data key="n1">视频帧率与时间换算</data>
+      <data key="n2">帧号和时间戳通过视频帧率一致换算。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-VIDEO-TRACK-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-VID-INTERPOLATION-001">
+      <data key="n0">KNG</data>
+      <data key="n1">轨迹插值条件</data>
+      <data key="n2">仅在外观和运动连续时使用关键帧插值。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-VIDEO-TRACK-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-VID-MULTI-ACTOR-001">
+      <data key="n0">KNG</data>
+      <data key="n1">多参与者事件</data>
+      <data key="n2">多人事件分别记录参与轨迹及其角色。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-VIDEO-TRACK-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-VID-OCCLUSION-REID-001">
+      <data key="n0">KNG</data>
+      <data key="n1">遮挡后目标重识别</data>
+      <data key="n2">用位置、外观和运动证据判断轨迹是否延续。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-VIDEO-TRACK-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-VID-QUALITY-METRICS-001">
+      <data key="n0">KNG</data>
+      <data key="n1">视频标注质量指标</data>
+      <data key="n2">轨迹完整性、ID 切换和事件边界共同参与复核。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-VIDEO-TRACK-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-VID-SAMPLING-STRATEGY-001">
+      <data key="n0">KNG</data>
+      <data key="n1">视频抽帧策略</data>
+      <data key="n2">抽帧密度应覆盖运动变化和关键事件。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-VIDEO-TRACK-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-VID-SHOT-BOUNDARY-001">
+      <data key="n0">KNG</data>
+      <data key="n1">镜头边界处理</data>
+      <data key="n2">镜头切换通常终止缺少跨镜头证据的轨迹。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-VIDEO-TRACK-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-VID-TRACK-CONTINUITY-001">
+      <data key="n0">KNG</data>
+      <data key="n1">轨迹连续性</data>
+      <data key="n2">跨帧位置和类别变化应符合目标运动证据。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-VIDEO-TRACK-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="KNG-VID-TRACK-ID-001">
+      <data key="n0">KNG</data>
+      <data key="n1">跨帧轨迹 ID 一致性</data>
+      <data key="n2">同一物理目标在连续观察中保持同一轨迹 ID。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">["SRC-CVAT-VIDEO-TRACK-001"]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-AUD-ALIGNMENT-WORKSHEET-001">
+      <data key="n0">RES</data>
+      <data key="n1">音频对齐练习表</data>
+      <data key="n2">练习切割、时间戳和文本对齐。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-AUD-CONFIG-CHECKLIST-001">
+      <data key="n0">RES</data>
+      <data key="n1">音频配置检查表</data>
+      <data key="n2">核对数据字段、标签名和音频引用。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-AUD-DIALECT-LABEL-CARD-001">
+      <data key="n0">RES</data>
+      <data key="n1">语种方言标签卡</data>
+      <data key="n2">对照语种、方言和混码标签。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-AUD-EVENT-CATALOG-001">
+      <data key="n0">RES</data>
+      <data key="n1">副语言事件目录</data>
+      <data key="n2">区分笑声、叹气、咳嗽和噪声。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-AUD-SPEAKER-TIMELINE-001">
+      <data key="n0">RES</data>
+      <data key="n1">说话人时间线</data>
+      <data key="n2">练习轮次边界与身份一致性。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-AUD-TRANSCRIPT-STYLE-SHEET-001">
+      <data key="n0">RES</data>
+      <data key="n1">转写风格表</data>
+      <data key="n2">汇总正字法、标点和不可听片段写法。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-CORE-ADJUDICATION-RECORD-001">
+      <data key="n0">RES</data>
+      <data key="n1">歧义裁决记录</data>
+      <data key="n2">保存候选答案、依据、裁决和遗留风险。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-CORE-ASSET-AUTH-CHECKLIST-001">
+      <data key="n0">RES</data>
+      <data key="n1">素材授权检查表</data>
+      <data key="n2">记录素材来源、许可和学生使用范围。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-CORE-ERROR-REVIEW-FORM-001">
+      <data key="n0">RES</data>
+      <data key="n1">错误复核表</data>
+      <data key="n2">按错误码记录证据、影响和修复结果。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-CORE-EXPORT-MANIFEST-TEMPLATE-001">
+      <data key="n0">RES</data>
+      <data key="n1">导出清单模板</data>
+      <data key="n2">记录数据、规则、判定版本和文件校验和。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-CORE-LABEL-SCHEMA-CHECKLIST-001">
+      <data key="n0">RES</data>
+      <data key="n1">标签体系检查表</data>
+      <data key="n2">检查标签定义、层级、互斥和属性。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-CORE-TASK-BRIEF-TEMPLATE-001">
+      <data key="n0">RES</data>
+      <data key="n1">任务说明拆解模板</data>
+      <data key="n2">记录目标、对象、规则和交付物。</data>
+      <data key="n3">["audio","image","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-IMG-BOX-QUALITY-CHECKLIST-001">
+      <data key="n0">RES</data>
+      <data key="n1">目标框质量检查表</data>
+      <data key="n2">检查类别、紧致度和越界问题。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-IMG-COORDINATE-WORKSHEET-001">
+      <data key="n0">RES</data>
+      <data key="n1">图像坐标练习表</data>
+      <data key="n2">练习边界、面积和坐标换算。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-IMG-KEYPOINT-SKELETON-001">
+      <data key="n0">RES</data>
+      <data key="n1">关键点骨架图</data>
+      <data key="n2">展示关键点顺序、连接和可见性。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-IMG-MASK-QA-CHECKLIST-001">
+      <data key="n0">RES</data>
+      <data key="n1">分割掩码检查表</data>
+      <data key="n2">检查类别、实例、孔洞和边界。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-IMG-OCCLUSION-DECISION-TREE-001">
+      <data key="n0">RES</data>
+      <data key="n1">遮挡判断决策树</data>
+      <data key="n2">区分遮挡、截断和不可标注目标。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-IMG-POLYGON-PRACTICE-001">
+      <data key="n0">RES</data>
+      <data key="n1">多边形轮廓练习</data>
+      <data key="n2">练习顶点密度、闭合和自交检查。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-TXT-AMBIGUITY-PRACTICE-001">
+      <data key="n0">RES</data>
+      <data key="n1">文本歧义案例集</data>
+      <data key="n2">练习允许答案集和人工复核条件。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-TXT-CLASSIFICATION-DECISION-TREE-001">
+      <data key="n0">RES</data>
+      <data key="n1">文本分类决策树</data>
+      <data key="n2">按可观察条件逐步选择类别。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-TXT-LABEL-VOCAB-WORKSHEET-001">
+      <data key="n0">RES</data>
+      <data key="n1">文本标签词表练习</data>
+      <data key="n2">练习封闭标签集与非法标签识别。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-TXT-NER-BOUNDARY-CHECKLIST-001">
+      <data key="n0">RES</data>
+      <data key="n1">实体边界检查表</data>
+      <data key="n2">检查必要成分、标点和嵌套边界。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-TXT-OFFSET-INSPECTOR-001">
+      <data key="n0">RES</data>
+      <data key="n1">字符偏移核对表</data>
+      <data key="n2">逐字符核对实体起止偏移。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-TXT-RELATION-MATRIX-001">
+      <data key="n0">RES</data>
+      <data key="n1">实体关系矩阵</data>
+      <data key="n2">核对关系类型、方向及允许端点。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-VID-EVENT-TIMELINE-001">
+      <data key="n0">RES</data>
+      <data key="n1">行为事件时间线</data>
+      <data key="n2">练习事件参与者和起止帧。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-VID-EXPORT-QA-CHECKLIST-001">
+      <data key="n0">RES</data>
+      <data key="n1">视频导出检查表</data>
+      <data key="n2">核对帧号、轨迹、事件和格式。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-VID-FRAME-SAMPLING-WORKSHEET-001">
+      <data key="n0">RES</data>
+      <data key="n1">视频抽帧练习表</data>
+      <data key="n2">比较帧率、运动和事件密度。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-VID-INTERPOLATION-CHECKLIST-001">
+      <data key="n0">RES</data>
+      <data key="n1">轨迹插值检查表</data>
+      <data key="n2">检查关键帧、运动假设和中间帧。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-VID-OCCLUSION-REID-CARD-001">
+      <data key="n0">RES</data>
+      <data key="n1">遮挡重识别证据卡</data>
+      <data key="n2">比较位置、外观和运动连续性。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="RES-VID-TRACK-LEDGER-001">
+      <data key="n0">RES</data>
+      <data key="n1">轨迹 ID 台账</data>
+      <data key="n2">逐帧记录目标观察与轨迹 ID。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{}</data>
+    </node>
+    <node id="SCN-CONTENT-SAFETY-001">
+      <data key="n0">SCN</data>
+      <data key="n1">内容安全审核</data>
+      <data key="n2">文本、音频和视频内容安全教学规则覆盖层。</data>
+      <data key="n3">["audio","text","video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"supported_data_types":["text","audio","video"]}</data>
+    </node>
+    <node id="SCN-CUSTOMER-SERVICE-001">
+      <data key="n0">SCN</data>
+      <data key="n1">智能客服标注</data>
+      <data key="n2">客服文本意图与通话语音教学规则覆盖层。</data>
+      <data key="n3">["audio","text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"supported_data_types":["text","audio"]}</data>
+    </node>
+    <node id="SCN-IN-VEHICLE-001">
+      <data key="n0">SCN</data>
+      <data key="n1">车载语音标注</data>
+      <data key="n2">车载唤醒、命令和噪声环境教学规则覆盖层。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"supported_data_types":["audio"]}</data>
+    </node>
+    <node id="SCN-MEDICAL-001">
+      <data key="n0">SCN</data>
+      <data key="n1">医疗数据标注</data>
+      <data key="n2">医疗文本、影像和语音教学规则覆盖层。</data>
+      <data key="n3">["audio","image","text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"supported_data_types":["text","image","audio"]}</data>
+    </node>
+    <node id="TSK-AUD-COMMAND-SEGMENT-001">
+      <data key="n0">TSK</data>
+      <data key="n1">切割唤醒与命令片段</data>
+      <data key="n2">标记唤醒词、命令词及标准化命令意图。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"student_visible":false,"teaching_unit_links":[]}</data>
+    </node>
+    <node id="TSK-AUD-CONFIG-AUDIT-001">
+      <data key="n0">TSK</data>
+      <data key="n1">审计音频任务配置</data>
+      <data key="n2">检查音频标签的数据字段引用是否有效。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"student_visible":false,"teaching_unit_links":[{"consumable":false,"review_status":"draft","student_visible":false,"unit_id":"TU-AUDIO-DATA-BINDING-001"}]}</data>
+    </node>
+    <node id="TSK-AUD-EMOTION-EVENT-001">
+      <data key="n0">TSK</data>
+      <data key="n1">标注语音情感事件</data>
+      <data key="n2">区分情感标签与副语言事件区间。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"student_visible":false,"teaching_unit_links":[]}</data>
+    </node>
+    <node id="TSK-AUD-SPEAKER-DIARIZE-001">
+      <data key="n0">TSK</data>
+      <data key="n1">划分说话人轮次</data>
+      <data key="n2">标记轮次边界并保持说话人身份一致。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"student_visible":false,"teaching_unit_links":[]}</data>
+    </node>
+    <node id="TSK-AUD-TRANSCRIPT-ALIGN-001">
+      <data key="n0">TSK</data>
+      <data key="n1">转写并对齐语音</data>
+      <data key="n2">提交规范转写、标点和对应时间区间。</data>
+      <data key="n3">["audio"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"student_visible":false,"teaching_unit_links":[]}</data>
+    </node>
+    <node id="TSK-IMG-KEYPOINT-MARK-001">
+      <data key="n0">TSK</data>
+      <data key="n1">标记目标关键点</data>
+      <data key="n2">按骨架顺序提交关键点及可见性。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"student_visible":false,"teaching_unit_links":[]}</data>
+    </node>
+    <node id="TSK-IMG-MASK-REVIEW-001">
+      <data key="n0">TSK</data>
+      <data key="n1">复核分割掩码</data>
+      <data key="n2">检查类别、实例 ID、孔洞和边界贴合。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"student_visible":false,"teaching_unit_links":[]}</data>
+    </node>
+    <node id="TSK-IMG-OBJECT-BOX-001">
+      <data key="n0">TSK</data>
+      <data key="n1">标注图像目标框</data>
+      <data key="n2">选择目标类别并绘制符合紧致度的框。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"student_visible":false,"teaching_unit_links":[]}</data>
+    </node>
+    <node id="TSK-IMG-POLYGON-TRACE-001">
+      <data key="n0">TSK</data>
+      <data key="n1">描绘实例多边形</data>
+      <data key="n2">沿实例可见边界创建不自交轮廓。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"student_visible":false,"teaching_unit_links":[]}</data>
+    </node>
+    <node id="TSK-IMG-RECT-AUDIT-001">
+      <data key="n0">TSK</data>
+      <data key="n1">审计矩形框坐标</data>
+      <data key="n2">检查框是否越界、退化或坐标顺序错误。</data>
+      <data key="n3">["image"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"student_visible":false,"teaching_unit_links":[{"consumable":false,"review_status":"draft","student_visible":false,"unit_id":"TU-IMAGE-RECT-BOUNDS-001"}]}</data>
+    </node>
+    <node id="TSK-TXT-DOCUMENT-CLASSIFY-001">
+      <data key="n0">TSK</data>
+      <data key="n1">完成文档分类任务</data>
+      <data key="n2">依据类别定义为文档提交确定性分类结果。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"student_visible":false,"teaching_unit_links":[]}</data>
+    </node>
+    <node id="TSK-TXT-INTENT-REVIEW-001">
+      <data key="n0">TSK</data>
+      <data key="n1">复核意图歧义案例</data>
+      <data key="n2">比较允许答案集并记录需要裁决的分歧。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"student_visible":false,"teaching_unit_links":[]}</data>
+    </node>
+    <node id="TSK-TXT-LABEL-AUDIT-001">
+      <data key="n0">TSK</data>
+      <data key="n1">审计文本标签提交</data>
+      <data key="n2">检查标签是否属于配置集合并输出错误码。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"student_visible":false,"teaching_unit_links":[{"consumable":false,"review_status":"draft","student_visible":false,"unit_id":"TU-TEXT-LABEL-VOCAB-001"}]}</data>
+    </node>
+    <node id="TSK-TXT-NER-ANNOTATE-001">
+      <data key="n0">TSK</data>
+      <data key="n1">完成实体边界标注</data>
+      <data key="n2">标记实体偏移、类型并处理嵌套边界。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"student_visible":false,"teaching_unit_links":[]}</data>
+    </node>
+    <node id="TSK-TXT-RELATION-LINK-001">
+      <data key="n0">TSK</data>
+      <data key="n1">完成实体关系连边</data>
+      <data key="n2">为实体对选择关系并核对方向和端点。</data>
+      <data key="n3">["text"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"student_visible":false,"teaching_unit_links":[]}</data>
+    </node>
+    <node id="TSK-VID-ACTION-EVENT-001">
+      <data key="n0">TSK</data>
+      <data key="n1">标注视频行为事件</data>
+      <data key="n2">选择事件类别、参与轨迹及起止帧。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"student_visible":false,"teaching_unit_links":[]}</data>
+    </node>
+    <node id="TSK-VID-FRAME-LABEL-001">
+      <data key="n0">TSK</data>
+      <data key="n1">标注抽样视频帧</data>
+      <data key="n2">按抽帧策略为关键帧添加类别和几何标注。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"student_visible":false,"teaching_unit_links":[]}</data>
+    </node>
+    <node id="TSK-VID-OBJECT-TRACK-001">
+      <data key="n0">TSK</data>
+      <data key="n1">建立跨帧目标轨迹</data>
+      <data key="n2">连接目标观察并处理插值与遮挡。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"student_visible":false,"teaching_unit_links":[]}</data>
+    </node>
+    <node id="TSK-VID-TRACK-ID-AUDIT-001">
+      <data key="n0">TSK</data>
+      <data key="n1">审计视频轨迹 ID</data>
+      <data key="n2">识别同一物理目标的意外轨迹 ID 切换。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"student_visible":false,"teaching_unit_links":[{"consumable":false,"review_status":"draft","student_visible":false,"unit_id":"TU-VIDEO-TRACK-ID-001"}]}</data>
+    </node>
+    <node id="TSK-VID-TRACK-QA-001">
+      <data key="n0">TSK</data>
+      <data key="n1">复核轨迹与事件导出</data>
+      <data key="n2">检查轨迹连续性、ID 切换和事件边界。</data>
+      <data key="n3">["video"]</data>
+      <data key="n4">draft</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"student_visible":false,"teaching_unit_links":[]}</data>
+    </node>
+    <edge id="EDGE-0001" source="CAP-AUD-CONFIG-VALIDATE-001" target="CAP-AUD-SPEAKER-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0002" source="CAP-AUD-CONFIG-VALIDATE-001" target="CAP-AUD-TRANSCRIBE-PUNCT-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0003" source="CAP-AUD-SEGMENT-ALIGN-001" target="CAP-AUD-EXPORT-QA-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0004" source="CAP-AUD-SPEAKER-001" target="CAP-AUD-NOISE-OVERLAP-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0005" source="CAP-AUD-TRANSCRIBE-PUNCT-001" target="CAP-AUD-EMOTION-PARALING-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0006" source="CAP-AUD-TRANSCRIBE-PUNCT-001" target="CAP-AUD-LANGUAGE-DIALECT-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0007" source="CAP-AUD-TRANSCRIBE-PUNCT-001" target="CAP-AUD-SEGMENT-ALIGN-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0008" source="CAP-AUD-TRANSCRIBE-PUNCT-001" target="CAP-AUD-WAKE-COMMAND-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0009" source="CAP-CORE-ASSET-QUALITY-001" target="CAP-AUD-CONFIG-VALIDATE-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0010" source="CAP-CORE-ASSET-QUALITY-001" target="CAP-CORE-EXPORT-QA-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0011" source="CAP-CORE-ASSET-QUALITY-001" target="CAP-IMG-RECT-VALIDATE-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0012" source="CAP-CORE-ASSET-QUALITY-001" target="CAP-VID-TRACK-VALIDATE-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0013" source="CAP-CORE-LABEL-SCHEMA-001" target="CAP-CORE-EXPORT-QA-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0014" source="CAP-CORE-LABEL-SCHEMA-001" target="CAP-TXT-LABEL-VALIDATE-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0015" source="CAP-CORE-TASK-SCOPE-001" target="CAP-CORE-ASSET-QUALITY-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0016" source="CAP-CORE-TASK-SCOPE-001" target="CAP-CORE-LABEL-SCHEMA-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0017" source="CAP-IMG-BOX-ANNOTATE-001" target="CAP-IMG-OCCLUSION-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0018" source="CAP-IMG-BOX-ANNOTATE-001" target="CAP-IMG-POLYGON-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0019" source="CAP-IMG-INSTANCE-SEGMENT-001" target="CAP-IMG-EXPORT-QA-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0020" source="CAP-IMG-OBJECT-CLASS-001" target="CAP-IMG-KEYPOINT-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0021" source="CAP-IMG-POLYGON-001" target="CAP-IMG-SEMANTIC-SEGMENT-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0022" source="CAP-IMG-RECT-VALIDATE-001" target="CAP-IMG-BOX-ANNOTATE-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0023" source="CAP-IMG-RECT-VALIDATE-001" target="CAP-IMG-OBJECT-CLASS-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0024" source="CAP-IMG-SEMANTIC-SEGMENT-001" target="CAP-IMG-INSTANCE-SEGMENT-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0025" source="CAP-TXT-AMBIGUITY-001" target="CAP-TXT-EXPORT-QA-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0026" source="CAP-TXT-CLASSIFY-001" target="CAP-TXT-INTENT-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0027" source="CAP-TXT-CLASSIFY-001" target="CAP-TXT-SENTIMENT-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0028" source="CAP-TXT-ENTITY-BOUNDARY-001" target="CAP-TXT-ENTITY-TYPE-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0029" source="CAP-TXT-ENTITY-TYPE-001" target="CAP-TXT-RELATION-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0030" source="CAP-TXT-LABEL-VALIDATE-001" target="CAP-TXT-CLASSIFY-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0031" source="CAP-TXT-LABEL-VALIDATE-001" target="CAP-TXT-ENTITY-BOUNDARY-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0032" source="CAP-TXT-RELATION-001" target="CAP-TXT-AMBIGUITY-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0033" source="CAP-VID-ACTION-EVENT-001" target="CAP-VID-EVENT-BOUNDARY-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0034" source="CAP-VID-FRAME-ANNOTATE-001" target="CAP-VID-ACTION-EVENT-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0035" source="CAP-VID-FRAME-ANNOTATE-001" target="CAP-VID-OBJECT-TRACK-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0036" source="CAP-VID-FRAME-SAMPLE-001" target="CAP-VID-FRAME-ANNOTATE-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0037" source="CAP-VID-OBJECT-TRACK-001" target="CAP-VID-OCCLUSION-REID-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0038" source="CAP-VID-OBJECT-TRACK-001" target="CAP-VID-TRACK-INTERPOLATE-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0039" source="CAP-VID-TRACK-INTERPOLATE-001" target="CAP-VID-EXPORT-QA-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0040" source="CAP-VID-TRACK-VALIDATE-001" target="CAP-VID-FRAME-SAMPLE-001">
+      <data key="e0">PRE</data>
+      <data key="e1">前置于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0041" source="KNG-AUD-COMMAND-INTENT-001" target="CAP-AUD-WAKE-COMMAND-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0042" source="KNG-AUD-DATA-BINDING-001" target="CAP-AUD-CONFIG-VALIDATE-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0043" source="KNG-AUD-EMOTION-LABEL-001" target="CAP-AUD-EMOTION-PARALING-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0044" source="KNG-AUD-LANGUAGE-DIALECT-001" target="CAP-AUD-LANGUAGE-DIALECT-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0045" source="KNG-AUD-PARALINGUISTIC-EVENT-001" target="CAP-AUD-EMOTION-PARALING-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0046" source="KNG-AUD-PUNCTUATION-001" target="CAP-AUD-TRANSCRIBE-PUNCT-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0047" source="KNG-AUD-SAMPLE-RATE-CHANNEL-001" target="CAP-AUD-CONFIG-VALIDATE-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0048" source="KNG-AUD-SPEAKER-TURN-001" target="CAP-AUD-SPEAKER-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0049" source="KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001" target="CAP-AUD-TRANSCRIBE-PUNCT-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0050" source="KNG-AUD-WAKEWORD-BOUNDARY-001" target="CAP-AUD-WAKE-COMMAND-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0051" source="KNG-IMG-BOX-TIGHTNESS-001" target="CAP-IMG-BOX-ANNOTATE-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0052" source="KNG-IMG-CLASS-DEFINITION-001" target="CAP-IMG-OBJECT-CLASS-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0053" source="KNG-IMG-COORDINATE-SYSTEM-001" target="CAP-IMG-RECT-VALIDATE-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0054" source="KNG-IMG-INSTANCE-ID-001" target="CAP-IMG-INSTANCE-SEGMENT-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0055" source="KNG-IMG-KEYPOINT-VISIBILITY-001" target="CAP-IMG-KEYPOINT-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0056" source="KNG-IMG-OCCLUSION-TRUNCATION-001" target="CAP-IMG-OCCLUSION-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0057" source="KNG-IMG-POLYGON-VERTEX-001" target="CAP-IMG-POLYGON-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0058" source="KNG-IMG-RECT-BOUNDS-001" target="CAP-IMG-RECT-VALIDATE-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0059" source="KNG-IMG-SEMANTIC-MASK-001" target="CAP-IMG-SEMANTIC-SEGMENT-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0060" source="KNG-IMG-SMALL-OBJECT-001" target="CAP-IMG-BOX-ANNOTATE-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0061" source="KNG-TXT-CLASS-EXCLUSION-001" target="CAP-TXT-CLASSIFY-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0062" source="KNG-TXT-ENTITY-BOUNDARY-001" target="CAP-TXT-ENTITY-BOUNDARY-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0063" source="KNG-TXT-ENTITY-TYPE-001" target="CAP-TXT-ENTITY-TYPE-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0064" source="KNG-TXT-INTENT-HIERARCHY-001" target="CAP-TXT-INTENT-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0065" source="KNG-TXT-LABEL-VOCAB-001" target="CAP-TXT-LABEL-VALIDATE-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0066" source="KNG-TXT-NESTED-ENTITY-001" target="CAP-TXT-AMBIGUITY-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0067" source="KNG-TXT-RELATION-DIRECTION-001" target="CAP-TXT-RELATION-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0068" source="KNG-TXT-SENTIMENT-POLARITY-001" target="CAP-TXT-SENTIMENT-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0069" source="KNG-TXT-SINGLE-MULTI-LABEL-001" target="CAP-TXT-CLASSIFY-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0070" source="KNG-TXT-SPAN-OFFSET-001" target="CAP-TXT-ENTITY-BOUNDARY-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0071" source="KNG-VID-ACTION-TAXONOMY-001" target="CAP-VID-ACTION-EVENT-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0072" source="KNG-VID-EVENT-START-END-001" target="CAP-VID-EVENT-BOUNDARY-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0073" source="KNG-VID-FRAME-ANNOTATION-001" target="CAP-VID-FRAME-ANNOTATE-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0074" source="KNG-VID-FRAME-RATE-001" target="CAP-VID-FRAME-SAMPLE-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0075" source="KNG-VID-INTERPOLATION-001" target="CAP-VID-TRACK-INTERPOLATE-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0076" source="KNG-VID-MULTI-ACTOR-001" target="CAP-VID-ACTION-EVENT-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0077" source="KNG-VID-OCCLUSION-REID-001" target="CAP-VID-OCCLUSION-REID-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0078" source="KNG-VID-SAMPLING-STRATEGY-001" target="CAP-VID-FRAME-SAMPLE-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0079" source="KNG-VID-TRACK-CONTINUITY-001" target="CAP-VID-OBJECT-TRACK-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0080" source="KNG-VID-TRACK-ID-001" target="CAP-VID-TRACK-VALIDATE-001">
+      <data key="e0">ISA</data>
+      <data key="e1">归属于</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0081" source="CAP-AUD-CONFIG-VALIDATE-001" target="TSK-AUD-CONFIG-AUDIT-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0082" source="CAP-AUD-EMOTION-PARALING-001" target="TSK-AUD-EMOTION-EVENT-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0083" source="CAP-AUD-SPEAKER-001" target="TSK-AUD-SPEAKER-DIARIZE-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0084" source="CAP-AUD-TRANSCRIBE-PUNCT-001" target="TSK-AUD-TRANSCRIPT-ALIGN-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0085" source="CAP-AUD-WAKE-COMMAND-001" target="TSK-AUD-COMMAND-SEGMENT-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0086" source="CAP-IMG-BOX-ANNOTATE-001" target="TSK-IMG-OBJECT-BOX-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0087" source="CAP-IMG-INSTANCE-SEGMENT-001" target="TSK-IMG-MASK-REVIEW-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0088" source="CAP-IMG-KEYPOINT-001" target="TSK-IMG-KEYPOINT-MARK-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0089" source="CAP-IMG-POLYGON-001" target="TSK-IMG-POLYGON-TRACE-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0090" source="CAP-IMG-RECT-VALIDATE-001" target="TSK-IMG-RECT-AUDIT-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0091" source="CAP-TXT-CLASSIFY-001" target="TSK-TXT-DOCUMENT-CLASSIFY-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0092" source="CAP-TXT-ENTITY-BOUNDARY-001" target="TSK-TXT-NER-ANNOTATE-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0093" source="CAP-TXT-INTENT-001" target="TSK-TXT-INTENT-REVIEW-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0094" source="CAP-TXT-LABEL-VALIDATE-001" target="TSK-TXT-LABEL-AUDIT-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0095" source="CAP-TXT-RELATION-001" target="TSK-TXT-RELATION-LINK-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0096" source="CAP-VID-ACTION-EVENT-001" target="TSK-VID-ACTION-EVENT-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0097" source="CAP-VID-EXPORT-QA-001" target="TSK-VID-TRACK-QA-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0098" source="CAP-VID-FRAME-ANNOTATE-001" target="TSK-VID-FRAME-LABEL-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0099" source="CAP-VID-OBJECT-TRACK-001" target="TSK-VID-OBJECT-TRACK-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0100" source="CAP-VID-TRACK-VALIDATE-001" target="TSK-VID-TRACK-ID-AUDIT-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0101" source="KNG-AUD-EXPORT-FORMAT-001" target="TSK-AUD-COMMAND-SEGMENT-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0102" source="KNG-AUD-NOISE-OVERLAP-001" target="TSK-AUD-SPEAKER-DIARIZE-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0103" source="KNG-AUD-SEGMENT-TIMESTAMP-001" target="TSK-AUD-TRANSCRIPT-ALIGN-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0104" source="KNG-CORE-ASSET-AUTH-001" target="CAP-CORE-ASSET-QUALITY-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0105" source="KNG-CORE-ASSET-AUTH-001" target="TSK-IMG-KEYPOINT-MARK-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0106" source="KNG-CORE-DATA-SCHEMA-001" target="CAP-CORE-LABEL-SCHEMA-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0107" source="KNG-CORE-DATA-SCHEMA-001" target="TSK-AUD-CONFIG-AUDIT-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0108" source="KNG-CORE-ERROR-TAXONOMY-001" target="CAP-CORE-EXPORT-QA-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0109" source="KNG-CORE-ERROR-TAXONOMY-001" target="TSK-AUD-EMOTION-EVENT-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0110" source="KNG-CORE-EXPORT-VERSIONING-001" target="CAP-CORE-EXPORT-QA-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0111" source="KNG-CORE-EXPORT-VERSIONING-001" target="TSK-VID-TRACK-QA-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0112" source="KNG-CORE-LABEL-ONTOLOGY-001" target="TSK-IMG-POLYGON-TRACE-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0113" source="KNG-CORE-QUALITY-DIMENSIONS-001" target="CAP-CORE-EXPORT-QA-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0114" source="KNG-CORE-QUALITY-DIMENSIONS-001" target="TSK-VID-OBJECT-TRACK-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0115" source="KNG-CORE-REVIEW-ADJUDICATION-001" target="TSK-TXT-INTENT-REVIEW-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0116" source="KNG-CORE-TASK-OBJECTIVE-001" target="CAP-CORE-TASK-SCOPE-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0117" source="KNG-CORE-TASK-OBJECTIVE-001" target="TSK-TXT-DOCUMENT-CLASSIFY-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0118" source="KNG-IMG-EXPORT-FORMAT-001" target="TSK-IMG-MASK-REVIEW-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0119" source="KNG-IMG-OVERLAP-ORDER-001" target="TSK-IMG-OBJECT-BOX-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0120" source="KNG-IMG-QUALITY-METRICS-001" target="TSK-IMG-RECT-AUDIT-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0121" source="KNG-TXT-AMBIGUITY-SET-001" target="TSK-TXT-NER-ANNOTATE-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0122" source="KNG-TXT-EXPORT-SCHEMA-001" target="TSK-TXT-RELATION-LINK-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0123" source="KNG-TXT-INTERANNOTATOR-001" target="TSK-TXT-LABEL-AUDIT-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0124" source="KNG-VID-EXPORT-FORMAT-001" target="TSK-VID-ACTION-EVENT-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0125" source="KNG-VID-QUALITY-METRICS-001" target="TSK-VID-TRACK-ID-AUDIT-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0126" source="KNG-VID-SHOT-BOUNDARY-001" target="TSK-VID-FRAME-LABEL-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0127" source="RES-AUD-ALIGNMENT-WORKSHEET-001" target="CAP-AUD-SEGMENT-ALIGN-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0128" source="RES-AUD-CONFIG-CHECKLIST-001" target="CAP-AUD-CONFIG-VALIDATE-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0129" source="RES-AUD-DIALECT-LABEL-CARD-001" target="CAP-AUD-LANGUAGE-DIALECT-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0130" source="RES-AUD-EVENT-CATALOG-001" target="CAP-AUD-EMOTION-PARALING-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0131" source="RES-AUD-SPEAKER-TIMELINE-001" target="CAP-AUD-SPEAKER-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0132" source="RES-AUD-TRANSCRIPT-STYLE-SHEET-001" target="CAP-AUD-TRANSCRIBE-PUNCT-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0133" source="RES-CORE-ADJUDICATION-RECORD-001" target="CAP-CORE-LABEL-SCHEMA-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0134" source="RES-CORE-ASSET-AUTH-CHECKLIST-001" target="CAP-CORE-ASSET-QUALITY-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0135" source="RES-CORE-ERROR-REVIEW-FORM-001" target="CAP-CORE-EXPORT-QA-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0136" source="RES-CORE-EXPORT-MANIFEST-TEMPLATE-001" target="CAP-CORE-EXPORT-QA-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0137" source="RES-CORE-LABEL-SCHEMA-CHECKLIST-001" target="CAP-CORE-LABEL-SCHEMA-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0138" source="RES-CORE-TASK-BRIEF-TEMPLATE-001" target="CAP-CORE-TASK-SCOPE-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0139" source="RES-IMG-BOX-QUALITY-CHECKLIST-001" target="CAP-IMG-BOX-ANNOTATE-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0140" source="RES-IMG-COORDINATE-WORKSHEET-001" target="CAP-IMG-RECT-VALIDATE-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0141" source="RES-IMG-KEYPOINT-SKELETON-001" target="CAP-IMG-KEYPOINT-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0142" source="RES-IMG-MASK-QA-CHECKLIST-001" target="CAP-IMG-INSTANCE-SEGMENT-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0143" source="RES-IMG-OCCLUSION-DECISION-TREE-001" target="CAP-IMG-OCCLUSION-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0144" source="RES-IMG-POLYGON-PRACTICE-001" target="CAP-IMG-POLYGON-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0145" source="RES-TXT-AMBIGUITY-PRACTICE-001" target="CAP-TXT-AMBIGUITY-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0146" source="RES-TXT-CLASSIFICATION-DECISION-TREE-001" target="CAP-TXT-CLASSIFY-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0147" source="RES-TXT-LABEL-VOCAB-WORKSHEET-001" target="CAP-TXT-LABEL-VALIDATE-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0148" source="RES-TXT-NER-BOUNDARY-CHECKLIST-001" target="CAP-TXT-ENTITY-TYPE-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0149" source="RES-TXT-OFFSET-INSPECTOR-001" target="CAP-TXT-ENTITY-BOUNDARY-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0150" source="RES-TXT-RELATION-MATRIX-001" target="CAP-TXT-RELATION-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0151" source="RES-VID-EVENT-TIMELINE-001" target="CAP-VID-EVENT-BOUNDARY-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0152" source="RES-VID-EXPORT-QA-CHECKLIST-001" target="CAP-VID-EXPORT-QA-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0153" source="RES-VID-FRAME-SAMPLING-WORKSHEET-001" target="CAP-VID-FRAME-SAMPLE-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0154" source="RES-VID-INTERPOLATION-CHECKLIST-001" target="CAP-VID-TRACK-INTERPOLATE-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0155" source="RES-VID-OCCLUSION-REID-CARD-001" target="CAP-VID-OCCLUSION-REID-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0156" source="RES-VID-TRACK-LEDGER-001" target="CAP-VID-OBJECT-TRACK-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0157" source="CAP-AUD-EMOTION-PARALING-001" target="CAP-VID-ACTION-EVENT-001">
+      <data key="e0">REL</data>
+      <data key="e1">关联</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0158" source="CAP-IMG-BOX-ANNOTATE-001" target="CAP-VID-FRAME-ANNOTATE-001">
+      <data key="e0">REL</data>
+      <data key="e1">关联</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0159" source="CAP-IMG-OCCLUSION-001" target="CAP-VID-OCCLUSION-REID-001">
+      <data key="e0">REL</data>
+      <data key="e1">关联</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0160" source="CAP-TXT-ENTITY-BOUNDARY-001" target="CAP-AUD-SEGMENT-ALIGN-001">
+      <data key="e0">REL</data>
+      <data key="e1">关联</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0161" source="CAP-TXT-INTENT-001" target="CAP-AUD-WAKE-COMMAND-001">
+      <data key="e0">REL</data>
+      <data key="e1">关联</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0162" source="KNG-CORE-ERROR-TAXONOMY-001" target="KNG-AUD-NOISE-OVERLAP-001">
+      <data key="e0">REL</data>
+      <data key="e1">关联</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0163" source="KNG-CORE-ERROR-TAXONOMY-001" target="KNG-IMG-QUALITY-METRICS-001">
+      <data key="e0">REL</data>
+      <data key="e1">关联</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0164" source="KNG-CORE-ERROR-TAXONOMY-001" target="KNG-TXT-INTERANNOTATOR-001">
+      <data key="e0">REL</data>
+      <data key="e1">关联</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0165" source="KNG-CORE-ERROR-TAXONOMY-001" target="KNG-VID-QUALITY-METRICS-001">
+      <data key="e0">REL</data>
+      <data key="e1">关联</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0166" source="KNG-CORE-EXPORT-VERSIONING-001" target="KNG-AUD-EXPORT-FORMAT-001">
+      <data key="e0">REL</data>
+      <data key="e1">关联</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0167" source="KNG-CORE-EXPORT-VERSIONING-001" target="KNG-IMG-EXPORT-FORMAT-001">
+      <data key="e0">REL</data>
+      <data key="e1">关联</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0168" source="KNG-CORE-EXPORT-VERSIONING-001" target="KNG-TXT-EXPORT-SCHEMA-001">
+      <data key="e0">REL</data>
+      <data key="e1">关联</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0169" source="KNG-CORE-EXPORT-VERSIONING-001" target="KNG-VID-EXPORT-FORMAT-001">
+      <data key="e0">REL</data>
+      <data key="e1">关联</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0170" source="KNG-CORE-REVIEW-ADJUDICATION-001" target="KNG-AUD-EMOTION-LABEL-001">
+      <data key="e0">REL</data>
+      <data key="e1">关联</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0171" source="KNG-CORE-REVIEW-ADJUDICATION-001" target="KNG-IMG-OVERLAP-ORDER-001">
+      <data key="e0">REL</data>
+      <data key="e1">关联</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0172" source="KNG-CORE-REVIEW-ADJUDICATION-001" target="KNG-TXT-AMBIGUITY-SET-001">
+      <data key="e0">REL</data>
+      <data key="e1">关联</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0173" source="KNG-CORE-REVIEW-ADJUDICATION-001" target="KNG-VID-OCCLUSION-REID-001">
+      <data key="e0">REL</data>
+      <data key="e1">关联</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0174" source="RES-CORE-ADJUDICATION-RECORD-001" target="TSK-IMG-MASK-REVIEW-001">
+      <data key="e0">REL</data>
+      <data key="e1">关联</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0175" source="RES-CORE-ADJUDICATION-RECORD-001" target="TSK-TXT-INTENT-REVIEW-001">
+      <data key="e0">REL</data>
+      <data key="e1">关联</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0176" source="RES-CORE-ADJUDICATION-RECORD-001" target="TSK-VID-TRACK-QA-001">
+      <data key="e0">REL</data>
+      <data key="e1">关联</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0177" source="CAP-AUD-EMOTION-PARALING-001" target="SCN-CONTENT-SAFETY-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-AUD-PARALINGUISTIC-EVENT-001","data_types":["audio"],"description":"增加需复核的音频非言语事件类别。","override_type":"add","review_status":"draft","rule_id":"SCNR-CSAFE-AUD-EVENT-001"}</data>
+    </edge>
+    <edge id="EDGE-0178" source="CAP-AUD-SPEAKER-001" target="SCN-CUSTOMER-SERVICE-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-AUD-SPEAKER-TURN-001","data_types":["audio"],"description":"增加坐席与客户说话人角色约束。","override_type":"add","review_status":"draft","rule_id":"SCNR-CS-AUD-SPEAKER-001"}</data>
+    </edge>
+    <edge id="EDGE-0179" source="CAP-AUD-TRANSCRIBE-PUNCT-001" target="SCN-MEDICAL-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001","data_types":["audio"],"description":"补充医学术语转写与标准化案例。","override_type":"add","review_status":"draft","rule_id":"SCNR-MED-AUD-TRANSCRIPT-001"}</data>
+    </edge>
+    <edge id="EDGE-0180" source="CAP-AUD-WAKE-COMMAND-001" target="SCN-IN-VEHICLE-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-AUD-COMMAND-INTENT-001","data_types":["audio"],"description":"增加车控、导航和媒体命令意图。","override_type":"add","review_status":"draft","rule_id":"SCNR-IV-AUD-COMMAND-001"}</data>
+    </edge>
+    <edge id="EDGE-0181" source="CAP-IMG-SEMANTIC-SEGMENT-001" target="SCN-MEDICAL-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-IMG-SEMANTIC-MASK-001","data_types":["image"],"description":"补充医学影像区域掩码案例。","override_type":"add","review_status":"draft","rule_id":"SCNR-MED-IMG-MASK-001"}</data>
+    </edge>
+    <edge id="EDGE-0182" source="CAP-TXT-CLASSIFY-001" target="SCN-CONTENT-SAFETY-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-TXT-CLASS-EXCLUSION-001","data_types":["text"],"description":"使用内容安全类别和互斥规则覆盖通用分类。","override_type":"replace","review_status":"draft","rule_id":"SCNR-CSAFE-TXT-CLASS-001"}</data>
+    </edge>
+    <edge id="EDGE-0183" source="CAP-TXT-ENTITY-TYPE-001" target="SCN-MEDICAL-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-TXT-ENTITY-TYPE-001","data_types":["text"],"description":"补充医学实体类型和术语边界案例。","override_type":"add","review_status":"draft","rule_id":"SCNR-MED-TXT-ENTITY-001"}</data>
+    </edge>
+    <edge id="EDGE-0184" source="CAP-TXT-INTENT-001" target="SCN-CUSTOMER-SERVICE-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-TXT-INTENT-HIERARCHY-001","data_types":["text"],"description":"增加客服咨询、办理和投诉意图层级。","override_type":"add","review_status":"draft","rule_id":"SCNR-CS-TXT-INTENT-001"}</data>
+    </edge>
+    <edge id="EDGE-0185" source="CAP-VID-ACTION-EVENT-001" target="SCN-CONTENT-SAFETY-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-VID-ACTION-TAXONOMY-001","data_types":["video"],"description":"使用内容安全行为本体覆盖通用事件类别。","override_type":"replace","review_status":"draft","rule_id":"SCNR-CSAFE-VID-ACTION-001"}</data>
+    </edge>
+    <edge id="EDGE-0186" source="KNG-AUD-LANGUAGE-DIALECT-001" target="SCN-MEDICAL-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-AUD-LANGUAGE-DIALECT-001","data_types":["audio"],"description":"补充口音条件下医学术语的复核要求。","override_type":"add","review_status":"draft","rule_id":"SCNR-MED-AUD-DIALECT-001"}</data>
+    </edge>
+    <edge id="EDGE-0187" source="KNG-AUD-NOISE-OVERLAP-001" target="SCN-IN-VEHICLE-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-AUD-NOISE-OVERLAP-001","data_types":["audio"],"description":"增加道路、风噪和车内多人说话标签。","override_type":"add","review_status":"draft","rule_id":"SCNR-IV-AUD-NOISE-001"}</data>
+    </edge>
+    <edge id="EDGE-0188" source="KNG-AUD-PARALINGUISTIC-EVENT-001" target="SCN-CONTENT-SAFETY-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-AUD-PARALINGUISTIC-EVENT-001","data_types":["audio"],"description":"补充内容安全音频事件判定边界。","override_type":"add","review_status":"draft","rule_id":"SCNR-CSAFE-AUD-PARALING-001"}</data>
+    </edge>
+    <edge id="EDGE-0189" source="KNG-AUD-SPEAKER-TURN-001" target="SCN-CUSTOMER-SERVICE-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-AUD-SPEAKER-TURN-001","data_types":["audio"],"description":"补充客服抢话与保持通话的轮次规则。","override_type":"add","review_status":"draft","rule_id":"SCNR-CS-AUD-TURN-001"}</data>
+    </edge>
+    <edge id="EDGE-0190" source="KNG-AUD-WAKEWORD-BOUNDARY-001" target="SCN-IN-VEHICLE-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-AUD-WAKEWORD-BOUNDARY-001","data_types":["audio"],"description":"补充车载远场唤醒词边界案例。","override_type":"add","review_status":"draft","rule_id":"SCNR-IV-AUD-WAKE-001"}</data>
+    </edge>
+    <edge id="EDGE-0191" source="KNG-TXT-CLASS-EXCLUSION-001" target="SCN-CONTENT-SAFETY-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-TXT-CLASS-EXCLUSION-001","data_types":["text"],"description":"补充风险类别并存与优先级规则。","override_type":"add","review_status":"draft","rule_id":"SCNR-CSAFE-TXT-EXCLUSION-001"}</data>
+    </edge>
+    <edge id="EDGE-0192" source="KNG-TXT-ENTITY-BOUNDARY-001" target="SCN-MEDICAL-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-TXT-ENTITY-BOUNDARY-001","data_types":["text"],"description":"补充医学短语的实体边界约定。","override_type":"add","review_status":"draft","rule_id":"SCNR-MED-TXT-BOUNDARY-001"}</data>
+    </edge>
+    <edge id="EDGE-0193" source="KNG-TXT-INTENT-HIERARCHY-001" target="SCN-CUSTOMER-SERVICE-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-TXT-INTENT-HIERARCHY-001","data_types":["text"],"description":"补充客服多轮对话的意图继承规则。","override_type":"add","review_status":"draft","rule_id":"SCNR-CS-TXT-HIERARCHY-001"}</data>
+    </edge>
+    <edge id="EDGE-0194" source="KNG-VID-ACTION-TAXONOMY-001" target="SCN-CONTENT-SAFETY-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-VID-ACTION-TAXONOMY-001","data_types":["video"],"description":"补充风险行为的参与者与排除条件。","override_type":"add","review_status":"draft","rule_id":"SCNR-CSAFE-VID-TAXONOMY-001"}</data>
+    </edge>
+    <edge id="EDGE-0195" source="TSK-AUD-COMMAND-SEGMENT-001" target="SCN-IN-VEHICLE-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-AUD-SEGMENT-TIMESTAMP-001","data_types":["audio"],"description":"增加车载连续命令的切割练习。","override_type":"add","review_status":"draft","rule_id":"SCNR-IV-AUD-SEGMENT-001"}</data>
+    </edge>
+    <edge id="EDGE-0196" source="TSK-AUD-SPEAKER-DIARIZE-001" target="SCN-CUSTOMER-SERVICE-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-AUD-NOISE-OVERLAP-001","data_types":["audio"],"description":"增加客服重叠通话的说话人练习。","override_type":"add","review_status":"draft","rule_id":"SCNR-CS-AUD-DIARIZE-001"}</data>
+    </edge>
+    <edge id="EDGE-0197" source="TSK-IMG-MASK-REVIEW-001" target="SCN-MEDICAL-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-IMG-QUALITY-METRICS-001","data_types":["image"],"description":"增加医学影像掩码复核检查项。","override_type":"add","review_status":"draft","rule_id":"SCNR-MED-IMG-REVIEW-001"}</data>
+    </edge>
+    <edge id="EDGE-0198" source="TSK-TXT-DOCUMENT-CLASSIFY-001" target="SCN-CONTENT-SAFETY-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-TXT-SINGLE-MULTI-LABEL-001","data_types":["text"],"description":"增加多风险文本审核练习。","override_type":"add","review_status":"draft","rule_id":"SCNR-CSAFE-TXT-TASK-001"}</data>
+    </edge>
+    <edge id="EDGE-0199" source="TSK-TXT-INTENT-REVIEW-001" target="SCN-CUSTOMER-SERVICE-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-TXT-AMBIGUITY-SET-001","data_types":["text"],"description":"增加客服多意图歧义复核案例。","override_type":"add","review_status":"draft","rule_id":"SCNR-CS-TXT-REVIEW-001"}</data>
+    </edge>
+    <edge id="EDGE-0200" source="TSK-VID-ACTION-EVENT-001" target="SCN-CONTENT-SAFETY-001">
+      <data key="e0">INSCN</data>
+      <data key="e1">应用于场景</data>
+      <data key="e2">{"base_rule_ref":"KNG-VID-EVENT-START-END-001","data_types":["video"],"description":"增加风险事件起止帧标注练习。","override_type":"add","review_status":"draft","rule_id":"SCNR-CSAFE-VID-TASK-001"}</data>
+    </edge>
+    <edge id="EDGE-0201" source="CAP-AUD-CONFIG-VALIDATE-001" target="CERT-DATA-ANNOTATION-FOUNDATION-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0202" source="CAP-AUD-EMOTION-PARALING-001" target="CERT-DATA-ANNOTATION-SCENARIO-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0203" source="CAP-AUD-EXPORT-QA-001" target="CERT-AIT-L4-QUALITY-CONTROL-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0204" source="CAP-AUD-LANGUAGE-DIALECT-001" target="CERT-AIT-L5-AUDIO-ANNOTATION-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0205" source="CAP-AUD-NOISE-OVERLAP-001" target="CERT-DATA-ANNOTATION-QA-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0206" source="CAP-AUD-SEGMENT-ALIGN-001" target="CERT-AIT-L5-AUDIO-ANNOTATION-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0207" source="CAP-AUD-SPEAKER-001" target="CERT-AIT-L5-AUDIO-ANNOTATION-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0208" source="CAP-AUD-TRANSCRIBE-PUNCT-001" target="CERT-AIT-L5-AUDIO-ANNOTATION-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0209" source="CAP-AUD-WAKE-COMMAND-001" target="CERT-DATA-ANNOTATION-SCENARIO-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0210" source="CAP-CORE-ASSET-QUALITY-001" target="CERT-AIT-L5-DATA-PREP-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0211" source="CAP-CORE-EXPORT-QA-001" target="CERT-AIT-L4-MULTIMODAL-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0212" source="CAP-CORE-LABEL-SCHEMA-001" target="CERT-AIT-L4-SCHEMA-CONFIG-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0213" source="CAP-CORE-TASK-SCOPE-001" target="CERT-AIT-L4-TASK-DELIVERY-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0214" source="CAP-IMG-BOX-ANNOTATE-001" target="CERT-AIT-L5-IMAGE-ANNOTATION-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0215" source="CAP-IMG-EXPORT-QA-001" target="CERT-AIT-L4-QUALITY-CONTROL-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0216" source="CAP-IMG-INSTANCE-SEGMENT-001" target="CERT-AIT-L5-IMAGE-ANNOTATION-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0217" source="CAP-IMG-KEYPOINT-001" target="CERT-AIT-L5-IMAGE-ANNOTATION-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0218" source="CAP-IMG-OBJECT-CLASS-001" target="CERT-AIT-L5-IMAGE-ANNOTATION-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0219" source="CAP-IMG-OCCLUSION-001" target="CERT-DATA-ANNOTATION-QA-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0220" source="CAP-IMG-POLYGON-001" target="CERT-AIT-L5-IMAGE-ANNOTATION-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0221" source="CAP-IMG-RECT-VALIDATE-001" target="CERT-DATA-ANNOTATION-FOUNDATION-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0222" source="CAP-IMG-SEMANTIC-SEGMENT-001" target="CERT-AIT-L4-MULTIMODAL-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0223" source="CAP-TXT-AMBIGUITY-001" target="CERT-DATA-ANNOTATION-QA-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0224" source="CAP-TXT-CLASSIFY-001" target="CERT-AIT-L5-TEXT-ANNOTATION-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0225" source="CAP-TXT-ENTITY-BOUNDARY-001" target="CERT-AIT-L5-TEXT-ANNOTATION-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0226" source="CAP-TXT-ENTITY-TYPE-001" target="CERT-AIT-L5-TEXT-ANNOTATION-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0227" source="CAP-TXT-EXPORT-QA-001" target="CERT-AIT-L4-QUALITY-CONTROL-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0228" source="CAP-TXT-INTENT-001" target="CERT-AIT-L4-TASK-DELIVERY-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0229" source="CAP-TXT-LABEL-VALIDATE-001" target="CERT-DATA-ANNOTATION-FOUNDATION-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0230" source="CAP-TXT-RELATION-001" target="CERT-AIT-L5-TEXT-ANNOTATION-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0231" source="CAP-TXT-SENTIMENT-001" target="CERT-DATA-ANNOTATION-SCENARIO-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0232" source="CAP-VID-ACTION-EVENT-001" target="CERT-DATA-ANNOTATION-SCENARIO-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0233" source="CAP-VID-EVENT-BOUNDARY-001" target="CERT-AIT-L5-VIDEO-ANNOTATION-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0234" source="CAP-VID-EXPORT-QA-001" target="CERT-AIT-L4-QUALITY-CONTROL-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0235" source="CAP-VID-FRAME-ANNOTATE-001" target="CERT-AIT-L5-VIDEO-ANNOTATION-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0236" source="CAP-VID-FRAME-SAMPLE-001" target="CERT-AIT-L5-DATA-PREP-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0237" source="CAP-VID-OBJECT-TRACK-001" target="CERT-AIT-L5-VIDEO-ANNOTATION-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0238" source="CAP-VID-OCCLUSION-REID-001" target="CERT-DATA-ANNOTATION-QA-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0239" source="CAP-VID-TRACK-INTERPOLATE-001" target="CERT-AIT-L5-VIDEO-ANNOTATION-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+    <edge id="EDGE-0240" source="CAP-VID-TRACK-VALIDATE-001" target="CERT-DATA-ANNOTATION-FOUNDATION-001">
+      <data key="e0">MAPCERT</data>
+      <data key="e1">映射证书</data>
+      <data key="e2">{}</data>
+    </edge>
+  </graph>
+</graphml>

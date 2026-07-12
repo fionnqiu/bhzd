@@ -1,0 +1,4307 @@
+{
+  "schema_version": "1.0.0",
+  "graph_id": "annotation-capability-graph",
+  "graph_version": "1.0.0",
+  "title": "标航智导数据标注能力图谱",
+  "description": "覆盖文本、图像、语音、视频标注的能力、知识、任务、场景、资源与证书映射目录。",
+  "publication_state": "development",
+  "generated_from": "data/graph/graph-catalog.json",
+  "generated_by": "scripts/build_graph.py",
+  "catalog_sha256": "20258adf204de88b59fc57b75b74cf319e72eca80d46d5f28a69ba430786ffa3",
+  "source_registry": "data/sources/source-registry.json",
+  "teaching_units": "data/curriculum/teaching-units.json",
+  "node_type_counts": {
+    "CAP": 40,
+    "KNG": 60,
+    "TSK": 20,
+    "SCN": 4,
+    "RES": 30,
+    "CERT": 12
+  },
+  "edge_type_counts": {
+    "PRE": 40,
+    "ISA": 40,
+    "SUP": 76,
+    "REL": 20,
+    "INSCN": 24,
+    "MAPCERT": 40
+  },
+  "nodes": [
+    {
+      "id": "CAP-AUD-CONFIG-VALIDATE-001",
+      "label": "校验音频任务绑定",
+      "description": "确认音频标签引用存在的任务数据字段。",
+      "data_types": [
+        "audio"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-AUD-EMOTION-PARALING-001",
+      "label": "标注情感与副语言",
+      "description": "区分情感状态和笑声、叹气等副语言事件。",
+      "data_types": [
+        "audio"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-AUD-EXPORT-QA-001",
+      "label": "检查音频标注导出",
+      "description": "核对标签、说话人、时间戳和区间覆盖。",
+      "data_types": [
+        "audio"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-AUD-LANGUAGE-DIALECT-001",
+      "label": "标注语种与方言",
+      "description": "按可听特征标注语种、方言和混码片段。",
+      "data_types": [
+        "audio"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-AUD-NOISE-OVERLAP-001",
+      "label": "处理噪声与重叠语音",
+      "description": "标注噪声区间并处理多人重叠说话。",
+      "data_types": [
+        "audio"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-AUD-SEGMENT-ALIGN-001",
+      "label": "切割音频并对齐",
+      "description": "按话语边界切割并对齐文本时间戳。",
+      "data_types": [
+        "audio"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-AUD-SPEAKER-001",
+      "label": "区分说话人",
+      "description": "识别说话人轮次并保持标签一致。",
+      "data_types": [
+        "audio"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-AUD-TRANSCRIBE-PUNCT-001",
+      "label": "转写并添加标点",
+      "description": "按正字法规则转写可听语音并处理标点。",
+      "data_types": [
+        "audio"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-AUD-WAKE-COMMAND-001",
+      "label": "标注唤醒词与命令词",
+      "description": "标记唤醒片段、命令边界与命令意图。",
+      "data_types": [
+        "audio"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-CORE-ASSET-QUALITY-001",
+      "label": "检查素材质量与授权",
+      "description": "确认素材可用性、隐私边界和学生使用授权。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-CORE-EXPORT-QA-001",
+      "label": "执行导出前质量检查",
+      "description": "按版本、完整性和错误分类检查结构化交付物。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-CORE-LABEL-SCHEMA-001",
+      "label": "读取标签体系",
+      "description": "解释标签名称、互斥关系、属性和适用条件。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-CORE-TASK-SCOPE-001",
+      "label": "界定标注任务范围",
+      "description": "从任务目标、对象和交付物中识别标注边界。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-IMG-BOX-ANNOTATE-001",
+      "label": "绘制紧致目标框",
+      "description": "绘制覆盖目标且尽量减少背景的矩形框。",
+      "data_types": [
+        "image"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-IMG-EXPORT-QA-001",
+      "label": "检查图像标注导出",
+      "description": "核对坐标、类别、实例 ID 和掩码完整性。",
+      "data_types": [
+        "image"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-IMG-INSTANCE-SEGMENT-001",
+      "label": "执行实例分割",
+      "description": "区分同类实例并生成独立掩码。",
+      "data_types": [
+        "image"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-IMG-KEYPOINT-001",
+      "label": "标注关键点",
+      "description": "按骨架定义标记关键点位置与可见性。",
+      "data_types": [
+        "image"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-IMG-OBJECT-CLASS-001",
+      "label": "判定图像目标类别",
+      "description": "按可见证据与类别定义识别目标。",
+      "data_types": [
+        "image"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-IMG-OCCLUSION-001",
+      "label": "处理遮挡与截断",
+      "description": "按规则区分遮挡、截断和不可见区域。",
+      "data_types": [
+        "image"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-IMG-POLYGON-001",
+      "label": "绘制多边形轮廓",
+      "description": "沿可见边界布置顶点并保持轮廓有效。",
+      "data_types": [
+        "image"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-IMG-RECT-VALIDATE-001",
+      "label": "校验矩形框坐标",
+      "description": "检查矩形框范围、坐标顺序和非零面积。",
+      "data_types": [
+        "image"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-IMG-SEMANTIC-SEGMENT-001",
+      "label": "执行语义分割",
+      "description": "为每个有效像素分配语义类别。",
+      "data_types": [
+        "image"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-TXT-AMBIGUITY-001",
+      "label": "处理文本歧义",
+      "description": "使用允许答案集和复核条件处理边界案例。",
+      "data_types": [
+        "text"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-TXT-CLASSIFY-001",
+      "label": "执行文本分类",
+      "description": "按类别定义与互斥规则完成单标签或多标签分类。",
+      "data_types": [
+        "text"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-TXT-ENTITY-BOUNDARY-001",
+      "label": "确定实体边界",
+      "description": "用字符偏移准确圈定实体起止位置。",
+      "data_types": [
+        "text"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-TXT-ENTITY-TYPE-001",
+      "label": "判定实体类型",
+      "description": "依据标签本体为已圈定实体选择类型。",
+      "data_types": [
+        "text"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-TXT-EXPORT-QA-001",
+      "label": "检查文本标注导出",
+      "description": "核对偏移、标签、关系端点和导出模式。",
+      "data_types": [
+        "text"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-TXT-INTENT-001",
+      "label": "标注用户意图",
+      "description": "按层级意图体系区分请求、咨询与反馈。",
+      "data_types": [
+        "text"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-TXT-LABEL-VALIDATE-001",
+      "label": "校验文本标签词表",
+      "description": "判断提交标签是否属于任务配置的封闭集合。",
+      "data_types": [
+        "text"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-TXT-RELATION-001",
+      "label": "标注实体关系",
+      "description": "识别实体对及有向关系并避免重复连边。",
+      "data_types": [
+        "text"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-TXT-SENTIMENT-001",
+      "label": "标注情感极性",
+      "description": "根据目标对象和上下文判定情感标签。",
+      "data_types": [
+        "text"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-VID-ACTION-EVENT-001",
+      "label": "标注行为事件",
+      "description": "按行为本体标记参与者和事件类别。",
+      "data_types": [
+        "video"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-VID-EVENT-BOUNDARY-001",
+      "label": "确定事件起止",
+      "description": "依据可观察动作定义事件开始与结束帧。",
+      "data_types": [
+        "video"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-VID-EXPORT-QA-001",
+      "label": "检查视频标注导出",
+      "description": "核对帧号、轨迹、事件边界和导出一致性。",
+      "data_types": [
+        "video"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-VID-FRAME-ANNOTATE-001",
+      "label": "执行视频帧标注",
+      "description": "在选定帧上应用一致的图像标注规则。",
+      "data_types": [
+        "video"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-VID-FRAME-SAMPLE-001",
+      "label": "制定抽帧策略",
+      "description": "依据帧率、运动速度和事件密度选择帧。",
+      "data_types": [
+        "video"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-VID-OBJECT-TRACK-001",
+      "label": "建立目标轨迹",
+      "description": "用稳定轨迹 ID 连接跨帧目标观察。",
+      "data_types": [
+        "video"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-VID-OCCLUSION-REID-001",
+      "label": "处理遮挡后重识别",
+      "description": "判断遮挡前后目标是否保持同一轨迹。",
+      "data_types": [
+        "video"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-VID-TRACK-INTERPOLATE-001",
+      "label": "插值轨迹关键帧",
+      "description": "在满足运动假设时插值并复核中间帧。",
+      "data_types": [
+        "video"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CAP-VID-TRACK-VALIDATE-001",
+      "label": "校验跨帧轨迹 ID",
+      "description": "发现同一目标跨帧标注中的意外 ID 切换。",
+      "data_types": [
+        "video"
+      ],
+      "type": "CAP",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CERT-AIT-L4-MULTIMODAL-001",
+      "label": "人工智能训练师四级：多模态处理映射",
+      "description": "跨数据类型规则迁移能力的课程对照节点。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "type": "CERT",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CERT-AIT-L4-QUALITY-CONTROL-001",
+      "label": "人工智能训练师四级：质量控制映射",
+      "description": "标注复核与质量管理能力的课程对照节点。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "type": "CERT",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CERT-AIT-L4-SCHEMA-CONFIG-001",
+      "label": "人工智能训练师四级：方案配置映射",
+      "description": "标签体系与任务配置能力的课程对照节点。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "type": "CERT",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CERT-AIT-L4-TASK-DELIVERY-001",
+      "label": "人工智能训练师四级：任务交付映射",
+      "description": "任务拆解与结构化交付能力的课程对照节点。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "type": "CERT",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CERT-AIT-L5-AUDIO-ANNOTATION-001",
+      "label": "人工智能训练师五级：语音标注映射",
+      "description": "语音标注能力的课程对照节点，不代表发证。",
+      "data_types": [
+        "audio"
+      ],
+      "type": "CERT",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CERT-AIT-L5-DATA-PREP-001",
+      "label": "人工智能训练师五级：数据准备映射",
+      "description": "课程能力与数据准备相关考核方向的展示映射。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "type": "CERT",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CERT-AIT-L5-IMAGE-ANNOTATION-001",
+      "label": "人工智能训练师五级：图像标注映射",
+      "description": "图像标注能力的课程对照节点，不代表发证。",
+      "data_types": [
+        "image"
+      ],
+      "type": "CERT",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CERT-AIT-L5-TEXT-ANNOTATION-001",
+      "label": "人工智能训练师五级：文本标注映射",
+      "description": "文本标注能力的课程对照节点，不代表发证。",
+      "data_types": [
+        "text"
+      ],
+      "type": "CERT",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CERT-AIT-L5-VIDEO-ANNOTATION-001",
+      "label": "人工智能训练师五级：视频标注映射",
+      "description": "视频标注能力的课程对照节点，不代表发证。",
+      "data_types": [
+        "video"
+      ],
+      "type": "CERT",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CERT-DATA-ANNOTATION-FOUNDATION-001",
+      "label": "数据标注基础能力映射",
+      "description": "四类基础标注操作的课程对照节点。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "type": "CERT",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CERT-DATA-ANNOTATION-QA-001",
+      "label": "数据标注质量校验映射",
+      "description": "错误识别与复核能力的课程对照节点。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "type": "CERT",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "CERT-DATA-ANNOTATION-SCENARIO-001",
+      "label": "数据标注场景应用映射",
+      "description": "在行业规则覆盖下执行标注的课程对照节点。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "type": "CERT",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "KNG-AUD-COMMAND-INTENT-001",
+      "label": "命令词意图",
+      "description": "命令词片段与标准化命令意图分别记录。",
+      "data_types": [
+        "audio"
+      ],
+      "source_refs": [
+        "SRC-LS-AUDIO-TAG-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-AUD-DATA-BINDING-001",
+      "label": "音频数据字段绑定",
+      "description": "音频标签 value 必须引用存在的任务字段。",
+      "data_types": [
+        "audio"
+      ],
+      "source_refs": [
+        "SRC-LS-AUDIO-TAG-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-AUD-EMOTION-LABEL-001",
+      "label": "语音情感标签",
+      "description": "情感分类依据可听声学和语义证据。",
+      "data_types": [
+        "audio"
+      ],
+      "source_refs": [
+        "SRC-LS-AUDIO-TAG-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-AUD-EXPORT-FORMAT-001",
+      "label": "音频标注导出格式",
+      "description": "导出保留音频引用、标签、说话人和区间。",
+      "data_types": [
+        "audio"
+      ],
+      "source_refs": [
+        "SRC-LS-AUDIO-TAG-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-AUD-LANGUAGE-DIALECT-001",
+      "label": "语种方言与混码",
+      "description": "按片段标注主语种、方言和语码切换。",
+      "data_types": [
+        "audio"
+      ],
+      "source_refs": [
+        "SRC-LS-AUDIO-TAG-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-AUD-NOISE-OVERLAP-001",
+      "label": "噪声与重叠说话",
+      "description": "噪声类别和重叠说话区间需单独记录。",
+      "data_types": [
+        "audio"
+      ],
+      "source_refs": [
+        "SRC-LS-AUDIO-TAG-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-AUD-PARALINGUISTIC-EVENT-001",
+      "label": "副语言事件",
+      "description": "笑声、叹气、咳嗽等事件与说话内容分开标注。",
+      "data_types": [
+        "audio"
+      ],
+      "source_refs": [
+        "SRC-LS-AUDIO-TAG-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-AUD-PUNCTUATION-001",
+      "label": "转写标点规则",
+      "description": "标点依据语义与停顿，不用静音时长机械决定。",
+      "data_types": [
+        "audio"
+      ],
+      "source_refs": [
+        "SRC-LS-AUDIO-TAG-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-AUD-SAMPLE-RATE-CHANNEL-001",
+      "label": "采样率与声道",
+      "description": "播放和时间换算需识别采样率及声道布局。",
+      "data_types": [
+        "audio"
+      ],
+      "source_refs": [
+        "SRC-LS-AUDIO-TAG-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-AUD-SEGMENT-TIMESTAMP-001",
+      "label": "音频切割时间戳",
+      "description": "区间满足起点小于终点且不越过音频时长。",
+      "data_types": [
+        "audio"
+      ],
+      "source_refs": [
+        "SRC-LS-AUDIO-TAG-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-AUD-SPEAKER-TURN-001",
+      "label": "说话人轮次",
+      "description": "说话人变化处建立轮次并保持身份标签一致。",
+      "data_types": [
+        "audio"
+      ],
+      "source_refs": [
+        "SRC-LS-AUDIO-TAG-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001",
+      "label": "语音转写正字法",
+      "description": "统一数字、缩写、口语词和不可听片段写法。",
+      "data_types": [
+        "audio"
+      ],
+      "source_refs": [
+        "SRC-LS-AUDIO-TAG-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-AUD-WAKEWORD-BOUNDARY-001",
+      "label": "唤醒词边界",
+      "description": "唤醒片段只覆盖实际发音并保留时间精度。",
+      "data_types": [
+        "audio"
+      ],
+      "source_refs": [
+        "SRC-LS-AUDIO-TAG-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-CORE-ASSET-AUTH-001",
+      "label": "素材授权与隐私边界",
+      "description": "教学素材必须记录来源、授权和学生使用许可。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001",
+        "SRC-CVAT-IMAGE-RECT-001",
+        "SRC-LS-AUDIO-TAG-001",
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-CORE-DATA-SCHEMA-001",
+      "label": "任务数据模式",
+      "description": "输入字段与标注配置引用必须名称一致且类型兼容。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001",
+        "SRC-CVAT-IMAGE-RECT-001",
+        "SRC-LS-AUDIO-TAG-001",
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-CORE-ERROR-TAXONOMY-001",
+      "label": "标注错误分类",
+      "description": "稳定错误码用于确定性反馈与补强路径。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001",
+        "SRC-CVAT-IMAGE-RECT-001",
+        "SRC-LS-AUDIO-TAG-001",
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-CORE-EXPORT-VERSIONING-001",
+      "label": "导出版本与清单",
+      "description": "导出文件需绑定数据、规则和判定版本。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001",
+        "SRC-CVAT-IMAGE-RECT-001",
+        "SRC-LS-AUDIO-TAG-001",
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-CORE-LABEL-ONTOLOGY-001",
+      "label": "标签本体与互斥关系",
+      "description": "标签定义需说明层级、互斥、属性和边界。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001",
+        "SRC-CVAT-IMAGE-RECT-001",
+        "SRC-LS-AUDIO-TAG-001",
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-CORE-QUALITY-DIMENSIONS-001",
+      "label": "标注质量维度",
+      "description": "完整性、正确性、一致性和可追溯性共同决定质量。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001",
+        "SRC-CVAT-IMAGE-RECT-001",
+        "SRC-LS-AUDIO-TAG-001",
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-CORE-REVIEW-ADJUDICATION-001",
+      "label": "复核与裁决流程",
+      "description": "歧义或冲突标注应保留复核依据与裁决记录。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001",
+        "SRC-CVAT-IMAGE-RECT-001",
+        "SRC-LS-AUDIO-TAG-001",
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-CORE-TASK-OBJECTIVE-001",
+      "label": "标注任务目标结构",
+      "description": "任务目标应声明对象、动作、规则和交付格式。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001",
+        "SRC-CVAT-IMAGE-RECT-001",
+        "SRC-LS-AUDIO-TAG-001",
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-IMG-BOX-TIGHTNESS-001",
+      "label": "目标框紧致度",
+      "description": "目标框应覆盖可标区域并减少无关背景。",
+      "data_types": [
+        "image"
+      ],
+      "source_refs": [
+        "SRC-CVAT-IMAGE-RECT-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-IMG-CLASS-DEFINITION-001",
+      "label": "图像类别定义",
+      "description": "类别需给出可观察判据和排除条件。",
+      "data_types": [
+        "image"
+      ],
+      "source_refs": [
+        "SRC-CVAT-IMAGE-RECT-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-IMG-COORDINATE-SYSTEM-001",
+      "label": "图像坐标系",
+      "description": "坐标原点、轴方向和像素边界必须统一。",
+      "data_types": [
+        "image"
+      ],
+      "source_refs": [
+        "SRC-CVAT-IMAGE-RECT-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-IMG-EXPORT-FORMAT-001",
+      "label": "图像标注导出格式",
+      "description": "导出应保留图像尺寸、类别和几何数据。",
+      "data_types": [
+        "image"
+      ],
+      "source_refs": [
+        "SRC-CVAT-IMAGE-RECT-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-IMG-INSTANCE-ID-001",
+      "label": "实例掩码标识",
+      "description": "同类不同目标必须使用可区分的实例 ID。",
+      "data_types": [
+        "image"
+      ],
+      "source_refs": [
+        "SRC-CVAT-IMAGE-RECT-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-IMG-KEYPOINT-VISIBILITY-001",
+      "label": "关键点可见性",
+      "description": "关键点状态区分可见、遮挡和不可标注。",
+      "data_types": [
+        "image"
+      ],
+      "source_refs": [
+        "SRC-CVAT-IMAGE-RECT-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-IMG-OCCLUSION-TRUNCATION-001",
+      "label": "遮挡与截断区别",
+      "description": "遮挡来自其他物体，截断来自画面边界。",
+      "data_types": [
+        "image"
+      ],
+      "source_refs": [
+        "SRC-CVAT-IMAGE-RECT-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-IMG-OVERLAP-ORDER-001",
+      "label": "重叠目标轮廓顺序",
+      "description": "相邻实例的轮廓应分别闭合且不混用 ID。",
+      "data_types": [
+        "image"
+      ],
+      "source_refs": [
+        "SRC-CVAT-IMAGE-RECT-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-IMG-POLYGON-VERTEX-001",
+      "label": "多边形顶点规则",
+      "description": "顶点应沿边界布置且不得形成自交轮廓。",
+      "data_types": [
+        "image"
+      ],
+      "source_refs": [
+        "SRC-CVAT-IMAGE-RECT-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-IMG-QUALITY-METRICS-001",
+      "label": "图像标注质量指标",
+      "description": "框、点和掩码使用与结构相适应的质量检查。",
+      "data_types": [
+        "image"
+      ],
+      "source_refs": [
+        "SRC-CVAT-IMAGE-RECT-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-IMG-RECT-BOUNDS-001",
+      "label": "矩形框边界约束",
+      "description": "矩形框须在图像范围内且宽高均大于零。",
+      "data_types": [
+        "image"
+      ],
+      "source_refs": [
+        "SRC-CVAT-IMAGE-RECT-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-IMG-SEMANTIC-MASK-001",
+      "label": "语义掩码类别",
+      "description": "同一语义类别的像素使用相同类别值。",
+      "data_types": [
+        "image"
+      ],
+      "source_refs": [
+        "SRC-CVAT-IMAGE-RECT-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-IMG-SMALL-OBJECT-001",
+      "label": "小目标标注阈值",
+      "description": "任务规则应声明小目标的最小可标尺寸。",
+      "data_types": [
+        "image"
+      ],
+      "source_refs": [
+        "SRC-CVAT-IMAGE-RECT-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-TXT-AMBIGUITY-SET-001",
+      "label": "文本歧义允许答案集",
+      "description": "边界案例可声明多个允许答案及人工复核条件。",
+      "data_types": [
+        "text"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-TXT-CLASS-EXCLUSION-001",
+      "label": "文本类别互斥条件",
+      "description": "互斥类别不得在同一作用范围同时出现。",
+      "data_types": [
+        "text"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-TXT-ENTITY-BOUNDARY-001",
+      "label": "实体边界规则",
+      "description": "实体选区应包含必要成分并排除无关标点。",
+      "data_types": [
+        "text"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-TXT-ENTITY-TYPE-001",
+      "label": "实体类型定义",
+      "description": "实体类型由任务本体和上下文证据共同确定。",
+      "data_types": [
+        "text"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-TXT-EXPORT-SCHEMA-001",
+      "label": "文本标注导出模式",
+      "description": "导出需保留文本、标签、偏移和关系端点。",
+      "data_types": [
+        "text"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-TXT-INTENT-HIERARCHY-001",
+      "label": "意图层级体系",
+      "description": "细粒度意图应归属于稳定的上位意图。",
+      "data_types": [
+        "text"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-TXT-INTERANNOTATOR-001",
+      "label": "文本标注一致性",
+      "description": "一致性复核应定位标签、边界或关系分歧。",
+      "data_types": [
+        "text"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-TXT-LABEL-VOCAB-001",
+      "label": "封闭文本标签集",
+      "description": "提交值必须来自任务配置的文本标签集合。",
+      "data_types": [
+        "text"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-TXT-NESTED-ENTITY-001",
+      "label": "嵌套实体处理",
+      "description": "任务规则决定重叠或嵌套选区是否允许。",
+      "data_types": [
+        "text"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-TXT-RELATION-DIRECTION-001",
+      "label": "关系方向与端点",
+      "description": "有向关系必须区分源实体、目标实体和关系类型。",
+      "data_types": [
+        "text"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-TXT-SENTIMENT-POLARITY-001",
+      "label": "情感极性判定",
+      "description": "情感标签必须绑定目标并依据完整上下文。",
+      "data_types": [
+        "text"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-TXT-SINGLE-MULTI-LABEL-001",
+      "label": "单标签与多标签分类",
+      "description": "任务配置决定样本可选择一个或多个标签。",
+      "data_types": [
+        "text"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-TXT-SPAN-OFFSET-001",
+      "label": "字符偏移约定",
+      "description": "起止偏移与文本编码约定共同决定选区。",
+      "data_types": [
+        "text"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-VID-ACTION-TAXONOMY-001",
+      "label": "行为事件本体",
+      "description": "事件类别需声明参与者、动作和排除条件。",
+      "data_types": [
+        "video"
+      ],
+      "source_refs": [
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-VID-EVENT-START-END-001",
+      "label": "事件起止规则",
+      "description": "事件边界由首个和末个满足条件的可观察帧确定。",
+      "data_types": [
+        "video"
+      ],
+      "source_refs": [
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-VID-EXPORT-FORMAT-001",
+      "label": "视频标注导出格式",
+      "description": "导出保留帧号、轨迹 ID、几何和事件区间。",
+      "data_types": [
+        "video"
+      ],
+      "source_refs": [
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-VID-FRAME-ANNOTATION-001",
+      "label": "视频帧标注规则",
+      "description": "帧上几何标注遵守统一图像坐标与类别规则。",
+      "data_types": [
+        "video"
+      ],
+      "source_refs": [
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-VID-FRAME-RATE-001",
+      "label": "视频帧率与时间换算",
+      "description": "帧号和时间戳通过视频帧率一致换算。",
+      "data_types": [
+        "video"
+      ],
+      "source_refs": [
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-VID-INTERPOLATION-001",
+      "label": "轨迹插值条件",
+      "description": "仅在外观和运动连续时使用关键帧插值。",
+      "data_types": [
+        "video"
+      ],
+      "source_refs": [
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-VID-MULTI-ACTOR-001",
+      "label": "多参与者事件",
+      "description": "多人事件分别记录参与轨迹及其角色。",
+      "data_types": [
+        "video"
+      ],
+      "source_refs": [
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-VID-OCCLUSION-REID-001",
+      "label": "遮挡后目标重识别",
+      "description": "用位置、外观和运动证据判断轨迹是否延续。",
+      "data_types": [
+        "video"
+      ],
+      "source_refs": [
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-VID-QUALITY-METRICS-001",
+      "label": "视频标注质量指标",
+      "description": "轨迹完整性、ID 切换和事件边界共同参与复核。",
+      "data_types": [
+        "video"
+      ],
+      "source_refs": [
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-VID-SAMPLING-STRATEGY-001",
+      "label": "视频抽帧策略",
+      "description": "抽帧密度应覆盖运动变化和关键事件。",
+      "data_types": [
+        "video"
+      ],
+      "source_refs": [
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-VID-SHOT-BOUNDARY-001",
+      "label": "镜头边界处理",
+      "description": "镜头切换通常终止缺少跨镜头证据的轨迹。",
+      "data_types": [
+        "video"
+      ],
+      "source_refs": [
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-VID-TRACK-CONTINUITY-001",
+      "label": "轨迹连续性",
+      "description": "跨帧位置和类别变化应符合目标运动证据。",
+      "data_types": [
+        "video"
+      ],
+      "source_refs": [
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-VID-TRACK-ID-001",
+      "label": "跨帧轨迹 ID 一致性",
+      "description": "同一物理目标在连续观察中保持同一轨迹 ID。",
+      "data_types": [
+        "video"
+      ],
+      "source_refs": [
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "RES-AUD-ALIGNMENT-WORKSHEET-001",
+      "label": "音频对齐练习表",
+      "description": "练习切割、时间戳和文本对齐。",
+      "data_types": [
+        "audio"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-AUD-CONFIG-CHECKLIST-001",
+      "label": "音频配置检查表",
+      "description": "核对数据字段、标签名和音频引用。",
+      "data_types": [
+        "audio"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-AUD-DIALECT-LABEL-CARD-001",
+      "label": "语种方言标签卡",
+      "description": "对照语种、方言和混码标签。",
+      "data_types": [
+        "audio"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-AUD-EVENT-CATALOG-001",
+      "label": "副语言事件目录",
+      "description": "区分笑声、叹气、咳嗽和噪声。",
+      "data_types": [
+        "audio"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-AUD-SPEAKER-TIMELINE-001",
+      "label": "说话人时间线",
+      "description": "练习轮次边界与身份一致性。",
+      "data_types": [
+        "audio"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-AUD-TRANSCRIPT-STYLE-SHEET-001",
+      "label": "转写风格表",
+      "description": "汇总正字法、标点和不可听片段写法。",
+      "data_types": [
+        "audio"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-CORE-ADJUDICATION-RECORD-001",
+      "label": "歧义裁决记录",
+      "description": "保存候选答案、依据、裁决和遗留风险。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-CORE-ASSET-AUTH-CHECKLIST-001",
+      "label": "素材授权检查表",
+      "description": "记录素材来源、许可和学生使用范围。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-CORE-ERROR-REVIEW-FORM-001",
+      "label": "错误复核表",
+      "description": "按错误码记录证据、影响和修复结果。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-CORE-EXPORT-MANIFEST-TEMPLATE-001",
+      "label": "导出清单模板",
+      "description": "记录数据、规则、判定版本和文件校验和。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-CORE-LABEL-SCHEMA-CHECKLIST-001",
+      "label": "标签体系检查表",
+      "description": "检查标签定义、层级、互斥和属性。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-CORE-TASK-BRIEF-TEMPLATE-001",
+      "label": "任务说明拆解模板",
+      "description": "记录目标、对象、规则和交付物。",
+      "data_types": [
+        "audio",
+        "image",
+        "text",
+        "video"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-IMG-BOX-QUALITY-CHECKLIST-001",
+      "label": "目标框质量检查表",
+      "description": "检查类别、紧致度和越界问题。",
+      "data_types": [
+        "image"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-IMG-COORDINATE-WORKSHEET-001",
+      "label": "图像坐标练习表",
+      "description": "练习边界、面积和坐标换算。",
+      "data_types": [
+        "image"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-IMG-KEYPOINT-SKELETON-001",
+      "label": "关键点骨架图",
+      "description": "展示关键点顺序、连接和可见性。",
+      "data_types": [
+        "image"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-IMG-MASK-QA-CHECKLIST-001",
+      "label": "分割掩码检查表",
+      "description": "检查类别、实例、孔洞和边界。",
+      "data_types": [
+        "image"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-IMG-OCCLUSION-DECISION-TREE-001",
+      "label": "遮挡判断决策树",
+      "description": "区分遮挡、截断和不可标注目标。",
+      "data_types": [
+        "image"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-IMG-POLYGON-PRACTICE-001",
+      "label": "多边形轮廓练习",
+      "description": "练习顶点密度、闭合和自交检查。",
+      "data_types": [
+        "image"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-TXT-AMBIGUITY-PRACTICE-001",
+      "label": "文本歧义案例集",
+      "description": "练习允许答案集和人工复核条件。",
+      "data_types": [
+        "text"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-TXT-CLASSIFICATION-DECISION-TREE-001",
+      "label": "文本分类决策树",
+      "description": "按可观察条件逐步选择类别。",
+      "data_types": [
+        "text"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-TXT-LABEL-VOCAB-WORKSHEET-001",
+      "label": "文本标签词表练习",
+      "description": "练习封闭标签集与非法标签识别。",
+      "data_types": [
+        "text"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-TXT-NER-BOUNDARY-CHECKLIST-001",
+      "label": "实体边界检查表",
+      "description": "检查必要成分、标点和嵌套边界。",
+      "data_types": [
+        "text"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-TXT-OFFSET-INSPECTOR-001",
+      "label": "字符偏移核对表",
+      "description": "逐字符核对实体起止偏移。",
+      "data_types": [
+        "text"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-TXT-RELATION-MATRIX-001",
+      "label": "实体关系矩阵",
+      "description": "核对关系类型、方向及允许端点。",
+      "data_types": [
+        "text"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-VID-EVENT-TIMELINE-001",
+      "label": "行为事件时间线",
+      "description": "练习事件参与者和起止帧。",
+      "data_types": [
+        "video"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-VID-EXPORT-QA-CHECKLIST-001",
+      "label": "视频导出检查表",
+      "description": "核对帧号、轨迹、事件和格式。",
+      "data_types": [
+        "video"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-VID-FRAME-SAMPLING-WORKSHEET-001",
+      "label": "视频抽帧练习表",
+      "description": "比较帧率、运动和事件密度。",
+      "data_types": [
+        "video"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-VID-INTERPOLATION-CHECKLIST-001",
+      "label": "轨迹插值检查表",
+      "description": "检查关键帧、运动假设和中间帧。",
+      "data_types": [
+        "video"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-VID-OCCLUSION-REID-CARD-001",
+      "label": "遮挡重识别证据卡",
+      "description": "比较位置、外观和运动连续性。",
+      "data_types": [
+        "video"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-VID-TRACK-LEDGER-001",
+      "label": "轨迹 ID 台账",
+      "description": "逐帧记录目标观察与轨迹 ID。",
+      "data_types": [
+        "video"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "SCN-CONTENT-SAFETY-001",
+      "label": "内容安全审核",
+      "description": "文本、音频和视频内容安全教学规则覆盖层。",
+      "data_types": [
+        "audio",
+        "text",
+        "video"
+      ],
+      "supported_data_types": [
+        "text",
+        "audio",
+        "video"
+      ],
+      "type": "SCN",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "SCN-CUSTOMER-SERVICE-001",
+      "label": "智能客服标注",
+      "description": "客服文本意图与通话语音教学规则覆盖层。",
+      "data_types": [
+        "audio",
+        "text"
+      ],
+      "supported_data_types": [
+        "text",
+        "audio"
+      ],
+      "type": "SCN",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "SCN-IN-VEHICLE-001",
+      "label": "车载语音标注",
+      "description": "车载唤醒、命令和噪声环境教学规则覆盖层。",
+      "data_types": [
+        "audio"
+      ],
+      "supported_data_types": [
+        "audio"
+      ],
+      "type": "SCN",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "SCN-MEDICAL-001",
+      "label": "医疗数据标注",
+      "description": "医疗文本、影像和语音教学规则覆盖层。",
+      "data_types": [
+        "audio",
+        "image",
+        "text"
+      ],
+      "supported_data_types": [
+        "text",
+        "image",
+        "audio"
+      ],
+      "type": "SCN",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "TSK-AUD-COMMAND-SEGMENT-001",
+      "label": "切割唤醒与命令片段",
+      "description": "标记唤醒词、命令词及标准化命令意图。",
+      "data_types": [
+        "audio"
+      ],
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": []
+    },
+    {
+      "id": "TSK-AUD-CONFIG-AUDIT-001",
+      "label": "审计音频任务配置",
+      "description": "检查音频标签的数据字段引用是否有效。",
+      "data_types": [
+        "audio"
+      ],
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": [
+        {
+          "unit_id": "TU-AUDIO-DATA-BINDING-001",
+          "review_status": "draft",
+          "student_visible": false,
+          "consumable": false
+        }
+      ]
+    },
+    {
+      "id": "TSK-AUD-EMOTION-EVENT-001",
+      "label": "标注语音情感事件",
+      "description": "区分情感标签与副语言事件区间。",
+      "data_types": [
+        "audio"
+      ],
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": []
+    },
+    {
+      "id": "TSK-AUD-SPEAKER-DIARIZE-001",
+      "label": "划分说话人轮次",
+      "description": "标记轮次边界并保持说话人身份一致。",
+      "data_types": [
+        "audio"
+      ],
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": []
+    },
+    {
+      "id": "TSK-AUD-TRANSCRIPT-ALIGN-001",
+      "label": "转写并对齐语音",
+      "description": "提交规范转写、标点和对应时间区间。",
+      "data_types": [
+        "audio"
+      ],
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": []
+    },
+    {
+      "id": "TSK-IMG-KEYPOINT-MARK-001",
+      "label": "标记目标关键点",
+      "description": "按骨架顺序提交关键点及可见性。",
+      "data_types": [
+        "image"
+      ],
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": []
+    },
+    {
+      "id": "TSK-IMG-MASK-REVIEW-001",
+      "label": "复核分割掩码",
+      "description": "检查类别、实例 ID、孔洞和边界贴合。",
+      "data_types": [
+        "image"
+      ],
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": []
+    },
+    {
+      "id": "TSK-IMG-OBJECT-BOX-001",
+      "label": "标注图像目标框",
+      "description": "选择目标类别并绘制符合紧致度的框。",
+      "data_types": [
+        "image"
+      ],
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": []
+    },
+    {
+      "id": "TSK-IMG-POLYGON-TRACE-001",
+      "label": "描绘实例多边形",
+      "description": "沿实例可见边界创建不自交轮廓。",
+      "data_types": [
+        "image"
+      ],
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": []
+    },
+    {
+      "id": "TSK-IMG-RECT-AUDIT-001",
+      "label": "审计矩形框坐标",
+      "description": "检查框是否越界、退化或坐标顺序错误。",
+      "data_types": [
+        "image"
+      ],
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": [
+        {
+          "unit_id": "TU-IMAGE-RECT-BOUNDS-001",
+          "review_status": "draft",
+          "student_visible": false,
+          "consumable": false
+        }
+      ]
+    },
+    {
+      "id": "TSK-TXT-DOCUMENT-CLASSIFY-001",
+      "label": "完成文档分类任务",
+      "description": "依据类别定义为文档提交确定性分类结果。",
+      "data_types": [
+        "text"
+      ],
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": []
+    },
+    {
+      "id": "TSK-TXT-INTENT-REVIEW-001",
+      "label": "复核意图歧义案例",
+      "description": "比较允许答案集并记录需要裁决的分歧。",
+      "data_types": [
+        "text"
+      ],
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": []
+    },
+    {
+      "id": "TSK-TXT-LABEL-AUDIT-001",
+      "label": "审计文本标签提交",
+      "description": "检查标签是否属于配置集合并输出错误码。",
+      "data_types": [
+        "text"
+      ],
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": [
+        {
+          "unit_id": "TU-TEXT-LABEL-VOCAB-001",
+          "review_status": "draft",
+          "student_visible": false,
+          "consumable": false
+        }
+      ]
+    },
+    {
+      "id": "TSK-TXT-NER-ANNOTATE-001",
+      "label": "完成实体边界标注",
+      "description": "标记实体偏移、类型并处理嵌套边界。",
+      "data_types": [
+        "text"
+      ],
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": []
+    },
+    {
+      "id": "TSK-TXT-RELATION-LINK-001",
+      "label": "完成实体关系连边",
+      "description": "为实体对选择关系并核对方向和端点。",
+      "data_types": [
+        "text"
+      ],
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": []
+    },
+    {
+      "id": "TSK-VID-ACTION-EVENT-001",
+      "label": "标注视频行为事件",
+      "description": "选择事件类别、参与轨迹及起止帧。",
+      "data_types": [
+        "video"
+      ],
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": []
+    },
+    {
+      "id": "TSK-VID-FRAME-LABEL-001",
+      "label": "标注抽样视频帧",
+      "description": "按抽帧策略为关键帧添加类别和几何标注。",
+      "data_types": [
+        "video"
+      ],
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": []
+    },
+    {
+      "id": "TSK-VID-OBJECT-TRACK-001",
+      "label": "建立跨帧目标轨迹",
+      "description": "连接目标观察并处理插值与遮挡。",
+      "data_types": [
+        "video"
+      ],
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": []
+    },
+    {
+      "id": "TSK-VID-TRACK-ID-AUDIT-001",
+      "label": "审计视频轨迹 ID",
+      "description": "识别同一物理目标的意外轨迹 ID 切换。",
+      "data_types": [
+        "video"
+      ],
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": [
+        {
+          "unit_id": "TU-VIDEO-TRACK-ID-001",
+          "review_status": "draft",
+          "student_visible": false,
+          "consumable": false
+        }
+      ]
+    },
+    {
+      "id": "TSK-VID-TRACK-QA-001",
+      "label": "复核轨迹与事件导出",
+      "description": "检查轨迹连续性、ID 切换和事件边界。",
+      "data_types": [
+        "video"
+      ],
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": []
+    }
+  ],
+  "edges": [
+    {
+      "id": "EDGE-0001",
+      "source": "CAP-AUD-CONFIG-VALIDATE-001",
+      "target": "CAP-AUD-SPEAKER-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0002",
+      "source": "CAP-AUD-CONFIG-VALIDATE-001",
+      "target": "CAP-AUD-TRANSCRIBE-PUNCT-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0003",
+      "source": "CAP-AUD-SEGMENT-ALIGN-001",
+      "target": "CAP-AUD-EXPORT-QA-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0004",
+      "source": "CAP-AUD-SPEAKER-001",
+      "target": "CAP-AUD-NOISE-OVERLAP-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0005",
+      "source": "CAP-AUD-TRANSCRIBE-PUNCT-001",
+      "target": "CAP-AUD-EMOTION-PARALING-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0006",
+      "source": "CAP-AUD-TRANSCRIBE-PUNCT-001",
+      "target": "CAP-AUD-LANGUAGE-DIALECT-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0007",
+      "source": "CAP-AUD-TRANSCRIBE-PUNCT-001",
+      "target": "CAP-AUD-SEGMENT-ALIGN-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0008",
+      "source": "CAP-AUD-TRANSCRIBE-PUNCT-001",
+      "target": "CAP-AUD-WAKE-COMMAND-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0009",
+      "source": "CAP-CORE-ASSET-QUALITY-001",
+      "target": "CAP-AUD-CONFIG-VALIDATE-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0010",
+      "source": "CAP-CORE-ASSET-QUALITY-001",
+      "target": "CAP-CORE-EXPORT-QA-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0011",
+      "source": "CAP-CORE-ASSET-QUALITY-001",
+      "target": "CAP-IMG-RECT-VALIDATE-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0012",
+      "source": "CAP-CORE-ASSET-QUALITY-001",
+      "target": "CAP-VID-TRACK-VALIDATE-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0013",
+      "source": "CAP-CORE-LABEL-SCHEMA-001",
+      "target": "CAP-CORE-EXPORT-QA-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0014",
+      "source": "CAP-CORE-LABEL-SCHEMA-001",
+      "target": "CAP-TXT-LABEL-VALIDATE-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0015",
+      "source": "CAP-CORE-TASK-SCOPE-001",
+      "target": "CAP-CORE-ASSET-QUALITY-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0016",
+      "source": "CAP-CORE-TASK-SCOPE-001",
+      "target": "CAP-CORE-LABEL-SCHEMA-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0017",
+      "source": "CAP-IMG-BOX-ANNOTATE-001",
+      "target": "CAP-IMG-OCCLUSION-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0018",
+      "source": "CAP-IMG-BOX-ANNOTATE-001",
+      "target": "CAP-IMG-POLYGON-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0019",
+      "source": "CAP-IMG-INSTANCE-SEGMENT-001",
+      "target": "CAP-IMG-EXPORT-QA-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0020",
+      "source": "CAP-IMG-OBJECT-CLASS-001",
+      "target": "CAP-IMG-KEYPOINT-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0021",
+      "source": "CAP-IMG-POLYGON-001",
+      "target": "CAP-IMG-SEMANTIC-SEGMENT-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0022",
+      "source": "CAP-IMG-RECT-VALIDATE-001",
+      "target": "CAP-IMG-BOX-ANNOTATE-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0023",
+      "source": "CAP-IMG-RECT-VALIDATE-001",
+      "target": "CAP-IMG-OBJECT-CLASS-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0024",
+      "source": "CAP-IMG-SEMANTIC-SEGMENT-001",
+      "target": "CAP-IMG-INSTANCE-SEGMENT-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0025",
+      "source": "CAP-TXT-AMBIGUITY-001",
+      "target": "CAP-TXT-EXPORT-QA-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0026",
+      "source": "CAP-TXT-CLASSIFY-001",
+      "target": "CAP-TXT-INTENT-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0027",
+      "source": "CAP-TXT-CLASSIFY-001",
+      "target": "CAP-TXT-SENTIMENT-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0028",
+      "source": "CAP-TXT-ENTITY-BOUNDARY-001",
+      "target": "CAP-TXT-ENTITY-TYPE-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0029",
+      "source": "CAP-TXT-ENTITY-TYPE-001",
+      "target": "CAP-TXT-RELATION-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0030",
+      "source": "CAP-TXT-LABEL-VALIDATE-001",
+      "target": "CAP-TXT-CLASSIFY-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0031",
+      "source": "CAP-TXT-LABEL-VALIDATE-001",
+      "target": "CAP-TXT-ENTITY-BOUNDARY-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0032",
+      "source": "CAP-TXT-RELATION-001",
+      "target": "CAP-TXT-AMBIGUITY-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0033",
+      "source": "CAP-VID-ACTION-EVENT-001",
+      "target": "CAP-VID-EVENT-BOUNDARY-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0034",
+      "source": "CAP-VID-FRAME-ANNOTATE-001",
+      "target": "CAP-VID-ACTION-EVENT-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0035",
+      "source": "CAP-VID-FRAME-ANNOTATE-001",
+      "target": "CAP-VID-OBJECT-TRACK-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0036",
+      "source": "CAP-VID-FRAME-SAMPLE-001",
+      "target": "CAP-VID-FRAME-ANNOTATE-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0037",
+      "source": "CAP-VID-OBJECT-TRACK-001",
+      "target": "CAP-VID-OCCLUSION-REID-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0038",
+      "source": "CAP-VID-OBJECT-TRACK-001",
+      "target": "CAP-VID-TRACK-INTERPOLATE-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0039",
+      "source": "CAP-VID-TRACK-INTERPOLATE-001",
+      "target": "CAP-VID-EXPORT-QA-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0040",
+      "source": "CAP-VID-TRACK-VALIDATE-001",
+      "target": "CAP-VID-FRAME-SAMPLE-001",
+      "relation": "PRE",
+      "label": "前置于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0041",
+      "source": "KNG-AUD-COMMAND-INTENT-001",
+      "target": "CAP-AUD-WAKE-COMMAND-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0042",
+      "source": "KNG-AUD-DATA-BINDING-001",
+      "target": "CAP-AUD-CONFIG-VALIDATE-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0043",
+      "source": "KNG-AUD-EMOTION-LABEL-001",
+      "target": "CAP-AUD-EMOTION-PARALING-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0044",
+      "source": "KNG-AUD-LANGUAGE-DIALECT-001",
+      "target": "CAP-AUD-LANGUAGE-DIALECT-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0045",
+      "source": "KNG-AUD-PARALINGUISTIC-EVENT-001",
+      "target": "CAP-AUD-EMOTION-PARALING-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0046",
+      "source": "KNG-AUD-PUNCTUATION-001",
+      "target": "CAP-AUD-TRANSCRIBE-PUNCT-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0047",
+      "source": "KNG-AUD-SAMPLE-RATE-CHANNEL-001",
+      "target": "CAP-AUD-CONFIG-VALIDATE-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0048",
+      "source": "KNG-AUD-SPEAKER-TURN-001",
+      "target": "CAP-AUD-SPEAKER-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0049",
+      "source": "KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001",
+      "target": "CAP-AUD-TRANSCRIBE-PUNCT-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0050",
+      "source": "KNG-AUD-WAKEWORD-BOUNDARY-001",
+      "target": "CAP-AUD-WAKE-COMMAND-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0051",
+      "source": "KNG-IMG-BOX-TIGHTNESS-001",
+      "target": "CAP-IMG-BOX-ANNOTATE-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0052",
+      "source": "KNG-IMG-CLASS-DEFINITION-001",
+      "target": "CAP-IMG-OBJECT-CLASS-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0053",
+      "source": "KNG-IMG-COORDINATE-SYSTEM-001",
+      "target": "CAP-IMG-RECT-VALIDATE-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0054",
+      "source": "KNG-IMG-INSTANCE-ID-001",
+      "target": "CAP-IMG-INSTANCE-SEGMENT-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0055",
+      "source": "KNG-IMG-KEYPOINT-VISIBILITY-001",
+      "target": "CAP-IMG-KEYPOINT-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0056",
+      "source": "KNG-IMG-OCCLUSION-TRUNCATION-001",
+      "target": "CAP-IMG-OCCLUSION-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0057",
+      "source": "KNG-IMG-POLYGON-VERTEX-001",
+      "target": "CAP-IMG-POLYGON-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0058",
+      "source": "KNG-IMG-RECT-BOUNDS-001",
+      "target": "CAP-IMG-RECT-VALIDATE-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0059",
+      "source": "KNG-IMG-SEMANTIC-MASK-001",
+      "target": "CAP-IMG-SEMANTIC-SEGMENT-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0060",
+      "source": "KNG-IMG-SMALL-OBJECT-001",
+      "target": "CAP-IMG-BOX-ANNOTATE-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0061",
+      "source": "KNG-TXT-CLASS-EXCLUSION-001",
+      "target": "CAP-TXT-CLASSIFY-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0062",
+      "source": "KNG-TXT-ENTITY-BOUNDARY-001",
+      "target": "CAP-TXT-ENTITY-BOUNDARY-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0063",
+      "source": "KNG-TXT-ENTITY-TYPE-001",
+      "target": "CAP-TXT-ENTITY-TYPE-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0064",
+      "source": "KNG-TXT-INTENT-HIERARCHY-001",
+      "target": "CAP-TXT-INTENT-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0065",
+      "source": "KNG-TXT-LABEL-VOCAB-001",
+      "target": "CAP-TXT-LABEL-VALIDATE-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0066",
+      "source": "KNG-TXT-NESTED-ENTITY-001",
+      "target": "CAP-TXT-AMBIGUITY-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0067",
+      "source": "KNG-TXT-RELATION-DIRECTION-001",
+      "target": "CAP-TXT-RELATION-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0068",
+      "source": "KNG-TXT-SENTIMENT-POLARITY-001",
+      "target": "CAP-TXT-SENTIMENT-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0069",
+      "source": "KNG-TXT-SINGLE-MULTI-LABEL-001",
+      "target": "CAP-TXT-CLASSIFY-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0070",
+      "source": "KNG-TXT-SPAN-OFFSET-001",
+      "target": "CAP-TXT-ENTITY-BOUNDARY-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0071",
+      "source": "KNG-VID-ACTION-TAXONOMY-001",
+      "target": "CAP-VID-ACTION-EVENT-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0072",
+      "source": "KNG-VID-EVENT-START-END-001",
+      "target": "CAP-VID-EVENT-BOUNDARY-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0073",
+      "source": "KNG-VID-FRAME-ANNOTATION-001",
+      "target": "CAP-VID-FRAME-ANNOTATE-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0074",
+      "source": "KNG-VID-FRAME-RATE-001",
+      "target": "CAP-VID-FRAME-SAMPLE-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0075",
+      "source": "KNG-VID-INTERPOLATION-001",
+      "target": "CAP-VID-TRACK-INTERPOLATE-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0076",
+      "source": "KNG-VID-MULTI-ACTOR-001",
+      "target": "CAP-VID-ACTION-EVENT-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0077",
+      "source": "KNG-VID-OCCLUSION-REID-001",
+      "target": "CAP-VID-OCCLUSION-REID-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0078",
+      "source": "KNG-VID-SAMPLING-STRATEGY-001",
+      "target": "CAP-VID-FRAME-SAMPLE-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0079",
+      "source": "KNG-VID-TRACK-CONTINUITY-001",
+      "target": "CAP-VID-OBJECT-TRACK-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0080",
+      "source": "KNG-VID-TRACK-ID-001",
+      "target": "CAP-VID-TRACK-VALIDATE-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0081",
+      "source": "CAP-AUD-CONFIG-VALIDATE-001",
+      "target": "TSK-AUD-CONFIG-AUDIT-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0082",
+      "source": "CAP-AUD-EMOTION-PARALING-001",
+      "target": "TSK-AUD-EMOTION-EVENT-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0083",
+      "source": "CAP-AUD-SPEAKER-001",
+      "target": "TSK-AUD-SPEAKER-DIARIZE-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0084",
+      "source": "CAP-AUD-TRANSCRIBE-PUNCT-001",
+      "target": "TSK-AUD-TRANSCRIPT-ALIGN-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0085",
+      "source": "CAP-AUD-WAKE-COMMAND-001",
+      "target": "TSK-AUD-COMMAND-SEGMENT-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0086",
+      "source": "CAP-IMG-BOX-ANNOTATE-001",
+      "target": "TSK-IMG-OBJECT-BOX-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0087",
+      "source": "CAP-IMG-INSTANCE-SEGMENT-001",
+      "target": "TSK-IMG-MASK-REVIEW-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0088",
+      "source": "CAP-IMG-KEYPOINT-001",
+      "target": "TSK-IMG-KEYPOINT-MARK-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0089",
+      "source": "CAP-IMG-POLYGON-001",
+      "target": "TSK-IMG-POLYGON-TRACE-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0090",
+      "source": "CAP-IMG-RECT-VALIDATE-001",
+      "target": "TSK-IMG-RECT-AUDIT-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0091",
+      "source": "CAP-TXT-CLASSIFY-001",
+      "target": "TSK-TXT-DOCUMENT-CLASSIFY-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0092",
+      "source": "CAP-TXT-ENTITY-BOUNDARY-001",
+      "target": "TSK-TXT-NER-ANNOTATE-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0093",
+      "source": "CAP-TXT-INTENT-001",
+      "target": "TSK-TXT-INTENT-REVIEW-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0094",
+      "source": "CAP-TXT-LABEL-VALIDATE-001",
+      "target": "TSK-TXT-LABEL-AUDIT-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0095",
+      "source": "CAP-TXT-RELATION-001",
+      "target": "TSK-TXT-RELATION-LINK-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0096",
+      "source": "CAP-VID-ACTION-EVENT-001",
+      "target": "TSK-VID-ACTION-EVENT-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0097",
+      "source": "CAP-VID-EXPORT-QA-001",
+      "target": "TSK-VID-TRACK-QA-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0098",
+      "source": "CAP-VID-FRAME-ANNOTATE-001",
+      "target": "TSK-VID-FRAME-LABEL-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0099",
+      "source": "CAP-VID-OBJECT-TRACK-001",
+      "target": "TSK-VID-OBJECT-TRACK-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0100",
+      "source": "CAP-VID-TRACK-VALIDATE-001",
+      "target": "TSK-VID-TRACK-ID-AUDIT-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0101",
+      "source": "KNG-AUD-EXPORT-FORMAT-001",
+      "target": "TSK-AUD-COMMAND-SEGMENT-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0102",
+      "source": "KNG-AUD-NOISE-OVERLAP-001",
+      "target": "TSK-AUD-SPEAKER-DIARIZE-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0103",
+      "source": "KNG-AUD-SEGMENT-TIMESTAMP-001",
+      "target": "TSK-AUD-TRANSCRIPT-ALIGN-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0104",
+      "source": "KNG-CORE-ASSET-AUTH-001",
+      "target": "CAP-CORE-ASSET-QUALITY-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0105",
+      "source": "KNG-CORE-ASSET-AUTH-001",
+      "target": "TSK-IMG-KEYPOINT-MARK-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0106",
+      "source": "KNG-CORE-DATA-SCHEMA-001",
+      "target": "CAP-CORE-LABEL-SCHEMA-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0107",
+      "source": "KNG-CORE-DATA-SCHEMA-001",
+      "target": "TSK-AUD-CONFIG-AUDIT-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0108",
+      "source": "KNG-CORE-ERROR-TAXONOMY-001",
+      "target": "CAP-CORE-EXPORT-QA-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0109",
+      "source": "KNG-CORE-ERROR-TAXONOMY-001",
+      "target": "TSK-AUD-EMOTION-EVENT-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0110",
+      "source": "KNG-CORE-EXPORT-VERSIONING-001",
+      "target": "CAP-CORE-EXPORT-QA-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0111",
+      "source": "KNG-CORE-EXPORT-VERSIONING-001",
+      "target": "TSK-VID-TRACK-QA-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0112",
+      "source": "KNG-CORE-LABEL-ONTOLOGY-001",
+      "target": "TSK-IMG-POLYGON-TRACE-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0113",
+      "source": "KNG-CORE-QUALITY-DIMENSIONS-001",
+      "target": "CAP-CORE-EXPORT-QA-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0114",
+      "source": "KNG-CORE-QUALITY-DIMENSIONS-001",
+      "target": "TSK-VID-OBJECT-TRACK-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0115",
+      "source": "KNG-CORE-REVIEW-ADJUDICATION-001",
+      "target": "TSK-TXT-INTENT-REVIEW-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0116",
+      "source": "KNG-CORE-TASK-OBJECTIVE-001",
+      "target": "CAP-CORE-TASK-SCOPE-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0117",
+      "source": "KNG-CORE-TASK-OBJECTIVE-001",
+      "target": "TSK-TXT-DOCUMENT-CLASSIFY-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0118",
+      "source": "KNG-IMG-EXPORT-FORMAT-001",
+      "target": "TSK-IMG-MASK-REVIEW-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0119",
+      "source": "KNG-IMG-OVERLAP-ORDER-001",
+      "target": "TSK-IMG-OBJECT-BOX-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0120",
+      "source": "KNG-IMG-QUALITY-METRICS-001",
+      "target": "TSK-IMG-RECT-AUDIT-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0121",
+      "source": "KNG-TXT-AMBIGUITY-SET-001",
+      "target": "TSK-TXT-NER-ANNOTATE-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0122",
+      "source": "KNG-TXT-EXPORT-SCHEMA-001",
+      "target": "TSK-TXT-RELATION-LINK-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0123",
+      "source": "KNG-TXT-INTERANNOTATOR-001",
+      "target": "TSK-TXT-LABEL-AUDIT-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0124",
+      "source": "KNG-VID-EXPORT-FORMAT-001",
+      "target": "TSK-VID-ACTION-EVENT-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0125",
+      "source": "KNG-VID-QUALITY-METRICS-001",
+      "target": "TSK-VID-TRACK-ID-AUDIT-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0126",
+      "source": "KNG-VID-SHOT-BOUNDARY-001",
+      "target": "TSK-VID-FRAME-LABEL-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0127",
+      "source": "RES-AUD-ALIGNMENT-WORKSHEET-001",
+      "target": "CAP-AUD-SEGMENT-ALIGN-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0128",
+      "source": "RES-AUD-CONFIG-CHECKLIST-001",
+      "target": "CAP-AUD-CONFIG-VALIDATE-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0129",
+      "source": "RES-AUD-DIALECT-LABEL-CARD-001",
+      "target": "CAP-AUD-LANGUAGE-DIALECT-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0130",
+      "source": "RES-AUD-EVENT-CATALOG-001",
+      "target": "CAP-AUD-EMOTION-PARALING-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0131",
+      "source": "RES-AUD-SPEAKER-TIMELINE-001",
+      "target": "CAP-AUD-SPEAKER-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0132",
+      "source": "RES-AUD-TRANSCRIPT-STYLE-SHEET-001",
+      "target": "CAP-AUD-TRANSCRIBE-PUNCT-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0133",
+      "source": "RES-CORE-ADJUDICATION-RECORD-001",
+      "target": "CAP-CORE-LABEL-SCHEMA-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0134",
+      "source": "RES-CORE-ASSET-AUTH-CHECKLIST-001",
+      "target": "CAP-CORE-ASSET-QUALITY-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0135",
+      "source": "RES-CORE-ERROR-REVIEW-FORM-001",
+      "target": "CAP-CORE-EXPORT-QA-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0136",
+      "source": "RES-CORE-EXPORT-MANIFEST-TEMPLATE-001",
+      "target": "CAP-CORE-EXPORT-QA-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0137",
+      "source": "RES-CORE-LABEL-SCHEMA-CHECKLIST-001",
+      "target": "CAP-CORE-LABEL-SCHEMA-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0138",
+      "source": "RES-CORE-TASK-BRIEF-TEMPLATE-001",
+      "target": "CAP-CORE-TASK-SCOPE-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0139",
+      "source": "RES-IMG-BOX-QUALITY-CHECKLIST-001",
+      "target": "CAP-IMG-BOX-ANNOTATE-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0140",
+      "source": "RES-IMG-COORDINATE-WORKSHEET-001",
+      "target": "CAP-IMG-RECT-VALIDATE-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0141",
+      "source": "RES-IMG-KEYPOINT-SKELETON-001",
+      "target": "CAP-IMG-KEYPOINT-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0142",
+      "source": "RES-IMG-MASK-QA-CHECKLIST-001",
+      "target": "CAP-IMG-INSTANCE-SEGMENT-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0143",
+      "source": "RES-IMG-OCCLUSION-DECISION-TREE-001",
+      "target": "CAP-IMG-OCCLUSION-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0144",
+      "source": "RES-IMG-POLYGON-PRACTICE-001",
+      "target": "CAP-IMG-POLYGON-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0145",
+      "source": "RES-TXT-AMBIGUITY-PRACTICE-001",
+      "target": "CAP-TXT-AMBIGUITY-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0146",
+      "source": "RES-TXT-CLASSIFICATION-DECISION-TREE-001",
+      "target": "CAP-TXT-CLASSIFY-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0147",
+      "source": "RES-TXT-LABEL-VOCAB-WORKSHEET-001",
+      "target": "CAP-TXT-LABEL-VALIDATE-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0148",
+      "source": "RES-TXT-NER-BOUNDARY-CHECKLIST-001",
+      "target": "CAP-TXT-ENTITY-TYPE-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0149",
+      "source": "RES-TXT-OFFSET-INSPECTOR-001",
+      "target": "CAP-TXT-ENTITY-BOUNDARY-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0150",
+      "source": "RES-TXT-RELATION-MATRIX-001",
+      "target": "CAP-TXT-RELATION-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0151",
+      "source": "RES-VID-EVENT-TIMELINE-001",
+      "target": "CAP-VID-EVENT-BOUNDARY-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0152",
+      "source": "RES-VID-EXPORT-QA-CHECKLIST-001",
+      "target": "CAP-VID-EXPORT-QA-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0153",
+      "source": "RES-VID-FRAME-SAMPLING-WORKSHEET-001",
+      "target": "CAP-VID-FRAME-SAMPLE-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0154",
+      "source": "RES-VID-INTERPOLATION-CHECKLIST-001",
+      "target": "CAP-VID-TRACK-INTERPOLATE-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0155",
+      "source": "RES-VID-OCCLUSION-REID-CARD-001",
+      "target": "CAP-VID-OCCLUSION-REID-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0156",
+      "source": "RES-VID-TRACK-LEDGER-001",
+      "target": "CAP-VID-OBJECT-TRACK-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0157",
+      "source": "CAP-AUD-EMOTION-PARALING-001",
+      "target": "CAP-VID-ACTION-EVENT-001",
+      "relation": "REL",
+      "label": "关联",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0158",
+      "source": "CAP-IMG-BOX-ANNOTATE-001",
+      "target": "CAP-VID-FRAME-ANNOTATE-001",
+      "relation": "REL",
+      "label": "关联",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0159",
+      "source": "CAP-IMG-OCCLUSION-001",
+      "target": "CAP-VID-OCCLUSION-REID-001",
+      "relation": "REL",
+      "label": "关联",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0160",
+      "source": "CAP-TXT-ENTITY-BOUNDARY-001",
+      "target": "CAP-AUD-SEGMENT-ALIGN-001",
+      "relation": "REL",
+      "label": "关联",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0161",
+      "source": "CAP-TXT-INTENT-001",
+      "target": "CAP-AUD-WAKE-COMMAND-001",
+      "relation": "REL",
+      "label": "关联",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0162",
+      "source": "KNG-CORE-ERROR-TAXONOMY-001",
+      "target": "KNG-AUD-NOISE-OVERLAP-001",
+      "relation": "REL",
+      "label": "关联",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0163",
+      "source": "KNG-CORE-ERROR-TAXONOMY-001",
+      "target": "KNG-IMG-QUALITY-METRICS-001",
+      "relation": "REL",
+      "label": "关联",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0164",
+      "source": "KNG-CORE-ERROR-TAXONOMY-001",
+      "target": "KNG-TXT-INTERANNOTATOR-001",
+      "relation": "REL",
+      "label": "关联",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0165",
+      "source": "KNG-CORE-ERROR-TAXONOMY-001",
+      "target": "KNG-VID-QUALITY-METRICS-001",
+      "relation": "REL",
+      "label": "关联",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0166",
+      "source": "KNG-CORE-EXPORT-VERSIONING-001",
+      "target": "KNG-AUD-EXPORT-FORMAT-001",
+      "relation": "REL",
+      "label": "关联",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0167",
+      "source": "KNG-CORE-EXPORT-VERSIONING-001",
+      "target": "KNG-IMG-EXPORT-FORMAT-001",
+      "relation": "REL",
+      "label": "关联",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0168",
+      "source": "KNG-CORE-EXPORT-VERSIONING-001",
+      "target": "KNG-TXT-EXPORT-SCHEMA-001",
+      "relation": "REL",
+      "label": "关联",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0169",
+      "source": "KNG-CORE-EXPORT-VERSIONING-001",
+      "target": "KNG-VID-EXPORT-FORMAT-001",
+      "relation": "REL",
+      "label": "关联",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0170",
+      "source": "KNG-CORE-REVIEW-ADJUDICATION-001",
+      "target": "KNG-AUD-EMOTION-LABEL-001",
+      "relation": "REL",
+      "label": "关联",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0171",
+      "source": "KNG-CORE-REVIEW-ADJUDICATION-001",
+      "target": "KNG-IMG-OVERLAP-ORDER-001",
+      "relation": "REL",
+      "label": "关联",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0172",
+      "source": "KNG-CORE-REVIEW-ADJUDICATION-001",
+      "target": "KNG-TXT-AMBIGUITY-SET-001",
+      "relation": "REL",
+      "label": "关联",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0173",
+      "source": "KNG-CORE-REVIEW-ADJUDICATION-001",
+      "target": "KNG-VID-OCCLUSION-REID-001",
+      "relation": "REL",
+      "label": "关联",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0174",
+      "source": "RES-CORE-ADJUDICATION-RECORD-001",
+      "target": "TSK-IMG-MASK-REVIEW-001",
+      "relation": "REL",
+      "label": "关联",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0175",
+      "source": "RES-CORE-ADJUDICATION-RECORD-001",
+      "target": "TSK-TXT-INTENT-REVIEW-001",
+      "relation": "REL",
+      "label": "关联",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0176",
+      "source": "RES-CORE-ADJUDICATION-RECORD-001",
+      "target": "TSK-VID-TRACK-QA-001",
+      "relation": "REL",
+      "label": "关联",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0177",
+      "source": "CAP-AUD-EMOTION-PARALING-001",
+      "target": "SCN-CONTENT-SAFETY-001",
+      "metadata": {
+        "rule_id": "SCNR-CSAFE-AUD-EVENT-001",
+        "base_rule_ref": "KNG-AUD-PARALINGUISTIC-EVENT-001",
+        "override_type": "add",
+        "data_types": [
+          "audio"
+        ],
+        "description": "增加需复核的音频非言语事件类别。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0178",
+      "source": "CAP-AUD-SPEAKER-001",
+      "target": "SCN-CUSTOMER-SERVICE-001",
+      "metadata": {
+        "rule_id": "SCNR-CS-AUD-SPEAKER-001",
+        "base_rule_ref": "KNG-AUD-SPEAKER-TURN-001",
+        "override_type": "add",
+        "data_types": [
+          "audio"
+        ],
+        "description": "增加坐席与客户说话人角色约束。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0179",
+      "source": "CAP-AUD-TRANSCRIBE-PUNCT-001",
+      "target": "SCN-MEDICAL-001",
+      "metadata": {
+        "rule_id": "SCNR-MED-AUD-TRANSCRIPT-001",
+        "base_rule_ref": "KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001",
+        "override_type": "add",
+        "data_types": [
+          "audio"
+        ],
+        "description": "补充医学术语转写与标准化案例。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0180",
+      "source": "CAP-AUD-WAKE-COMMAND-001",
+      "target": "SCN-IN-VEHICLE-001",
+      "metadata": {
+        "rule_id": "SCNR-IV-AUD-COMMAND-001",
+        "base_rule_ref": "KNG-AUD-COMMAND-INTENT-001",
+        "override_type": "add",
+        "data_types": [
+          "audio"
+        ],
+        "description": "增加车控、导航和媒体命令意图。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0181",
+      "source": "CAP-IMG-SEMANTIC-SEGMENT-001",
+      "target": "SCN-MEDICAL-001",
+      "metadata": {
+        "rule_id": "SCNR-MED-IMG-MASK-001",
+        "base_rule_ref": "KNG-IMG-SEMANTIC-MASK-001",
+        "override_type": "add",
+        "data_types": [
+          "image"
+        ],
+        "description": "补充医学影像区域掩码案例。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0182",
+      "source": "CAP-TXT-CLASSIFY-001",
+      "target": "SCN-CONTENT-SAFETY-001",
+      "metadata": {
+        "rule_id": "SCNR-CSAFE-TXT-CLASS-001",
+        "base_rule_ref": "KNG-TXT-CLASS-EXCLUSION-001",
+        "override_type": "replace",
+        "data_types": [
+          "text"
+        ],
+        "description": "使用内容安全类别和互斥规则覆盖通用分类。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0183",
+      "source": "CAP-TXT-ENTITY-TYPE-001",
+      "target": "SCN-MEDICAL-001",
+      "metadata": {
+        "rule_id": "SCNR-MED-TXT-ENTITY-001",
+        "base_rule_ref": "KNG-TXT-ENTITY-TYPE-001",
+        "override_type": "add",
+        "data_types": [
+          "text"
+        ],
+        "description": "补充医学实体类型和术语边界案例。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0184",
+      "source": "CAP-TXT-INTENT-001",
+      "target": "SCN-CUSTOMER-SERVICE-001",
+      "metadata": {
+        "rule_id": "SCNR-CS-TXT-INTENT-001",
+        "base_rule_ref": "KNG-TXT-INTENT-HIERARCHY-001",
+        "override_type": "add",
+        "data_types": [
+          "text"
+        ],
+        "description": "增加客服咨询、办理和投诉意图层级。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0185",
+      "source": "CAP-VID-ACTION-EVENT-001",
+      "target": "SCN-CONTENT-SAFETY-001",
+      "metadata": {
+        "rule_id": "SCNR-CSAFE-VID-ACTION-001",
+        "base_rule_ref": "KNG-VID-ACTION-TAXONOMY-001",
+        "override_type": "replace",
+        "data_types": [
+          "video"
+        ],
+        "description": "使用内容安全行为本体覆盖通用事件类别。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0186",
+      "source": "KNG-AUD-LANGUAGE-DIALECT-001",
+      "target": "SCN-MEDICAL-001",
+      "metadata": {
+        "rule_id": "SCNR-MED-AUD-DIALECT-001",
+        "base_rule_ref": "KNG-AUD-LANGUAGE-DIALECT-001",
+        "override_type": "add",
+        "data_types": [
+          "audio"
+        ],
+        "description": "补充口音条件下医学术语的复核要求。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0187",
+      "source": "KNG-AUD-NOISE-OVERLAP-001",
+      "target": "SCN-IN-VEHICLE-001",
+      "metadata": {
+        "rule_id": "SCNR-IV-AUD-NOISE-001",
+        "base_rule_ref": "KNG-AUD-NOISE-OVERLAP-001",
+        "override_type": "add",
+        "data_types": [
+          "audio"
+        ],
+        "description": "增加道路、风噪和车内多人说话标签。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0188",
+      "source": "KNG-AUD-PARALINGUISTIC-EVENT-001",
+      "target": "SCN-CONTENT-SAFETY-001",
+      "metadata": {
+        "rule_id": "SCNR-CSAFE-AUD-PARALING-001",
+        "base_rule_ref": "KNG-AUD-PARALINGUISTIC-EVENT-001",
+        "override_type": "add",
+        "data_types": [
+          "audio"
+        ],
+        "description": "补充内容安全音频事件判定边界。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0189",
+      "source": "KNG-AUD-SPEAKER-TURN-001",
+      "target": "SCN-CUSTOMER-SERVICE-001",
+      "metadata": {
+        "rule_id": "SCNR-CS-AUD-TURN-001",
+        "base_rule_ref": "KNG-AUD-SPEAKER-TURN-001",
+        "override_type": "add",
+        "data_types": [
+          "audio"
+        ],
+        "description": "补充客服抢话与保持通话的轮次规则。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0190",
+      "source": "KNG-AUD-WAKEWORD-BOUNDARY-001",
+      "target": "SCN-IN-VEHICLE-001",
+      "metadata": {
+        "rule_id": "SCNR-IV-AUD-WAKE-001",
+        "base_rule_ref": "KNG-AUD-WAKEWORD-BOUNDARY-001",
+        "override_type": "add",
+        "data_types": [
+          "audio"
+        ],
+        "description": "补充车载远场唤醒词边界案例。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0191",
+      "source": "KNG-TXT-CLASS-EXCLUSION-001",
+      "target": "SCN-CONTENT-SAFETY-001",
+      "metadata": {
+        "rule_id": "SCNR-CSAFE-TXT-EXCLUSION-001",
+        "base_rule_ref": "KNG-TXT-CLASS-EXCLUSION-001",
+        "override_type": "add",
+        "data_types": [
+          "text"
+        ],
+        "description": "补充风险类别并存与优先级规则。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0192",
+      "source": "KNG-TXT-ENTITY-BOUNDARY-001",
+      "target": "SCN-MEDICAL-001",
+      "metadata": {
+        "rule_id": "SCNR-MED-TXT-BOUNDARY-001",
+        "base_rule_ref": "KNG-TXT-ENTITY-BOUNDARY-001",
+        "override_type": "add",
+        "data_types": [
+          "text"
+        ],
+        "description": "补充医学短语的实体边界约定。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0193",
+      "source": "KNG-TXT-INTENT-HIERARCHY-001",
+      "target": "SCN-CUSTOMER-SERVICE-001",
+      "metadata": {
+        "rule_id": "SCNR-CS-TXT-HIERARCHY-001",
+        "base_rule_ref": "KNG-TXT-INTENT-HIERARCHY-001",
+        "override_type": "add",
+        "data_types": [
+          "text"
+        ],
+        "description": "补充客服多轮对话的意图继承规则。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0194",
+      "source": "KNG-VID-ACTION-TAXONOMY-001",
+      "target": "SCN-CONTENT-SAFETY-001",
+      "metadata": {
+        "rule_id": "SCNR-CSAFE-VID-TAXONOMY-001",
+        "base_rule_ref": "KNG-VID-ACTION-TAXONOMY-001",
+        "override_type": "add",
+        "data_types": [
+          "video"
+        ],
+        "description": "补充风险行为的参与者与排除条件。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0195",
+      "source": "TSK-AUD-COMMAND-SEGMENT-001",
+      "target": "SCN-IN-VEHICLE-001",
+      "metadata": {
+        "rule_id": "SCNR-IV-AUD-SEGMENT-001",
+        "base_rule_ref": "KNG-AUD-SEGMENT-TIMESTAMP-001",
+        "override_type": "add",
+        "data_types": [
+          "audio"
+        ],
+        "description": "增加车载连续命令的切割练习。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0196",
+      "source": "TSK-AUD-SPEAKER-DIARIZE-001",
+      "target": "SCN-CUSTOMER-SERVICE-001",
+      "metadata": {
+        "rule_id": "SCNR-CS-AUD-DIARIZE-001",
+        "base_rule_ref": "KNG-AUD-NOISE-OVERLAP-001",
+        "override_type": "add",
+        "data_types": [
+          "audio"
+        ],
+        "description": "增加客服重叠通话的说话人练习。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0197",
+      "source": "TSK-IMG-MASK-REVIEW-001",
+      "target": "SCN-MEDICAL-001",
+      "metadata": {
+        "rule_id": "SCNR-MED-IMG-REVIEW-001",
+        "base_rule_ref": "KNG-IMG-QUALITY-METRICS-001",
+        "override_type": "add",
+        "data_types": [
+          "image"
+        ],
+        "description": "增加医学影像掩码复核检查项。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0198",
+      "source": "TSK-TXT-DOCUMENT-CLASSIFY-001",
+      "target": "SCN-CONTENT-SAFETY-001",
+      "metadata": {
+        "rule_id": "SCNR-CSAFE-TXT-TASK-001",
+        "base_rule_ref": "KNG-TXT-SINGLE-MULTI-LABEL-001",
+        "override_type": "add",
+        "data_types": [
+          "text"
+        ],
+        "description": "增加多风险文本审核练习。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0199",
+      "source": "TSK-TXT-INTENT-REVIEW-001",
+      "target": "SCN-CUSTOMER-SERVICE-001",
+      "metadata": {
+        "rule_id": "SCNR-CS-TXT-REVIEW-001",
+        "base_rule_ref": "KNG-TXT-AMBIGUITY-SET-001",
+        "override_type": "add",
+        "data_types": [
+          "text"
+        ],
+        "description": "增加客服多意图歧义复核案例。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0200",
+      "source": "TSK-VID-ACTION-EVENT-001",
+      "target": "SCN-CONTENT-SAFETY-001",
+      "metadata": {
+        "rule_id": "SCNR-CSAFE-VID-TASK-001",
+        "base_rule_ref": "KNG-VID-EVENT-START-END-001",
+        "override_type": "add",
+        "data_types": [
+          "video"
+        ],
+        "description": "增加风险事件起止帧标注练习。",
+        "review_status": "draft"
+      },
+      "relation": "INSCN",
+      "label": "应用于场景"
+    },
+    {
+      "id": "EDGE-0201",
+      "source": "CAP-AUD-CONFIG-VALIDATE-001",
+      "target": "CERT-DATA-ANNOTATION-FOUNDATION-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0202",
+      "source": "CAP-AUD-EMOTION-PARALING-001",
+      "target": "CERT-DATA-ANNOTATION-SCENARIO-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0203",
+      "source": "CAP-AUD-EXPORT-QA-001",
+      "target": "CERT-AIT-L4-QUALITY-CONTROL-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0204",
+      "source": "CAP-AUD-LANGUAGE-DIALECT-001",
+      "target": "CERT-AIT-L5-AUDIO-ANNOTATION-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0205",
+      "source": "CAP-AUD-NOISE-OVERLAP-001",
+      "target": "CERT-DATA-ANNOTATION-QA-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0206",
+      "source": "CAP-AUD-SEGMENT-ALIGN-001",
+      "target": "CERT-AIT-L5-AUDIO-ANNOTATION-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0207",
+      "source": "CAP-AUD-SPEAKER-001",
+      "target": "CERT-AIT-L5-AUDIO-ANNOTATION-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0208",
+      "source": "CAP-AUD-TRANSCRIBE-PUNCT-001",
+      "target": "CERT-AIT-L5-AUDIO-ANNOTATION-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0209",
+      "source": "CAP-AUD-WAKE-COMMAND-001",
+      "target": "CERT-DATA-ANNOTATION-SCENARIO-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0210",
+      "source": "CAP-CORE-ASSET-QUALITY-001",
+      "target": "CERT-AIT-L5-DATA-PREP-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0211",
+      "source": "CAP-CORE-EXPORT-QA-001",
+      "target": "CERT-AIT-L4-MULTIMODAL-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0212",
+      "source": "CAP-CORE-LABEL-SCHEMA-001",
+      "target": "CERT-AIT-L4-SCHEMA-CONFIG-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0213",
+      "source": "CAP-CORE-TASK-SCOPE-001",
+      "target": "CERT-AIT-L4-TASK-DELIVERY-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0214",
+      "source": "CAP-IMG-BOX-ANNOTATE-001",
+      "target": "CERT-AIT-L5-IMAGE-ANNOTATION-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0215",
+      "source": "CAP-IMG-EXPORT-QA-001",
+      "target": "CERT-AIT-L4-QUALITY-CONTROL-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0216",
+      "source": "CAP-IMG-INSTANCE-SEGMENT-001",
+      "target": "CERT-AIT-L5-IMAGE-ANNOTATION-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0217",
+      "source": "CAP-IMG-KEYPOINT-001",
+      "target": "CERT-AIT-L5-IMAGE-ANNOTATION-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0218",
+      "source": "CAP-IMG-OBJECT-CLASS-001",
+      "target": "CERT-AIT-L5-IMAGE-ANNOTATION-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0219",
+      "source": "CAP-IMG-OCCLUSION-001",
+      "target": "CERT-DATA-ANNOTATION-QA-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0220",
+      "source": "CAP-IMG-POLYGON-001",
+      "target": "CERT-AIT-L5-IMAGE-ANNOTATION-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0221",
+      "source": "CAP-IMG-RECT-VALIDATE-001",
+      "target": "CERT-DATA-ANNOTATION-FOUNDATION-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0222",
+      "source": "CAP-IMG-SEMANTIC-SEGMENT-001",
+      "target": "CERT-AIT-L4-MULTIMODAL-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0223",
+      "source": "CAP-TXT-AMBIGUITY-001",
+      "target": "CERT-DATA-ANNOTATION-QA-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0224",
+      "source": "CAP-TXT-CLASSIFY-001",
+      "target": "CERT-AIT-L5-TEXT-ANNOTATION-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0225",
+      "source": "CAP-TXT-ENTITY-BOUNDARY-001",
+      "target": "CERT-AIT-L5-TEXT-ANNOTATION-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0226",
+      "source": "CAP-TXT-ENTITY-TYPE-001",
+      "target": "CERT-AIT-L5-TEXT-ANNOTATION-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0227",
+      "source": "CAP-TXT-EXPORT-QA-001",
+      "target": "CERT-AIT-L4-QUALITY-CONTROL-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0228",
+      "source": "CAP-TXT-INTENT-001",
+      "target": "CERT-AIT-L4-TASK-DELIVERY-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0229",
+      "source": "CAP-TXT-LABEL-VALIDATE-001",
+      "target": "CERT-DATA-ANNOTATION-FOUNDATION-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0230",
+      "source": "CAP-TXT-RELATION-001",
+      "target": "CERT-AIT-L5-TEXT-ANNOTATION-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0231",
+      "source": "CAP-TXT-SENTIMENT-001",
+      "target": "CERT-DATA-ANNOTATION-SCENARIO-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0232",
+      "source": "CAP-VID-ACTION-EVENT-001",
+      "target": "CERT-DATA-ANNOTATION-SCENARIO-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0233",
+      "source": "CAP-VID-EVENT-BOUNDARY-001",
+      "target": "CERT-AIT-L5-VIDEO-ANNOTATION-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0234",
+      "source": "CAP-VID-EXPORT-QA-001",
+      "target": "CERT-AIT-L4-QUALITY-CONTROL-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0235",
+      "source": "CAP-VID-FRAME-ANNOTATE-001",
+      "target": "CERT-AIT-L5-VIDEO-ANNOTATION-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0236",
+      "source": "CAP-VID-FRAME-SAMPLE-001",
+      "target": "CERT-AIT-L5-DATA-PREP-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0237",
+      "source": "CAP-VID-OBJECT-TRACK-001",
+      "target": "CERT-AIT-L5-VIDEO-ANNOTATION-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0238",
+      "source": "CAP-VID-OCCLUSION-REID-001",
+      "target": "CERT-DATA-ANNOTATION-QA-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0239",
+      "source": "CAP-VID-TRACK-INTERPOLATE-001",
+      "target": "CERT-AIT-L5-VIDEO-ANNOTATION-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0240",
+      "source": "CAP-VID-TRACK-VALIDATE-001",
+      "target": "CERT-DATA-ANNOTATION-FOUNDATION-001",
+      "relation": "MAPCERT",
+      "label": "映射证书",
+      "metadata": {}
+    }
+  ]
+}
