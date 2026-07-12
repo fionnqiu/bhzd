@@ -7,7 +7,7 @@
   "publication_state": "development",
   "generated_from": "data/graph/graph-catalog.json",
   "generated_by": "scripts/build_graph.py",
-  "catalog_sha256": "5ee7f4f759b00e30926d663867cf8b973905bcfe12a0792e44e1bcced3cc8865",
+  "catalog_sha256": "42a099e7447bd7a8c5dc9087fd19e650bb34ec78b50d4aac40c6a38d6541d4a2",
   "source_registry": "data/sources/source-registry.json",
   "teaching_units": "data/curriculum/teaching-units.json",
   "node_type_counts": {
@@ -964,12 +964,12 @@
     },
     {
       "id": "KNG-IMG-CLASS-DEFINITION-001",
-      "label": "图像类别定义",
-      "description": "本项目练习为类别给出可观察判据和排除条件。",
+      "label": "本地图像坐标校验策略",
+      "description": "本项目练习要求坐标位于图像范围内、最小值小于最大值且矩形面积非零。",
       "data_types": [
         "image"
       ],
-      "claim_type": "image_class_policy",
+      "claim_type": "image_coordinate_validation_policy",
       "claim_basis": "project_policy",
       "source_refs": [
         "SRC-POLICY-IMAGE-TASK3-001"
@@ -1054,12 +1054,12 @@
     },
     {
       "id": "KNG-IMG-OVERLAP-ORDER-001",
-      "label": "重叠目标轮廓顺序",
-      "description": "本项目练习要求相邻实例轮廓分别闭合且不混用 ID。",
+      "label": "本地多边形几何策略",
+      "description": "本项目练习要求固定起点与顺时针顶点顺序、隐式闭合且禁止蝴蝶结自交。",
       "data_types": [
         "image"
       ],
-      "claim_type": "image_overlap_policy",
+      "claim_type": "image_polygon_geometry_policy",
       "claim_basis": "project_policy",
       "source_refs": [
         "SRC-POLICY-IMAGE-TASK3-001"
@@ -1084,12 +1084,12 @@
     },
     {
       "id": "KNG-IMG-QUALITY-METRICS-001",
-      "label": "图像标注质量指标",
-      "description": "本项目对框、点和掩码使用与结构相适应的质量检查。",
+      "label": "本地实例掩码与属性策略",
+      "description": "本项目使用 {class_label}-{object_index:02d} 实例 ID，并限制实例属性的作用域。",
       "data_types": [
         "image"
       ],
-      "claim_type": "image_quality_policy",
+      "claim_type": "image_instance_mask_policy",
       "claim_basis": "project_policy",
       "source_refs": [
         "SRC-POLICY-IMAGE-TASK3-001"
@@ -1129,12 +1129,12 @@
     },
     {
       "id": "KNG-IMG-SMALL-OBJECT-001",
-      "label": "小目标标注阈值",
-      "description": "本项目任务规则声明小目标的最小可标尺寸。",
+      "label": "本地关键点可见性策略",
+      "description": "本项目使用 visible、occluded、outside_image 状态；遮挡点保留坐标，画面外点使用空坐标，unknown 不等同于可见性。",
       "data_types": [
         "image"
       ],
-      "claim_type": "image_small_object_policy",
+      "claim_type": "image_keypoint_visibility_policy",
       "claim_basis": "project_policy",
       "source_refs": [
         "SRC-POLICY-IMAGE-TASK3-001"
@@ -1159,12 +1159,12 @@
     },
     {
       "id": "KNG-TXT-CLASS-EXCLUSION-001",
-      "label": "文本类别互斥条件",
-      "description": "本项目练习规定互斥类别不得在同一作用范围同时出现。",
+      "label": "本地文本标签提交策略",
+      "description": "本项目练习要求标签严格区分大小写、不自动去除空格，并按配置校验分类基数与成员资格。",
       "data_types": [
         "text"
       ],
-      "claim_type": "text_class_exclusion",
+      "claim_type": "text_label_normalization_policy",
       "claim_basis": "project_policy",
       "source_refs": [
         "SRC-POLICY-TEXT-TASK3-001"
@@ -1232,14 +1232,16 @@
     },
     {
       "id": "KNG-TXT-INTERANNOTATOR-001",
-      "label": "文本标注一致性",
-      "description": "一致性复核应定位标签、边界或关系分歧。",
+      "label": "本地 works_for 关系策略",
+      "description": "本项目练习只接受 PERSON 到 ORG 的有向 works_for 关系，且端点必须引用已声明实体。",
       "data_types": [
         "text"
       ],
-      "claim_type": "text_agreement_policy",
-      "claim_basis": "curriculum_draft",
-      "source_refs": [],
+      "claim_type": "text_relation_semantics_policy",
+      "claim_basis": "project_policy",
+      "source_refs": [
+        "SRC-POLICY-TEXT-TASK3-001"
+      ],
       "type": "KNG",
       "status": "draft"
     },
@@ -1260,12 +1262,12 @@
     },
     {
       "id": "KNG-TXT-NESTED-ENTITY-001",
-      "label": "嵌套实体处理",
-      "description": "本项目练习明确声明重叠或嵌套选区是否允许。",
+      "label": "本地实体边界策略",
+      "description": "本项目练习使用零基、end-exclusive 偏移，包含组织后缀并排除句末标点。",
       "data_types": [
         "text"
       ],
-      "claim_type": "text_nested_entity_policy",
+      "claim_type": "text_entity_boundary_policy",
       "claim_basis": "project_policy",
       "source_refs": [
         "SRC-POLICY-TEXT-TASK3-001"
@@ -2019,7 +2021,7 @@
         "image"
       ],
       "primary_capability_ref": "CAP-IMG-KEYPOINT-001",
-      "primary_knowledge_ref": "KNG-IMG-KEYPOINT-VISIBILITY-001",
+      "primary_knowledge_ref": "KNG-IMG-SMALL-OBJECT-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -2042,7 +2044,7 @@
         "image"
       ],
       "primary_capability_ref": "CAP-IMG-INSTANCE-SEGMENT-001",
-      "primary_knowledge_ref": "KNG-IMG-INSTANCE-ID-001",
+      "primary_knowledge_ref": "KNG-IMG-QUALITY-METRICS-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -2065,7 +2067,7 @@
         "image"
       ],
       "primary_capability_ref": "CAP-IMG-BOX-ANNOTATE-001",
-      "primary_knowledge_ref": "KNG-IMG-BOX-TIGHTNESS-001",
+      "primary_knowledge_ref": "KNG-IMG-OCCLUSION-TRUNCATION-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -2088,7 +2090,7 @@
         "image"
       ],
       "primary_capability_ref": "CAP-IMG-POLYGON-001",
-      "primary_knowledge_ref": "KNG-IMG-POLYGON-VERTEX-001",
+      "primary_knowledge_ref": "KNG-IMG-OVERLAP-ORDER-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -2111,7 +2113,7 @@
         "image"
       ],
       "primary_capability_ref": "CAP-IMG-RECT-VALIDATE-001",
-      "primary_knowledge_ref": "KNG-IMG-RECT-BOUNDS-001",
+      "primary_knowledge_ref": "KNG-IMG-CLASS-DEFINITION-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -2134,7 +2136,7 @@
         "text"
       ],
       "primary_capability_ref": "CAP-TXT-CLASSIFY-001",
-      "primary_knowledge_ref": "KNG-TXT-SINGLE-MULTI-LABEL-001",
+      "primary_knowledge_ref": "KNG-TXT-CLASS-EXCLUSION-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -2203,7 +2205,7 @@
         "text"
       ],
       "primary_capability_ref": "CAP-TXT-ENTITY-BOUNDARY-001",
-      "primary_knowledge_ref": "KNG-TXT-ENTITY-BOUNDARY-001",
+      "primary_knowledge_ref": "KNG-TXT-NESTED-ENTITY-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -2226,7 +2228,7 @@
         "text"
       ],
       "primary_capability_ref": "CAP-TXT-RELATION-001",
-      "primary_knowledge_ref": "KNG-TXT-RELATION-DIRECTION-001",
+      "primary_knowledge_ref": "KNG-TXT-INTERANNOTATOR-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -2737,7 +2739,7 @@
     {
       "id": "EDGE-0052",
       "source": "KNG-IMG-CLASS-DEFINITION-001",
-      "target": "CAP-IMG-OBJECT-CLASS-001",
+      "target": "CAP-IMG-RECT-VALIDATE-001",
       "relation": "ISA",
       "label": "归属于",
       "metadata": {}
@@ -2801,7 +2803,7 @@
     {
       "id": "EDGE-0060",
       "source": "KNG-IMG-SMALL-OBJECT-001",
-      "target": "CAP-IMG-BOX-ANNOTATE-001",
+      "target": "CAP-IMG-KEYPOINT-001",
       "relation": "ISA",
       "label": "归属于",
       "metadata": {}
@@ -2849,7 +2851,7 @@
     {
       "id": "EDGE-0066",
       "source": "KNG-TXT-NESTED-ENTITY-001",
-      "target": "CAP-TXT-AMBIGUITY-001",
+      "target": "CAP-TXT-ENTITY-BOUNDARY-001",
       "relation": "ISA",
       "label": "归属于",
       "metadata": {}
@@ -3216,48 +3218,48 @@
     },
     {
       "id": "EDGE-0112",
-      "source": "KNG-IMG-BOX-TIGHTNESS-001",
-      "target": "TSK-IMG-OBJECT-BOX-001",
-      "relation": "SUP",
-      "label": "支持",
-      "metadata": {}
-    },
-    {
-      "id": "EDGE-0113",
-      "source": "KNG-IMG-INSTANCE-ID-001",
-      "target": "TSK-IMG-MASK-REVIEW-001",
-      "relation": "SUP",
-      "label": "支持",
-      "metadata": {}
-    },
-    {
-      "id": "EDGE-0114",
-      "source": "KNG-IMG-KEYPOINT-VISIBILITY-001",
-      "target": "TSK-IMG-KEYPOINT-MARK-001",
-      "relation": "SUP",
-      "label": "支持",
-      "metadata": {}
-    },
-    {
-      "id": "EDGE-0115",
-      "source": "KNG-IMG-POLYGON-VERTEX-001",
-      "target": "TSK-IMG-POLYGON-TRACE-001",
-      "relation": "SUP",
-      "label": "支持",
-      "metadata": {}
-    },
-    {
-      "id": "EDGE-0116",
-      "source": "KNG-IMG-RECT-BOUNDS-001",
+      "source": "KNG-IMG-CLASS-DEFINITION-001",
       "target": "TSK-IMG-RECT-AUDIT-001",
       "relation": "SUP",
       "label": "支持",
       "metadata": {}
     },
     {
+      "id": "EDGE-0113",
+      "source": "KNG-IMG-OCCLUSION-TRUNCATION-001",
+      "target": "TSK-IMG-OBJECT-BOX-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0114",
+      "source": "KNG-IMG-OVERLAP-ORDER-001",
+      "target": "TSK-IMG-POLYGON-TRACE-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0115",
+      "source": "KNG-IMG-QUALITY-METRICS-001",
+      "target": "TSK-IMG-MASK-REVIEW-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0116",
+      "source": "KNG-IMG-SMALL-OBJECT-001",
+      "target": "TSK-IMG-KEYPOINT-MARK-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
       "id": "EDGE-0117",
-      "source": "KNG-TXT-ENTITY-BOUNDARY-001",
-      "target": "TSK-TXT-NER-ANNOTATE-001",
+      "source": "KNG-TXT-CLASS-EXCLUSION-001",
+      "target": "TSK-TXT-DOCUMENT-CLASSIFY-001",
       "relation": "SUP",
       "label": "支持",
       "metadata": {}
@@ -3272,6 +3274,14 @@
     },
     {
       "id": "EDGE-0119",
+      "source": "KNG-TXT-INTERANNOTATOR-001",
+      "target": "TSK-TXT-RELATION-LINK-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0120",
       "source": "KNG-TXT-LABEL-VOCAB-001",
       "target": "TSK-TXT-LABEL-AUDIT-001",
       "relation": "SUP",
@@ -3279,17 +3289,9 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0120",
-      "source": "KNG-TXT-RELATION-DIRECTION-001",
-      "target": "TSK-TXT-RELATION-LINK-001",
-      "relation": "SUP",
-      "label": "支持",
-      "metadata": {}
-    },
-    {
       "id": "EDGE-0121",
-      "source": "KNG-TXT-SINGLE-MULTI-LABEL-001",
-      "target": "TSK-TXT-DOCUMENT-CLASSIFY-001",
+      "source": "KNG-TXT-NESTED-ENTITY-001",
+      "target": "TSK-TXT-NER-ANNOTATE-001",
       "relation": "SUP",
       "label": "支持",
       "metadata": {}

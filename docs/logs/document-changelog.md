@@ -184,3 +184,38 @@
 - All ten Task 3 candidates remain `draft`, `student_visible=false`, and have empty `review_records`. Plan Step 3 remains unchecked until a separate AI agent that did not implement this batch records an approved independent content review; no such approval is claimed here.
 - Context7 verified the stated documentation paths and content for Label Studio 1.19.0 and CVAT v2.51.0, but direct GitHub navigation to the matching tag license files remained blocked. The candidates therefore remain `publishable=false` pending tag-specific license verification.
 - Text ambiguity and image semantic/occlusion decisions are explicitly local project policies, not external standards. Final competition or real-student release still requires human domain-expert confirmation.
+
+## [2026-07-12 21:58] Repair Task 3 review findings without publishing
+
+**Changed files:**
+- `data/curriculum/text/teaching-units.json`
+- `data/curriculum/image/teaching-units.json`
+- `data/curriculum/teaching-units.json`
+- `data/reviews/content-review-registry.json`
+- `data/sources/source-registry.json`
+- `data/graph/graph-catalog.json`
+- `data/graph/annotation-capability-graph.json`
+- `data/graph/annotation-capability-graph.graphml`
+- `scripts/build_curriculum.py`
+- `scripts/evaluate_exercise.py`
+- `tests/content/test_text_image_evaluation.py`
+- `tests/graph/test_graph_integrity.py`
+- `docs/教学内容与图谱数据规范.md`
+- `docs/logs/document-changelog.md`
+
+**Reason:**
+- Resolve review findings for strict JSON types, complete allowed-answer records, reachable diagnostic errors, lifecycle gates, prerequisites, local-policy provenance, and failed-review auditability.
+- Correct and directly verify exact tagged Label Studio/CVAT document and license paths while separating external format facts from local semantic policy.
+- Preserve 60 KNG, 166 nodes, and 240 edges by repurposing draft policy slots and swapping primary/direct-SUP relationships.
+
+**Verification:**
+- Initial focused RED: 12 failed and 13 passed for scalar coercion, permissive candidates, blanket diagnostics, prerequisites, review records, and policy KNG mappings.
+- Source/publication RED: 2 failed and 25 deselected for stale pinned URLs and the absent builder gate; a separate RED covered diagnostic precedence/overlap.
+- Direct raw GitHub GET returned HTTP 200 for Label Studio 1.19.0 Choices (2365 bytes), Labels (1827), Relations (968), and Apache LICENSE (11341); CVAT v2.51.0 format-cvat.md returned 22319 bytes and MIT LICENSE returned 1123.
+- Deterministic curriculum rebuild preserved legacy audio/video; graph rebuild remained exactly 166 nodes and 240 edges.
+- Task 3 tests: 28 passed; legacy content: 8 passed; graph integrity: 30 passed; full suite: 66 passed. Standalone graph validation passed all checks.
+
+**Remaining verification:**
+- Both recorded AI reviews are `changes_required` with `authorizes_publication=false`; corrected candidates still require independent re-review.
+- All ten units remain `draft`, `student_visible=false`, and Task 3 Step 3 remains unchecked.
+- Project-policy sources are development-only and `human_release_allowed=false`; formal competition or real-student release still requires human domain-expert confirmation.

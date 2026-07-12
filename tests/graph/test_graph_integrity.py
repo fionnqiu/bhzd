@@ -435,6 +435,16 @@ def corrupt_published_task_with_unverified_source(graph):
     task = next(
         node for node in graph["nodes"] if node["id"] == "TSK-TXT-DOCUMENT-CLASSIFY-001"
     )
+    previous_knowledge = task["primary_knowledge_ref"]
+    task["primary_knowledge_ref"] = "KNG-TXT-EXPORT-SCHEMA-001"
+    support = next(
+        edge
+        for edge in graph["edges"]
+        if edge["relation"] == "SUP"
+        and edge["target"] == task["id"]
+        and edge["source"] == previous_knowledge
+    )
+    support["source"] = "KNG-TXT-EXPORT-SCHEMA-001"
     task["status"] = "published"
     task["student_visible"] = True
 

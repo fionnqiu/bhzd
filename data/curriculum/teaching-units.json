@@ -119,15 +119,40 @@
         "区分可见、被遮挡和位于画面外的关键点状态",
         "按本项目规则决定是否保留关键点坐标"
       ],
-      "prerequisites": [],
+      "prerequisites": [
+        "CAP-IMG-OBJECT-CLASS-001"
+      ],
       "rule_refs": [
-        "KNG-IMG-KEYPOINT-VISIBILITY-001"
+        "KNG-IMG-KEYPOINT-VISIBILITY-001",
+        "KNG-IMG-SMALL-OBJECT-001"
       ],
       "source_refs": [
         "SRC-CVAT-ANNOTATION-FORMAT-251",
         "SRC-POLICY-IMAGE-TASK3-001"
       ],
-      "rule_explanation": "CVAT 格式事实：图像关键点可由点几何及其属性表达。该格式事实不规定本课程的可见性枚举。 本项目本地语义策略：关键点在画面内且可直接观察时记为 visible；在画面内但被其他物体遮挡时记为 occluded，并保留可确定的坐标；关键点在画面外时记为 outside_image，坐标必须为 null。",
+      "rule_explanation": "外部格式事实（SRC-CVAT-ANNOTATION-FORMAT-251）：图像关键点可由点几何及其属性表达；该事实不规定本课程的可见性枚举或坐标保留规则。 本项目本地语义策略（SRC-POLICY-IMAGE-TASK3-001；KNG-IMG-SMALL-OBJECT-001）：visibility 只能是 visible、occluded、outside_image。关键点在画面内且可直接观察时为 visible；在画面内、有明确前景遮挡证据且位置可确定时为 occluded；关键点在画面外时为 outside_image。visible 与 occluded 必须保留确定坐标，outside_image 坐标必须为 null。证据不足或位置不可确定时进入 unknown 工作流，unknown 不是 visibility 枚举值，不得作为 visibility 提交。",
+      "visibility_policy": {
+        "visibility_enum": [
+          "visible",
+          "occluded",
+          "outside_image"
+        ],
+        "coordinate_rules": {
+          "visible": "coordinates_required_and_retained",
+          "occluded": "coordinates_required_and_retained_when_position_determinable",
+          "outside_image": "coordinates_must_be_null"
+        },
+        "unknown_workflow": {
+          "is_visibility_value": false,
+          "trigger": "画面内关键点缺少足以区分直接可见与前景遮挡的证据，或遮挡后位置不可确定",
+          "submission": {
+            "decision": "unknown",
+            "visibility": null,
+            "coordinates": null
+          },
+          "requires_manual_review": true
+        }
+      },
       "positive_examples": [
         {
           "id": "EX-IMAGE-KEYPOINT-POS-001",
@@ -137,6 +162,11 @@
             "in_image": true,
             "directly_visible": false,
             "position_determinable": true,
+            "foreground_occlusion_evidence": {
+              "present": true,
+              "occluder": "foreground_railing",
+              "hidden_region": "left_wrist"
+            },
             "coordinates": {
               "x": 148,
               "y": 203
@@ -162,10 +192,49 @@
           "id": "EX-IMAGE-KEYPOINT-NEG-001",
           "asset_ref": "ASSET-SELF-IMAGE-KEYPOINT-002",
           "input": {
+            "keypoint": "left_wrist",
+            "in_image": true,
+            "directly_visible": false,
+            "position_determinable": true,
+            "foreground_occlusion_evidence": {
+              "present": true,
+              "occluder": "foreground_railing",
+              "hidden_region": "left_wrist"
+            },
+            "submitted": {
+              "visibility": "visible",
+              "coordinates": {
+                "x": 148,
+                "y": 203
+              }
+            }
+          },
+          "expected": {
+            "valid": false,
+            "error": "keypoint_visibility_misclassified",
+            "details": {
+              "required_visibility": "occluded"
+            }
+          },
+          "explanation": "前景栏杆明确遮挡画面内手腕，且坐标可确定；提交仅把 occluded 错写为 visible，坐标本身保持正确。",
+          "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        },
+        {
+          "id": "EX-IMAGE-KEYPOINT-NEG-002",
+          "asset_ref": "ASSET-SELF-IMAGE-KEYPOINT-003",
+          "input": {
             "keypoint": "right_ankle",
             "in_image": false,
+            "foreground_occlusion_evidence": {
+              "present": false,
+              "reason": "关键点位于图像边界之外"
+            },
             "submitted": {
-              "visibility": "occluded",
+              "visibility": "outside_image",
               "coordinates": {
                 "x": 639,
                 "y": 470
@@ -174,13 +243,48 @@
           },
           "expected": {
             "valid": false,
-            "error": "keypoint_visibility_misclassified",
+            "error": "outside_image_coordinates_present",
             "details": {
-              "required_visibility": "outside_image",
               "required_coordinates": null
             }
           },
-          "explanation": "画面外关键点不是画面内遮挡，不能猜测边缘坐标；应标为 outside_image 且坐标为 null。",
+          "explanation": "outside_image 状态正确，但本地策略禁止为画面外关键点猜测边缘坐标。",
+          "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        },
+        {
+          "id": "EX-IMAGE-KEYPOINT-NEG-003",
+          "asset_ref": "ASSET-SELF-IMAGE-KEYPOINT-004",
+          "input": {
+            "keypoint": "right_elbow",
+            "in_image": true,
+            "directly_visible": false,
+            "position_determinable": false,
+            "foreground_occlusion_evidence": {
+              "present": false,
+              "reason": "证据不足，无法确认是前景遮挡还是低对比度"
+            },
+            "submitted": {
+              "visibility": "unknown",
+              "coordinates": null
+            }
+          },
+          "expected": {
+            "valid": false,
+            "error": "unknown_as_visibility",
+            "details": {
+              "allowed_visibility_values": [
+                "visible",
+                "occluded",
+                "outside_image"
+              ],
+              "required_workflow_decision": "unknown"
+            }
+          },
+          "explanation": "证据不足时应进入 unknown 人工复核工作流；unknown 不是 visibility 枚举值。",
           "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
           "asset_authorization": {
             "type": "self-authored",
@@ -191,32 +295,218 @@
       "exercise": {
         "asset_ref": "ASSET-SELF-IMAGE-KEYPOINT-EXERCISE-001",
         "input": {
-          "keypoint": "left_knee",
-          "in_image": true,
-          "directly_visible": false,
-          "position_determinable": true,
-          "coordinates": {
-            "x": 212,
-            "y": 356
-          },
           "allowed_visibility_values": [
             "visible",
             "occluded",
             "outside_image"
+          ],
+          "unknown_is_visibility_value": false,
+          "cases": [
+            {
+              "case_id": "KP-VISIBLE",
+              "keypoint": "nose",
+              "in_image": true,
+              "directly_visible": true,
+              "position_determinable": true,
+              "foreground_occlusion_evidence": {
+                "present": false
+              },
+              "coordinates": {
+                "x": 160,
+                "y": 72
+              }
+            },
+            {
+              "case_id": "KP-OCCLUDED",
+              "keypoint": "left_knee",
+              "in_image": true,
+              "directly_visible": false,
+              "position_determinable": true,
+              "foreground_occlusion_evidence": {
+                "present": true,
+                "occluder": "foreground_table_edge",
+                "hidden_region": "left_knee"
+              },
+              "coordinates": {
+                "x": 212,
+                "y": 356
+              }
+            },
+            {
+              "case_id": "KP-OUTSIDE",
+              "keypoint": "right_ankle",
+              "in_image": false,
+              "directly_visible": false,
+              "position_determinable": false,
+              "foreground_occlusion_evidence": {
+                "present": false,
+                "reason": "关键点位于图像边界之外"
+              },
+              "coordinates": null
+            }
           ]
         },
-        "student_action": "提交 JSON：给出 visibility，并按本地策略给出 coordinates。",
+        "student_action": "按 cases 数组顺序提交 annotations；每项给出 case_id、visibility 和 coordinates。unknown 只用于复核工作流，不得作为 visibility。",
         "answer": {
-          "visibility": "occluded",
-          "coordinates": {
-            "x": 212,
-            "y": 356
-          }
+          "annotations": [
+            {
+              "case_id": "KP-VISIBLE",
+              "visibility": "visible",
+              "coordinates": {
+                "x": 160,
+                "y": 72
+              }
+            },
+            {
+              "case_id": "KP-OCCLUDED",
+              "visibility": "occluded",
+              "coordinates": {
+                "x": 212,
+                "y": 356
+              }
+            },
+            {
+              "case_id": "KP-OUTSIDE",
+              "visibility": "outside_image",
+              "coordinates": null
+            }
+          ]
         },
         "evaluation": {
           "method": "exact_match",
           "version": "1.1.0",
-          "normalization": "JSON 对象键顺序忽略；visibility 字符串和坐标值必须完全一致",
+          "normalization": "JSON 对象键顺序忽略；annotations 数组顺序、visibility 字符串和坐标值必须完全一致。diagnostic_rules 按数组顺序匹配，首个 exact submission 命中；数组顺序即错误优先级。",
+          "diagnostic_precedence": "array_order_first_exact_match",
+          "diagnostic_rules": [
+            {
+              "submission": {
+                "annotations": [
+                  {
+                    "case_id": "KP-VISIBLE",
+                    "visibility": "visible",
+                    "coordinates": {
+                      "x": 160,
+                      "y": 72
+                    }
+                  },
+                  {
+                    "case_id": "KP-OCCLUDED",
+                    "visibility": "visible",
+                    "coordinates": {
+                      "x": 212,
+                      "y": 356
+                    }
+                  },
+                  {
+                    "case_id": "KP-OUTSIDE",
+                    "visibility": "outside_image",
+                    "coordinates": null
+                  }
+                ]
+              },
+              "error_type": "keypoint_visibility_misclassified",
+              "feedback": "KP-OCCLUDED 有明确前景遮挡证据，应标为 occluded，而不是 visible。",
+              "remediation": [
+                "核对 foreground_occlusion_evidence.present；画面内、有前景遮挡且位置可确定时提交 occluded。"
+              ]
+            },
+            {
+              "submission": {
+                "annotations": [
+                  {
+                    "case_id": "KP-VISIBLE",
+                    "visibility": "visible",
+                    "coordinates": {
+                      "x": 160,
+                      "y": 72
+                    }
+                  },
+                  {
+                    "case_id": "KP-OCCLUDED",
+                    "visibility": "occluded",
+                    "coordinates": null
+                  },
+                  {
+                    "case_id": "KP-OUTSIDE",
+                    "visibility": "outside_image",
+                    "coordinates": null
+                  }
+                ]
+              },
+              "error_type": "keypoint_coordinates_dropped",
+              "feedback": "KP-OCCLUDED 的位置可确定，occluded 状态必须保留坐标。",
+              "remediation": [
+                "恢复输入中 KP-OCCLUDED 的确定坐标；只有 outside_image 使用 null 坐标。"
+              ]
+            },
+            {
+              "submission": {
+                "annotations": [
+                  {
+                    "case_id": "KP-VISIBLE",
+                    "visibility": "visible",
+                    "coordinates": {
+                      "x": 160,
+                      "y": 72
+                    }
+                  },
+                  {
+                    "case_id": "KP-OCCLUDED",
+                    "visibility": "occluded",
+                    "coordinates": {
+                      "x": 212,
+                      "y": 356
+                    }
+                  },
+                  {
+                    "case_id": "KP-OUTSIDE",
+                    "visibility": "outside_image",
+                    "coordinates": {
+                      "x": 639,
+                      "y": 479
+                    }
+                  }
+                ]
+              },
+              "error_type": "outside_image_coordinates_present",
+              "feedback": "KP-OUTSIDE 位于画面外，coordinates 必须为 null。",
+              "remediation": [
+                "删除猜测的边缘坐标，并为 outside_image 提交 null。"
+              ]
+            },
+            {
+              "submission": {
+                "annotations": [
+                  {
+                    "case_id": "KP-VISIBLE",
+                    "visibility": "visible",
+                    "coordinates": {
+                      "x": 160,
+                      "y": 72
+                    }
+                  },
+                  {
+                    "case_id": "KP-OCCLUDED",
+                    "visibility": "unknown",
+                    "coordinates": {
+                      "x": 212,
+                      "y": 356
+                    }
+                  },
+                  {
+                    "case_id": "KP-OUTSIDE",
+                    "visibility": "outside_image",
+                    "coordinates": null
+                  }
+                ]
+              },
+              "error_type": "unknown_as_visibility",
+              "feedback": "unknown 不是 visibility 枚举值；本案例证据足以确定为 occluded。",
+              "remediation": [
+                "只从 visible、occluded、outside_image 中提交 visibility；证据不足时改走 unknown 人工复核工作流。"
+              ]
+            }
+          ],
           "incorrect_feedback": {
             "error_type": "keypoint_visibility_misclassified",
             "feedback": "关键点状态或坐标保留规则与本地可见性策略不一致。",
@@ -232,7 +522,9 @@
         ],
         "error_types": [
           "keypoint_visibility_misclassified",
-          "keypoint_coordinates_dropped"
+          "keypoint_coordinates_dropped",
+          "outside_image_coordinates_present",
+          "unknown_as_visibility"
         ],
         "asset_authorization": {
           "type": "self-authored",
@@ -241,7 +533,9 @@
       },
       "common_errors": [
         "把画面外关键点误判为画面内遮挡",
-        "对位置可确定的被遮挡关键点删除坐标"
+        "对位置可确定的被遮挡关键点删除坐标",
+        "为 outside_image 猜测边缘坐标",
+        "把 unknown 当成第四个 visibility 枚举值"
       ],
       "remediation": [
         "按在画面内、直接可见、位置可确定三个条件依次复核状态与坐标"
@@ -258,16 +552,32 @@
         "区分语义分割的类别像素与实例分割的独立对象掩码",
         "按本项目规则绑定实例 ID 和实例属性"
       ],
-      "prerequisites": [],
+      "prerequisites": [
+        "CAP-IMG-SEMANTIC-SEGMENT-001"
+      ],
       "rule_refs": [
         "KNG-IMG-SEMANTIC-MASK-001",
-        "KNG-IMG-INSTANCE-ID-001"
+        "KNG-IMG-INSTANCE-ID-001",
+        "KNG-IMG-QUALITY-METRICS-001"
       ],
       "source_refs": [
         "SRC-CVAT-ANNOTATION-FORMAT-251",
         "SRC-POLICY-IMAGE-TASK3-001"
       ],
-      "rule_explanation": "CVAT 格式事实：掩码几何可与标签一起保存，多个带标签的掩码实例可以分别保存。该格式事实不决定课程任务何时合并同类像素或如何命名实例。 本项目本地语义策略：semantic 模式只输出每个像素的 class_label，同类区域不分配 instance_id，且不绑定对象级属性；instance 模式为每个独立对象保留独立掩码和唯一 instance_id，required_attributes 必须绑定到对应实例，属性既不改变像素类别，也不替代 instance_id。",
+      "rule_explanation": "外部格式事实（SRC-CVAT-ANNOTATION-FORMAT-251）：掩码几何可与标签一起保存，多个带标签的掩码实例可以分别保存；该事实不规定课程的实例 ID 命名或属性作用域。 本项目本地语义策略（SRC-POLICY-IMAGE-TASK3-001；KNG-IMG-QUALITY-METRICS-001）：semantic 模式只输出每个像素的 class_label，同类区域不分配 instance_id，且不绑定对象级属性；instance 模式为每个独立对象保留独立掩码，instance_id 必须按 {class_label}-{object_index:02d} 生成，object_index 从 1 开始，同一类别内唯一。required_attributes 必须只绑定到对应实例；属性不改变像素类别，也不替代 instance_id。",
+      "instance_policy": {
+        "instance_id_template": "{class_label}-{object_index:02d}",
+        "object_index_origin": 1,
+        "uniqueness_scope": "within_class_label_and_asset",
+        "semantic_mode": {
+          "instance_id": null,
+          "object_attributes_allowed": false
+        },
+        "instance_mode": {
+          "instance_id_required": true,
+          "required_attributes_scope": "matching_instance_only"
+        }
+      },
       "positive_examples": [
         {
           "id": "EX-IMAGE-MASK-POS-001",
@@ -311,7 +621,7 @@
             },
             "merge_with_same_class": false
           },
-          "explanation": "instance 模式保留第二辆车的独立掩码、唯一实例 ID 和该实例的必填属性。",
+          "explanation": "instance 模式按 {class_label}-{object_index:02d} 将第二辆车命名为 car-02，并把必填属性只绑定到该实例。",
           "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
           "asset_authorization": {
             "type": "self-authored",
@@ -325,21 +635,21 @@
           "asset_ref": "ASSET-SELF-IMAGE-MASK-003",
           "input": {
             "mode": "instance",
-            "same_class_objects": [
-              "person-01",
-              "person-02"
-            ],
+            "class_label": "person",
+            "object_index": 1,
+            "required_attributes": [],
             "submitted": {
               "class_label": "person",
               "instance_id": null,
-              "merge_with_same_class": true
+              "attributes": {},
+              "merge_with_same_class": false
             }
           },
           "expected": {
             "valid": false,
             "error": "instance_id_missing"
           },
-          "explanation": "实例分割不能因为对象同类而合并掩码；每个对象都必须有独立 instance_id。",
+          "explanation": "其余字段均正确，唯一错误是 instance 模式缺少按模板生成的 person-01。",
           "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
           "asset_authorization": {
             "type": "self-authored",
@@ -353,7 +663,8 @@
             "mode": "semantic",
             "class_label": "sky",
             "submitted": {
-              "instance_id": "sky-01",
+              "class_label": "sky",
+              "instance_id": null,
               "attributes": {
                 "occluded": false
               }
@@ -363,7 +674,71 @@
             "valid": false,
             "error": "attribute_scope_invalid"
           },
-          "explanation": "本地 semantic 模式不创建实例，也不承载对象级属性。",
+          "explanation": "类别和空 instance_id 均正确，唯一错误是在 semantic 模式绑定对象级属性。",
+          "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        },
+        {
+          "id": "EX-IMAGE-MASK-NEG-003",
+          "asset_ref": "ASSET-SELF-IMAGE-MASK-005",
+          "input": {
+            "mode": "instance",
+            "class_label": "car",
+            "object_index": 2,
+            "required_attributes": [
+              "occluded"
+            ],
+            "observed_attributes": {
+              "occluded": true
+            },
+            "submitted": {
+              "class_label": "car",
+              "instance_id": "car-2",
+              "attributes": {
+                "occluded": true
+              },
+              "merge_with_same_class": false
+            }
+          },
+          "expected": {
+            "valid": false,
+            "error": "instance_id_format_invalid",
+            "details": {
+              "template": "{class_label}-{object_index:02d}",
+              "required_instance_id": "car-02"
+            }
+          },
+          "explanation": "其余实例字段均正确，唯一错误是 object_index 未按两位十进制补零。",
+          "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        },
+        {
+          "id": "EX-IMAGE-MASK-NEG-004",
+          "asset_ref": "ASSET-SELF-IMAGE-MASK-006",
+          "input": {
+            "mode": "semantic",
+            "region": "road_pixels",
+            "class_label": "road",
+            "submitted": {
+              "class_label": "sidewalk",
+              "instance_id": null,
+              "attributes": {}
+            }
+          },
+          "expected": {
+            "valid": false,
+            "error": "mask_semantics_mismatch",
+            "details": {
+              "required_class_label": "road"
+            }
+          },
+          "explanation": "实例 ID 和属性作用域均正确，唯一错误是将 road 像素提交为 sidewalk。",
           "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
           "asset_authorization": {
             "type": "self-authored",
@@ -374,31 +749,177 @@
       "exercise": {
         "asset_ref": "ASSET-SELF-IMAGE-MASK-EXERCISE-001",
         "input": {
-          "mode": "instance",
-          "class_label": "bicycle",
-          "object_index": 2,
-          "same_class_object_count": 2,
-          "required_attributes": [
-            "occluded"
-          ],
-          "observed_attributes": {
-            "occluded": false
-          }
+          "instance_id_template": "{class_label}-{object_index:02d}",
+          "cases": [
+            {
+              "case_id": "MASK-SEMANTIC",
+              "mode": "semantic",
+              "region": "road_pixels",
+              "class_label": "road"
+            },
+            {
+              "case_id": "MASK-INSTANCE",
+              "mode": "instance",
+              "class_label": "bicycle",
+              "object_index": 2,
+              "same_class_object_count": 2,
+              "required_attributes": [
+                "occluded"
+              ],
+              "observed_attributes": {
+                "occluded": false
+              }
+            }
+          ]
         },
-        "student_action": "提交 JSON：给出掩码模式、类别、实例 ID、实例属性和是否与同类对象合并。",
+        "student_action": "按 cases 数组顺序提交 outputs；semantic 不得有实例 ID 或对象属性，instance 必须按模板命名并绑定本实例属性。",
         "answer": {
-          "mask_mode": "instance",
-          "class_label": "bicycle",
-          "instance_id": "bicycle-02",
-          "attributes": {
-            "occluded": false
-          },
-          "merge_with_same_class": false
+          "outputs": [
+            {
+              "case_id": "MASK-SEMANTIC",
+              "mask_mode": "semantic",
+              "class_label": "road",
+              "instance_id": null,
+              "attributes": {},
+              "merge_with_same_class": true
+            },
+            {
+              "case_id": "MASK-INSTANCE",
+              "mask_mode": "instance",
+              "class_label": "bicycle",
+              "instance_id": "bicycle-02",
+              "attributes": {
+                "occluded": false
+              },
+              "merge_with_same_class": false
+            }
+          ]
         },
         "evaluation": {
           "method": "exact_match",
           "version": "1.1.0",
-          "normalization": "JSON 对象键顺序忽略；模式、类别、实例 ID、属性和值必须完全一致",
+          "normalization": "JSON 对象键顺序忽略；outputs 数组顺序、模式、类别、实例 ID、属性和值必须完全一致。diagnostic_rules 按数组顺序匹配，首个 exact submission 命中；数组顺序即错误优先级。",
+          "diagnostic_precedence": "array_order_first_exact_match",
+          "diagnostic_rules": [
+            {
+              "submission": {
+                "outputs": [
+                  {
+                    "case_id": "MASK-SEMANTIC",
+                    "mask_mode": "semantic",
+                    "class_label": "background",
+                    "instance_id": null,
+                    "attributes": {},
+                    "merge_with_same_class": true
+                  },
+                  {
+                    "case_id": "MASK-INSTANCE",
+                    "mask_mode": "instance",
+                    "class_label": "bicycle",
+                    "instance_id": "bicycle-02",
+                    "attributes": {
+                      "occluded": false
+                    },
+                    "merge_with_same_class": false
+                  }
+                ]
+              },
+              "error_type": "mask_semantics_mismatch",
+              "feedback": "MASK-SEMANTIC 的像素类别应为 road，不是 background。",
+              "remediation": [
+                "按输入的 class_label 恢复 road；不要用实例 ID 或属性改变像素语义类别。"
+              ]
+            },
+            {
+              "submission": {
+                "outputs": [
+                  {
+                    "case_id": "MASK-SEMANTIC",
+                    "mask_mode": "semantic",
+                    "class_label": "road",
+                    "instance_id": null,
+                    "attributes": {},
+                    "merge_with_same_class": true
+                  },
+                  {
+                    "case_id": "MASK-INSTANCE",
+                    "mask_mode": "instance",
+                    "class_label": "bicycle",
+                    "instance_id": null,
+                    "attributes": {
+                      "occluded": false
+                    },
+                    "merge_with_same_class": false
+                  }
+                ]
+              },
+              "error_type": "instance_id_missing",
+              "feedback": "MASK-INSTANCE 是实例模式，必须提供唯一 instance_id。",
+              "remediation": [
+                "使用模板 {class_label}-{object_index:02d} 生成 bicycle-02。"
+              ]
+            },
+            {
+              "submission": {
+                "outputs": [
+                  {
+                    "case_id": "MASK-SEMANTIC",
+                    "mask_mode": "semantic",
+                    "class_label": "road",
+                    "instance_id": null,
+                    "attributes": {},
+                    "merge_with_same_class": true
+                  },
+                  {
+                    "case_id": "MASK-INSTANCE",
+                    "mask_mode": "instance",
+                    "class_label": "bicycle",
+                    "instance_id": "bicycle-2",
+                    "attributes": {
+                      "occluded": false
+                    },
+                    "merge_with_same_class": false
+                  }
+                ]
+              },
+              "error_type": "instance_id_format_invalid",
+              "feedback": "MASK-INSTANCE 的 object_index 必须按两位十进制补零。",
+              "remediation": [
+                "把 bicycle-2 改为模板要求的 bicycle-02。"
+              ]
+            },
+            {
+              "submission": {
+                "outputs": [
+                  {
+                    "case_id": "MASK-SEMANTIC",
+                    "mask_mode": "semantic",
+                    "class_label": "road",
+                    "instance_id": null,
+                    "attributes": {
+                      "occluded": false
+                    },
+                    "merge_with_same_class": true
+                  },
+                  {
+                    "case_id": "MASK-INSTANCE",
+                    "mask_mode": "instance",
+                    "class_label": "bicycle",
+                    "instance_id": "bicycle-02",
+                    "attributes": {
+                      "occluded": false
+                    },
+                    "merge_with_same_class": false
+                  }
+                ]
+              },
+              "error_type": "attribute_scope_invalid",
+              "feedback": "MASK-SEMANTIC 不承载对象级 occluded 属性。",
+              "remediation": [
+                "从 semantic 输出删除对象属性；required_attributes 只绑定到对应 instance 输出。"
+              ]
+            }
+          ],
           "incorrect_feedback": {
             "error_type": "mask_semantics_mismatch",
             "feedback": "提交未同时满足实例模式、独立实例 ID 和属性绑定规则。",
@@ -416,6 +937,7 @@
         "error_types": [
           "mask_semantics_mismatch",
           "instance_id_missing",
+          "instance_id_format_invalid",
           "attribute_scope_invalid"
         ],
         "asset_authorization": {
@@ -443,7 +965,9 @@
         "依据可见证据区分遮挡和画面截断",
         "在两种情况同时出现时独立记录两个状态"
       ],
-      "prerequisites": [],
+      "prerequisites": [
+        "CAP-IMG-BOX-ANNOTATE-001"
+      ],
       "rule_refs": [
         "KNG-IMG-OCCLUSION-TRUNCATION-001"
       ],
@@ -507,7 +1031,7 @@
             "object_extends_beyond_image": true,
             "submitted": {
               "occluded": true,
-              "truncated": false
+              "truncated": true
             }
           },
           "expected": {
@@ -518,7 +1042,7 @@
               "truncated": true
             }
           },
-          "explanation": "仅延伸出图像边界属于 truncation，不属于画面内部的 occlusion。",
+          "explanation": "truncated=true 已正确保留；唯一错误是在没有前景遮挡证据时额外提交 occluded=true。",
           "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
           "asset_authorization": {
             "type": "self-authored",
@@ -542,7 +1066,31 @@
         "evaluation": {
           "method": "exact_match",
           "version": "1.1.0",
-          "normalization": "JSON 对象键顺序忽略；两个布尔值必须分别完全一致",
+          "normalization": "JSON 对象键顺序忽略；两个布尔值必须分别完全一致。diagnostic_rules 按数组顺序匹配，首个 exact submission 命中；数组顺序即错误优先级。",
+          "diagnostic_precedence": "array_order_first_exact_match",
+          "diagnostic_rules": [
+            {
+              "submission": {
+                "occluded": false,
+                "truncated": true
+              },
+              "error_type": "occlusion_truncation_confusion",
+              "feedback": "输入同时具有前景遮挡和出画证据；occluded 不得因 truncated=true 而被清除。",
+              "remediation": [
+                "分别判断两个证据字段，并恢复 occluded=true；两种状态可以同时成立。"
+              ]
+            },
+            {
+              "submission": {
+                "occluded": true
+              },
+              "error_type": "visibility_flags_incomplete",
+              "feedback": "提交缺少 truncated 字段，无法完整表达出画状态。",
+              "remediation": [
+                "同时提交 occluded 和 truncated 两个布尔字段，本案例 truncated=true。"
+              ]
+            }
+          ],
           "incorrect_feedback": {
             "error_type": "occlusion_truncation_confusion",
             "feedback": "遮挡与画面截断的两个独立状态未被正确记录。",
@@ -584,15 +1132,24 @@
         "理解多边形由有序顶点序列表达",
         "按本项目规则确定起点、方向和闭合方式"
       ],
-      "prerequisites": [],
+      "prerequisites": [
+        "CAP-IMG-BOX-ANNOTATE-001"
+      ],
       "rule_refs": [
-        "KNG-IMG-POLYGON-VERTEX-001"
+        "KNG-IMG-POLYGON-VERTEX-001",
+        "KNG-IMG-OVERLAP-ORDER-001"
       ],
       "source_refs": [
         "SRC-CVAT-ANNOTATION-FORMAT-251",
         "SRC-POLICY-IMAGE-TASK3-001"
       ],
-      "rule_explanation": "CVAT 格式事实：多边形几何由有序坐标点序列表达；点的顺序是几何数据的一部分。该格式事实不规定本课程采用哪个起点或遍历方向。 本项目本地语义策略：顶点序列从 (y, x) 字典序最小的顶点开始，在图像坐标系中按顺时针排列；答案不重复首点，闭合边由最后一个顶点连接回首点；自交序列无效。",
+      "rule_explanation": "外部格式事实（SRC-CVAT-ANNOTATION-FORMAT-251）：多边形几何由有序坐标点序列表达，点顺序是几何数据的一部分；该事实不规定课程的起点、方向、闭合或自交判定。 本项目本地语义策略（SRC-POLICY-IMAGE-TASK3-001；KNG-IMG-OVERLAP-ORDER-001）：多边形至少包含 3 个互异顶点；从 (y, x) 字典序最小顶点开始，在图像坐标系中按顺时针排列；答案不重复首点，closure 必须为 implicit_last_to_first，最后一点隐式连接首点；任意非相邻边相交均判为 self_intersection。校验顺序固定为 vertex_count_mismatch、polygon_not_closed、self_intersection、vertex_order_mismatch，首个失败项为错误码。",
+      "validation_precedence": [
+        "vertex_count_mismatch",
+        "polygon_not_closed",
+        "self_intersection",
+        "vertex_order_mismatch"
+      ],
       "positive_examples": [
         {
           "id": "EX-IMAGE-POLYGON-POS-001",
@@ -653,7 +1210,8 @@
                 "x": 100,
                 "y": 20
               }
-            ]
+            ],
+            "closure": "implicit_last_to_first"
           },
           "expected": {
             "valid": false,
@@ -663,6 +1221,119 @@
             }
           },
           "explanation": "起点正确，但遍历方向为逆时针，不符合本地规范的有序顶点要求。",
+          "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        },
+        {
+          "id": "EX-IMAGE-POLYGON-NEG-002",
+          "asset_ref": "ASSET-SELF-IMAGE-POLYGON-003",
+          "input": {
+            "vertices": [
+              {
+                "x": 20,
+                "y": 20
+              },
+              {
+                "x": 100,
+                "y": 20
+              },
+              {
+                "x": 100,
+                "y": 80
+              },
+              {
+                "x": 20,
+                "y": 80
+              }
+            ],
+            "closure": "none"
+          },
+          "expected": {
+            "valid": false,
+            "error": "polygon_not_closed",
+            "details": {
+              "required_closure": "implicit_last_to_first"
+            }
+          },
+          "explanation": "顶点数量、顺序和非自交性均正确，唯一错误是未声明最后一点到首点的隐式闭合边。",
+          "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        },
+        {
+          "id": "EX-IMAGE-POLYGON-NEG-003",
+          "asset_ref": "ASSET-SELF-IMAGE-POLYGON-004",
+          "input": {
+            "vertices": [
+              {
+                "x": 20,
+                "y": 20
+              },
+              {
+                "x": 100,
+                "y": 80
+              },
+              {
+                "x": 100,
+                "y": 20
+              },
+              {
+                "x": 20,
+                "y": 80
+              }
+            ],
+            "closure": "implicit_last_to_first"
+          },
+          "expected": {
+            "valid": false,
+            "error": "self_intersection",
+            "details": {
+              "shape": "bow_tie",
+              "precedence_applied": [
+                "vertex_count_mismatch",
+                "polygon_not_closed",
+                "self_intersection",
+                "vertex_order_mismatch"
+              ]
+            }
+          },
+          "explanation": "四个互异顶点且闭合方式正确，但两条非相邻边交叉形成 bow-tie；按固定校验顺序先报告 self_intersection。",
+          "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        },
+        {
+          "id": "EX-IMAGE-POLYGON-NEG-004",
+          "asset_ref": "ASSET-SELF-IMAGE-POLYGON-005",
+          "input": {
+            "vertices": [
+              {
+                "x": 20,
+                "y": 20
+              },
+              {
+                "x": 100,
+                "y": 20
+              }
+            ],
+            "closure": "implicit_last_to_first"
+          },
+          "expected": {
+            "valid": false,
+            "error": "vertex_count_mismatch",
+            "details": {
+              "minimum_distinct_vertices": 3,
+              "actual": 2
+            }
+          },
+          "explanation": "只有两个互异顶点，先触发最高优先级的 vertex_count_mismatch。",
           "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
           "asset_authorization": {
             "type": "self-authored",
@@ -715,12 +1386,137 @@
               "y": 70
             }
           ],
-          "closed": true
+          "vertex_count": 4,
+          "closed": true,
+          "self_intersection": false
         },
         "evaluation": {
           "method": "ordered_exact_match",
           "version": "1.1.0",
-          "normalization": "JSON 对象键顺序忽略；ordered_vertices 数组顺序、坐标值和 closed 必须完全一致",
+          "normalization": "JSON 对象键顺序忽略；ordered_vertices 数组顺序、坐标值、vertex_count、closed 和 self_intersection 必须完全一致。diagnostic_rules 按数组顺序匹配，首个 exact submission 命中；数组顺序即错误优先级。",
+          "diagnostic_precedence": "array_order_first_exact_match",
+          "diagnostic_rules": [
+            {
+              "submission": {
+                "ordered_vertices": [
+                  {
+                    "x": 10,
+                    "y": 10
+                  },
+                  {
+                    "x": 90,
+                    "y": 10
+                  },
+                  {
+                    "x": 90,
+                    "y": 70
+                  },
+                  {
+                    "x": 10,
+                    "y": 70
+                  }
+                ],
+                "vertex_count": 3,
+                "closed": true,
+                "self_intersection": false
+              },
+              "error_type": "vertex_count_mismatch",
+              "feedback": "提交包含四个 ordered_vertices，但 vertex_count 错写为 3。",
+              "remediation": [
+                "按互异 ordered_vertices 的实际数量提交 vertex_count=4。"
+              ]
+            },
+            {
+              "submission": {
+                "ordered_vertices": [
+                  {
+                    "x": 10,
+                    "y": 10
+                  },
+                  {
+                    "x": 90,
+                    "y": 10
+                  },
+                  {
+                    "x": 90,
+                    "y": 70
+                  },
+                  {
+                    "x": 10,
+                    "y": 70
+                  }
+                ],
+                "vertex_count": 4,
+                "closed": false,
+                "self_intersection": false
+              },
+              "error_type": "polygon_not_closed",
+              "feedback": "本项目使用 implicit_last_to_first，四点序列应提交 closed=true。",
+              "remediation": [
+                "保留不重复的首点，并将最后一点隐式连接首点后提交 closed=true。"
+              ]
+            },
+            {
+              "submission": {
+                "ordered_vertices": [
+                  {
+                    "x": 10,
+                    "y": 10
+                  },
+                  {
+                    "x": 90,
+                    "y": 10
+                  },
+                  {
+                    "x": 90,
+                    "y": 70
+                  },
+                  {
+                    "x": 10,
+                    "y": 70
+                  }
+                ],
+                "vertex_count": 4,
+                "closed": true,
+                "self_intersection": true
+              },
+              "error_type": "self_intersection",
+              "feedback": "该顺时针矩形没有非相邻边交叉，不应标记为 self_intersection=true。",
+              "remediation": [
+                "逐对检查非相邻边；本案例应提交 self_intersection=false。"
+              ]
+            },
+            {
+              "submission": {
+                "ordered_vertices": [
+                  {
+                    "x": 10,
+                    "y": 10
+                  },
+                  {
+                    "x": 10,
+                    "y": 70
+                  },
+                  {
+                    "x": 90,
+                    "y": 70
+                  },
+                  {
+                    "x": 90,
+                    "y": 10
+                  }
+                ],
+                "vertex_count": 4,
+                "closed": true,
+                "self_intersection": false
+              },
+              "error_type": "vertex_order_mismatch",
+              "feedback": "顶点集合正确且不自交，但遍历方向不是图像坐标系顺时针。",
+              "remediation": [
+                "从 (y, x) 最小点开始，按图像坐标系顺时针重新排列全部顶点。"
+              ]
+            }
+          ],
           "incorrect_feedback": {
             "error_type": "vertex_order_mismatch",
             "feedback": "顶点集合可能相同，但起点、顺时针顺序或闭合标记不符合本地规则。",
@@ -735,9 +1531,10 @@
           "CAP-IMG-POLYGON-001"
         ],
         "error_types": [
-          "vertex_order_mismatch",
+          "vertex_count_mismatch",
           "polygon_not_closed",
-          "self_intersection"
+          "self_intersection",
+          "vertex_order_mismatch"
         ],
         "asset_authorization": {
           "type": "self-authored",
@@ -764,15 +1561,23 @@
         "按本单元坐标规则判断矩形框是否有效",
         "识别越界或零面积矩形框"
       ],
-      "prerequisites": [],
+      "prerequisites": [
+        "CAP-CORE-ASSET-QUALITY-001"
+      ],
       "rule_refs": [
-        "KNG-IMG-RECT-BOUNDS-001"
+        "KNG-IMG-RECT-BOUNDS-001",
+        "KNG-IMG-CLASS-DEFINITION-001"
       ],
       "source_refs": [
         "SRC-CVAT-IMAGE-RECT-001",
         "SRC-POLICY-IMAGE-TASK3-001"
       ],
-      "rule_explanation": "CVAT 格式事实：矩形标注以图像上的矩形几何和坐标表达目标区域。该格式事实不替代项目的数值校验约定。 本项目本地语义策略：对 width x height 图像，必须满足 0 <= x_min < x_max <= width 且 0 <= y_min < y_max <= height；任一坐标越界或宽高为零均判为无效。",
+      "rule_explanation": "外部格式事实（SRC-CVAT-IMAGE-RECT-001）：矩形标注以图像上的矩形几何和两个角点坐标表达目标区域；该事实不替代项目的数值边界约定。 本项目本地语义策略（SRC-POLICY-IMAGE-TASK3-001；KNG-IMG-CLASS-DEFINITION-001）：对 width x height 图像，坐标边界为闭区间端点约束 0 <= x_min < x_max <= width 且 0 <= y_min < y_max <= height。先检查坐标是否位于 [0,width] 和 [0,height]，再检查最小值与最大值顺序；相等为 zero_area，最小值大于最大值为 coordinate_order_invalid。",
+      "validation_precedence": [
+        "coordinate_out_of_bounds",
+        "zero_area",
+        "coordinate_order_invalid"
+      ],
       "positive_examples": [
         {
           "id": "EX-IMAGE-POS-001",
@@ -793,7 +1598,7 @@
             "valid": true
           },
           "explanation": "坐标位于图像范围内，且 x_min < x_max、y_min < y_max。",
-          "source_ref": "SRC-CVAT-IMAGE-RECT-001",
+          "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
           "asset_authorization": {
             "type": "self-authored",
             "student_use_allowed": true
@@ -824,7 +1629,69 @@
             }
           },
           "explanation": "x_min 等于 x_max，矩形框宽度为零。",
-          "source_ref": "SRC-CVAT-IMAGE-RECT-001",
+          "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        },
+        {
+          "id": "EX-IMAGE-NEG-002",
+          "asset_ref": "ASSET-SELF-IMAGE-RECT-003",
+          "input": {
+            "image_size": {
+              "width": 640,
+              "height": 480
+            },
+            "rectangle": {
+              "x_min": 10,
+              "y_min": 20,
+              "x_max": 650,
+              "y_max": 120
+            }
+          },
+          "expected": {
+            "valid": false,
+            "error": "coordinate_out_of_bounds",
+            "details": {
+              "field": "x_max",
+              "value": 650,
+              "maximum": 640
+            }
+          },
+          "explanation": "坐标顺序和面积均有效，唯一错误是 x_max 超过本地 width 上界。",
+          "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        },
+        {
+          "id": "EX-IMAGE-NEG-003",
+          "asset_ref": "ASSET-SELF-IMAGE-RECT-004",
+          "input": {
+            "image_size": {
+              "width": 640,
+              "height": 480
+            },
+            "rectangle": {
+              "x_min": 110,
+              "y_min": 20,
+              "x_max": 10,
+              "y_max": 120
+            }
+          },
+          "expected": {
+            "valid": false,
+            "error": "coordinate_order_invalid",
+            "details": {
+              "axis": "x",
+              "minimum_field": "x_min",
+              "maximum_field": "x_max"
+            }
+          },
+          "explanation": "所有坐标都在图像边界内且端点不相等，唯一错误是 x_min 大于 x_max。",
+          "source_ref": "SRC-POLICY-IMAGE-TASK3-001",
           "asset_authorization": {
             "type": "self-authored",
             "student_use_allowed": true
@@ -835,31 +1702,176 @@
         "asset_ref": "ASSET-SELF-IMAGE-EXERCISE-001",
         "input": {
           "rule": "0 <= x_min < x_max <= width 且 0 <= y_min < y_max <= height",
-          "image_size": {
-            "width": 320,
-            "height": 240
-          },
-          "rectangle": {
-            "x_min": 12,
-            "y_min": 15,
-            "x_max": 330,
-            "y_max": 180
-          }
+          "allowed_results": [
+            "valid",
+            "coordinate_out_of_bounds",
+            "zero_area",
+            "coordinate_order_invalid"
+          ],
+          "cases": [
+            {
+              "case_id": "RECT-VALID",
+              "image_size": {
+                "width": 320,
+                "height": 240
+              },
+              "rectangle": {
+                "x_min": 12,
+                "y_min": 15,
+                "x_max": 220,
+                "y_max": 180
+              }
+            },
+            {
+              "case_id": "RECT-OUT-OF-BOUNDS",
+              "image_size": {
+                "width": 320,
+                "height": 240
+              },
+              "rectangle": {
+                "x_min": 12,
+                "y_min": 15,
+                "x_max": 330,
+                "y_max": 180
+              }
+            },
+            {
+              "case_id": "RECT-ZERO-AREA",
+              "image_size": {
+                "width": 320,
+                "height": 240
+              },
+              "rectangle": {
+                "x_min": 90,
+                "y_min": 15,
+                "x_max": 90,
+                "y_max": 180
+              }
+            },
+            {
+              "case_id": "RECT-ORDER",
+              "image_size": {
+                "width": 320,
+                "height": 240
+              },
+              "rectangle": {
+                "x_min": 220,
+                "y_min": 15,
+                "x_max": 12,
+                "y_max": 180
+              }
+            }
+          ]
         },
-        "student_action": "提交 JSON：判断矩形框是否有效，并在无效时给出唯一错误码。",
+        "student_action": "按 cases 数组顺序提交 classifications；每项只给出 case_id 和唯一 result。",
         "answer": {
-          "valid": false,
-          "error": "coordinate_out_of_bounds",
-          "details": {
-            "field": "x_max",
-            "value": 330,
-            "maximum": 320
-          }
+          "classifications": [
+            {
+              "case_id": "RECT-VALID",
+              "result": "valid"
+            },
+            {
+              "case_id": "RECT-OUT-OF-BOUNDS",
+              "result": "coordinate_out_of_bounds"
+            },
+            {
+              "case_id": "RECT-ZERO-AREA",
+              "result": "zero_area"
+            },
+            {
+              "case_id": "RECT-ORDER",
+              "result": "coordinate_order_invalid"
+            }
+          ]
         },
         "evaluation": {
           "method": "exact_match",
           "version": "1.1.0",
-          "normalization": "JSON 对象键顺序忽略，其余值完全一致",
+          "normalization": "JSON 对象键顺序忽略；classifications 数组顺序、case_id 和 result 必须完全一致。diagnostic_rules 按数组顺序匹配，首个 exact submission 命中；数组顺序即错误优先级。",
+          "diagnostic_precedence": "array_order_first_exact_match",
+          "diagnostic_rules": [
+            {
+              "submission": {
+                "classifications": [
+                  {
+                    "case_id": "RECT-VALID",
+                    "result": "valid"
+                  },
+                  {
+                    "case_id": "RECT-OUT-OF-BOUNDS",
+                    "result": "valid"
+                  },
+                  {
+                    "case_id": "RECT-ZERO-AREA",
+                    "result": "zero_area"
+                  },
+                  {
+                    "case_id": "RECT-ORDER",
+                    "result": "coordinate_order_invalid"
+                  }
+                ]
+              },
+              "error_type": "coordinate_out_of_bounds",
+              "feedback": "RECT-OUT-OF-BOUNDS 的 x_max=330 超过 width=320。",
+              "remediation": [
+                "先逐字段检查 [0,width] 与 [0,height] 边界，并将该案例标为 coordinate_out_of_bounds。"
+              ]
+            },
+            {
+              "submission": {
+                "classifications": [
+                  {
+                    "case_id": "RECT-VALID",
+                    "result": "valid"
+                  },
+                  {
+                    "case_id": "RECT-OUT-OF-BOUNDS",
+                    "result": "coordinate_out_of_bounds"
+                  },
+                  {
+                    "case_id": "RECT-ZERO-AREA",
+                    "result": "valid"
+                  },
+                  {
+                    "case_id": "RECT-ORDER",
+                    "result": "coordinate_order_invalid"
+                  }
+                ]
+              },
+              "error_type": "zero_area",
+              "feedback": "RECT-ZERO-AREA 的 x_min 与 x_max 相等，宽度为零。",
+              "remediation": [
+                "在边界检查后比较端点；相等时将该案例标为 zero_area。"
+              ]
+            },
+            {
+              "submission": {
+                "classifications": [
+                  {
+                    "case_id": "RECT-VALID",
+                    "result": "valid"
+                  },
+                  {
+                    "case_id": "RECT-OUT-OF-BOUNDS",
+                    "result": "coordinate_out_of_bounds"
+                  },
+                  {
+                    "case_id": "RECT-ZERO-AREA",
+                    "result": "zero_area"
+                  },
+                  {
+                    "case_id": "RECT-ORDER",
+                    "result": "valid"
+                  }
+                ]
+              },
+              "error_type": "coordinate_order_invalid",
+              "feedback": "RECT-ORDER 的 x_min=220 大于 x_max=12，端点顺序无效。",
+              "remediation": [
+                "确认坐标均在边界内后检查 x_min < x_max，并将该案例标为 coordinate_order_invalid。"
+              ]
+            }
+          ],
           "incorrect_feedback": {
             "error_type": "coordinate_out_of_bounds",
             "feedback": "矩形框有效性、错误码或越界详情与边界规则不一致。",
@@ -875,7 +1887,8 @@
         ],
         "error_types": [
           "zero_area",
-          "coordinate_out_of_bounds"
+          "coordinate_out_of_bounds",
+          "coordinate_order_invalid"
         ],
         "asset_authorization": {
           "type": "self-authored",
@@ -884,7 +1897,8 @@
       },
       "common_errors": [
         "只检查左上角而未检查右下角",
-        "允许零宽或零高矩形框"
+        "允许零宽或零高矩形框",
+        "坐标在边界内就忽略 x_min/x_max 或 y_min/y_max 的顺序"
       ],
       "remediation": [
         "按 x 轴、y 轴和面积三个步骤重新执行边界检查"
@@ -901,7 +1915,9 @@
         "区分外部标注工具的选项格式与本项目的类别语义",
         "按照题目声明的单标签约束提交唯一类别"
       ],
-      "prerequisites": [],
+      "prerequisites": [
+        "CAP-TXT-LABEL-VALIDATE-001"
+      ],
       "rule_refs": [
         "KNG-TXT-SINGLE-MULTI-LABEL-001",
         "KNG-TXT-CLASS-EXCLUSION-001"
@@ -910,7 +1926,7 @@
         "SRC-LS-CHOICES-PINNED-001",
         "SRC-POLICY-TEXT-TASK3-001"
       ],
-      "rule_explanation": "外部格式事实：Label Studio Choices 候选文档用于说明任务可以配置可选项以及单选或多选形式，但不定义本练习的类别含义。当地项目语义策略：SRC-POLICY-TEXT-TASK3-001 仅为本项目草稿政策；本单元声明为单标签任务，物流进度询问归入 shipping_query，且只能提交一个配置内标签。",
+      "rule_explanation": "外部格式事实：Label Studio Choices 候选文档用于说明任务可以配置可选项以及单选或多选形式，但不定义本练习的类别含义。本项目语义策略：SRC-POLICY-TEXT-TASK3-001 仅为本项目草稿政策；本单元声明为单标签任务，物流进度询问归入 shipping_query，且标签区分大小写、不自动去除首尾空格，只能原样提交一个配置内标签。",
       "positive_examples": [
         {
           "id": "EX-TEXT-DOCUMENT-POS-001",
@@ -986,7 +2002,71 @@
         "evaluation": {
           "method": "exact_match",
           "version": "1.1.0",
-          "normalization": "JSON 对象键顺序忽略；labels 数组的元素和值必须与标准答案完全一致",
+          "normalization": "JSON 对象键顺序忽略；labels 数组顺序和值必须与标准答案完全一致；标签区分大小写且不自动去除首尾空格",
+          "diagnostic_precedence": "diagnostic_rules 按数组顺序执行严格 JSON 匹配，首个命中规则生效；未命中诊断规则时再执行标准答案匹配，最后使用 incorrect_feedback。",
+          "diagnostic_rules": [
+            {
+              "submission": {
+                "labels": [
+                  "refund_request",
+                  "shipping_query"
+                ]
+              },
+              "error_type": "invalid_label_cardinality",
+              "feedback": "单标签任务收到两个标签，违反 selection_mode 声明的基数约束。",
+              "remediation": [
+                "删除次要标签，只保留一个最能表达主要诉求的配置内标签。"
+              ]
+            },
+            {
+              "submission": {
+                "labels": [
+                  "Shipping_Query"
+                ]
+              },
+              "error_type": "label_normalization_mismatch",
+              "feedback": "标签大小写被改写；本项目不执行大小写归一化。",
+              "remediation": [
+                "从 configured_labels 原样复制 shipping_query，不要改变字符大小写。"
+              ]
+            },
+            {
+              "submission": {
+                "labels": [
+                  "shipping_query "
+                ]
+              },
+              "error_type": "label_normalization_mismatch",
+              "feedback": "标签包含额外尾随空格；本项目不自动 trim 标签。",
+              "remediation": [
+                "从 configured_labels 原样复制 shipping_query，不要增加首尾空格。"
+              ]
+            },
+            {
+              "submission": {
+                "labels": [
+                  "delivery_status"
+                ]
+              },
+              "error_type": "label_not_in_configured_set",
+              "feedback": "delivery_status 不属于本题 configured_labels。",
+              "remediation": [
+                "只从 account_issue、refund_request、shipping_query 中选择一个标签。"
+              ]
+            },
+            {
+              "submission": {
+                "labels": [
+                  "refund_request"
+                ]
+              },
+              "error_type": "document_classification_mismatch",
+              "feedback": "提交结构、基数和标签格式均有效，但类别语义与物流进度诉求不符。",
+              "remediation": [
+                "重新识别文本的主要诉求，并选择表示物流查询的 shipping_query。"
+              ]
+            }
+          ],
           "incorrect_feedback": {
             "error_type": "document_classification_mismatch",
             "feedback": "提交结果未同时满足类别语义和单标签约束。",
@@ -1001,9 +2081,10 @@
           "CAP-TXT-CLASSIFY-001"
         ],
         "error_types": [
-          "document_classification_mismatch",
           "invalid_label_cardinality",
-          "label_not_in_configured_set"
+          "label_normalization_mismatch",
+          "label_not_in_configured_set",
+          "document_classification_mismatch"
         ],
         "asset_authorization": {
           "type": "self-authored",
@@ -1030,8 +2111,12 @@
         "识别同时包含多个意图信号的边界案例",
         "按照确定性允许答案集区分满分答案、部分得分答案与人工复核"
       ],
-      "prerequisites": [],
+      "prerequisites": [
+        "CAP-TXT-CLASSIFY-001",
+        "CAP-TXT-RELATION-001"
+      ],
       "rule_refs": [
+        "KNG-TXT-SINGLE-MULTI-LABEL-001",
         "KNG-TXT-INTENT-HIERARCHY-001",
         "KNG-TXT-AMBIGUITY-SET-001"
       ],
@@ -1039,7 +2124,7 @@
         "SRC-LS-CHOICES-PINNED-001",
         "SRC-POLICY-TEXT-TASK3-001"
       ],
-      "rule_explanation": "外部格式事实：Label Studio Choices 候选文档仅说明可配置和提交选项，不规定用户意图层级、正确答案或得分。当地项目语义策略：SRC-POLICY-TEXT-TASK3-001 仅为本项目草稿政策；当退款状态是显式主诉求而订单状态是背景信息时，refund_status 为满分主意图；若两个意图均被识别但优先级未解决，则固定得 0.5 分并要求人工复核。",
+      "rule_explanation": "外部格式事实：Label Studio Choices 候选文档仅说明可配置和提交选项，不规定用户意图层级、正确答案或得分。本项目语义策略：SRC-POLICY-TEXT-TASK3-001 仅为本项目草稿政策；当退款状态是显式主诉求而订单状态是背景信息时，refund_status 为满分主意图；若两个意图均被识别但优先级未解决，必须提交 primary_intent 为 null、按证据优先级排列 candidate_intents 并将 ambiguity 标记为 unresolved，固定得 0.5 分且进入人工复核。",
       "positive_examples": [
         {
           "id": "EX-TEXT-INTENT-POS-001",
@@ -1053,7 +2138,9 @@
           },
           "expected": {
             "primary_intent": "refund_status",
-            "secondary_intents": [],
+            "candidate_intents": [
+              "refund_status"
+            ],
             "ambiguity": "none"
           },
           "explanation": "退款到账是唯一明确诉求，按本项目意图政策无需人工复核。",
@@ -1076,7 +2163,9 @@
             ],
             "submitted": {
               "primary_intent": "order_status",
-              "secondary_intents": [],
+              "candidate_intents": [
+                "order_status"
+              ],
               "ambiguity": "none"
             }
           },
@@ -1102,10 +2191,11 @@
           ],
           "policy_hint": "显式询问的业务结果优先；未能确定优先级时必须进入人工复核"
         },
-        "student_action": "提交 JSON：给出 primary_intent、secondary_intents 和 ambiguity。",
+        "student_action": "提交 JSON：给出 primary_intent、按证据优先级排列的 candidate_intents 和 ambiguity；无法确定主意图时 primary_intent 必须为 null。",
         "answer": {
           "primary_intent": "refund_status",
-          "secondary_intents": [
+          "candidate_intents": [
+            "refund_status",
             "order_status"
           ],
           "ambiguity": "resolved_by_explicit_refund"
@@ -1113,12 +2203,46 @@
         "evaluation": {
           "method": "allowed_answers",
           "version": "1.1.0",
-          "normalization": "JSON 对象键顺序忽略；数组顺序和值必须完全一致；仅命中下列允许答案时获得对应固定分数",
+          "normalization": "JSON 对象键顺序忽略，因此字段顺序不同但字段和值相同的 unresolved 对象视为等价；candidate_intents 数组顺序和值必须完全一致；仅命中下列允许答案时获得对应固定分数",
+          "pass_score": 1.0,
+          "manual_review_on_unmatched": false,
+          "diagnostic_precedence": "diagnostic_rules 按数组顺序执行严格 JSON 匹配，首个命中规则生效；未命中诊断规则时再按 allowed_answers 顺序匹配，最后使用 incorrect_feedback。",
+          "diagnostic_rules": [
+            {
+              "submission": {
+                "primary_intent": "order_status",
+                "candidate_intents": [
+                  "order_status"
+                ],
+                "ambiguity": "none"
+              },
+              "error_type": "ambiguous_intent_ignored",
+              "feedback": "提交只保留订单状态，忽略了文本中显式出现的退款到账诉求。",
+              "remediation": [
+                "保留两个有证据的候选意图，并根据显式问句决定主意图或声明 unresolved。"
+              ]
+            },
+            {
+              "submission": {
+                "primary_intent": "billing_issue",
+                "candidate_intents": [
+                  "billing_issue"
+                ],
+                "ambiguity": "none"
+              },
+              "error_type": "intent_answer_not_allowed",
+              "feedback": "billing_issue 不在 configured_intents 中，且提交未命中任何声明的允许答案。",
+              "remediation": [
+                "只使用 order_status 与 refund_status，并按本项目歧义表示法重新提交。"
+              ]
+            }
+          ],
           "allowed_answers": [
             {
               "answer": {
                 "primary_intent": "refund_status",
-                "secondary_intents": [
+                "candidate_intents": [
+                  "refund_status",
                   "order_status"
                 ],
                 "ambiguity": "resolved_by_explicit_refund"
@@ -1133,18 +2257,19 @@
             },
             {
               "answer": {
-                "primary_intent": "order_status",
-                "secondary_intents": [
-                  "refund_status"
+                "primary_intent": null,
+                "candidate_intents": [
+                  "refund_status",
+                  "order_status"
                 ],
                 "ambiguity": "unresolved"
               },
               "score": 0.5,
               "manual_review_required": true,
               "error_type": "ambiguous_intent_priority_unresolved",
-              "feedback": "已识别两个意图，但未按本地优先级规则确定显式退款诉求。",
+              "feedback": "已完整保留两个候选意图并明确声明优先级未解决；该规范化表示获得确定性部分分并进入人工复核。",
               "remediation": [
-                "复核显式问句指向的业务结果；若证据仍冲突，保留 unresolved 并提交人工裁决。"
+                "复核显式问句指向的业务结果；若证据仍冲突，保持 primary_intent 为 null、保留既定 candidate_intents 顺序并提交人工裁决。"
               ]
             }
           ],
@@ -1202,15 +2327,18 @@
         "识别提交标签是否属于任务配置的封闭标签集",
         "拒绝未配置的自由文本标签"
       ],
-      "prerequisites": [],
+      "prerequisites": [
+        "CAP-CORE-LABEL-SCHEMA-001"
+      ],
       "rule_refs": [
-        "KNG-TXT-LABEL-VOCAB-001"
+        "KNG-TXT-LABEL-VOCAB-001",
+        "KNG-TXT-CLASS-EXCLUSION-001"
       ],
       "source_refs": [
         "SRC-LS-TEXT-LABELS-001",
         "SRC-POLICY-TEXT-TASK3-001"
       ],
-      "rule_explanation": "外部格式事实：Label Studio Labels 文档说明区域标签来自任务配置的标签选项，但不替本项目决定字符串归一化规则。当地项目语义策略：SRC-POLICY-TEXT-TASK3-001 仅为本项目草稿政策；本单元采用区分大小写且不自动去除空格的完全匹配，提交值必须原样出现在 configured_labels 中。",
+      "rule_explanation": "外部格式事实：Label Studio Labels 文档说明区域标签来自任务配置的标签选项，但不替本项目决定字符串归一化规则。本项目语义策略：SRC-POLICY-TEXT-TASK3-001 仅为本项目草稿政策；本单元采用区分大小写且不自动去除首尾空格的完全匹配，单标签提交值必须原样出现在 configured_labels 中。",
       "positive_examples": [
         {
           "id": "EX-TEXT-POS-001",
@@ -1262,21 +2390,91 @@
             "positive",
             "negative"
           ],
-          "submitted_label": "negative"
+          "candidate_labels": [
+            "negative"
+          ],
+          "selection_mode": "single",
+          "normalization_policy": "case_sensitive_no_trim"
         },
-        "student_action": "提交 JSON：判断 submitted_label 是否属于 configured_labels。",
+        "student_action": "提交 JSON：若 candidate_labels 符合封闭词表、基数和原样匹配政策，在 labels 数组中原样返回唯一标签。",
         "answer": {
-          "valid": true
+          "labels": [
+            "negative"
+          ]
         },
         "evaluation": {
           "method": "exact_match",
           "version": "1.1.0",
-          "normalization": "JSON 对象键顺序忽略，布尔值必须完全一致",
+          "normalization": "JSON 对象键顺序忽略；labels 数组顺序和值必须完全一致；标签区分大小写且不自动去除首尾空格",
+          "diagnostic_precedence": "diagnostic_rules 按数组顺序执行严格 JSON 匹配，首个命中规则生效；未命中诊断规则时再执行标准答案匹配，最后使用 incorrect_feedback。",
+          "diagnostic_rules": [
+            {
+              "submission": {
+                "labels": [
+                  "negative",
+                  "positive"
+                ]
+              },
+              "error_type": "invalid_label_cardinality",
+              "feedback": "single 模式收到两个标签，违反唯一标签基数约束。",
+              "remediation": [
+                "只保留 candidate_labels 中声明的唯一标签 negative。"
+              ]
+            },
+            {
+              "submission": {
+                "labels": [
+                  "Negative"
+                ]
+              },
+              "error_type": "label_normalization_mismatch",
+              "feedback": "标签大小写被改写；本项目不执行大小写归一化。",
+              "remediation": [
+                "原样提交小写 negative。"
+              ]
+            },
+            {
+              "submission": {
+                "labels": [
+                  "negative "
+                ]
+              },
+              "error_type": "label_normalization_mismatch",
+              "feedback": "标签包含额外尾随空格；本项目不自动 trim 标签。",
+              "remediation": [
+                "删除额外空格并原样提交 negative。"
+              ]
+            },
+            {
+              "submission": {
+                "labels": [
+                  "neutral"
+                ]
+              },
+              "error_type": "label_not_in_configured_set",
+              "feedback": "neutral 不属于本题 configured_labels。",
+              "remediation": [
+                "只提交 positive 或 negative，并优先核对 candidate_labels。"
+              ]
+            },
+            {
+              "submission": {
+                "labels": [
+                  "positive"
+                ]
+              },
+              "error_type": "label_candidate_mismatch",
+              "feedback": "positive 虽属于配置集合，但与要求原样返回的 candidate_labels 不一致。",
+              "remediation": [
+                "原样返回 candidate_labels 中的 negative。"
+              ]
+            }
+          ],
           "incorrect_feedback": {
-            "error_type": "label_not_in_configured_set",
-            "feedback": "提交的有效性判断与封闭标签集检查结果不一致。",
+            "error_type": "label_candidate_mismatch",
+            "feedback": "提交未同时满足候选标签、封闭词表、单标签基数和原样匹配政策。",
             "remediation": [
-              "逐项对比 submitted_label 与 configured_labels；不要新增、改写或自动归一化标签。"
+              "逐项对比 candidate_labels 与 configured_labels；不要新增、改写或自动归一化标签。"
             ]
           }
         },
@@ -1286,7 +2484,10 @@
           "CAP-TXT-LABEL-VALIDATE-001"
         ],
         "error_types": [
-          "label_not_in_configured_set"
+          "invalid_label_cardinality",
+          "label_normalization_mismatch",
+          "label_not_in_configured_set",
+          "label_candidate_mismatch"
         ],
         "asset_authorization": {
           "type": "self-authored",
@@ -1312,17 +2513,20 @@
         "使用字符起止偏移表达实体选区",
         "根据本地边界政策判断应包含的名称成分和应排除的标点"
       ],
-      "prerequisites": [],
+      "prerequisites": [
+        "CAP-TXT-LABEL-VALIDATE-001"
+      ],
       "rule_refs": [
         "KNG-TXT-SPAN-OFFSET-001",
         "KNG-TXT-ENTITY-BOUNDARY-001",
-        "KNG-TXT-ENTITY-TYPE-001"
+        "KNG-TXT-ENTITY-TYPE-001",
+        "KNG-TXT-NESTED-ENTITY-001"
       ],
       "source_refs": [
         "SRC-LS-TEXT-SPANS-PINNED-001",
         "SRC-POLICY-TEXT-TASK3-001"
       ],
-      "rule_explanation": "外部格式事实：Label Studio 文本选区候选文档用于说明文本区域以起止字符位置记录，并可绑定区域标签；它不规定具体语料中实体应圈到哪里。当地项目语义策略：SRC-POLICY-TEXT-TASK3-001 仅为本项目草稿政策；偏移采用从 0 开始、end 不含末位的区间，组织全称包含名称后缀，句末标点不计入实体。",
+      "rule_explanation": "外部格式事实：Label Studio 文本选区候选文档用于说明文本区域以起止字符位置记录，并可绑定区域标签；它不规定具体语料中实体应圈到哪里。本项目语义策略：SRC-POLICY-TEXT-TASK3-001 仅为本项目草稿政策；偏移采用从 0 开始、end 不含末位的区间，组织全称包含名称后缀，句末标点不计入实体。",
       "boundary_cases": [
         {
           "id": "BC-TEXT-NER-INCLUDE-001",
@@ -1419,6 +2623,124 @@
           "method": "exact_match",
           "version": "1.1.0",
           "normalization": "JSON 对象键顺序忽略；entities 数组顺序及所有标签、偏移和文本值必须完全一致",
+          "diagnostic_precedence": "diagnostic_rules 按数组顺序执行严格 JSON 匹配，首个命中规则生效；标签错误优先于边界错误，特定的标点和缺失后缀错误优先于通用边界错误，文本转写错误最后判断；未命中诊断规则时再执行标准答案匹配，最后使用 incorrect_feedback。",
+          "diagnostic_rules": [
+            {
+              "submission": {
+                "entities": [
+                  {
+                    "label": "PERSON",
+                    "start": 0,
+                    "end": 2,
+                    "text": "王芳"
+                  },
+                  {
+                    "label": "PERSON",
+                    "start": 4,
+                    "end": 12,
+                    "text": "星河科技有限公司"
+                  }
+                ]
+              },
+              "error_type": "entity_type_mismatch",
+              "feedback": "第二个实体边界和文本正确，但将组织误标为 PERSON。",
+              "remediation": [
+                "根据 labels 与实体语义，将星河科技有限公司的 label 改为 ORG。"
+              ]
+            },
+            {
+              "submission": {
+                "entities": [
+                  {
+                    "label": "PERSON",
+                    "start": 0,
+                    "end": 2,
+                    "text": "王芳"
+                  },
+                  {
+                    "label": "ORG",
+                    "start": 4,
+                    "end": 13,
+                    "text": "星河科技有限公司。"
+                  }
+                ]
+              },
+              "error_type": "entity_boundary_includes_punctuation",
+              "feedback": "ORG 选区包含了句末标点。",
+              "remediation": [
+                "将 ORG 的 end 改为 12，并从 text 中排除句号。"
+              ]
+            },
+            {
+              "submission": {
+                "entities": [
+                  {
+                    "label": "PERSON",
+                    "start": 0,
+                    "end": 2,
+                    "text": "王芳"
+                  },
+                  {
+                    "label": "ORG",
+                    "start": 4,
+                    "end": 10,
+                    "text": "星河科技有限"
+                  }
+                ]
+              },
+              "error_type": "entity_boundary_incomplete",
+              "feedback": "ORG 选区遗漏了完整组织名称后缀中的“公司”。",
+              "remediation": [
+                "扩展 ORG 选区到 end 12，并提交完整文本星河科技有限公司。"
+              ]
+            },
+            {
+              "submission": {
+                "entities": [
+                  {
+                    "label": "PERSON",
+                    "start": 0,
+                    "end": 2,
+                    "text": "王芳"
+                  },
+                  {
+                    "label": "ORG",
+                    "start": 5,
+                    "end": 12,
+                    "text": "星河科技有限公司"
+                  }
+                ]
+              },
+              "error_type": "entity_boundary_mismatch",
+              "feedback": "ORG 的 start 偏移与提交的完整表面文本不一致。",
+              "remediation": [
+                "按 zero_based_end_exclusive 约定将 ORG 的 start 改为 4。"
+              ]
+            },
+            {
+              "submission": {
+                "entities": [
+                  {
+                    "label": "PERSON",
+                    "start": 0,
+                    "end": 2,
+                    "text": "王芳"
+                  },
+                  {
+                    "label": "ORG",
+                    "start": 4,
+                    "end": 12,
+                    "text": "星河科技公司"
+                  }
+                ]
+              },
+              "error_type": "entity_text_mismatch",
+              "feedback": "偏移与标签正确，但提交的表面文本未逐字对应原文选区。",
+              "remediation": [
+                "从原文 [4, 12) 原样复制星河科技有限公司。"
+              ]
+            }
+          ],
           "incorrect_feedback": {
             "error_type": "entity_boundary_mismatch",
             "feedback": "至少一个实体的标签、字符边界、表面文本或排列顺序与标准答案不一致。",
@@ -1434,10 +2756,11 @@
           "CAP-TXT-ENTITY-TYPE-001"
         ],
         "error_types": [
-          "entity_boundary_mismatch",
-          "entity_boundary_incomplete",
+          "entity_type_mismatch",
           "entity_boundary_includes_punctuation",
-          "entity_type_mismatch"
+          "entity_boundary_incomplete",
+          "entity_boundary_mismatch",
+          "entity_text_mismatch"
         ],
         "asset_authorization": {
           "type": "self-authored",
@@ -1464,15 +2787,18 @@
         "区分关系的源实体与目标实体",
         "按照本地关系语义提交有向实体连边"
       ],
-      "prerequisites": [],
+      "prerequisites": [
+        "CAP-TXT-ENTITY-TYPE-001"
+      ],
       "rule_refs": [
-        "KNG-TXT-RELATION-DIRECTION-001"
+        "KNG-TXT-RELATION-DIRECTION-001",
+        "KNG-TXT-INTERANNOTATOR-001"
       ],
       "source_refs": [
         "SRC-LS-RELATIONS-PINNED-001",
         "SRC-POLICY-TEXT-TASK3-001"
       ],
-      "rule_explanation": "外部格式事实：Label Studio Relations 候选文档用于说明关系连接具有起点、终点和方向，但不定义 works_for 等关系的业务语义。当地项目语义策略：SRC-POLICY-TEXT-TASK3-001 仅为本项目草稿政策；works_for 固定从 PERSON 源实体指向 ORG 目标实体，反向连边不等价。",
+      "rule_explanation": "外部格式事实：Label Studio Relations 候选文档用于说明关系连接具有起点、终点和方向，但不定义 works_for 等关系的业务语义。本项目语义策略：SRC-POLICY-TEXT-TASK3-001 仅为本项目草稿政策；works_for 固定从已声明的 PERSON 源实体指向已声明的 ORG 目标实体，关系类型必须来自 available_relations，反向连边不等价。",
       "positive_examples": [
         {
           "id": "EX-TEXT-RELATION-POS-001",
@@ -1578,6 +2904,67 @@
           "method": "exact_match",
           "version": "1.1.0",
           "normalization": "JSON 对象键顺序忽略；relations 数组顺序以及端点和关系类型必须完全一致",
+          "diagnostic_precedence": "diagnostic_rules 按数组顺序执行严格 JSON 匹配，首个命中规则生效；缺失关系、关系类型、端点存在性和方向依次判断；未命中诊断规则时再执行标准答案匹配，最后使用 incorrect_feedback。",
+          "diagnostic_rules": [
+            {
+              "submission": {
+                "relations": []
+              },
+              "error_type": "relation_answer_mismatch",
+              "feedback": "提交缺少题目要求的唯一 works_for 关系。",
+              "remediation": [
+                "在 relations 中添加一条从 E1 到 E2 的 works_for 关系。"
+              ]
+            },
+            {
+              "submission": {
+                "relations": [
+                  {
+                    "from_id": "E1",
+                    "to_id": "E2",
+                    "type": "member_of"
+                  }
+                ]
+              },
+              "error_type": "relation_type_mismatch",
+              "feedback": "端点和方向正确，但 member_of 不在 available_relations 中。",
+              "remediation": [
+                "将关系 type 改为本题唯一允许的 works_for。"
+              ]
+            },
+            {
+              "submission": {
+                "relations": [
+                  {
+                    "from_id": "E1",
+                    "to_id": "E3",
+                    "type": "works_for"
+                  }
+                ]
+              },
+              "error_type": "relation_endpoint_mismatch",
+              "feedback": "to_id E3 未出现在题目声明的 entities 中。",
+              "remediation": [
+                "使用已声明的 ORG 实体 E2 作为目标端点。"
+              ]
+            },
+            {
+              "submission": {
+                "relations": [
+                  {
+                    "from_id": "E2",
+                    "to_id": "E1",
+                    "type": "works_for"
+                  }
+                ]
+              },
+              "error_type": "relation_direction_reversed",
+              "feedback": "works_for 的源端点和目标端点被反转。",
+              "remediation": [
+                "按 PERSON works_for ORG 语义使用 from_id E1、to_id E2。"
+              ]
+            }
+          ],
           "incorrect_feedback": {
             "error_type": "relation_answer_mismatch",
             "feedback": "关系类型、源端点或目标端点与本项目的有向关系定义不一致。",
@@ -1593,8 +2980,9 @@
         ],
         "error_types": [
           "relation_answer_mismatch",
-          "relation_direction_reversed",
-          "relation_endpoint_mismatch"
+          "relation_type_mismatch",
+          "relation_endpoint_mismatch",
+          "relation_direction_reversed"
         ],
         "asset_authorization": {
           "type": "self-authored",

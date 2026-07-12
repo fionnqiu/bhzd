@@ -1,3 +1,4 @@
+import copy
 import importlib.util
 import json
 import os
@@ -15,6 +16,7 @@ IMAGE_UNITS_PATH = ROOT / "data" / "curriculum" / "image" / "teaching-units.json
 CENTRAL_UNITS_PATH = ROOT / "data" / "curriculum" / "teaching-units.json"
 SOURCE_REGISTRY_PATH = ROOT / "data" / "sources" / "source-registry.json"
 GRAPH_CATALOG_PATH = ROOT / "data" / "graph" / "graph-catalog.json"
+REVIEW_REGISTRY_PATH = ROOT / "data" / "reviews" / "content-review-registry.json"
 EVALUATOR_PATH = ROOT / "scripts" / "evaluate_exercise.py"
 BUILD_CURRICULUM_PATH = ROOT / "scripts" / "build_curriculum.py"
 
@@ -79,6 +81,28 @@ def unit_by_id(document: dict, unit_id: str) -> dict:
     return next(unit for unit in document["units"] if unit["id"] == unit_id)
 
 
+def synthetic_unit(method: str, answer: object) -> dict:
+    return {
+        "rule_refs": ["KNG-TEST-001"],
+        "remediation": ["重新检查提交。"],
+        "exercise": {
+            "answer": answer,
+            "data_version": "test-data-1",
+            "capability_refs": ["CAP-TEST-001"],
+            "error_types": ["wrong_type", "wrong_value"],
+            "evaluation": {
+                "method": method,
+                "version": "test-eval-1",
+                "incorrect_feedback": {
+                    "error_type": "wrong_type",
+                    "feedback": "类型错误。",
+                    "remediation": ["保留 JSON 类型。"],
+                },
+            },
+        },
+    }
+
+
 def test_task3_files_exist():
     required = (
         TEXT_UNITS_PATH,
@@ -123,9 +147,10 @@ def test_domain_sources_cover_candidate_baselines(path, data_type, required_ids)
         assert unit["exercise"]["error_types"]
         assert unit["common_errors"]
         assert unit["remediation"]
-        assert unit["review_status"] == "draft"
-        assert unit["student_visible"] is False
-        assert unit["review_records"] == []
+        assert unit["review_status"] in {"draft", "reviewed", "published"}
+        assert isinstance(unit["review_records"], list)
+        if unit["review_status"] != "published":
+            assert unit["student_visible"] is False
 
 
 def test_boundary_occlusion_and_ambiguity_are_explicit():
@@ -221,6 +246,186 @@ def test_evaluator_result_contract_and_serialization_are_deterministic():
     assert first["remediation"]
     assert first["data_version"] == unit["exercise"]["data_version"]
     assert first["evaluation_version"] == unit["exercise"]["evaluation"]["version"]
+
+
+@pytest.mark.parametrize(
+    ("method", "answer", "submission"),
+    (
+        ("exact_match", {"value": True}, {"value": 1}),
+        ("exact_match", {"value": 1}, {"value": 1.0}),
+        ("ordered_exact_match", {"values": [True]}, {"values": [1]}),
+        ("ordered_exact_match", {"values": [1]}, {"values": [1.0]}),
+    ),
+)
+def test_exact_methods_preserve_json_scalar_types(method, answer, submission):
+    evaluator = load_module(EVALUATOR_PATH, f"strict_json_{method}_{answer!r}")
+    result = evaluator.evaluate_unit(synthetic_unit(method, answer), submission)
+    assert result["score"] == 0.0
+    assert result["passed"] is False
+
+
+@pytest.mark.parametrize(
+    "missing_field",
+    (
+        "answer",
+        "score",
+        "manual_review_required",
+        "error_type",
+        "feedback",
+        "remediation",
+    ),
+)
+def test_allowed_answers_require_complete_explicit_candidates(missing_field):
+    evaluator = load_module(EVALUATOR_PATH, f"allowed_schema_{missing_field}")
+    text = load_json(TEXT_UNITS_PATH)
+    unit = copy.deepcopy(unit_by_id(text, "TU-TEXT-INTENT-AMBIGUITY-001"))
+    candidate = unit["exercise"]["evaluation"]["allowed_answers"][0]
+    candidate.pop(missing_field)
+    with pytest.raises(ValueError, match=missing_field):
+        evaluator.evaluate_unit(unit, unit["exercise"]["answer"])
+
+
+def test_diagnostic_rules_use_declared_order_before_default_feedback():
+    evaluator = load_module(EVALUATOR_PATH, "diagnostic_precedence")
+    unit = synthetic_unit("exact_match", {"value": "correct"})
+    unit["exercise"]["evaluation"]["diagnostic_rules"] = [
+        {
+            "submission": {"value": 1},
+            "error_type": "wrong_type",
+            "feedback": "值必须是字符串。",
+            "remediation": ["保留字符串类型。"],
+        },
+        {
+            "submission": {"value": "other"},
+            "error_type": "wrong_value",
+            "feedback": "字符串值不匹配。",
+            "remediation": ["核对允许值。"],
+        },
+    ]
+    unit["exercise"]["evaluation"]["diagnostic_precedence"] = (
+        "diagnostic_rules first, then answer, then incorrect_feedback"
+    )
+    result = evaluator.evaluate_unit(unit, {"value": "other"})
+    assert result["error_type"] == "wrong_value"
+    assert result["feedback"] == "字符串值不匹配。"
+    assert result["remediation"] == ["核对允许值。"]
+
+
+def test_diagnostic_contract_requires_precedence_and_disjoint_submissions():
+    evaluator = load_module(EVALUATOR_PATH, "diagnostic_contract")
+    unit = synthetic_unit("exact_match", {"value": "correct"})
+    unit["exercise"]["evaluation"]["diagnostic_rules"] = [
+        {
+            "submission": {"value": "other"},
+            "error_type": "wrong_value",
+            "feedback": "字符串值不匹配。",
+            "remediation": ["核对允许值。"],
+        }
+    ]
+    with pytest.raises(ValueError, match="diagnostic_precedence"):
+        evaluator.evaluate_unit(unit, {"value": "other"})
+
+    unit["exercise"]["evaluation"]["diagnostic_precedence"] = (
+        "diagnostic_rules first, then answer, then incorrect_feedback"
+    )
+    unit["exercise"]["evaluation"]["diagnostic_rules"][0]["submission"] = {
+        "value": "correct"
+    }
+    with pytest.raises(ValueError, match="overlap"):
+        evaluator.evaluate_unit(unit, {"value": "correct"})
+
+
+def test_every_declared_candidate_error_is_deterministically_reachable():
+    evaluator = load_module(EVALUATOR_PATH, "diagnostic_reachability")
+    for path in (TEXT_UNITS_PATH, IMAGE_UNITS_PATH):
+        document = load_json(path)
+        for unit in document["units"]:
+            evaluation = unit["exercise"]["evaluation"]
+            rules = evaluation.get("diagnostic_rules", [])
+            assert rules, f"{unit['id']} must define ordered diagnostic_rules"
+            canonical_submissions = [
+                evaluator.canonical_json(rule["submission"]) for rule in rules
+            ]
+            assert len(canonical_submissions) == len(set(canonical_submissions))
+
+            reachable = {rule["error_type"] for rule in rules}
+            default_feedback = evaluation["incorrect_feedback"]
+            if isinstance(default_feedback, dict):
+                reachable.add(default_feedback["error_type"])
+            for candidate in evaluation.get("allowed_answers", []):
+                if candidate["error_type"] is not None:
+                    reachable.add(candidate["error_type"])
+            assert set(unit["exercise"]["error_types"]) == reachable
+
+            for rule in rules:
+                result = evaluator.evaluate_unit(unit, rule["submission"])
+                assert result["error_type"] == rule["error_type"]
+                assert result["feedback"] == rule["feedback"]
+                assert result["remediation"] == rule["remediation"]
+
+
+def test_candidate_prerequisites_follow_graph_predecessors():
+    text = load_json(TEXT_UNITS_PATH)
+    image = load_json(IMAGE_UNITS_PATH)
+    expected = {
+        "TU-TEXT-LABEL-VOCAB-001": ["CAP-CORE-LABEL-SCHEMA-001"],
+        "TU-TEXT-DOCUMENT-CLASSIFY-001": ["CAP-TXT-LABEL-VALIDATE-001"],
+        "TU-TEXT-NER-BOUNDARY-001": ["CAP-TXT-LABEL-VALIDATE-001"],
+        "TU-TEXT-RELATION-DIRECTION-001": ["CAP-TXT-ENTITY-TYPE-001"],
+        "TU-TEXT-INTENT-AMBIGUITY-001": [
+            "CAP-TXT-CLASSIFY-001",
+            "CAP-TXT-RELATION-001",
+        ],
+        "TU-IMAGE-RECT-BOUNDS-001": ["CAP-CORE-ASSET-QUALITY-001"],
+        "TU-IMAGE-OCCLUSION-TRUNCATION-001": ["CAP-IMG-BOX-ANNOTATE-001"],
+        "TU-IMAGE-POLYGON-VERTICES-001": ["CAP-IMG-BOX-ANNOTATE-001"],
+        "TU-IMAGE-KEYPOINT-VISIBILITY-001": ["CAP-IMG-OBJECT-CLASS-001"],
+        "TU-IMAGE-MASK-INSTANCE-001": ["CAP-IMG-SEMANTIC-SEGMENT-001"],
+    }
+    units = {unit["id"]: unit for unit in text["units"] + image["units"]}
+    for unit_id, prerequisites in expected.items():
+        assert units[unit_id]["prerequisites"] == prerequisites
+
+
+def test_failed_ai_reviews_are_recorded_without_publication_authority():
+    assert REVIEW_REGISTRY_PATH.exists(), "content review registry is missing"
+    registry = load_json(REVIEW_REGISTRY_PATH)
+    records = {record["reviewer_id"]: record for record in registry["records"]}
+    assert set(records) >= {
+        "codex-task3-text-review",
+        "codex-task3-image-review",
+    }
+    for reviewer_id in (
+        "codex-task3-text-review",
+        "codex-task3-image-review",
+    ):
+        record = records[reviewer_id]
+        assert record["reviewer_type"] == "ai_agent"
+        assert record["reviewed_commit"].startswith("c05413a")
+        assert record["decision"] == "changes_required"
+        assert record["authorizes_publication"] is False
+        assert record["finding_count"] == len(record["findings"])
+        assert record["finding_count"] > 0
+        assert record["remaining_risks"]
+
+
+def test_semantic_tasks_use_local_policy_primary_knowledge():
+    catalog = load_json(GRAPH_CATALOG_PATH)
+    tasks = {task["id"]: task for task in catalog["nodes"]["TSK"]}
+    expected = {
+        "TSK-TXT-DOCUMENT-CLASSIFY-001": "KNG-TXT-CLASS-EXCLUSION-001",
+        "TSK-TXT-NER-ANNOTATE-001": "KNG-TXT-NESTED-ENTITY-001",
+        "TSK-TXT-RELATION-LINK-001": "KNG-TXT-INTERANNOTATOR-001",
+        "TSK-IMG-RECT-AUDIT-001": "KNG-IMG-CLASS-DEFINITION-001",
+        "TSK-IMG-OBJECT-BOX-001": "KNG-IMG-OCCLUSION-TRUNCATION-001",
+        "TSK-IMG-POLYGON-TRACE-001": "KNG-IMG-OVERLAP-ORDER-001",
+        "TSK-IMG-KEYPOINT-MARK-001": "KNG-IMG-SMALL-OBJECT-001",
+        "TSK-IMG-MASK-REVIEW-001": "KNG-IMG-QUALITY-METRICS-001",
+    }
+    knowledge = {node["id"]: node for node in catalog["nodes"]["KNG"]}
+    for task_id, knowledge_id in expected.items():
+        assert tasks[task_id]["primary_knowledge_ref"] == knowledge_id
+        assert knowledge[knowledge_id]["claim_basis"] == "project_policy"
 
 
 def test_curriculum_builder_is_deterministic_and_preserves_legacy_domains(tmp_path):
@@ -339,12 +544,12 @@ def test_candidate_sources_record_context7_and_local_policy_boundaries():
     for source_id in context7_ids:
         source = sources[source_id]
         verification = source["verification"]
-        assert verification["method"] == "context7_official_documentation_lookup"
-        assert verification["content_verified"] is True
-        assert verification["path_verified"] is True
-        assert verification["direct_http_license_verified"] is False
-        assert verification["remaining_license_pin_risk"]
-        assert "HTTP" not in source["verified_by"]
+        context7 = verification["prior_context7_evidence"]
+        assert context7["method"] == "context7_official_documentation_lookup"
+        assert context7["content_verified"] is True
+        assert context7["path_verified"] is True
+        assert verification["method"] == "direct_raw_github_http_get"
+        assert verification["license_http_status"] == 200
 
     for source_id, data_type in (
         ("SRC-POLICY-TEXT-TASK3-001", "text"),
@@ -354,5 +559,126 @@ def test_candidate_sources_record_context7_and_local_policy_boundaries():
         assert source["data_type"] == data_type
         assert source["source_kind"] == "project_policy"
         assert source["authority_scope"] == "local_project_policy_only"
-        assert source["license_or_authorization"]["publishable"] is False
+        assert source["license_or_authorization"]["publishable"] is True
+        assert source["publication_scope"] == "development_only"
+        assert source["human_release_allowed"] is False
         assert source["usage_rights"]["asset_redistribution_allowed"] is False
+
+
+def test_pinned_sources_record_direct_tag_document_and_license_evidence():
+    registry = load_json(SOURCE_REGISTRY_PATH)
+    sources = {source["source_id"]: source for source in registry["sources"]}
+    expected_paths = {
+        "SRC-LS-CHOICES-PINNED-001": (
+            "https://raw.githubusercontent.com/HumanSignal/label-studio/1.19.0/docs/source/tags/choices.md",
+            "https://raw.githubusercontent.com/HumanSignal/label-studio/1.19.0/LICENSE",
+        ),
+        "SRC-LS-TEXT-SPANS-PINNED-001": (
+            "https://raw.githubusercontent.com/HumanSignal/label-studio/1.19.0/docs/source/tags/labels.md",
+            "https://raw.githubusercontent.com/HumanSignal/label-studio/1.19.0/LICENSE",
+        ),
+        "SRC-LS-RELATIONS-PINNED-001": (
+            "https://raw.githubusercontent.com/HumanSignal/label-studio/1.19.0/docs/source/tags/relations.md",
+            "https://raw.githubusercontent.com/HumanSignal/label-studio/1.19.0/LICENSE",
+        ),
+        "SRC-CVAT-ANNOTATION-FORMAT-251": (
+            "https://raw.githubusercontent.com/cvat-ai/cvat/v2.51.0/site/content/en/docs/dataset_management/formats/format-cvat.md",
+            "https://raw.githubusercontent.com/cvat-ai/cvat/v2.51.0/LICENSE",
+        ),
+    }
+    for source_id, (document_url, license_url) in expected_paths.items():
+        source = sources[source_id]
+        assert source["original_url_or_local_archive"] == document_url
+        assert source["license_or_authorization"]["license_url"] == license_url
+        assert source["status"] == "verified"
+        assert source["license_or_authorization"]["publishable"] is True
+        assert source["usage_rights"]["citation_allowed"] is True
+        verification = source["verification"]
+        assert verification["method"] == "direct_raw_github_http_get"
+        assert verification["document_http_status"] == 200
+        assert verification["license_http_status"] == 200
+        assert verification["verified_at"] == "2026-07-12"
+
+    for source_id in (
+        "SRC-POLICY-TEXT-TASK3-001",
+        "SRC-POLICY-IMAGE-TASK3-001",
+    ):
+        source = sources[source_id]
+        assert source["status"] == "verified"
+        assert source["license_or_authorization"]["publishable"] is True
+        assert source["publication_scope"] == "development_only"
+        assert source["human_release_allowed"] is False
+
+
+def make_sources_eligible_for_unit(source_registry: dict, unit: dict) -> None:
+    sources = {source["source_id"]: source for source in source_registry["sources"]}
+    for source_ref in unit["source_refs"]:
+        source = sources[source_ref]
+        source["status"] = "verified"
+        source["license_or_authorization"]["publishable"] = True
+        source["usage_rights"]["citation_allowed"] = True
+
+
+def approved_review_for(unit: dict) -> dict:
+    return {
+        "review_id": "REVIEW-TEST-APPROVED-001",
+        "reviewer_id": "independent-test-reviewer",
+        "reviewer_type": "ai_agent",
+        "independent_of_implementation": True,
+        "reviewed_at": "2026-07-12",
+        "reviewed_commit": "test-commit",
+        "scope": {"data_type": unit["data_type"], "unit_ids": [unit["id"]]},
+        "unit_versions": [
+            {
+                "unit_id": unit["id"],
+                "data_version": unit["exercise"]["data_version"],
+                "evaluation_version": unit["exercise"]["evaluation"]["version"],
+            }
+        ],
+        "decision": "approved",
+        "findings": [],
+        "finding_count": 0,
+        "remaining_risks": [],
+        "authorizes_publication": True,
+    }
+
+
+def test_publication_contract_requires_eligible_sources_and_approved_review():
+    builder = load_module(BUILD_CURRICULUM_PATH, "publication_contract")
+    assert hasattr(builder, "validate_publication_contract")
+    central = load_json(CENTRAL_UNITS_PATH)
+    sources = load_json(SOURCE_REGISTRY_PATH)
+    reviews = (
+        load_json(REVIEW_REGISTRY_PATH)
+        if REVIEW_REGISTRY_PATH.exists()
+        else {"schema_version": "1.0.0", "records": []}
+    )
+    candidate = next(unit for unit in central["units"] if unit["data_type"] == "text")
+
+    reviewed = copy.deepcopy(central)
+    unit = next(item for item in reviewed["units"] if item["id"] == candidate["id"])
+    unit["review_status"] = "reviewed"
+    unit["student_visible"] = False
+    unit["review_records"] = ["REVIEW-TASK3-TEXT-C05413A-001"]
+    eligible_sources = copy.deepcopy(sources)
+    make_sources_eligible_for_unit(eligible_sources, unit)
+
+    with pytest.raises(ValueError, match="approved review"):
+        builder.validate_publication_contract(reviewed, eligible_sources, reviews)
+
+    approved_reviews = copy.deepcopy(reviews)
+    approved_reviews["records"].append(approved_review_for(unit))
+    unit["review_records"].append("REVIEW-TEST-APPROVED-001")
+    ineligible_sources = copy.deepcopy(eligible_sources)
+    source = next(
+        item
+        for item in ineligible_sources["sources"]
+        if item["source_id"] == unit["source_refs"][0]
+    )
+    source["license_or_authorization"]["publishable"] = False
+    with pytest.raises(ValueError, match="source eligibility"):
+        builder.validate_publication_contract(
+            reviewed, ineligible_sources, approved_reviews
+        )
+
+    builder.validate_publication_contract(reviewed, eligible_sources, approved_reviews)

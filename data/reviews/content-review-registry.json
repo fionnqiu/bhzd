@@ -1,0 +1,84 @@
+{
+  "schema_version": "1.0.0",
+  "records": [
+    {
+      "review_id": "REVIEW-TASK3-IMAGE-C05413A-001",
+      "reviewer_id": "codex-task3-image-review",
+      "reviewer_type": "ai_agent",
+      "independent_of_implementation": true,
+      "reviewed_at": "2026-07-12",
+      "reviewed_commit": "c05413afeace67c205410fe3d561feca524659c0",
+      "scope": {
+        "data_type": "image",
+        "unit_ids": [
+          "TU-IMAGE-KEYPOINT-VISIBILITY-001",
+          "TU-IMAGE-MASK-INSTANCE-001",
+          "TU-IMAGE-OCCLUSION-TRUNCATION-001",
+          "TU-IMAGE-POLYGON-VERTICES-001",
+          "TU-IMAGE-RECT-BOUNDS-001"
+        ]
+      },
+      "unit_versions": [
+        {"unit_id": "TU-IMAGE-KEYPOINT-VISIBILITY-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
+        {"unit_id": "TU-IMAGE-MASK-INSTANCE-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
+        {"unit_id": "TU-IMAGE-OCCLUSION-TRUNCATION-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
+        {"unit_id": "TU-IMAGE-POLYGON-VERTICES-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
+        {"unit_id": "TU-IMAGE-RECT-BOUNDS-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"}
+      ],
+      "decision": "changes_required",
+      "findings": [
+        {"finding_id": "IMG-001", "severity": "high", "summary": "Local coordinate, polygon, visibility, and mask semantics were not represented by dedicated project-policy knowledge links."},
+        {"finding_id": "IMG-002", "severity": "high", "summary": "Keypoint examples did not provide explicit foreground-occlusion evidence or distinguish unknown state from visibility."},
+        {"finding_id": "IMG-003", "severity": "high", "summary": "The instance-ID naming template and multi-fault diagnostic precedence were not explicit."},
+        {"finding_id": "IMG-004", "severity": "medium", "summary": "Polygon negatives did not cover closure and bow-tie self-intersection."},
+        {"finding_id": "IMG-005", "severity": "high", "summary": "Declared image error types were not individually reachable through deterministic diagnostics."},
+        {"finding_id": "IMG-006", "severity": "medium", "summary": "Teaching-unit prerequisites did not match the graph PRE chain."}
+      ],
+      "finding_count": 6,
+      "remaining_risks": [
+        "Image semantic rules require a corrected candidate and independent re-review.",
+        "No AI or human approval exists for publication of the reviewed commit."
+      ],
+      "authorizes_publication": false
+    },
+    {
+      "review_id": "REVIEW-TASK3-TEXT-C05413A-001",
+      "reviewer_id": "codex-task3-text-review",
+      "reviewer_type": "ai_agent",
+      "independent_of_implementation": true,
+      "reviewed_at": "2026-07-12",
+      "reviewed_commit": "c05413afeace67c205410fe3d561feca524659c0",
+      "scope": {
+        "data_type": "text",
+        "unit_ids": [
+          "TU-TEXT-DOCUMENT-CLASSIFY-001",
+          "TU-TEXT-INTENT-AMBIGUITY-001",
+          "TU-TEXT-LABEL-VOCAB-001",
+          "TU-TEXT-NER-BOUNDARY-001",
+          "TU-TEXT-RELATION-DIRECTION-001"
+        ]
+      },
+      "unit_versions": [
+        {"unit_id": "TU-TEXT-DOCUMENT-CLASSIFY-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
+        {"unit_id": "TU-TEXT-INTENT-AMBIGUITY-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
+        {"unit_id": "TU-TEXT-LABEL-VOCAB-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
+        {"unit_id": "TU-TEXT-NER-BOUNDARY-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
+        {"unit_id": "TU-TEXT-RELATION-DIRECTION-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"}
+      ],
+      "decision": "changes_required",
+      "findings": [
+        {"finding_id": "TXT-001", "severity": "high", "summary": "Local label normalization, NER boundary, and relation semantics were not represented by dedicated project-policy knowledge links."},
+        {"finding_id": "TXT-002", "severity": "medium", "summary": "The rule explanation used imprecise local-policy wording."},
+        {"finding_id": "TXT-003", "severity": "high", "summary": "The unresolved-intent representation was not canonical or exhaustive for deterministic partial credit."},
+        {"finding_id": "TXT-004", "severity": "high", "summary": "Declared text error types were not individually reachable through deterministic diagnostics."},
+        {"finding_id": "TXT-005", "severity": "medium", "summary": "Teaching-unit prerequisites did not match the graph PRE chain."}
+      ],
+      "finding_count": 5,
+      "remaining_risks": [
+        "Text semantic and ambiguity rules require a corrected candidate and independent re-review.",
+        "No AI or human approval exists for publication of the reviewed commit."
+      ],
+      "authorizes_publication": false
+    }
+  ]
+}

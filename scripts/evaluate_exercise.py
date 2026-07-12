@@ -112,14 +112,29 @@ def _incorrect_result(
     return result
 
 
-def _validate_allowed_answers(evaluation: dict[str, Any]) -> list[dict[str, Any]]:
+def _validate_allowed_answers(
+    evaluation: dict[str, Any], error_types: list[str]
+) -> list[dict[str, Any]]:
     allowed = evaluation.get("allowed_answers")
     if not isinstance(allowed, list) or not allowed:
         raise ValueError("allowed_answers evaluation requires at least one answer")
     canonical_answers: set[str] = set()
     for index, candidate in enumerate(allowed):
-        if not isinstance(candidate, dict) or "answer" not in candidate:
-            raise ValueError(f"allowed_answers[{index}] must contain answer")
+        if not isinstance(candidate, dict):
+            raise ValueError(f"allowed_answers[{index}] must be an object")
+        required = {
+            "answer",
+            "score",
+            "manual_review_required",
+            "error_type",
+            "feedback",
+            "remediation",
+        }
+        missing = sorted(required - candidate.keys())
+        if missing:
+            raise ValueError(
+                f"allowed_answers[{index}] missing required field: {missing[0]}"
+            )
         canonical = canonical_json(candidate["answer"])
         if canonical in canonical_answers:
             raise ValueError("allowed_answers contains duplicate canonical answers")
@@ -129,11 +144,84 @@ def _validate_allowed_answers(evaluation: dict[str, Any]) -> list[dict[str, Any]
             raise ValueError(f"allowed_answers[{index}].score must be numeric")
         if not 0.0 <= float(score) <= 1.0:
             raise ValueError(f"allowed_answers[{index}].score must be within [0, 1]")
+        if not isinstance(candidate["manual_review_required"], bool):
+            raise ValueError(
+                f"allowed_answers[{index}].manual_review_required must be boolean"
+            )
+        error_type = candidate["error_type"]
+        if error_type is not None and error_type not in error_types:
+            raise ValueError(
+                f"allowed_answers[{index}].error_type must be null or declared"
+            )
         _require_string(candidate.get("feedback"), f"allowed_answers[{index}].feedback")
-        remediation = candidate.get("remediation", [])
-        if remediation:
-            _require_string_list(remediation, f"allowed_answers[{index}].remediation")
+        _require_string_list(
+            candidate["remediation"], f"allowed_answers[{index}].remediation"
+        )
     return allowed
+
+
+def _validate_diagnostic_rules(
+    evaluation: dict[str, Any], error_types: list[str]
+) -> list[dict[str, Any]]:
+    rules = evaluation.get("diagnostic_rules", [])
+    if not isinstance(rules, list):
+        raise ValueError("diagnostic_rules must be a list")
+    if rules:
+        _require_string(
+            evaluation.get("diagnostic_precedence"),
+            "unit.exercise.evaluation.diagnostic_precedence",
+        )
+    canonical_submissions: set[str] = set()
+    required = {"submission", "error_type", "feedback", "remediation"}
+    for index, rule in enumerate(rules):
+        if not isinstance(rule, dict):
+            raise ValueError(f"diagnostic_rules[{index}] must be an object")
+        missing = sorted(required - rule.keys())
+        if missing:
+            raise ValueError(
+                f"diagnostic_rules[{index}] missing required field: {missing[0]}"
+            )
+        submission = canonical_json(rule["submission"])
+        if submission in canonical_submissions:
+            raise ValueError("diagnostic_rules contains duplicate canonical submissions")
+        canonical_submissions.add(submission)
+        if rule["error_type"] not in error_types:
+            raise ValueError(
+                f"diagnostic_rules[{index}].error_type must be declared in error_types"
+            )
+        _require_string(rule["feedback"], f"diagnostic_rules[{index}].feedback")
+        _require_string_list(
+            rule["remediation"], f"diagnostic_rules[{index}].remediation"
+        )
+        if "manual_review_required" in rule and not isinstance(
+            rule["manual_review_required"], bool
+        ):
+            raise ValueError(
+                f"diagnostic_rules[{index}].manual_review_required must be boolean"
+            )
+    return rules
+
+
+def _diagnostic_result(
+    result: dict[str, Any], rules: list[dict[str, Any]], submission: Any
+) -> dict[str, Any] | None:
+    submission_key = canonical_json(submission)
+    for rule in rules:
+        if canonical_json(rule["submission"]) != submission_key:
+            continue
+        diagnosed = dict(result)
+        diagnosed.update(
+            {
+                "error_type": rule["error_type"],
+                "feedback": rule["feedback"],
+                "remediation": list(rule["remediation"]),
+                "manual_review_required": rule.get(
+                    "manual_review_required", False
+                ),
+            }
+        )
+        return diagnosed
+    return None
 
 
 def evaluate_unit(unit: dict[str, Any], submission: Any) -> dict[str, Any]:
@@ -144,11 +232,34 @@ def evaluate_unit(unit: dict[str, Any], submission: Any) -> dict[str, Any]:
     method = evaluation.get("method")
     if method not in SUPPORTED_METHODS:
         raise ValueError(f"unsupported evaluation method: {method!r}")
+    error_types = _require_string_list(
+        exercise.get("error_types"), "unit.exercise.error_types"
+    )
+    diagnostic_rules = _validate_diagnostic_rules(evaluation, error_types)
+    allowed_answers: list[dict[str, Any]] = []
+    if method == "allowed_answers":
+        allowed_answers = _validate_allowed_answers(evaluation, error_types)
 
+    diagnostic_keys = {
+        canonical_json(rule["submission"]) for rule in diagnostic_rules
+    }
     if method in {"exact_match", "ordered_exact_match"}:
         if "answer" not in exercise:
             raise ValueError("exact evaluation requires unit.exercise.answer")
-        if submission == exercise["answer"]:
+        answer_keys = {canonical_json(exercise["answer"])}
+    else:
+        answer_keys = {
+            canonical_json(candidate["answer"]) for candidate in allowed_answers
+        }
+    if diagnostic_keys & answer_keys:
+        raise ValueError("diagnostic submission overlap with standard or allowed answer")
+
+    diagnosed = _diagnostic_result(result, diagnostic_rules, submission)
+    if diagnosed is not None:
+        return diagnosed
+
+    if method in {"exact_match", "ordered_exact_match"}:
+        if canonical_json(submission) == canonical_json(exercise["answer"]):
             result.update(
                 {
                     "score": 1.0,
@@ -160,7 +271,7 @@ def evaluate_unit(unit: dict[str, Any], submission: Any) -> dict[str, Any]:
         return _incorrect_result(unit, result, evaluation)
 
     submission_key = canonical_json(submission)
-    for candidate in _validate_allowed_answers(evaluation):
+    for candidate in allowed_answers:
         if canonical_json(candidate["answer"]) != submission_key:
             continue
         score = float(candidate["score"])
