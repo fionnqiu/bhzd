@@ -1,0 +1,346 @@
+{
+  "schema_version": "1.0.0",
+  "student_visible_unit_ids": [],
+  "units": [
+    {
+      "id": "TU-TEXT-LABEL-VOCAB-001",
+      "data_type": "text",
+      "title": "校验封闭文本标签集",
+      "learning_objectives": [
+        "识别提交标签是否属于任务配置的封闭标签集",
+        "拒绝未配置的自由文本标签"
+      ],
+      "prerequisites": [],
+      "rule_refs": [
+        "KNG-TXT-LABEL-VOCAB-001"
+      ],
+      "source_refs": [
+        "SRC-LS-TEXT-LABELS-001"
+      ],
+      "positive_examples": [
+        {
+          "id": "EX-TEXT-POS-001",
+          "asset_ref": "ASSET-SELF-TEXT-LABEL-001",
+          "input": {
+            "configured_labels": ["person", "organization"],
+            "submitted_label": "person"
+          },
+          "expected": {"valid": true},
+          "explanation": "submitted_label 与已配置标签 person 完全一致。",
+          "source_ref": "SRC-LS-TEXT-LABELS-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-TEXT-NEG-001",
+          "asset_ref": "ASSET-SELF-TEXT-LABEL-002",
+          "input": {
+            "configured_labels": ["person", "organization"],
+            "submitted_label": "location"
+          },
+          "expected": {"valid": false},
+          "explanation": "location 未出现在本题配置的封闭标签集中。",
+          "source_ref": "SRC-LS-TEXT-LABELS-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "asset_ref": "ASSET-SELF-TEXT-EXERCISE-001",
+        "input": {
+          "configured_labels": ["positive", "negative"],
+          "submitted_label": "negative"
+        },
+        "student_action": "提交 JSON：判断 submitted_label 是否属于 configured_labels。",
+        "answer": {"valid": true},
+        "evaluation": {
+          "method": "exact_match",
+          "version": "1.0.0",
+          "normalization": "JSON 对象键顺序忽略，布尔值必须完全一致"
+        },
+        "data_version": "1.0.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": ["CAP-TXT-LABEL-VALIDATE-001"],
+        "error_types": ["label_not_in_configured_set"],
+        "asset_authorization": {
+          "type": "self-authored",
+          "student_use_allowed": true
+        }
+      },
+      "common_errors": ["把标签说明文字当作可提交标签", "忽略大小写或空格导致不完全匹配"],
+      "remediation": ["重新核对本题 configured_labels 后完成同规则练习"],
+      "review_status": "draft",
+      "student_visible": false
+    },
+    {
+      "id": "TU-IMAGE-RECT-BOUNDS-001",
+      "data_type": "image",
+      "title": "校验矩形框坐标边界",
+      "learning_objectives": [
+        "按本单元坐标规则判断矩形框是否有效",
+        "识别越界或零面积矩形框"
+      ],
+      "prerequisites": [],
+      "rule_refs": [
+        "KNG-IMG-RECT-BOUNDS-001"
+      ],
+      "source_refs": [
+        "SRC-CVAT-IMAGE-RECT-001"
+      ],
+      "positive_examples": [
+        {
+          "id": "EX-IMAGE-POS-001",
+          "asset_ref": "ASSET-SELF-IMAGE-RECT-001",
+          "input": {
+            "image_size": {"width": 640, "height": 480},
+            "rectangle": {"x_min": 10, "y_min": 20, "x_max": 110, "y_max": 120}
+          },
+          "expected": {"valid": true},
+          "explanation": "坐标位于图像范围内，且 x_min < x_max、y_min < y_max。",
+          "source_ref": "SRC-CVAT-IMAGE-RECT-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-IMAGE-NEG-001",
+          "asset_ref": "ASSET-SELF-IMAGE-RECT-002",
+          "input": {
+            "image_size": {"width": 640, "height": 480},
+            "rectangle": {"x_min": 90, "y_min": 20, "x_max": 90, "y_max": 120}
+          },
+          "expected": {
+            "valid": false,
+            "error": "zero_area",
+            "details": {"dimension": "width"}
+          },
+          "explanation": "x_min 等于 x_max，矩形框宽度为零。",
+          "source_ref": "SRC-CVAT-IMAGE-RECT-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "asset_ref": "ASSET-SELF-IMAGE-EXERCISE-001",
+        "input": {
+          "rule": "0 <= x_min < x_max <= width 且 0 <= y_min < y_max <= height",
+          "image_size": {"width": 320, "height": 240},
+          "rectangle": {"x_min": 12, "y_min": 15, "x_max": 330, "y_max": 180}
+        },
+        "student_action": "提交 JSON：判断矩形框是否有效，并在无效时给出唯一错误码。",
+        "answer": {
+          "valid": false,
+          "error": "coordinate_out_of_bounds",
+          "details": {"field": "x_max", "value": 330, "maximum": 320}
+        },
+        "evaluation": {
+          "method": "exact_match",
+          "version": "1.0.0",
+          "normalization": "JSON 对象键顺序忽略，其余值完全一致"
+        },
+        "data_version": "1.0.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": ["CAP-IMG-RECT-VALIDATE-001"],
+        "error_types": ["zero_area", "coordinate_out_of_bounds"],
+        "asset_authorization": {
+          "type": "self-authored",
+          "student_use_allowed": true
+        }
+      },
+      "common_errors": ["只检查左上角而未检查右下角", "允许零宽或零高矩形框"],
+      "remediation": ["按 x 轴、y 轴和面积三个步骤重新执行边界检查"],
+      "review_status": "draft",
+      "student_visible": false
+    },
+    {
+      "id": "TU-AUDIO-DATA-BINDING-001",
+      "data_type": "audio",
+      "title": "校验音频任务数据绑定",
+      "learning_objectives": [
+        "识别 Audio 标签 value 对任务数据字段的引用",
+        "区分数据字段引用与普通字符串"
+      ],
+      "prerequisites": [],
+      "rule_refs": [
+        "KNG-AUD-DATA-BINDING-001"
+      ],
+      "source_refs": [
+        "SRC-LS-AUDIO-TAG-001"
+      ],
+      "positive_examples": [
+        {
+          "id": "EX-AUDIO-POS-001",
+          "asset_ref": "ASSET-SELF-AUDIO-CONFIG-001",
+          "input": {
+            "task_data_fields": ["audio"],
+            "audio_tag": {"name": "audio_player", "value": "$audio"}
+          },
+          "expected": {"valid": true},
+          "explanation": "$audio 引用了存在的任务数据字段 audio。",
+          "source_ref": "SRC-LS-AUDIO-TAG-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-AUDIO-NEG-001",
+          "asset_ref": "ASSET-SELF-AUDIO-CONFIG-002",
+          "input": {
+            "task_data_fields": ["audio"],
+            "audio_tag": {"name": "audio_player", "value": "$recording"}
+          },
+          "expected": {"valid": false, "error": "unknown_data_field"},
+          "explanation": "任务数据中不存在 recording 字段。",
+          "source_ref": "SRC-LS-AUDIO-TAG-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "asset_ref": "ASSET-SELF-AUDIO-EXERCISE-001",
+        "input": {
+          "task_data_fields": ["clip_url", "speaker"],
+          "audio_tag": {"name": "clip", "value": "$clip_url"}
+        },
+        "student_action": "提交 JSON：判断 Audio 标签是否引用了存在的任务数据字段。",
+        "answer": {"valid": true},
+        "evaluation": {
+          "method": "exact_match",
+          "version": "1.0.0",
+          "normalization": "JSON 对象键顺序忽略，布尔值必须完全一致"
+        },
+        "data_version": "1.0.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": ["CAP-AUD-CONFIG-VALIDATE-001"],
+        "error_types": ["missing_binding_prefix", "unknown_data_field"],
+        "asset_authorization": {
+          "type": "self-authored",
+          "student_use_allowed": true
+        }
+      },
+      "common_errors": ["遗漏字段引用前缀 $", "引用任务数据中不存在的字段名"],
+      "remediation": ["对照 task_data_fields 逐字核对 value 中的字段名"],
+      "review_status": "draft",
+      "student_visible": false
+    },
+    {
+      "id": "TU-VIDEO-TRACK-ID-001",
+      "data_type": "video",
+      "title": "校验跨帧目标轨迹 ID",
+      "learning_objectives": [
+        "识别同一目标跨帧轨迹 ID 是否保持一致",
+        "发现轨迹中的意外 ID 切换"
+      ],
+      "prerequisites": [],
+      "rule_refs": [
+        "KNG-VID-TRACK-ID-001"
+      ],
+      "source_refs": [
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "positive_examples": [
+        {
+          "id": "EX-VIDEO-POS-001",
+          "asset_ref": "ASSET-SELF-VIDEO-TRACK-001",
+          "input": {
+            "same_physical_object": true,
+            "observations": [
+              {"frame": 1, "track_id": "car-7"},
+              {"frame": 2, "track_id": "car-7"},
+              {"frame": 3, "track_id": "car-7"}
+            ]
+          },
+          "expected": {"valid": true},
+          "explanation": "同一目标在所有已给帧中使用同一 track_id。",
+          "source_ref": "SRC-CVAT-VIDEO-TRACK-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-VIDEO-NEG-001",
+          "asset_ref": "ASSET-SELF-VIDEO-TRACK-002",
+          "input": {
+            "same_physical_object": true,
+            "observations": [
+              {"frame": 1, "track_id": "car-7"},
+              {"frame": 2, "track_id": "car-9"}
+            ]
+          },
+          "expected": {
+            "valid": false,
+            "error": "track_id_switch",
+            "details": {
+              "first_error_frame": 2,
+              "previous_track_id": "car-7",
+              "observed_track_id": "car-9"
+            }
+          },
+          "explanation": "同一目标在第 2 帧由 car-7 切换为 car-9。",
+          "source_ref": "SRC-CVAT-VIDEO-TRACK-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "asset_ref": "ASSET-SELF-VIDEO-EXERCISE-001",
+        "input": {
+          "same_physical_object": true,
+          "observations": [
+            {"frame": 10, "track_id": "person-3"},
+            {"frame": 11, "track_id": "person-3"},
+            {"frame": 12, "track_id": "person-8"}
+          ]
+        },
+        "student_action": "提交 JSON：判断轨迹 ID 是否一致，并在切换时报告首个错误帧。",
+        "answer": {
+          "valid": false,
+          "error": "track_id_switch",
+          "details": {
+            "first_error_frame": 12,
+            "previous_track_id": "person-3",
+            "observed_track_id": "person-8"
+          }
+        },
+        "evaluation": {
+          "method": "exact_match",
+          "version": "1.0.0",
+          "normalization": "JSON 对象键顺序忽略，其余值完全一致"
+        },
+        "data_version": "1.0.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": ["CAP-VID-TRACK-VALIDATE-001"],
+        "error_types": ["track_id_switch"],
+        "asset_authorization": {
+          "type": "self-authored",
+          "student_use_allowed": true
+        }
+      },
+      "common_errors": ["把类别 ID 当作轨迹 ID", "目标短暂遮挡后无依据地创建新轨迹 ID"],
+      "remediation": ["按帧序列定位第一个 ID 变化点后重做同规则练习"],
+      "review_status": "draft",
+      "student_visible": false
+    }
+  ]
+}

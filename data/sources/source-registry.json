@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0.0",
+  "sources": [
+    {
+      "source_id": "SRC-LS-TEXT-LABELS-001",
+      "data_type": "text",
+      "name": "Label Studio Labels Tag for Labeling Regions",
+      "author_or_organization": "HumanSignal, Inc.",
+      "version_or_publication_date": "Undated live documentation; accessed 2026-07-12",
+      "original_url_or_local_archive": "https://labelstud.io/tags/labels",
+      "access_date": "2026-07-12",
+      "license_or_authorization": {
+        "license_id": "Apache-2.0",
+        "license_url": "https://raw.githubusercontent.com/HumanSignal/label-studio/develop/LICENSE",
+        "student_use_allowed": true,
+        "publishable": true,
+        "review_note": "The official project repository states Apache License 2.0; the documentation and license URLs both returned HTTP 200 on 2026-07-12."
+      },
+      "citation_locations": [
+        "Page title: Labels Tag for Labeling Regions",
+        "Labels tag parameters: name, toName and choice"
+      ],
+      "verified_by": "Codex automated HTTP and license-text check",
+      "verified_at": "2026-07-12T18:24:00+08:00",
+      "status": "verified"
+    },
+    {
+      "source_id": "SRC-CVAT-IMAGE-RECT-001",
+      "data_type": "image",
+      "name": "CVAT Annotation with Rectangles",
+      "author_or_organization": "CVAT.ai Corporation and CVAT contributors",
+      "version_or_publication_date": "Undated live documentation; accessed 2026-07-12",
+      "original_url_or_local_archive": "https://docs.cvat.ai/docs/annotation/manual-annotation/shapes/annotation-with-rectangles/",
+      "access_date": "2026-07-12",
+      "license_or_authorization": {
+        "license_id": "MIT",
+        "license_url": "https://raw.githubusercontent.com/cvat-ai/cvat/develop/LICENSE",
+        "student_use_allowed": true,
+        "publishable": true,
+        "review_note": "The official project repository states the MIT License; the canonical documentation and license URLs both returned HTTP 200 on 2026-07-12."
+      },
+      "citation_locations": [
+        "Page title: Annotation with rectangles",
+        "Shape mode (basics) and rectangle annotation sections"
+      ],
+      "verified_by": "Codex automated HTTP and license-text check",
+      "verified_at": "2026-07-12T18:24:00+08:00",
+      "status": "verified"
+    },
+    {
+      "source_id": "SRC-LS-AUDIO-TAG-001",
+      "data_type": "audio",
+      "name": "Label Studio Audio Tag for Audio Labeling",
+      "author_or_organization": "HumanSignal, Inc.",
+      "version_or_publication_date": "Undated live documentation; accessed 2026-07-12",
+      "original_url_or_local_archive": "https://labelstud.io/tags/audio",
+      "access_date": "2026-07-12",
+      "license_or_authorization": {
+        "license_id": "Apache-2.0",
+        "license_url": "https://raw.githubusercontent.com/HumanSignal/label-studio/develop/LICENSE",
+        "student_use_allowed": true,
+        "publishable": true,
+        "review_note": "The official project repository states Apache License 2.0; the documentation and license URLs both returned HTTP 200 on 2026-07-12."
+      },
+      "citation_locations": [
+        "Page title: Audio Tag for Audio Labeling",
+        "Audio tag parameters: name and value"
+      ],
+      "verified_by": "Codex automated HTTP and license-text check",
+      "verified_at": "2026-07-12T18:24:00+08:00",
+      "status": "verified"
+    },
+    {
+      "source_id": "SRC-CVAT-VIDEO-TRACK-001",
+      "data_type": "video",
+      "name": "CVAT Track Mode",
+      "author_or_organization": "CVAT.ai Corporation and CVAT contributors",
+      "version_or_publication_date": "Undated live documentation; accessed 2026-07-12",
+      "original_url_or_local_archive": "https://docs.cvat.ai/docs/annotation/manual-annotation/modes/track-mode-basics/",
+      "access_date": "2026-07-12",
+      "license_or_authorization": {
+        "license_id": "MIT",
+        "license_url": "https://raw.githubusercontent.com/cvat-ai/cvat/develop/LICENSE",
+        "student_use_allowed": true,
+        "publishable": true,
+        "review_note": "The official project repository states the MIT License; the track-mode documentation and license URLs both returned HTTP 200 on 2026-07-12."
+      },
+      "citation_locations": [
+        "Page title: Track mode",
+        "Creating tracks and keyframe/interpolation operations"
+      ],
+      "verified_by": "Codex automated HTTP and license-text check",
+      "verified_at": "2026-07-12T18:24:00+08:00",
+      "status": "verified"
+    }
+  ]
+}
