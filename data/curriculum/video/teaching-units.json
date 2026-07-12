@@ -38,7 +38,59 @@
         ],
         "project_policy": {
           "source_ref": "SRC-POLICY-VIDEO-TASK5-001",
-          "statement": "本项目开发策略把事件类型限制为 door_entry、door_exit、idle；door_entry 从 door_open_start 的时间戳开始，到 crossing_complete 的时间戳结束，使用 [start_ms, end_ms) 半开区间，并要求绑定完成穿门动作的人员轨迹。该词表、触发条件和边界语义均不是 WebVTT 外部标准。",
+          "statement": "本项目开发策略把事件类型限制为 door_entry、door_exit、idle，并用可观察的门内、门槛、门外空间状态区分方向。事件区间统一使用 [start_ms, end_ms) 半开语义：start_ms 对应纳入事件的首个触发时刻，end_ms 对应不再纳入事件的首个时刻。该词表、方向、触发条件和边界语义均不是 WebVTT 外部标准。",
+          "event_definitions": {
+            "door_entry": {
+              "ordered_region_transition": [
+                "outside",
+                "threshold",
+                "inside"
+              ],
+              "inclusion_criteria": [
+                "同一参与轨迹按 outside、threshold、inside 的顺序移动",
+                "存在 door_open_start 和 crossing_complete 可观察触发点"
+              ],
+              "exclusion_criteria": [
+                "inside 到 outside 的反向移动",
+                "未跨越 threshold 或最终仍在 outside"
+              ],
+              "start_boundary": "纳入 door_open_start 时刻；该时刻参与者仍在 outside",
+              "end_boundary": "排除 crossing_complete 时刻及以后；该时刻首次确认参与者已在 inside"
+            },
+            "door_exit": {
+              "ordered_region_transition": [
+                "inside",
+                "threshold",
+                "outside"
+              ],
+              "inclusion_criteria": [
+                "同一参与轨迹按 inside、threshold、outside 的顺序移动",
+                "存在 door_open_start 和 crossing_complete 可观察触发点"
+              ],
+              "exclusion_criteria": [
+                "outside 到 inside 的正向进入",
+                "未跨越 threshold 或最终仍在 inside"
+              ],
+              "start_boundary": "纳入 door_open_start 时刻；该时刻参与者仍在 inside",
+              "end_boundary": "排除 crossing_complete 时刻及以后；该时刻首次确认参与者已在 outside"
+            },
+            "idle": {
+              "ordered_region_transition": [
+                "same_region",
+                "same_region"
+              ],
+              "inclusion_criteria": [
+                "参与者在题目声明的观察窗口内保持同一 observable_region",
+                "窗口内没有 threshold 状态和 crossing_complete 触发点"
+              ],
+              "exclusion_criteria": [
+                "出现 outside、threshold、inside 或其反向的完整跨门序列",
+                "观察窗口不足以确认位置保持"
+              ],
+              "start_boundary": "纳入观察窗口的首个合格同区域时刻",
+              "end_boundary": "排除观察窗口结束时刻及以后"
+            }
+          },
           "version": "1.0.0"
         }
       },
@@ -50,15 +102,27 @@
             "timeline_observations": [
               {
                 "timestamp_ms": 1000,
-                "observation": "person-01 approaches the doorway"
+                "participant_track_id": "person-01",
+                "observable_region": "outside",
+                "observation": "person-01 approaches the doorway from outside"
               },
               {
                 "timestamp_ms": 2000,
-                "observation": "door_open_start by person-01"
+                "participant_track_id": "person-01",
+                "observable_region": "outside",
+                "observation": "door_open_start by person-01 while outside"
+              },
+              {
+                "timestamp_ms": 5000,
+                "participant_track_id": "person-01",
+                "observable_region": "threshold",
+                "observation": "person-01 crosses the threshold from outside toward inside"
               },
               {
                 "timestamp_ms": 6500,
-                "observation": "crossing_complete by person-01"
+                "participant_track_id": "person-01",
+                "observable_region": "inside",
+                "observation": "crossing_complete by person-01; first confirmed inside state"
               }
             ]
           },
@@ -85,20 +149,29 @@
           "id": "EX-VIDEO-BEHAVIOR-EVENT-NEG-001",
           "asset_ref": "ASSET-SELF-VIDEO-BEHAVIOR-EVENT-002",
           "input": {
-            "submitted": {
-              "event_type": "door_crossing",
-              "participant_track_ids": [
-                "person-01"
-              ],
-              "start_ms": 1000,
-              "end_ms": 7000
+            "exercise_id": "EXERCISE-VIDEO-BEHAVIOR-EVENT-001",
+            "submission": {
+              "events": [
+                {
+                  "event_type": "door_crossing",
+                  "participant_track_ids": [
+                    "person-01"
+                  ],
+                  "start_ms": 2000,
+                  "end_ms": 6500
+                }
+              ]
             }
           },
           "expected": {
-            "valid": false,
-            "error": "action_taxonomy_mismatch"
+            "passed": false,
+            "error_type": "action_taxonomy_mismatch"
           },
-          "explanation": "door_crossing 不在项目闭合词表中，且提交区间使用了接近和关门时刻而非项目事件触发点。",
+          "fault_model": {
+            "type": "single_fault",
+            "field": "events[0].event_type"
+          },
+          "explanation": "参与轨迹和边界均正确，唯一错误是 door_crossing 不在项目闭合词表中。",
           "source_ref": "SRC-POLICY-VIDEO-TASK5-001",
           "asset_authorization": {
             "type": "self-authored",
@@ -126,23 +199,33 @@
           "timeline_observations": [
             {
               "timestamp_ms": 1000,
-              "observation": "person-01 approaches the doorway"
+              "participant_track_id": "person-01",
+              "observable_region": "outside",
+              "observation": "person-01 approaches the doorway from outside"
             },
             {
               "timestamp_ms": 2000,
-              "observation": "door_open_start by person-01"
+              "participant_track_id": "person-01",
+              "observable_region": "outside",
+              "observation": "door_open_start by person-01 while outside"
             },
             {
               "timestamp_ms": 5000,
-              "observation": "person-01 crosses the threshold"
+              "participant_track_id": "person-01",
+              "observable_region": "threshold",
+              "observation": "person-01 crosses the threshold from outside toward inside"
             },
             {
               "timestamp_ms": 6500,
-              "observation": "crossing_complete by person-01"
+              "participant_track_id": "person-01",
+              "observable_region": "inside",
+              "observation": "crossing_complete by person-01; first confirmed inside state"
             },
             {
               "timestamp_ms": 7000,
-              "observation": "door closes"
+              "participant_track_id": "person-01",
+              "observable_region": "inside",
+              "observation": "door closes after person-01 remains inside"
             }
           ],
           "interval_convention": "start_inclusive_end_exclusive",
@@ -176,7 +259,7 @@
         },
         "evaluation": {
           "method": "exact_match",
-          "version": "1.0.0",
+          "version": "1.1.0",
           "normalization": "JSON 对象键顺序忽略；events 数组顺序、事件类型、参与轨迹顺序和毫秒时间值必须完全一致。",
           "diagnostic_precedence": "diagnostic_rules 按数组顺序严格匹配，优先级为事件词表、参与轨迹、开始边界、结束边界；首个命中规则生效，未命中标准答案或诊断样例的提交进入人工复核。",
           "diagnostic_rules": [
@@ -267,7 +350,7 @@
             ]
           }
         },
-        "data_version": "1.0.0",
+        "data_version": "1.1.0",
         "pass_condition": "score == 1.0",
         "capability_refs": [
           "CAP-VID-ACTION-EVENT-001"
@@ -318,7 +401,8 @@
               "KNG-VID-EVENT-START-END-001"
             ],
             "capability_refs": [
-              "CAP-VID-ACTION-EVENT-001"
+              "CAP-VID-ACTION-EVENT-001",
+              "CAP-VID-EVENT-BOUNDARY-001"
             ],
             "remediation_resource_refs": [
               "RES-VID-EVENT-TIMELINE-001"
@@ -330,7 +414,8 @@
               "KNG-VID-EVENT-START-END-001"
             ],
             "capability_refs": [
-              "CAP-VID-ACTION-EVENT-001"
+              "CAP-VID-ACTION-EVENT-001",
+              "CAP-VID-EVENT-BOUNDARY-001"
             ],
             "remediation_resource_refs": [
               "RES-VID-EVENT-TIMELINE-001"
@@ -380,8 +465,14 @@
         "按项目的零基、右下端不包含坐标约定提交矩形"
       ],
       "prerequisites": [
-        "CAP-IMG-BOX-ANNOTATE-001",
         "CAP-VID-FRAME-SAMPLE-001"
+      ],
+      "related_primitives": [
+        {
+          "capability_ref": "CAP-IMG-BOX-ANNOTATE-001",
+          "relation_type": "REL",
+          "purpose": "复用矩形几何原语，不构成视频课程前置能力"
+        }
       ],
       "rule_refs": [
         "KNG-VID-FRAME-ANNOTATION-001"
@@ -446,23 +537,43 @@
           "id": "EX-VIDEO-FRAME-ANNOTATION-NEG-001",
           "asset_ref": "ASSET-SELF-VIDEO-FRAME-ANNOTATION-002",
           "input": {
-            "frame_index": 12,
-            "object_ref": "obj-person-01",
-            "submitted": {
-              "label": "pedestrian",
-              "bbox_xyxy": [
-                410,
-                90,
-                469,
-                310
+            "exercise_id": "EXERCISE-VIDEO-FRAME-ANNOTATION-001",
+            "submission": {
+              "annotations": [
+                {
+                  "frame_index": 12,
+                  "object_ref": "obj-person-01",
+                  "label": "vehicle",
+                  "bbox_xyxy": [
+                    410,
+                    90,
+                    470,
+                    310
+                  ]
+                },
+                {
+                  "frame_index": 12,
+                  "object_ref": "obj-vehicle-01",
+                  "label": "vehicle",
+                  "bbox_xyxy": [
+                    120,
+                    80,
+                    300,
+                    240
+                  ]
+                }
               ]
             }
           },
           "expected": {
-            "valid": false,
-            "error": "frame_label_mismatch"
+            "passed": false,
+            "error_type": "frame_label_mismatch"
           },
-          "explanation": "pedestrian 不在本项目类别词表中，且 x_max 未遵守题目给定的右下端不包含范围。",
+          "fault_model": {
+            "type": "single_fault",
+            "field": "annotations[0].label"
+          },
+          "explanation": "目标、帧号、排序和几何均正确，唯一错误是 obj-person-01 被标为 vehicle。",
           "source_ref": "SRC-POLICY-VIDEO-TASK5-001",
           "asset_authorization": {
             "type": "self-authored",
@@ -560,7 +671,7 @@
         },
         "evaluation": {
           "method": "exact_match",
-          "version": "1.0.0",
+          "version": "1.1.0",
           "normalization": "JSON 对象键顺序忽略；annotations 数组顺序、frame_index、object_ref、label 和 bbox_xyxy 数值必须完全一致。",
           "diagnostic_precedence": "diagnostic_rules 按数组顺序严格匹配，优先级为目标完整性、帧范围、类别、几何；首个命中规则生效，未命中标准答案或诊断样例的提交进入人工复核。",
           "diagnostic_rules": [
@@ -696,7 +807,7 @@
             ]
           }
         },
-        "data_version": "1.0.0",
+        "data_version": "1.1.0",
         "pass_condition": "score == 1.0",
         "capability_refs": [
           "CAP-VID-FRAME-ANNOTATE-001"
@@ -811,7 +922,8 @@
         "CAP-VID-FRAME-ANNOTATE-001"
       ],
       "rule_refs": [
-        "KNG-VID-TRACK-CONTINUITY-001"
+        "KNG-VID-TRACK-CONTINUITY-001",
+        "KNG-VID-OCCLUSION-REID-001"
       ],
       "source_refs": [
         "SRC-CVAT-VIDEO-TRACK-001",
@@ -828,7 +940,7 @@
         ],
         "project_policy": {
           "source_ref": "SRC-POLICY-VIDEO-TASK5-001",
-          "statement": "本项目开发策略按目标首次出现顺序使用 trk_XX 命名；identity_key 相同、运动方向连续且遮挡间隔不超过 2 帧时必须复用原 track_id，并把缺失帧列入 occluded_frame_indices；观察和遮挡帧都按升序提交。这些阈值、命名和身份证据规则均为本地策略。",
+          "statement": "本项目开发策略按目标首次出现顺序使用 trk_XX 命名；缺帧本身绝不构成遮挡证据。只有每个缺失帧都有可观察遮挡物证据，且遮挡前后外观、运动方向和空间位置连续时，才可在不超过 2 帧的间隔内复用原 track_id，并把已证实的遮挡帧列入 occluded_frame_indices；观察和遮挡帧都按升序提交。这些阈值、命名和重识别规则均为本地策略。",
           "version": "1.0.0"
         }
       },
@@ -857,6 +969,23 @@
             "occluded_frame_indices": [
               22,
               23
+            ],
+            "missing_identity_key": "vehicle-a",
+            "visibility_evidence": [
+              {
+                "frame_index": 22,
+                "identity_key": "vehicle-a",
+                "visibility_state": "occluded",
+                "occluder_ref": "truck-static-01",
+                "observable_evidence": "truck-static-01 overlaps vehicle-a's predicted path"
+              },
+              {
+                "frame_index": 23,
+                "identity_key": "vehicle-a",
+                "visibility_state": "occluded",
+                "occluder_ref": "truck-static-01",
+                "observable_evidence": "the overlap persists while vehicle-a remains behind the truck"
+              }
             ]
           },
           "expected": {
@@ -871,7 +1000,7 @@
               23
             ]
           },
-          "explanation": "三个观察具有同一身份键，遮挡恰为项目允许的 2 帧，因此复用首次出现的 trk_01。",
+          "explanation": "三个观察具有同一身份键，两个缺失帧均有明确遮挡物证据，且遮挡前后外观、运动和空间连续，因此复用首次出现的 trk_01。",
           "source_ref": "SRC-POLICY-VIDEO-TASK5-001",
           "asset_authorization": {
             "type": "self-authored",
@@ -886,27 +1015,43 @@
           "id": "EX-VIDEO-OBJECT-TRACKING-NEG-001",
           "asset_ref": "ASSET-SELF-VIDEO-OBJECT-TRACKING-002",
           "input": {
-            "submitted_tracks": [
-              {
-                "track_id": "trk_01",
-                "observation_ids": [
-                  "obs-20-a",
-                  "obs-21-a"
-                ]
-              },
-              {
-                "track_id": "trk_02",
-                "observation_ids": [
-                  "obs-24-a"
-                ]
-              }
-            ]
+            "exercise_id": "EXERCISE-VIDEO-OBJECT-TRACKING-001",
+            "submission": {
+              "tracks": [
+                {
+                  "track_id": "trk_02",
+                  "observation_ids": [
+                    "obs-20-a",
+                    "obs-21-a",
+                    "obs-24-a"
+                  ],
+                  "occluded_frame_indices": [
+                    22,
+                    23
+                  ]
+                },
+                {
+                  "track_id": "trk_01",
+                  "observation_ids": [
+                    "obs-21-b",
+                    "obs-22-b",
+                    "obs-23-b",
+                    "obs-24-b"
+                  ],
+                  "occluded_frame_indices": []
+                }
+              ]
+            }
           },
           "expected": {
-            "valid": false,
-            "error": "track_identity_fragmented"
+            "passed": false,
+            "error_type": "track_first_appearance_id_swap"
           },
-          "explanation": "短时遮挡后的同一 identity_key 被无依据拆成第二条轨迹。",
+          "fault_model": {
+            "type": "single_fault",
+            "field": "tracks[*].track_id_assignment"
+          },
+          "explanation": "两个目标的观察归组、顺序和遮挡记录均正确，唯一错误是把首次和第二次出现目标的 trk_01、trk_02 对调。",
           "source_ref": "SRC-POLICY-VIDEO-TASK5-001",
           "asset_authorization": {
             "type": "self-authored",
@@ -936,16 +1081,73 @@
               "motion_direction": "right"
             },
             {
+              "observation_id": "obs-21-b",
+              "frame_index": 21,
+              "identity_key": "person-b",
+              "motion_direction": "left"
+            },
+            {
+              "observation_id": "obs-22-b",
+              "frame_index": 22,
+              "identity_key": "person-b",
+              "motion_direction": "left"
+            },
+            {
+              "observation_id": "obs-23-b",
+              "frame_index": 23,
+              "identity_key": "person-b",
+              "motion_direction": "left"
+            },
+            {
               "observation_id": "obs-24-a",
               "frame_index": 24,
               "identity_key": "vehicle-a",
               "motion_direction": "right"
+            },
+            {
+              "observation_id": "obs-24-b",
+              "frame_index": 24,
+              "identity_key": "person-b",
+              "motion_direction": "left"
             }
           ],
           "missing_frame_indices": [
             22,
             23
           ],
+          "missing_identity_key": "vehicle-a",
+          "visibility_evidence": [
+            {
+              "frame_index": 22,
+              "identity_key": "vehicle-a",
+              "visibility_state": "occluded",
+              "occluder_ref": "truck-static-01",
+              "observable_evidence": "truck-static-01 overlaps the projected vehicle-a path and fully blocks its last visible extent"
+            },
+            {
+              "frame_index": 23,
+              "identity_key": "vehicle-a",
+              "visibility_state": "occluded",
+              "occluder_ref": "truck-static-01",
+              "observable_evidence": "the opaque overlap persists along the same projected path"
+            }
+          ],
+          "reidentification_evidence": {
+            "identity_key": "vehicle-a",
+            "pre_occlusion_observation_id": "obs-21-a",
+            "post_occlusion_observation_id": "obs-24-a",
+            "appearance_signature_match": true,
+            "motion_direction_consistent": true,
+            "spatial_continuity": true
+          },
+          "occlusion_decision_policy": {
+            "missing_frames_alone_sufficient": false,
+            "required_evidence_fields": [
+              "visibility_state",
+              "occluder_ref",
+              "observable_evidence"
+            ]
+          },
           "track_id_pattern": "trk_XX by first appearance",
           "maximum_continuous_occlusion_frames": 2,
           "policy_version": "1.0.0"
@@ -955,10 +1157,15 @@
           "allowed_observation_ids": [
             "obs-20-a",
             "obs-21-a",
-            "obs-24-a"
+            "obs-21-b",
+            "obs-22-b",
+            "obs-23-b",
+            "obs-24-a",
+            "obs-24-b"
           ],
           "allowed_track_ids": [
-            "trk_01"
+            "trk_01",
+            "trk_02"
           ],
           "allowed_occluded_frame_indices": [
             22,
@@ -980,14 +1187,24 @@
                 22,
                 23
               ]
+            },
+            {
+              "track_id": "trk_02",
+              "observation_ids": [
+                "obs-21-b",
+                "obs-22-b",
+                "obs-23-b",
+                "obs-24-b"
+              ],
+              "occluded_frame_indices": []
             }
           ]
         },
         "evaluation": {
           "method": "ordered_exact_match",
-          "version": "1.0.0",
+          "version": "1.1.0",
           "normalization": "JSON 对象键顺序忽略；tracks、observation_ids 和 occluded_frame_indices 数组顺序以及字符串、整数值必须完全一致。",
-          "diagnostic_precedence": "diagnostic_rules 按数组顺序严格匹配，优先级为身份连续性、遮挡记录、轨迹命名、观察顺序；首个命中规则生效，未命中标准答案或诊断样例的提交进入人工复核。",
+          "diagnostic_precedence": "diagnostic_rules 按数组顺序严格匹配，优先级为身份连续性、遮挡记录、首次出现编号、轨迹命名、观察顺序；首个命中规则生效，未命中标准答案或诊断样例的提交进入人工复核。",
           "diagnostic_rules": [
             {
               "submission": {
@@ -1006,6 +1223,16 @@
                   {
                     "track_id": "trk_02",
                     "observation_ids": [
+                      "obs-21-b",
+                      "obs-22-b",
+                      "obs-23-b",
+                      "obs-24-b"
+                    ],
+                    "occluded_frame_indices": []
+                  },
+                  {
+                    "track_id": "trk_03",
+                    "observation_ids": [
                       "obs-24-a"
                     ],
                     "occluded_frame_indices": []
@@ -1013,7 +1240,7 @@
                 ]
               },
               "error_type": "track_identity_fragmented",
-              "feedback": "obs-24-a 与前两次观察具有相同 identity_key 和连续运动证据，不应新建 trk_02。",
+              "feedback": "obs-24-a 与前两次 vehicle-a 观察之间有显式遮挡和重识别证据，不应新建 trk_03。",
               "remediation": [
                 "使用轨迹 ID 台账把 obs-24-a 合并回 trk_01。"
               ]
@@ -1029,13 +1256,56 @@
                       "obs-24-a"
                     ],
                     "occluded_frame_indices": []
+                  },
+                  {
+                    "track_id": "trk_02",
+                    "observation_ids": [
+                      "obs-21-b",
+                      "obs-22-b",
+                      "obs-23-b",
+                      "obs-24-b"
+                    ],
+                    "occluded_frame_indices": []
                   }
                 ]
               },
               "error_type": "track_occlusion_gap_omitted",
-              "feedback": "轨迹已正确合并，但未显式记录缺失的第 22、23 帧。",
+              "feedback": "vehicle-a 轨迹已正确合并，但未记录有显式遮挡证据的第 22、23 帧。",
               "remediation": [
-                "将 missing_frame_indices 22、23 按升序写入 occluded_frame_indices。"
+                "核对 visibility_evidence 后，将已证实遮挡的第 22、23 帧按升序写入 occluded_frame_indices。"
+              ]
+            },
+            {
+              "submission": {
+                "tracks": [
+                  {
+                    "track_id": "trk_02",
+                    "observation_ids": [
+                      "obs-20-a",
+                      "obs-21-a",
+                      "obs-24-a"
+                    ],
+                    "occluded_frame_indices": [
+                      22,
+                      23
+                    ]
+                  },
+                  {
+                    "track_id": "trk_01",
+                    "observation_ids": [
+                      "obs-21-b",
+                      "obs-22-b",
+                      "obs-23-b",
+                      "obs-24-b"
+                    ],
+                    "occluded_frame_indices": []
+                  }
+                ]
+              },
+              "error_type": "track_first_appearance_id_swap",
+              "feedback": "vehicle-a 在第 20 帧先出现，应使用 trk_01；person-b 在第 21 帧后出现，应使用 trk_02。",
+              "remediation": [
+                "按每个 identity_key 的首次 frame_index 排序，再依次分配 trk_01、trk_02。"
               ]
             },
             {
@@ -1052,6 +1322,16 @@
                       22,
                       23
                     ]
+                  },
+                  {
+                    "track_id": "trk_02",
+                    "observation_ids": [
+                      "obs-21-b",
+                      "obs-22-b",
+                      "obs-23-b",
+                      "obs-24-b"
+                    ],
+                    "occluded_frame_indices": []
                   }
                 ]
               },
@@ -1075,6 +1355,16 @@
                       22,
                       23
                     ]
+                  },
+                  {
+                    "track_id": "trk_02",
+                    "observation_ids": [
+                      "obs-21-b",
+                      "obs-22-b",
+                      "obs-23-b",
+                      "obs-24-b"
+                    ],
+                    "occluded_frame_indices": []
                   }
                 ]
               },
@@ -1095,7 +1385,7 @@
             ]
           }
         },
-        "data_version": "1.0.0",
+        "data_version": "1.1.0",
         "pass_condition": "score == 1.0",
         "capability_refs": [
           "CAP-VID-OBJECT-TRACK-001"
@@ -1103,6 +1393,7 @@
         "error_types": [
           "track_identity_fragmented",
           "track_occlusion_gap_omitted",
+          "track_first_appearance_id_swap",
           "track_id_naming_mismatch",
           "track_observation_order_mismatch",
           "object_tracking_submission_requires_manual_review"
@@ -1119,10 +1410,12 @@
           {
             "error_type": "track_identity_fragmented",
             "rule_refs": [
-              "KNG-VID-TRACK-CONTINUITY-001"
+              "KNG-VID-TRACK-CONTINUITY-001",
+              "KNG-VID-OCCLUSION-REID-001"
             ],
             "capability_refs": [
-              "CAP-VID-OBJECT-TRACK-001"
+              "CAP-VID-OBJECT-TRACK-001",
+              "CAP-VID-OCCLUSION-REID-001"
             ],
             "remediation_resource_refs": [
               "RES-VID-TRACK-LEDGER-001",
@@ -1132,14 +1425,28 @@
           {
             "error_type": "track_occlusion_gap_omitted",
             "rule_refs": [
+              "KNG-VID-TRACK-CONTINUITY-001",
+              "KNG-VID-OCCLUSION-REID-001"
+            ],
+            "capability_refs": [
+              "CAP-VID-OBJECT-TRACK-001",
+              "CAP-VID-OCCLUSION-REID-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-VID-TRACK-LEDGER-001",
+              "RES-VID-OCCLUSION-REID-CARD-001"
+            ]
+          },
+          {
+            "error_type": "track_first_appearance_id_swap",
+            "rule_refs": [
               "KNG-VID-TRACK-CONTINUITY-001"
             ],
             "capability_refs": [
               "CAP-VID-OBJECT-TRACK-001"
             ],
             "remediation_resource_refs": [
-              "RES-VID-TRACK-LEDGER-001",
-              "RES-VID-OCCLUSION-REID-CARD-001"
+              "RES-VID-TRACK-LEDGER-001"
             ]
           },
           {
