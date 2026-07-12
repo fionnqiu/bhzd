@@ -1,0 +1,1288 @@
+{
+  "schema_version": "1.1.0",
+  "data_type": "audio",
+  "units": [
+    {
+      "id": "TU-AUDIO-LANGUAGE-DIALECT-001",
+      "data_type": "audio",
+      "title": "按可听证据标注语种与方言",
+      "capability_key": "language_dialect",
+      "goals": [
+        "依据可听语言证据选择项目配置内的语种或方言标签",
+        "在混码或证据不足时使用确定性的 mixed 或 und 表示"
+      ],
+      "learning_objectives": [
+        "区分 BCP 47 标签格式事实与本项目的语种方言判定策略",
+        "拒绝依据说话人地区、姓名或其他不可听属性推断方言",
+        "按既定错误优先级诊断未配置标签、证据不符、混码折叠和过度分类"
+      ],
+      "prerequisites": [
+        "CAP-AUD-TRANSCRIBE-PUNCT-001"
+      ],
+      "rule_refs": [
+        "KNG-AUD-LANGUAGE-DIALECT-001"
+      ],
+      "source_refs": [
+        "SRC-IETF-RFC5646-001",
+        "SRC-IANA-LANGUAGE-SUBTAG-001",
+        "SRC-POLICY-AUDIO-TASK4-001"
+      ],
+      "rule_explanation": {
+        "external_format_facts": [
+          {
+            "statement": "RFC 5646 说明语言标签可由语言、脚本、地区和变体等子标签组成，但不替具体标注项目决定某段录音应使用哪个标签。",
+            "source_refs": [
+              "SRC-IETF-RFC5646-001"
+            ]
+          },
+          {
+            "statement": "IANA Language Subtag Registry 提供已登记子标签的查询事实，但不提供基于声音判断方言或混码的项目判定规则。",
+            "source_refs": [
+              "SRC-IANA-LANGUAGE-SUBTAG-001"
+            ]
+          }
+        ],
+        "project_policy": {
+          "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
+          "statement": "本项目草稿策略只允许从 configured_labels 原样选择标签：单一且证据充分的语段标为对应语言或方言；同一语段包含两种可辨识语言时标为 mixed；证据不足时标为 und；不得根据姓名、地区或其他不可听属性推断。该策略不是 RFC 或 IANA 的外部标准。",
+          "version": "1.0.0"
+        }
+      },
+      "positive_examples": [
+        {
+          "id": "EX-AUDIO-LANGUAGE-POS-001",
+          "asset_ref": "ASSET-SELF-AUDIO-LANGUAGE-001",
+          "input": {
+            "segment_id": "LANG-POS-01",
+            "audible_cues": [
+              "完整可辨识粤语词句",
+              "无其他语言词项"
+            ],
+            "configured_labels": [
+              "en",
+              "mixed",
+              "und",
+              "yue",
+              "zh-CN"
+            ]
+          },
+          "expected": {
+            "language_tag": "yue"
+          },
+          "explanation": "可听证据只支持粤语，且 yue 是配置内标签，因此确定性选择 yue。",
+          "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-AUDIO-LANGUAGE-NEG-001",
+          "asset_ref": "ASSET-SELF-AUDIO-LANGUAGE-002",
+          "input": {
+            "segment_id": "LANG-NEG-01",
+            "audible_cues": [
+              "完整可辨识粤语词句"
+            ],
+            "speaker_profile_hint": "常住北京",
+            "configured_labels": [
+              "en",
+              "mixed",
+              "und",
+              "yue",
+              "zh-CN"
+            ],
+            "submitted": {
+              "language_tag": "zh-CN"
+            }
+          },
+          "expected": {
+            "valid": false,
+            "error": "language_evidence_mismatch"
+          },
+          "explanation": "常住地不是可听语言证据；提交结果与明确的粤语声音证据不符。",
+          "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "exercise_id": "EXERCISE-AUDIO-LANGUAGE-DIALECT-001",
+        "exercise_type": "segment_language_classification",
+        "asset_ref": "ASSET-SELF-AUDIO-LANGUAGE-EXERCISE-001",
+        "input": {
+          "configured_labels": [
+            "en",
+            "mixed",
+            "und",
+            "yue",
+            "zh-CN"
+          ],
+          "policy_version": "1.0.0",
+          "segments": [
+            {
+              "segment_id": "LANG-01",
+              "audible_cues": [
+                "完整可辨识普通话句子",
+                "无其他语言词项"
+              ]
+            },
+            {
+              "segment_id": "LANG-02",
+              "audible_cues": [
+                "可辨识英语词 please",
+                "可辨识普通话短语 打开导航"
+              ]
+            },
+            {
+              "segment_id": "LANG-03",
+              "audible_cues": [
+                "强噪声覆盖",
+                "只有一个无法确认语言的音节"
+              ]
+            }
+          ]
+        },
+        "student_action": "按 segments 顺序提交 labels；每项只包含 segment_id 和一个 configured_labels 内的 language_tag。",
+        "answer": {
+          "labels": [
+            {
+              "segment_id": "LANG-01",
+              "language_tag": "zh-CN"
+            },
+            {
+              "segment_id": "LANG-02",
+              "language_tag": "mixed"
+            },
+            {
+              "segment_id": "LANG-03",
+              "language_tag": "und"
+            }
+          ]
+        },
+        "evaluation": {
+          "method": "ordered_exact_match",
+          "version": "1.0.0",
+          "normalization": "JSON 对象键顺序忽略；labels 数组顺序、segment_id 和 language_tag 必须完全一致；标签区分大小写且不自动 trim。",
+          "diagnostic_precedence": "diagnostic_rules 按数组顺序严格匹配，依次优先处理未配置标签、可听证据不符、混码折叠、证据不足时过度分类；首个命中规则生效，之后才匹配标准答案，最后使用 incorrect_feedback。",
+          "diagnostic_rules": [
+            {
+              "submission": {
+                "labels": [
+                  {
+                    "segment_id": "LANG-01",
+                    "language_tag": "zh-Hans-CN"
+                  },
+                  {
+                    "segment_id": "LANG-02",
+                    "language_tag": "mixed"
+                  },
+                  {
+                    "segment_id": "LANG-03",
+                    "language_tag": "und"
+                  }
+                ]
+              },
+              "error_type": "language_tag_not_configured",
+              "feedback": "zh-Hans-CN 即使可作为语言标签形式，也不在本题 configured_labels 中。",
+              "remediation": [
+                "先使用语种方言标签卡核对 configured_labels，再原样选择 zh-CN。"
+              ]
+            },
+            {
+              "submission": {
+                "labels": [
+                  {
+                    "segment_id": "LANG-01",
+                    "language_tag": "yue"
+                  },
+                  {
+                    "segment_id": "LANG-02",
+                    "language_tag": "mixed"
+                  },
+                  {
+                    "segment_id": "LANG-03",
+                    "language_tag": "und"
+                  }
+                ]
+              },
+              "error_type": "language_evidence_mismatch",
+              "feedback": "LANG-01 的可听证据是普通话，不支持 yue。",
+              "remediation": [
+                "只依据 audible_cues 重新选择 zh-CN，不使用说话人背景信息推断。"
+              ]
+            },
+            {
+              "submission": {
+                "labels": [
+                  {
+                    "segment_id": "LANG-01",
+                    "language_tag": "zh-CN"
+                  },
+                  {
+                    "segment_id": "LANG-02",
+                    "language_tag": "zh-CN"
+                  },
+                  {
+                    "segment_id": "LANG-03",
+                    "language_tag": "und"
+                  }
+                ]
+              },
+              "error_type": "code_switch_collapsed",
+              "feedback": "LANG-02 同时包含可辨识英语和普通话，不能折叠为单一 zh-CN。",
+              "remediation": [
+                "在语种方言标签卡中复核 mixed 规则，并将 LANG-02 改为 mixed。"
+              ]
+            },
+            {
+              "submission": {
+                "labels": [
+                  {
+                    "segment_id": "LANG-01",
+                    "language_tag": "zh-CN"
+                  },
+                  {
+                    "segment_id": "LANG-02",
+                    "language_tag": "mixed"
+                  },
+                  {
+                    "segment_id": "LANG-03",
+                    "language_tag": "yue"
+                  }
+                ]
+              },
+              "error_type": "uncertain_audio_overclassified",
+              "feedback": "LANG-03 的语言证据不足，不能强制判为 yue。",
+              "remediation": [
+                "证据不足时使用项目配置内的 und，不猜测具体语言或方言。"
+              ]
+            }
+          ],
+          "correct_feedback": "三段语音均按可听证据、混码规则和不确定性规则完成标注。",
+          "incorrect_feedback": {
+            "error_type": "language_evidence_mismatch",
+            "feedback": "至少一个语段的标签未同时满足配置集合和可听证据规则。",
+            "remediation": [
+              "依次检查标签是否配置、声音证据是否匹配、是否混码以及证据是否充分。"
+            ]
+          }
+        },
+        "data_version": "1.0.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": [
+          "CAP-AUD-LANGUAGE-DIALECT-001"
+        ],
+        "error_types": [
+          "language_tag_not_configured",
+          "language_evidence_mismatch",
+          "code_switch_collapsed",
+          "uncertain_audio_overclassified"
+        ],
+        "asset_authorization": {
+          "type": "self-authored",
+          "student_use_allowed": true
+        }
+      },
+      "practice_variants": [
+        {
+          "exercise_id": "EXERCISE-AUDIO-LANGUAGE-DIALECT-PRACTICE-001",
+          "exercise_type": "submission_error_diagnosis",
+          "asset_ref": "ASSET-SELF-AUDIO-LANGUAGE-PRACTICE-001",
+          "input": {
+            "configured_labels": [
+              "en",
+              "mixed",
+              "und",
+              "yue",
+              "zh-CN"
+            ],
+            "audible_cues": [
+              "完整可辨识普通话句子"
+            ],
+            "submitted": {
+              "language_tag": "zh-Hans-CN"
+            },
+            "ordered_error_precedence": [
+              "language_tag_not_configured",
+              "language_evidence_mismatch",
+              "code_switch_collapsed",
+              "uncertain_audio_overclassified"
+            ]
+          },
+          "student_action": "提交 first_error_type 和 corrected_language_tag；必须先诊断优先级最高的错误。",
+          "answer": {
+            "first_error_type": "language_tag_not_configured",
+            "corrected_language_tag": "zh-CN"
+          },
+          "evaluation": {
+            "method": "exact_match",
+            "version": "1.0.0",
+            "normalization": "JSON 对象键顺序忽略；两个字符串值必须完全一致。",
+            "diagnostic_precedence": "先检查 first_error_type 是否遵守 input 中的 ordered_error_precedence，再检查 corrected_language_tag；首个严格匹配诊断生效。",
+            "diagnostic_rules": [
+              {
+                "submission": {
+                  "first_error_type": "language_evidence_mismatch",
+                  "corrected_language_tag": "zh-CN"
+                },
+                "error_type": "language_error_precedence_misapplied",
+                "feedback": "提交跳过了更早发生的 configured_labels 成员资格错误。",
+                "remediation": [
+                  "先判定标签是否在 configured_labels 中，再检查声音证据是否匹配。"
+                ]
+              }
+            ],
+            "correct_feedback": "已按优先级先识别未配置标签，并给出配置内修正值。",
+            "incorrect_feedback": {
+              "error_type": "language_error_precedence_misapplied",
+              "feedback": "错误类型或修正标签与既定诊断顺序不一致。",
+              "remediation": [
+                "使用语种方言标签卡按成员资格、证据、混码、不确定性的顺序重新诊断。"
+              ]
+            }
+          },
+          "data_version": "1.0.0",
+          "pass_condition": "score == 1.0",
+          "capability_refs": [
+            "CAP-AUD-LANGUAGE-DIALECT-001"
+          ],
+          "error_types": [
+            "language_error_precedence_misapplied"
+          ],
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "learning_path": {
+        "error_mappings": [
+          {
+            "error_type": "language_tag_not_configured",
+            "rule_refs": [
+              "KNG-AUD-LANGUAGE-DIALECT-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-LANGUAGE-DIALECT-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-DIALECT-LABEL-CARD-001"
+            ]
+          },
+          {
+            "error_type": "language_evidence_mismatch",
+            "rule_refs": [
+              "KNG-AUD-LANGUAGE-DIALECT-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-LANGUAGE-DIALECT-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-DIALECT-LABEL-CARD-001"
+            ]
+          },
+          {
+            "error_type": "code_switch_collapsed",
+            "rule_refs": [
+              "KNG-AUD-LANGUAGE-DIALECT-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-LANGUAGE-DIALECT-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-DIALECT-LABEL-CARD-001"
+            ]
+          },
+          {
+            "error_type": "uncertain_audio_overclassified",
+            "rule_refs": [
+              "KNG-AUD-LANGUAGE-DIALECT-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-LANGUAGE-DIALECT-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-DIALECT-LABEL-CARD-001"
+            ]
+          },
+          {
+            "error_type": "language_error_precedence_misapplied",
+            "rule_refs": [
+              "KNG-AUD-LANGUAGE-DIALECT-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-LANGUAGE-DIALECT-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-DIALECT-LABEL-CARD-001"
+            ]
+          }
+        ]
+      },
+      "common_errors": [
+        "把合法的 BCP 47 形式误当成项目配置内标签",
+        "根据说话人地区或姓名推断方言而忽略可听证据",
+        "把混码语段折叠成单一语言",
+        "在证据不足时猜测具体语言"
+      ],
+      "remediation": [
+        "使用 RES-AUD-DIALECT-LABEL-CARD-001 先核对配置集合，再按可听证据、混码和不确定性顺序完成同规则练习。"
+      ],
+      "review_records": [],
+      "review_status": "draft",
+      "student_visible": false
+    },
+    {
+      "id": "TU-AUDIO-SPEAKER-TURNS-001",
+      "data_type": "audio",
+      "title": "按时间线保持说话人轮次一致",
+      "capability_key": "speaker_turns",
+      "goals": [
+        "按时间顺序划分说话人轮次并保持身份标签稳定",
+        "对轮次数量、顺序、身份和边界错误给出确定性诊断"
+      ],
+      "learning_objectives": [
+        "理解外部转写格式中的说话人和时间字段不等于项目身份分配策略",
+        "按首次出现顺序分配 spk_01、spk_02 并在后续轮次复用",
+        "按声明的错误优先级修复轮次数量、顺序、身份和边界"
+      ],
+      "prerequisites": [
+        "CAP-AUD-CONFIG-VALIDATE-001"
+      ],
+      "rule_refs": [
+        "KNG-AUD-SPEAKER-TURN-001",
+        "KNG-AUD-EXPORT-FORMAT-001"
+      ],
+      "source_refs": [
+        "SRC-NIST-SCTK-FORMATS-001",
+        "SRC-POLICY-AUDIO-TASK4-001"
+      ],
+      "rule_explanation": {
+        "external_format_facts": [
+          {
+            "statement": "NIST SCTK 的 STM 格式包含说话人、开始时间、时长和转写文本等字段，可用于表达说话人片段；该格式不规定本练习的说话人编号方式或错误优先级。",
+            "source_refs": [
+              "SRC-NIST-SCTK-FORMATS-001"
+            ]
+          }
+        ],
+        "project_policy": {
+          "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
+          "statement": "本项目草稿策略要求 turns 按 start_ms 升序提交；不同可辨识声音按首次出现顺序分配 spk_01、spk_02，后续同一声音必须复用原标签；turn 边界必须与提供的 handoff_ms 一致。该编号和诊断顺序是项目策略，不是 STM 外部标准。",
+          "version": "1.0.0"
+        }
+      },
+      "positive_examples": [
+        {
+          "id": "EX-AUDIO-SPEAKER-POS-001",
+          "asset_ref": "ASSET-SELF-AUDIO-SPEAKER-001",
+          "input": {
+            "voice_sequence": [
+              "voice_alpha",
+              "voice_beta",
+              "voice_alpha"
+            ],
+            "handoff_ms": [
+              1000,
+              2200
+            ]
+          },
+          "expected": {
+            "speaker_ids": [
+              "spk_01",
+              "spk_02",
+              "spk_01"
+            ]
+          },
+          "explanation": "voice_alpha 在第三轮再次出现，因此必须复用首次分配的 spk_01。",
+          "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-AUDIO-SPEAKER-NEG-001",
+          "asset_ref": "ASSET-SELF-AUDIO-SPEAKER-002",
+          "input": {
+            "voice_sequence": [
+              "voice_alpha",
+              "voice_beta",
+              "voice_alpha"
+            ],
+            "submitted_speaker_ids": [
+              "spk_01",
+              "spk_02",
+              "spk_03"
+            ]
+          },
+          "expected": {
+            "valid": false,
+            "error": "speaker_identity_inconsistent"
+          },
+          "explanation": "第三轮与第一轮是同一声音，创建 spk_03 破坏了身份一致性。",
+          "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "exercise_id": "EXERCISE-AUDIO-SPEAKER-TURNS-001",
+        "exercise_type": "ordered_turn_annotation",
+        "asset_ref": "ASSET-SELF-AUDIO-SPEAKER-EXERCISE-001",
+        "input": {
+          "policy_version": "1.0.0",
+          "observed_turns": [
+            {
+              "turn_id": "TURN-01",
+              "voice_key": "voice_alpha",
+              "start_ms": 0,
+              "end_ms": 1200,
+              "text": "您好。"
+            },
+            {
+              "turn_id": "TURN-02",
+              "voice_key": "voice_beta",
+              "start_ms": 1200,
+              "end_ms": 2500,
+              "text": "您好，请问怎么查询订单？"
+            },
+            {
+              "turn_id": "TURN-03",
+              "voice_key": "voice_alpha",
+              "start_ms": 2500,
+              "end_ms": 3400,
+              "text": "我帮您查询。"
+            }
+          ],
+          "handoff_ms": [
+            1200,
+            2500
+          ]
+        },
+        "student_action": "按 start_ms 升序提交 turns；每项包含 turn_id、speaker_id、start_ms、end_ms 和 text。",
+        "answer": {
+          "turns": [
+            {
+              "turn_id": "TURN-01",
+              "speaker_id": "spk_01",
+              "start_ms": 0,
+              "end_ms": 1200,
+              "text": "您好。"
+            },
+            {
+              "turn_id": "TURN-02",
+              "speaker_id": "spk_02",
+              "start_ms": 1200,
+              "end_ms": 2500,
+              "text": "您好，请问怎么查询订单？"
+            },
+            {
+              "turn_id": "TURN-03",
+              "speaker_id": "spk_01",
+              "start_ms": 2500,
+              "end_ms": 3400,
+              "text": "我帮您查询。"
+            }
+          ]
+        },
+        "evaluation": {
+          "method": "ordered_exact_match",
+          "version": "1.0.0",
+          "normalization": "JSON 对象键顺序忽略；turns 数组顺序、turn_id、speaker_id、毫秒时间和值必须完全一致。",
+          "diagnostic_precedence": "diagnostic_rules 按数组顺序严格匹配，优先级为轮次数量、时间顺序、首次出现编号、身份一致性、轮次边界；首个命中规则生效，之后才匹配标准答案，最后使用 incorrect_feedback。",
+          "diagnostic_rules": [
+            {
+              "submission": {
+                "turns": [
+                  {
+                    "turn_id": "TURN-01",
+                    "speaker_id": "spk_01",
+                    "start_ms": 0,
+                    "end_ms": 1200,
+                    "text": "您好。"
+                  },
+                  {
+                    "turn_id": "TURN-02",
+                    "speaker_id": "spk_02",
+                    "start_ms": 1200,
+                    "end_ms": 2500,
+                    "text": "您好，请问怎么查询订单？"
+                  }
+                ]
+              },
+              "error_type": "turn_count_mismatch",
+              "feedback": "提交缺少 TURN-03，轮次数量与 observed_turns 不一致。",
+              "remediation": [
+                "先在说话人时间线上逐一核对所有 observed_turns，再处理标签和边界。"
+              ]
+            },
+            {
+              "submission": {
+                "turns": [
+                  {
+                    "turn_id": "TURN-02",
+                    "speaker_id": "spk_02",
+                    "start_ms": 1200,
+                    "end_ms": 2500,
+                    "text": "您好，请问怎么查询订单？"
+                  },
+                  {
+                    "turn_id": "TURN-01",
+                    "speaker_id": "spk_01",
+                    "start_ms": 0,
+                    "end_ms": 1200,
+                    "text": "您好。"
+                  },
+                  {
+                    "turn_id": "TURN-03",
+                    "speaker_id": "spk_01",
+                    "start_ms": 2500,
+                    "end_ms": 3400,
+                    "text": "我帮您查询。"
+                  }
+                ]
+              },
+              "error_type": "turn_order_invalid",
+              "feedback": "turns 未按 start_ms 升序提交。",
+              "remediation": [
+                "按 0、1200、2500 毫秒的开始时间重新排列轮次。"
+              ]
+            },
+            {
+              "submission": {
+                "turns": [
+                  {
+                    "turn_id": "TURN-01",
+                    "speaker_id": "spk_01",
+                    "start_ms": 0,
+                    "end_ms": 1200,
+                    "text": "您好。"
+                  },
+                  {
+                    "turn_id": "TURN-02",
+                    "speaker_id": "spk_02",
+                    "start_ms": 1200,
+                    "end_ms": 2500,
+                    "text": "您好，请问怎么查询订单？"
+                  },
+                  {
+                    "turn_id": "TURN-03",
+                    "speaker_id": "spk_03",
+                    "start_ms": 2500,
+                    "end_ms": 3400,
+                    "text": "我帮您查询。"
+                  }
+                ]
+              },
+              "error_type": "speaker_identity_inconsistent",
+              "feedback": "TURN-03 与 TURN-01 的 voice_key 相同，却被重新编号为 spk_03。",
+              "remediation": [
+                "在说话人时间线上追踪 voice_alpha，并在 TURN-03 复用 spk_01。"
+              ]
+            },
+            {
+              "submission": {
+                "turns": [
+                  {
+                    "turn_id": "TURN-01",
+                    "speaker_id": "spk_01",
+                    "start_ms": 0,
+                    "end_ms": 1200,
+                    "text": "您好。"
+                  },
+                  {
+                    "turn_id": "TURN-02",
+                    "speaker_id": "spk_02",
+                    "start_ms": 1250,
+                    "end_ms": 2500,
+                    "text": "您好，请问怎么查询订单？"
+                  },
+                  {
+                    "turn_id": "TURN-03",
+                    "speaker_id": "spk_01",
+                    "start_ms": 2500,
+                    "end_ms": 3400,
+                    "text": "我帮您查询。"
+                  }
+                ]
+              },
+              "error_type": "turn_boundary_mismatch",
+              "feedback": "TURN-02 的 start_ms=1250 与声明的 handoff_ms=1200 不一致。",
+              "remediation": [
+                "对照说话人时间线把 TURN-02 的 start_ms 恢复为 1200。"
+              ]
+            }
+          ],
+          "correct_feedback": "轮次顺序、首次出现编号、身份复用和边界均符合项目策略。",
+          "incorrect_feedback": {
+            "error_type": "speaker_identity_inconsistent",
+            "feedback": "提交的轮次结构未同时满足数量、顺序、身份和边界要求。",
+            "remediation": [
+              "依次核对轮次数量、start_ms 顺序、首次出现编号、同一声音复用和 handoff_ms。"
+            ]
+          }
+        },
+        "data_version": "1.0.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": [
+          "CAP-AUD-SPEAKER-001"
+        ],
+        "error_types": [
+          "turn_count_mismatch",
+          "turn_order_invalid",
+          "speaker_identity_inconsistent",
+          "turn_boundary_mismatch"
+        ],
+        "asset_authorization": {
+          "type": "self-authored",
+          "student_use_allowed": true
+        }
+      },
+      "practice_variants": [
+        {
+          "exercise_id": "EXERCISE-AUDIO-SPEAKER-TURNS-PRACTICE-001",
+          "exercise_type": "speaker_identity_repair",
+          "asset_ref": "ASSET-SELF-AUDIO-SPEAKER-PRACTICE-001",
+          "input": {
+            "voice_sequence": [
+              {
+                "turn_id": "REPAIR-01",
+                "voice_key": "voice_alpha",
+                "submitted_speaker_id": "agent_a"
+              },
+              {
+                "turn_id": "REPAIR-02",
+                "voice_key": "voice_beta",
+                "submitted_speaker_id": "customer_b"
+              },
+              {
+                "turn_id": "REPAIR-03",
+                "voice_key": "voice_alpha",
+                "submitted_speaker_id": "agent_c"
+              }
+            ],
+            "required_label_pattern": "spk_XX by first audible appearance"
+          },
+          "student_action": "提交 repaired_speaker_ids，按首次出现顺序重编号并在同一 voice_key 再次出现时复用标签。",
+          "answer": {
+            "repaired_speaker_ids": [
+              {
+                "turn_id": "REPAIR-01",
+                "speaker_id": "spk_01"
+              },
+              {
+                "turn_id": "REPAIR-02",
+                "speaker_id": "spk_02"
+              },
+              {
+                "turn_id": "REPAIR-03",
+                "speaker_id": "spk_01"
+              }
+            ]
+          },
+          "evaluation": {
+            "method": "ordered_exact_match",
+            "version": "1.0.0",
+            "normalization": "JSON 对象键顺序忽略；repaired_speaker_ids 数组顺序、turn_id 和 speaker_id 必须完全一致。",
+            "diagnostic_precedence": "先检查首次出现编号，再检查同一 voice_key 的身份复用；diagnostic_rules 按数组顺序首个严格匹配生效。",
+            "diagnostic_rules": [
+              {
+                "submission": {
+                  "repaired_speaker_ids": [
+                    {
+                      "turn_id": "REPAIR-01",
+                      "speaker_id": "spk_02"
+                    },
+                    {
+                      "turn_id": "REPAIR-02",
+                      "speaker_id": "spk_01"
+                    },
+                    {
+                      "turn_id": "REPAIR-03",
+                      "speaker_id": "spk_02"
+                    }
+                  ]
+                },
+                "error_type": "speaker_first_appearance_mismatch",
+                "feedback": "首个出现的 voice_alpha 应分配 spk_01，而不是 spk_02。",
+                "remediation": [
+                  "从时间线第一轮开始编号，再向后传播同一 voice_key 的标签。"
+                ]
+              },
+              {
+                "submission": {
+                  "repaired_speaker_ids": [
+                    {
+                      "turn_id": "REPAIR-01",
+                      "speaker_id": "spk_01"
+                    },
+                    {
+                      "turn_id": "REPAIR-02",
+                      "speaker_id": "spk_02"
+                    },
+                    {
+                      "turn_id": "REPAIR-03",
+                      "speaker_id": "spk_03"
+                    }
+                  ]
+                },
+                "error_type": "speaker_identity_inconsistent",
+                "feedback": "REPAIR-03 与 REPAIR-01 是同一 voice_alpha，不应新建 spk_03。",
+                "remediation": [
+                  "复用 REPAIR-01 的 spk_01。"
+                ]
+              }
+            ],
+            "correct_feedback": "首次出现编号和同一声音身份复用均正确。",
+            "incorrect_feedback": {
+              "error_type": "speaker_identity_inconsistent",
+              "feedback": "修复结果未按首次出现顺序稳定映射 voice_key。",
+              "remediation": [
+                "在说话人时间线上建立 voice_key 到 speaker_id 的唯一映射后重新提交。"
+              ]
+            }
+          },
+          "data_version": "1.0.0",
+          "pass_condition": "score == 1.0",
+          "capability_refs": [
+            "CAP-AUD-SPEAKER-001"
+          ],
+          "error_types": [
+            "speaker_first_appearance_mismatch",
+            "speaker_identity_inconsistent"
+          ],
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "learning_path": {
+        "error_mappings": [
+          {
+            "error_type": "turn_count_mismatch",
+            "rule_refs": [
+              "KNG-AUD-SPEAKER-TURN-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-SPEAKER-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-SPEAKER-TIMELINE-001"
+            ]
+          },
+          {
+            "error_type": "turn_order_invalid",
+            "rule_refs": [
+              "KNG-AUD-SPEAKER-TURN-001",
+              "KNG-AUD-EXPORT-FORMAT-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-SPEAKER-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-SPEAKER-TIMELINE-001"
+            ]
+          },
+          {
+            "error_type": "speaker_first_appearance_mismatch",
+            "rule_refs": [
+              "KNG-AUD-SPEAKER-TURN-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-SPEAKER-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-SPEAKER-TIMELINE-001"
+            ]
+          },
+          {
+            "error_type": "speaker_identity_inconsistent",
+            "rule_refs": [
+              "KNG-AUD-SPEAKER-TURN-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-SPEAKER-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-SPEAKER-TIMELINE-001"
+            ]
+          },
+          {
+            "error_type": "turn_boundary_mismatch",
+            "rule_refs": [
+              "KNG-AUD-SPEAKER-TURN-001",
+              "KNG-AUD-EXPORT-FORMAT-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-SPEAKER-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-SPEAKER-TIMELINE-001"
+            ]
+          }
+        ]
+      },
+      "common_errors": [
+        "把外部 STM 字段误当作项目说话人编号策略",
+        "同一声音再次出现时创建新的 speaker_id",
+        "未按 start_ms 排列轮次",
+        "轮次边界与 handoff_ms 不一致"
+      ],
+      "remediation": [
+        "使用 RES-AUD-SPEAKER-TIMELINE-001 从首轮开始建立 voice_key 到 speaker_id 的稳定映射，再核对顺序和边界。"
+      ],
+      "review_records": [],
+      "review_status": "draft",
+      "student_visible": false
+    },
+    {
+      "id": "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001",
+      "data_type": "audio",
+      "title": "按项目正字法完成转写与标点",
+      "capability_key": "transcription_punctuation",
+      "goals": [
+        "完整转写可听内容并按项目正字法保持词形一致",
+        "按语义结构添加标点并按错误优先级完成诊断"
+      ],
+      "learning_objectives": [
+        "区分外部转写交换格式字段与本项目的正字法、标点答案",
+        "先保证可听内容完整，再应用数字词形和标点策略",
+        "在同时出现正字法与标点错误时确定性选择优先错误"
+      ],
+      "prerequisites": [
+        "CAP-AUD-CONFIG-VALIDATE-001"
+      ],
+      "rule_refs": [
+        "KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001",
+        "KNG-AUD-PUNCTUATION-001"
+      ],
+      "source_refs": [
+        "SRC-NIST-SCTK-FORMATS-001",
+        "SRC-POLICY-AUDIO-TASK4-001"
+      ],
+      "rule_explanation": {
+        "external_format_facts": [
+          {
+            "statement": "NIST SCTK 文档说明 STM/CTM 等格式可承载录音引用、说话人、时间和转写字段；这些字段事实不规定本练习应使用中文数字还是阿拉伯数字，也不规定句内标点答案。",
+            "source_refs": [
+              "SRC-NIST-SCTK-FORMATS-001"
+            ]
+          }
+        ],
+        "project_policy": {
+          "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
+          "statement": "本项目草稿策略要求逐词保留可听内容，口述中文数字保持中文词形，不转换为阿拉伯数字；确认问句前使用逗号、句末使用问号；诊断顺序为内容完整性、正字法、标点。该答案规则是项目策略，不是 SCTK 外部格式要求。",
+          "version": "1.0.0"
+        }
+      },
+      "positive_examples": [
+        {
+          "id": "EX-AUDIO-TRANSCRIPTION-POS-001",
+          "asset_ref": "ASSET-SELF-AUDIO-TRANSCRIPTION-001",
+          "input": {
+            "audible_words": [
+              "明天",
+              "下午",
+              "三点",
+              "我们",
+              "开会",
+              "对吗"
+            ]
+          },
+          "expected": {
+            "transcript": "明天下午三点我们开会，对吗？"
+          },
+          "explanation": "内容完整、三点保持口述词形，并按确认问句添加逗号和问号。",
+          "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-AUDIO-TRANSCRIPTION-NEG-001",
+          "asset_ref": "ASSET-SELF-AUDIO-TRANSCRIPTION-002",
+          "input": {
+            "audible_words": [
+              "明天",
+              "下午",
+              "三点",
+              "我们",
+              "开会",
+              "对吗"
+            ],
+            "submitted": {
+              "transcript": "明天下午3点我们开会，对吗？"
+            }
+          },
+          "expected": {
+            "valid": false,
+            "error": "orthography_policy_mismatch"
+          },
+          "explanation": "阿拉伯数字 3 改写了本项目要求保留的口述中文数字词形。",
+          "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "exercise_id": "EXERCISE-AUDIO-TRANSCRIPTION-PUNCTUATION-001",
+        "exercise_type": "structured_transcription",
+        "asset_ref": "ASSET-SELF-AUDIO-TRANSCRIPTION-EXERCISE-001",
+        "input": {
+          "audio_observation": {
+            "audible_words": [
+              "明天",
+              "下午",
+              "三点",
+              "我们",
+              "开会",
+              "对吗"
+            ],
+            "delivery": "陈述后接确认问句",
+            "all_words_intelligible": true
+          },
+          "policy_version": "1.0.0"
+        },
+        "student_action": "提交 JSON：只包含 transcript，完整保留可听词并按项目正字法和语义标点规则书写。",
+        "answer": {
+          "transcript": "明天下午三点我们开会，对吗？"
+        },
+        "evaluation": {
+          "method": "exact_match",
+          "version": "1.0.0",
+          "normalization": "JSON 对象键顺序忽略；transcript 字符串逐字符匹配，不自动转换数字、标点或空白。",
+          "diagnostic_precedence": "diagnostic_rules 按数组顺序严格匹配，优先级为内容完整性、正字法、标点缺失、标点过度切分；首个命中规则生效，之后才匹配标准答案，最后使用 incorrect_feedback。",
+          "diagnostic_rules": [
+            {
+              "submission": {
+                "transcript": "明天三点我们开会，对吗？"
+              },
+              "error_type": "transcript_content_omitted",
+              "feedback": "提交遗漏了可听词 下午。",
+              "remediation": [
+                "先对照转写风格表逐词核对 audible_words，再处理词形和标点。"
+              ]
+            },
+            {
+              "submission": {
+                "transcript": "明天下午3点我们开会，对吗？"
+              },
+              "error_type": "orthography_policy_mismatch",
+              "feedback": "口述词 三点 被改写为阿拉伯数字 3点。",
+              "remediation": [
+                "按项目策略保留中文数字词形 三点。"
+              ]
+            },
+            {
+              "submission": {
+                "transcript": "明天下午三点我们开会对吗"
+              },
+              "error_type": "punctuation_missing",
+              "feedback": "确认问句前的逗号和句末问号均缺失。",
+              "remediation": [
+                "根据语义在 对吗 前添加逗号，并在句末添加问号。"
+              ]
+            },
+            {
+              "submission": {
+                "transcript": "明天下午三点我们开会。对吗？"
+              },
+              "error_type": "punctuation_oversegmented",
+              "feedback": "确认问句被句号机械切成新句，不符合本项目的语义标点策略。",
+              "remediation": [
+                "将句号改为逗号，保留一个完整的确认问句。"
+              ]
+            }
+          ],
+          "correct_feedback": "可听内容、中文数字词形和确认问句标点均正确。",
+          "incorrect_feedback": {
+            "error_type": "orthography_policy_mismatch",
+            "feedback": "转写未同时满足内容完整性、项目正字法和语义标点规则。",
+            "remediation": [
+              "按内容、正字法、标点的顺序使用转写风格表逐项复核。"
+            ]
+          }
+        },
+        "data_version": "1.0.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": [
+          "CAP-AUD-TRANSCRIBE-PUNCT-001"
+        ],
+        "error_types": [
+          "transcript_content_omitted",
+          "orthography_policy_mismatch",
+          "punctuation_missing",
+          "punctuation_oversegmented"
+        ],
+        "asset_authorization": {
+          "type": "self-authored",
+          "student_use_allowed": true
+        }
+      },
+      "practice_variants": [
+        {
+          "exercise_id": "EXERCISE-AUDIO-TRANSCRIPTION-PUNCTUATION-PRACTICE-001",
+          "exercise_type": "punctuation_error_diagnosis",
+          "asset_ref": "ASSET-SELF-AUDIO-TRANSCRIPTION-PRACTICE-001",
+          "input": {
+            "audible_words": [
+              "明天",
+              "下午",
+              "三点",
+              "我们",
+              "开会",
+              "对吗"
+            ],
+            "submitted": {
+              "transcript": "明天下午3点我们开会对吗"
+            },
+            "ordered_error_precedence": [
+              "transcript_content_omitted",
+              "orthography_policy_mismatch",
+              "punctuation_missing",
+              "punctuation_oversegmented"
+            ]
+          },
+          "student_action": "提交 first_error_type 和 corrected_transcript；当一个答案同时含正字法和标点错误时，必须返回优先级更高的错误。",
+          "answer": {
+            "first_error_type": "orthography_policy_mismatch",
+            "corrected_transcript": "明天下午三点我们开会，对吗？"
+          },
+          "evaluation": {
+            "method": "exact_match",
+            "version": "1.0.0",
+            "normalization": "JSON 对象键顺序忽略；first_error_type 和 corrected_transcript 字符串必须完全一致。",
+            "diagnostic_precedence": "先检查 first_error_type 是否遵守 input 中的 ordered_error_precedence，再检查 corrected_transcript；diagnostic_rules 按数组顺序首个严格匹配生效。",
+            "diagnostic_rules": [
+              {
+                "submission": {
+                  "first_error_type": "punctuation_missing",
+                  "corrected_transcript": "明天下午三点我们开会，对吗？"
+                },
+                "error_type": "transcription_error_precedence_misapplied",
+                "feedback": "原提交同时含数字词形和标点错误，应先报告优先级更高的正字法错误。",
+                "remediation": [
+                  "按内容、正字法、标点顺序重新诊断，再给出完整修正文本。"
+                ]
+              }
+            ],
+            "correct_feedback": "已先诊断正字法错误，并给出同时修复词形和标点的标准转写。",
+            "incorrect_feedback": {
+              "error_type": "transcription_error_precedence_misapplied",
+              "feedback": "错误类型或修正文本未遵守项目诊断顺序。",
+              "remediation": [
+                "使用转写风格表先检查内容，再检查词形，最后检查标点。"
+              ]
+            }
+          },
+          "data_version": "1.0.0",
+          "pass_condition": "score == 1.0",
+          "capability_refs": [
+            "CAP-AUD-TRANSCRIBE-PUNCT-001"
+          ],
+          "error_types": [
+            "transcription_error_precedence_misapplied"
+          ],
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "learning_path": {
+        "error_mappings": [
+          {
+            "error_type": "transcript_content_omitted",
+            "rule_refs": [
+              "KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-TRANSCRIBE-PUNCT-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
+            ]
+          },
+          {
+            "error_type": "orthography_policy_mismatch",
+            "rule_refs": [
+              "KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-TRANSCRIBE-PUNCT-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
+            ]
+          },
+          {
+            "error_type": "punctuation_missing",
+            "rule_refs": [
+              "KNG-AUD-PUNCTUATION-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-TRANSCRIBE-PUNCT-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
+            ]
+          },
+          {
+            "error_type": "punctuation_oversegmented",
+            "rule_refs": [
+              "KNG-AUD-PUNCTUATION-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-TRANSCRIBE-PUNCT-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
+            ]
+          },
+          {
+            "error_type": "transcription_error_precedence_misapplied",
+            "rule_refs": [
+              "KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001",
+              "KNG-AUD-PUNCTUATION-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-TRANSCRIBE-PUNCT-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
+            ]
+          }
+        ]
+      },
+      "common_errors": [
+        "把外部转写字段格式误当作本项目的词形和标点答案",
+        "遗漏可听词后直接调整标点",
+        "把口述中文数字改写为阿拉伯数字",
+        "依据停顿机械使用句号而忽略确认问句语义",
+        "同时存在正字法和标点错误时先报告低优先级错误"
+      ],
+      "remediation": [
+        "使用 RES-AUD-TRANSCRIPT-STYLE-SHEET-001 按内容完整性、正字法、标点的顺序完成同规则转写和错误诊断。"
+      ],
+      "review_records": [],
+      "review_status": "draft",
+      "student_visible": false
+    }
+  ]
+}
