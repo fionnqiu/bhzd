@@ -1,0 +1,1631 @@
+{
+  "schema_version": "1.1.0",
+  "data_type": "audio",
+  "units": [
+    {
+      "id": "TU-AUDIO-EMOTION-PARALINGUISTICS-001",
+      "data_type": "audio",
+      "title": "分轨标注语音情感与副语言事件",
+      "capability_key": "emotion_paralinguistics",
+      "goals": [
+        "在同一音频片段中分别提交整体情感标签和带时间边界的副语言事件"
+      ],
+      "learning_objectives": [
+        "区分 EmotionML 可表达情感类别或维度这一外部事实与本项目采用的本地标签枚举",
+        "避免把 laughter、sigh 等副语言事件写入 emotion_label",
+        "按可听事件的实际起止时间提交副语言区间"
+      ],
+      "prerequisites": [
+        "CAP-AUD-TRANSCRIBE-PUNCT-001"
+      ],
+      "rule_refs": [
+        "KNG-AUD-EMOTION-LABEL-001",
+        "KNG-AUD-PARALINGUISTIC-EVENT-001"
+      ],
+      "source_refs": [
+        "SRC-W3C-EMOTIONML-001",
+        "SRC-POLICY-AUDIO-TASK4-001"
+      ],
+      "rule_explanation": {
+        "external_format_facts": [
+          {
+            "statement": "EmotionML 支持用类别或维度结构表示情感，但不替本练习规定具体情感枚举，也不规定副语言事件标签或时间边界。",
+            "source_refs": [
+              "SRC-W3C-EMOTIONML-001"
+            ]
+          }
+        ],
+        "project_policy": {
+          "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
+          "statement": "本项目采用双轨提交：emotion_label 只能从题目给定情感枚举中选择一个值；laughter、sigh、cough 等写入 paralinguistic_events，并使用毫秒级左闭右开区间 [start_ms, end_ms)。该规则只是本地 project_policy overlay，不代表 EmotionML 或行业统一标准。",
+          "version": "1.0.0"
+        }
+      },
+      "positive_examples": [
+        {
+          "id": "EX-AUDIO-EMOTION-PARALINGUISTICS-POS-001",
+          "asset_ref": "ASSET-SELF-AUDIO-EMOTION-PARALINGUISTICS-001",
+          "input": {
+            "clip_id": "emo-example-001",
+            "duration_ms": 3600,
+            "transcript": "太好了，终于完成了。",
+            "audible_evidence": {
+              "prosody": [
+                "smiling_voice",
+                "rising_pitch"
+              ],
+              "events": [
+                {
+                  "label": "laughter",
+                  "start_ms": 2500,
+                  "end_ms": 3100
+                }
+              ]
+            },
+            "allowed_emotion_labels": [
+              "joy",
+              "neutral",
+              "sadness"
+            ],
+            "allowed_event_labels": [
+              "laughter",
+              "sigh",
+              "cough"
+            ]
+          },
+          "expected": {
+            "emotion_label": "joy",
+            "paralinguistic_events": [
+              {
+                "label": "laughter",
+                "start_ms": 2500,
+                "end_ms": 3100
+              }
+            ]
+          },
+          "explanation": "笑声作为独立事件保留区间；整体情感依据本题可听证据和本地枚举提交 joy。",
+          "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-AUDIO-EMOTION-PARALINGUISTICS-NEG-001",
+          "asset_ref": "ASSET-SELF-AUDIO-EMOTION-PARALINGUISTICS-002",
+          "input": {
+            "clip_id": "emo-example-001",
+            "submitted": {
+              "emotion_label": "laughter",
+              "paralinguistic_events": []
+            }
+          },
+          "expected": {
+            "valid": false,
+            "error": "emotion_event_conflation"
+          },
+          "explanation": "laughter 是本题副语言事件，不属于 allowed_emotion_labels；把它写入 emotion_label 同时遗漏事件区间，触发双轨混淆错误。",
+          "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "exercise_id": "EX-AUDIO-EMOTION-DUAL-TRACK-001",
+        "exercise_type": "dual_track_annotation",
+        "asset_ref": "ASSET-SELF-AUDIO-EMOTION-EXERCISE-001",
+        "input": {
+          "clip_id": "emo-practice-001",
+          "duration_ms": 4200,
+          "transcript": "太好了，我们终于完成了。",
+          "audible_evidence": {
+            "prosody": [
+              "smiling_voice",
+              "rising_pitch"
+            ],
+            "events": [
+              {
+                "label": "laughter",
+                "start_ms": 2800,
+                "end_ms": 3400
+              }
+            ]
+          },
+          "allowed_emotion_labels": [
+            "joy",
+            "neutral",
+            "sadness"
+          ],
+          "allowed_event_labels": [
+            "laughter",
+            "sigh",
+            "cough"
+          ],
+          "interval_convention": "[start_ms,end_ms)"
+        },
+        "student_action": "提交 JSON：给出一个 emotion_label，并按时间顺序提交 paralinguistic_events。",
+        "answer": {
+          "emotion_label": "joy",
+          "paralinguistic_events": [
+            {
+              "label": "laughter",
+              "start_ms": 2800,
+              "end_ms": 3400
+            }
+          ]
+        },
+        "evaluation": {
+          "method": "ordered_exact_match",
+          "version": "1.0.0",
+          "normalization": "JSON 对象键顺序忽略；事件数组顺序、标签和值必须完全一致；不做标签同义词替换或时间容差处理",
+          "diagnostic_precedence": "array_order_first_exact_match",
+          "error_precedence": [
+            "emotion_event_conflation",
+            "emotion_label_mismatch",
+            "paralinguistic_event_omitted",
+            "paralinguistic_boundary_mismatch"
+          ],
+          "diagnostic_rules": [
+            {
+              "submission": {
+                "emotion_label": "laughter",
+                "paralinguistic_events": []
+              },
+              "error_type": "emotion_event_conflation",
+              "feedback": "将副语言事件 laughter 当成了整体情感标签，并遗漏了事件区间。",
+              "remediation": [
+                "使用副语言事件目录区分情感维度与可定位事件，再按双轨结构重新提交。"
+              ]
+            },
+            {
+              "submission": {
+                "emotion_label": "neutral",
+                "paralinguistic_events": [
+                  {
+                    "label": "laughter",
+                    "start_ms": 2800,
+                    "end_ms": 3400
+                  }
+                ]
+              },
+              "error_type": "emotion_label_mismatch",
+              "feedback": "事件轨正确，但整体情感没有匹配题目给出的喜悦语调证据。",
+              "remediation": [
+                "先忽略事件标签，只依据 transcript、smiling_voice 与 rising_pitch 在允许枚举中重判整体情感。"
+              ]
+            },
+            {
+              "submission": {
+                "emotion_label": "joy",
+                "paralinguistic_events": []
+              },
+              "error_type": "paralinguistic_event_omitted",
+              "feedback": "整体情感正确，但遗漏了 2800 至 3400 毫秒的 laughter 事件。",
+              "remediation": [
+                "逐段核对 audible_evidence.events，并把每个允许的副语言事件写入事件数组。"
+              ]
+            },
+            {
+              "submission": {
+                "emotion_label": "joy",
+                "paralinguistic_events": [
+                  {
+                    "label": "laughter",
+                    "start_ms": 2700,
+                    "end_ms": 3500
+                  }
+                ]
+              },
+              "error_type": "paralinguistic_boundary_mismatch",
+              "feedback": "事件类别正确，但区间扩入了事件前后的非笑声部分。",
+              "remediation": [
+                "在对齐练习表中按实际可听起止点收紧区间到 [2800,3400)。"
+              ]
+            }
+          ],
+          "correct_feedback": "情感与副语言事件已按双轨规则正确提交。",
+          "incorrect_feedback": {
+            "error_type": "paralinguistic_boundary_mismatch",
+            "feedback": "提交未与本题的情感标签、事件标签和确定性时间边界完全一致。",
+            "remediation": [
+              "依次核对情感枚举、事件是否遗漏以及左闭右开时间区间。"
+            ]
+          }
+        },
+        "data_version": "1.0.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": [
+          "CAP-AUD-EMOTION-PARALING-001"
+        ],
+        "error_types": [
+          "emotion_event_conflation",
+          "emotion_label_mismatch",
+          "paralinguistic_event_omitted",
+          "paralinguistic_boundary_mismatch"
+        ],
+        "asset_authorization": {
+          "type": "self-authored",
+          "student_use_allowed": true
+        }
+      },
+      "practice_variants": [
+        {
+          "exercise_id": "EX-AUDIO-EMOTION-REVIEW-001",
+          "exercise_type": "annotation_review",
+          "asset_ref": "ASSET-SELF-AUDIO-EMOTION-PRACTICE-001",
+          "input": {
+            "clip_id": "emo-review-001",
+            "duration_ms": 2600,
+            "transcript": "唉，又失败了。",
+            "audible_evidence": {
+              "prosody": [
+                "low_pitch",
+                "slow_tempo"
+              ],
+              "events": [
+                {
+                  "label": "sigh",
+                  "start_ms": 0,
+                  "end_ms": 450
+                }
+              ]
+            },
+            "candidate_annotation": {
+              "emotion_label": "sigh",
+              "paralinguistic_events": []
+            },
+            "allowed_emotion_labels": [
+              "joy",
+              "neutral",
+              "sadness"
+            ]
+          },
+          "student_action": "提交 JSON：诊断候选标注的主要错误，并给出完整 corrected_annotation。",
+          "answer": {
+            "diagnosed_error": "emotion_event_conflation",
+            "corrected_annotation": {
+              "emotion_label": "sadness",
+              "paralinguistic_events": [
+                {
+                  "label": "sigh",
+                  "start_ms": 0,
+                  "end_ms": 450
+                }
+              ]
+            }
+          },
+          "evaluation": {
+            "method": "ordered_exact_match",
+            "version": "1.0.0",
+            "normalization": "JSON 对象键顺序忽略；诊断错误码、标签、事件顺序和时间值必须完全一致",
+            "diagnostic_precedence": "array_order_first_exact_match",
+            "error_precedence": [
+              "diagnosis_mismatch",
+              "review_correction_mismatch"
+            ],
+            "diagnostic_rules": [
+              {
+                "submission": {
+                  "diagnosed_error": "emotion_label_mismatch",
+                  "corrected_annotation": {
+                    "emotion_label": "sadness",
+                    "paralinguistic_events": [
+                      {
+                        "label": "sigh",
+                        "start_ms": 0,
+                        "end_ms": 450
+                      }
+                    ]
+                  }
+                },
+                "error_type": "diagnosis_mismatch",
+                "feedback": "修正结果正确，但没有识别候选标注把 sigh 当作情感并遗漏事件的双轨混淆。",
+                "remediation": [
+                  "先比较 candidate_annotation 的两个轨道，再选择最早、最具体的错误码。"
+                ]
+              },
+              {
+                "submission": {
+                  "diagnosed_error": "emotion_event_conflation",
+                  "corrected_annotation": {
+                    "emotion_label": "sadness",
+                    "paralinguistic_events": []
+                  }
+                },
+                "error_type": "review_correction_mismatch",
+                "feedback": "错误诊断正确，但修正后仍遗漏 sigh 的时间区间。",
+                "remediation": [
+                  "使用副语言事件目录逐项核对候选中被吞并的事件，并恢复完整区间。"
+                ]
+              }
+            ],
+            "correct_feedback": "已正确诊断双轨混淆并恢复情感与事件标注。",
+            "incorrect_feedback": {
+              "error_type": "review_correction_mismatch",
+              "feedback": "诊断或修正结果与本题确定性答案不一致。",
+              "remediation": [
+                "先确定主要错误，再分别重建 emotion_label 与 paralinguistic_events。"
+              ]
+            }
+          },
+          "data_version": "1.0.0",
+          "pass_condition": "score == 1.0",
+          "capability_refs": [
+            "CAP-AUD-EMOTION-PARALING-001"
+          ],
+          "error_types": [
+            "diagnosis_mismatch",
+            "review_correction_mismatch"
+          ],
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "common_errors": [
+        "把笑声或叹气当作整体情感标签",
+        "只提交情感标签而遗漏副语言事件区间",
+        "为事件边界加入不可听的前后余量"
+      ],
+      "remediation": [
+        "使用 RES-AUD-EVENT-CATALOG-001 先做情感轨与事件轨分类，再用时间线复核事件边界",
+        "使用 RES-AUD-ALIGNMENT-WORKSHEET-001 按错误优先级记录事件边界诊断和修正"
+      ],
+      "learning_path": {
+        "error_mappings": [
+          {
+            "error_type": "emotion_event_conflation",
+            "rule_refs": [
+              "KNG-AUD-EMOTION-LABEL-001",
+              "KNG-AUD-PARALINGUISTIC-EVENT-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-EMOTION-PARALING-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-EVENT-CATALOG-001"
+            ]
+          },
+          {
+            "error_type": "emotion_label_mismatch",
+            "rule_refs": [
+              "KNG-AUD-EMOTION-LABEL-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-EMOTION-PARALING-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-EVENT-CATALOG-001"
+            ]
+          },
+          {
+            "error_type": "paralinguistic_event_omitted",
+            "rule_refs": [
+              "KNG-AUD-PARALINGUISTIC-EVENT-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-EMOTION-PARALING-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-EVENT-CATALOG-001"
+            ]
+          },
+          {
+            "error_type": "paralinguistic_boundary_mismatch",
+            "rule_refs": [
+              "KNG-AUD-PARALINGUISTIC-EVENT-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-EMOTION-PARALING-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-EVENT-CATALOG-001",
+              "RES-AUD-ALIGNMENT-WORKSHEET-001"
+            ]
+          },
+          {
+            "error_type": "diagnosis_mismatch",
+            "rule_refs": [
+              "KNG-AUD-EMOTION-LABEL-001",
+              "KNG-AUD-PARALINGUISTIC-EVENT-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-EMOTION-PARALING-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-EVENT-CATALOG-001",
+              "RES-AUD-ALIGNMENT-WORKSHEET-001"
+            ]
+          },
+          {
+            "error_type": "review_correction_mismatch",
+            "rule_refs": [
+              "KNG-AUD-EMOTION-LABEL-001",
+              "KNG-AUD-PARALINGUISTIC-EVENT-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-EMOTION-PARALING-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-EVENT-CATALOG-001",
+              "RES-AUD-ALIGNMENT-WORKSHEET-001"
+            ]
+          }
+        ]
+      },
+      "review_records": [],
+      "review_status": "draft",
+      "student_visible": false
+    },
+    {
+      "id": "TU-AUDIO-SEGMENTATION-ALIGNMENT-001",
+      "data_type": "audio",
+      "title": "切割话语并对齐文本时间戳",
+      "capability_key": "segmentation_alignment",
+      "goals": [
+        "生成录音引用正确、区间有序且转写逐段对齐的确定性分段结果"
+      ],
+      "learning_objectives": [
+        "说明 Kaldi segments 字段和 Praat TextGrid 区间层能够承载的外部格式事实",
+        "按本项目左闭右开毫秒区间规则提交有序、无重叠片段",
+        "逐段核对 recording_id、边界和 transcript 的对应关系"
+      ],
+      "prerequisites": [
+        "CAP-AUD-TRANSCRIBE-PUNCT-001"
+      ],
+      "rule_refs": [
+        "KNG-AUD-SEGMENT-TIMESTAMP-001",
+        "KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001"
+      ],
+      "source_refs": [
+        "SRC-KALDI-DATA-PREP-001",
+        "SRC-PRAAT-TEXTGRID-001",
+        "SRC-POLICY-AUDIO-TASK4-001"
+      ],
+      "rule_explanation": {
+        "external_format_facts": [
+          {
+            "statement": "Kaldi 数据准备说明中的 segments 记录话语 ID、录音 ID、开始时间和结束时间；该格式事实不规定本练习采用毫秒还是秒，也不规定边界容差。",
+            "source_refs": [
+              "SRC-KALDI-DATA-PREP-001"
+            ]
+          },
+          {
+            "statement": "Praat TextGrid 可以用 interval tier 保存连续时间区间；该外部事实不规定本练习的区间端点约定、片段排序或转写规范。",
+            "source_refs": [
+              "SRC-PRAAT-TEXTGRID-001"
+            ]
+          }
+        ],
+        "project_policy": {
+          "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
+          "statement": "本项目练习统一使用整数毫秒和左闭右开区间 [start_ms,end_ms)，segments 必须按 start_ms 升序、同一层不得重叠，并与题目给定 speech_anchors 和规范转写逐项完全一致；不应用隐式时间容差。该规则只是本地 project_policy overlay。",
+          "version": "1.0.0"
+        }
+      },
+      "positive_examples": [
+        {
+          "id": "EX-AUDIO-SEGMENTATION-ALIGNMENT-POS-001",
+          "asset_ref": "ASSET-SELF-AUDIO-SEGMENTATION-ALIGNMENT-001",
+          "input": {
+            "recording_id": "rec-align-example-001",
+            "speech_anchors": [
+              {
+                "start_ms": 300,
+                "end_ms": 1200,
+                "transcript": "请坐。"
+              },
+              {
+                "start_ms": 1700,
+                "end_ms": 2800,
+                "transcript": "我们开始吧。"
+              }
+            ]
+          },
+          "expected": {
+            "segments": [
+              {
+                "segment_id": "seg-001",
+                "recording_id": "rec-align-example-001",
+                "start_ms": 300,
+                "end_ms": 1200,
+                "transcript": "请坐。"
+              },
+              {
+                "segment_id": "seg-002",
+                "recording_id": "rec-align-example-001",
+                "start_ms": 1700,
+                "end_ms": 2800,
+                "transcript": "我们开始吧。"
+              }
+            ]
+          },
+          "explanation": "两个片段引用同一录音，按开始时间升序排列，边界与转写均逐项匹配 speech_anchors。",
+          "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-AUDIO-SEGMENTATION-ALIGNMENT-NEG-001",
+          "asset_ref": "ASSET-SELF-AUDIO-SEGMENTATION-ALIGNMENT-002",
+          "input": {
+            "recording_id": "rec-align-example-001",
+            "submitted_segments": [
+              {
+                "segment_id": "seg-001",
+                "recording_id": "rec-align-example-001",
+                "start_ms": 200,
+                "end_ms": 1300,
+                "transcript": "请坐。"
+              }
+            ]
+          },
+          "expected": {
+            "valid": false,
+            "error": "boundary_alignment_mismatch"
+          },
+          "explanation": "提交区间在实际语音前后各扩入 100 毫秒静音，违反本题要求的精确 speech_anchor 边界。",
+          "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "exercise_id": "EX-AUDIO-SEGMENTATION-ALIGNMENT-001",
+        "exercise_type": "interval_alignment",
+        "asset_ref": "ASSET-SELF-AUDIO-SEGMENTATION-EXERCISE-001",
+        "input": {
+          "recording_id": "rec-align-practice-001",
+          "duration_ms": 3900,
+          "speech_anchors": [
+            {
+              "start_ms": 400,
+              "end_ms": 1550,
+              "transcript": "今天下雨。"
+            },
+            {
+              "start_ms": 2100,
+              "end_ms": 3350,
+              "transcript": "记得带伞。"
+            }
+          ],
+          "interval_convention": "[start_ms,end_ms)",
+          "segment_id_order": [
+            "seg-001",
+            "seg-002"
+          ]
+        },
+        "student_action": "提交 JSON：按 segment_id_order 和 start_ms 顺序生成 segments。",
+        "answer": {
+          "segments": [
+            {
+              "segment_id": "seg-001",
+              "recording_id": "rec-align-practice-001",
+              "start_ms": 400,
+              "end_ms": 1550,
+              "transcript": "今天下雨。"
+            },
+            {
+              "segment_id": "seg-002",
+              "recording_id": "rec-align-practice-001",
+              "start_ms": 2100,
+              "end_ms": 3350,
+              "transcript": "记得带伞。"
+            }
+          ]
+        },
+        "evaluation": {
+          "method": "ordered_exact_match",
+          "version": "1.0.0",
+          "normalization": "JSON 对象键顺序忽略；segments 数组顺序、字符串、整数毫秒和标点必须完全一致；不应用时间容差",
+          "diagnostic_precedence": "array_order_first_exact_match",
+          "error_precedence": [
+            "recording_reference_mismatch",
+            "segment_count_mismatch",
+            "segment_order_mismatch",
+            "segment_overlap",
+            "boundary_alignment_mismatch",
+            "transcript_alignment_mismatch"
+          ],
+          "diagnostic_rules": [
+            {
+              "submission": {
+                "segments": [
+                  {
+                    "segment_id": "seg-001",
+                    "recording_id": "rec-align-practice-002",
+                    "start_ms": 400,
+                    "end_ms": 1550,
+                    "transcript": "今天下雨。"
+                  },
+                  {
+                    "segment_id": "seg-002",
+                    "recording_id": "rec-align-practice-001",
+                    "start_ms": 2100,
+                    "end_ms": 3350,
+                    "transcript": "记得带伞。"
+                  }
+                ]
+              },
+              "error_type": "recording_reference_mismatch",
+              "feedback": "第一个片段引用了不存在于本题的录音 ID。",
+              "remediation": [
+                "从 input.recording_id 原样复制 rec-align-practice-001 到每个 segment。"
+              ]
+            },
+            {
+              "submission": {
+                "segments": [
+                  {
+                    "segment_id": "seg-001",
+                    "recording_id": "rec-align-practice-001",
+                    "start_ms": 400,
+                    "end_ms": 1550,
+                    "transcript": "今天下雨。"
+                  }
+                ]
+              },
+              "error_type": "segment_count_mismatch",
+              "feedback": "只提交了一个片段，遗漏了第二个 speech_anchor。",
+              "remediation": [
+                "按 speech_anchors 数量创建一一对应的 segment，并检查 ID 连续性。"
+              ]
+            },
+            {
+              "submission": {
+                "segments": [
+                  {
+                    "segment_id": "seg-002",
+                    "recording_id": "rec-align-practice-001",
+                    "start_ms": 2100,
+                    "end_ms": 3350,
+                    "transcript": "记得带伞。"
+                  },
+                  {
+                    "segment_id": "seg-001",
+                    "recording_id": "rec-align-practice-001",
+                    "start_ms": 400,
+                    "end_ms": 1550,
+                    "transcript": "今天下雨。"
+                  }
+                ]
+              },
+              "error_type": "segment_order_mismatch",
+              "feedback": "片段内容正确，但数组没有按 start_ms 升序排列。",
+              "remediation": [
+                "先按 start_ms 排序，再核对 segment_id_order。"
+              ]
+            },
+            {
+              "submission": {
+                "segments": [
+                  {
+                    "segment_id": "seg-001",
+                    "recording_id": "rec-align-practice-001",
+                    "start_ms": 400,
+                    "end_ms": 2300,
+                    "transcript": "今天下雨。"
+                  },
+                  {
+                    "segment_id": "seg-002",
+                    "recording_id": "rec-align-practice-001",
+                    "start_ms": 2100,
+                    "end_ms": 3350,
+                    "transcript": "记得带伞。"
+                  }
+                ]
+              },
+              "error_type": "segment_overlap",
+              "feedback": "第一个片段结束于 2300 毫秒，与 2100 毫秒开始的第二个片段重叠。",
+              "remediation": [
+                "在对齐练习表中检查每个 end_ms <= 下一个 start_ms，并恢复第一段 end_ms 为 1550。"
+              ]
+            },
+            {
+              "submission": {
+                "segments": [
+                  {
+                    "segment_id": "seg-001",
+                    "recording_id": "rec-align-practice-001",
+                    "start_ms": 300,
+                    "end_ms": 1650,
+                    "transcript": "今天下雨。"
+                  },
+                  {
+                    "segment_id": "seg-002",
+                    "recording_id": "rec-align-practice-001",
+                    "start_ms": 2100,
+                    "end_ms": 3350,
+                    "transcript": "记得带伞。"
+                  }
+                ]
+              },
+              "error_type": "boundary_alignment_mismatch",
+              "feedback": "片段数量、顺序和非重叠性有效，但第一段边界没有贴合 speech_anchor。",
+              "remediation": [
+                "不添加前后静音余量，使用题目给定的 [400,1550) 边界。"
+              ]
+            },
+            {
+              "submission": {
+                "segments": [
+                  {
+                    "segment_id": "seg-001",
+                    "recording_id": "rec-align-practice-001",
+                    "start_ms": 400,
+                    "end_ms": 1550,
+                    "transcript": "今天下雨"
+                  },
+                  {
+                    "segment_id": "seg-002",
+                    "recording_id": "rec-align-practice-001",
+                    "start_ms": 2100,
+                    "end_ms": 3350,
+                    "transcript": "记得带伞。"
+                  }
+                ]
+              },
+              "error_type": "transcript_alignment_mismatch",
+              "feedback": "时间区间正确，但第一段转写遗漏了题目规定的句号。",
+              "remediation": [
+                "使用转写风格表逐字核对每个 speech_anchor 的文本和标点。"
+              ]
+            }
+          ],
+          "correct_feedback": "录音引用、片段顺序、时间边界与转写均已正确对齐。",
+          "incorrect_feedback": {
+            "error_type": "transcript_alignment_mismatch",
+            "feedback": "提交未与本题的有序片段标准答案完全一致。",
+            "remediation": [
+              "按错误优先级依次检查录音引用、数量、顺序、重叠、边界和转写。"
+            ]
+          }
+        },
+        "data_version": "1.0.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": [
+          "CAP-AUD-SEGMENT-ALIGN-001"
+        ],
+        "error_types": [
+          "recording_reference_mismatch",
+          "segment_count_mismatch",
+          "segment_order_mismatch",
+          "segment_overlap",
+          "boundary_alignment_mismatch",
+          "transcript_alignment_mismatch"
+        ],
+        "asset_authorization": {
+          "type": "self-authored",
+          "student_use_allowed": true
+        }
+      },
+      "practice_variants": [
+        {
+          "exercise_id": "EX-AUDIO-SEGMENTATION-AUDIT-001",
+          "exercise_type": "alignment_audit",
+          "asset_ref": "ASSET-SELF-AUDIO-SEGMENTATION-PRACTICE-001",
+          "input": {
+            "recording_id": "rec-align-audit-001",
+            "speech_anchor": {
+              "start_ms": 400,
+              "end_ms": 1550,
+              "transcript": "今天下雨。"
+            },
+            "candidate_segment": {
+              "segment_id": "seg-001",
+              "recording_id": "rec-align-audit-001",
+              "start_ms": 400,
+              "end_ms": 1850,
+              "transcript": "今天下雨。"
+            },
+            "interval_convention": "[start_ms,end_ms)"
+          },
+          "student_action": "提交 JSON：诊断候选片段的主要问题并给出 corrected_segment。",
+          "answer": {
+            "diagnosed_error": "boundary_alignment_mismatch",
+            "corrected_segment": {
+              "segment_id": "seg-001",
+              "recording_id": "rec-align-audit-001",
+              "start_ms": 400,
+              "end_ms": 1550,
+              "transcript": "今天下雨。"
+            }
+          },
+          "evaluation": {
+            "method": "ordered_exact_match",
+            "version": "1.0.0",
+            "normalization": "JSON 对象键顺序忽略；错误码、整数毫秒、字符串与标点必须完全一致",
+            "diagnostic_precedence": "array_order_first_exact_match",
+            "error_precedence": [
+              "alignment_issue_misdiagnosed",
+              "interval_endpoint_convention_mismatch",
+              "audit_correction_mismatch"
+            ],
+            "diagnostic_rules": [
+              {
+                "submission": {
+                  "diagnosed_error": "transcript_alignment_mismatch",
+                  "corrected_segment": {
+                    "segment_id": "seg-001",
+                    "recording_id": "rec-align-audit-001",
+                    "start_ms": 400,
+                    "end_ms": 1550,
+                    "transcript": "今天下雨。"
+                  }
+                },
+                "error_type": "alignment_issue_misdiagnosed",
+                "feedback": "修正区间正确，但候选文本本来就匹配，主要问题是结束边界过晚。",
+                "remediation": [
+                  "按录音引用、区间、文本的顺序比较 candidate_segment 与 speech_anchor。"
+                ]
+              },
+              {
+                "submission": {
+                  "diagnosed_error": "boundary_alignment_mismatch",
+                  "corrected_segment": {
+                    "segment_id": "seg-001",
+                    "recording_id": "rec-align-audit-001",
+                    "start_ms": 400,
+                    "end_ms": 1549,
+                    "transcript": "今天下雨。"
+                  }
+                },
+                "error_type": "interval_endpoint_convention_mismatch",
+                "feedback": "把右端点当成包含端点而减去 1 毫秒，违反本题 [start_ms,end_ms) 约定。",
+                "remediation": [
+                  "左闭右开区间直接使用 speech_anchor.end_ms，不执行 -1 修正。"
+                ]
+              },
+              {
+                "submission": {
+                  "diagnosed_error": "boundary_alignment_mismatch",
+                  "corrected_segment": {
+                    "segment_id": "seg-001",
+                    "recording_id": "rec-align-audit-001",
+                    "start_ms": 350,
+                    "end_ms": 1550,
+                    "transcript": "今天下雨。"
+                  }
+                },
+                "error_type": "audit_correction_mismatch",
+                "feedback": "结束边界已修复，但开始边界被改成了不匹配的 350 毫秒。",
+                "remediation": [
+                  "只修正有差异的字段，并逐项与 speech_anchor 完全匹配。"
+                ]
+              }
+            ],
+            "correct_feedback": "已正确诊断并修复候选片段的结束边界。",
+            "incorrect_feedback": {
+              "error_type": "audit_correction_mismatch",
+              "feedback": "错误诊断或 corrected_segment 与确定性答案不一致。",
+              "remediation": [
+                "逐字段比较 candidate_segment 与 speech_anchor，只保留完全匹配的修正结果。"
+              ]
+            }
+          },
+          "data_version": "1.0.0",
+          "pass_condition": "score == 1.0",
+          "capability_refs": [
+            "CAP-AUD-SEGMENT-ALIGN-001"
+          ],
+          "error_types": [
+            "alignment_issue_misdiagnosed",
+            "interval_endpoint_convention_mismatch",
+            "audit_correction_mismatch"
+          ],
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "common_errors": [
+        "给片段添加题目未声明的前后静音余量",
+        "数组顺序与 start_ms 顺序不一致",
+        "时间正确但转写或录音引用错位"
+      ],
+      "remediation": [
+        "使用 RES-AUD-ALIGNMENT-WORKSHEET-001 逐段核对录音引用、数量、顺序、重叠和边界",
+        "使用 RES-AUD-TRANSCRIPT-STYLE-SHEET-001 复核片段文本和标点"
+      ],
+      "learning_path": {
+        "error_mappings": [
+          {
+            "error_type": "recording_reference_mismatch",
+            "rule_refs": [
+              "KNG-AUD-SEGMENT-TIMESTAMP-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-SEGMENT-ALIGN-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-ALIGNMENT-WORKSHEET-001"
+            ]
+          },
+          {
+            "error_type": "segment_count_mismatch",
+            "rule_refs": [
+              "KNG-AUD-SEGMENT-TIMESTAMP-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-SEGMENT-ALIGN-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-ALIGNMENT-WORKSHEET-001"
+            ]
+          },
+          {
+            "error_type": "segment_order_mismatch",
+            "rule_refs": [
+              "KNG-AUD-SEGMENT-TIMESTAMP-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-SEGMENT-ALIGN-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-ALIGNMENT-WORKSHEET-001"
+            ]
+          },
+          {
+            "error_type": "segment_overlap",
+            "rule_refs": [
+              "KNG-AUD-SEGMENT-TIMESTAMP-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-SEGMENT-ALIGN-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-ALIGNMENT-WORKSHEET-001"
+            ]
+          },
+          {
+            "error_type": "boundary_alignment_mismatch",
+            "rule_refs": [
+              "KNG-AUD-SEGMENT-TIMESTAMP-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-SEGMENT-ALIGN-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-ALIGNMENT-WORKSHEET-001"
+            ]
+          },
+          {
+            "error_type": "transcript_alignment_mismatch",
+            "rule_refs": [
+              "KNG-AUD-SEGMENT-TIMESTAMP-001",
+              "KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-SEGMENT-ALIGN-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-ALIGNMENT-WORKSHEET-001",
+              "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
+            ]
+          },
+          {
+            "error_type": "alignment_issue_misdiagnosed",
+            "rule_refs": [
+              "KNG-AUD-SEGMENT-TIMESTAMP-001",
+              "KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-SEGMENT-ALIGN-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-ALIGNMENT-WORKSHEET-001",
+              "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
+            ]
+          },
+          {
+            "error_type": "interval_endpoint_convention_mismatch",
+            "rule_refs": [
+              "KNG-AUD-SEGMENT-TIMESTAMP-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-SEGMENT-ALIGN-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-ALIGNMENT-WORKSHEET-001"
+            ]
+          },
+          {
+            "error_type": "audit_correction_mismatch",
+            "rule_refs": [
+              "KNG-AUD-SEGMENT-TIMESTAMP-001",
+              "KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-SEGMENT-ALIGN-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-ALIGNMENT-WORKSHEET-001",
+              "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
+            ]
+          }
+        ]
+      },
+      "review_records": [],
+      "review_status": "draft",
+      "student_visible": false
+    },
+    {
+      "id": "TU-AUDIO-WAKE-COMMAND-WORDS-001",
+      "data_type": "audio",
+      "title": "标注唤醒词边界与命令意图",
+      "capability_key": "wake_command_words",
+      "goals": [
+        "将唤醒词、命令话语和命令意图拆分为可复核的确定性标注"
+      ],
+      "learning_objectives": [
+        "说明 Speech Commands 有限词汇分类及 unknown、silence 类别这一外部事实的适用边界",
+        "按本项目规则分别标记 wake_segment 与 command_segment",
+        "只从题目配置的 command_intents 中提交命令意图"
+      ],
+      "prerequisites": [
+        "CAP-AUD-TRANSCRIBE-PUNCT-001"
+      ],
+      "rule_refs": [
+        "KNG-AUD-WAKEWORD-BOUNDARY-001",
+        "KNG-AUD-COMMAND-INTENT-001"
+      ],
+      "source_refs": [
+        "SRC-SPEECH-COMMANDS-PAPER-001",
+        "SRC-POLICY-AUDIO-TASK4-001"
+      ],
+      "rule_explanation": {
+        "external_format_facts": [
+          {
+            "statement": "Speech Commands 论文描述有限词汇目标类别，并区分 unknown、silence 和背景噪声；它不规定本练习的中文唤醒词、命令意图本体或连续语音边界。",
+            "source_refs": [
+              "SRC-SPEECH-COMMANDS-PAPER-001"
+            ]
+          }
+        ],
+        "project_policy": {
+          "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
+          "statement": "本项目要求 wake_segment 只覆盖 configured_wake_words 中实际发音的词，不含停顿或标点；command_segment 从唤醒词后第一个命令音素开始到命令末音素结束；command_intent 必须从题目映射中原样选择。isolated command 分类中，非目标可听语音为 unknown，无可听语音为 silence。该规则只是本地 project_policy overlay。",
+          "version": "1.0.0"
+        }
+      },
+      "positive_examples": [
+        {
+          "id": "EX-AUDIO-WAKE-COMMAND-WORDS-POS-001",
+          "asset_ref": "ASSET-SELF-AUDIO-WAKE-COMMAND-WORDS-001",
+          "input": {
+            "clip_id": "wake-example-001",
+            "transcript": "星航，打开空调。",
+            "token_timeline": [
+              {
+                "text": "星航",
+                "start_ms": 500,
+                "end_ms": 1100
+              },
+              {
+                "text": "打开空调",
+                "start_ms": 1320,
+                "end_ms": 2400
+              }
+            ],
+            "configured_wake_words": [
+              "星航"
+            ],
+            "command_intents": {
+              "打开空调": "climate_on"
+            }
+          },
+          "expected": {
+            "wake_segment": {
+              "text": "星航",
+              "start_ms": 500,
+              "end_ms": 1100
+            },
+            "command_segment": {
+              "text": "打开空调",
+              "start_ms": 1320,
+              "end_ms": 2400
+            },
+            "command_intent": "climate_on"
+          },
+          "explanation": "唤醒词与命令分别贴合各自 token_timeline，命令意图从本地配置映射中原样取得。",
+          "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-AUDIO-WAKE-COMMAND-WORDS-NEG-001",
+          "asset_ref": "ASSET-SELF-AUDIO-WAKE-COMMAND-WORDS-002",
+          "input": {
+            "clip_id": "wake-example-001",
+            "submitted": {
+              "wake_segment": {
+                "text": "星航打开空调",
+                "start_ms": 500,
+                "end_ms": 2400
+              },
+              "command_segment": null,
+              "command_intent": "climate_on"
+            }
+          },
+          "expected": {
+            "valid": false,
+            "error": "wake_command_role_conflation"
+          },
+          "explanation": "把命令内容并入 wake_segment 且省略 command_segment，破坏了本项目规定的角色分轨。",
+          "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "exercise_id": "EX-AUDIO-WAKE-COMMAND-SEGMENT-001",
+        "exercise_type": "wake_command_segmentation",
+        "asset_ref": "ASSET-SELF-AUDIO-WAKE-COMMAND-EXERCISE-001",
+        "input": {
+          "clip_id": "wake-practice-001",
+          "duration_ms": 3200,
+          "transcript": "星航，打开空调。",
+          "token_timeline": [
+            {
+              "text": "星航",
+              "start_ms": 500,
+              "end_ms": 1100
+            },
+            {
+              "text": "打开空调",
+              "start_ms": 1320,
+              "end_ms": 2400
+            }
+          ],
+          "configured_wake_words": [
+            "星航"
+          ],
+          "command_intents": {
+            "打开空调": "climate_on",
+            "关闭空调": "climate_off"
+          },
+          "interval_convention": "[start_ms,end_ms)"
+        },
+        "student_action": "提交 JSON：分别给出 wake_segment、command_segment 和 command_intent。",
+        "answer": {
+          "wake_segment": {
+            "text": "星航",
+            "start_ms": 500,
+            "end_ms": 1100
+          },
+          "command_segment": {
+            "text": "打开空调",
+            "start_ms": 1320,
+            "end_ms": 2400
+          },
+          "command_intent": "climate_on"
+        },
+        "evaluation": {
+          "method": "ordered_exact_match",
+          "version": "1.0.0",
+          "normalization": "JSON 对象键顺序忽略；文本、整数毫秒和命令意图区分大小写并完全匹配；不包含标点或静音余量",
+          "diagnostic_precedence": "array_order_first_exact_match",
+          "error_precedence": [
+            "wake_command_role_conflation",
+            "wake_word_mismatch",
+            "wake_boundary_mismatch",
+            "command_boundary_mismatch",
+            "command_intent_mismatch"
+          ],
+          "diagnostic_rules": [
+            {
+              "submission": {
+                "wake_segment": {
+                  "text": "星航打开空调",
+                  "start_ms": 500,
+                  "end_ms": 2400
+                },
+                "command_segment": null,
+                "command_intent": "climate_on"
+              },
+              "error_type": "wake_command_role_conflation",
+              "feedback": "把唤醒词和命令合并进同一 wake_segment，并遗漏 command_segment。",
+              "remediation": [
+                "按 token_timeline 将唤醒词与命令拆成两个互不重叠的角色区间。"
+              ]
+            },
+            {
+              "submission": {
+                "wake_segment": {
+                  "text": "星航，",
+                  "start_ms": 500,
+                  "end_ms": 1100
+                },
+                "command_segment": {
+                  "text": "打开空调",
+                  "start_ms": 1320,
+                  "end_ms": 2400
+                },
+                "command_intent": "climate_on"
+              },
+              "error_type": "wake_word_mismatch",
+              "feedback": "wake_segment.text 带入了不属于 configured_wake_words 的标点。",
+              "remediation": [
+                "从 configured_wake_words 原样复制星航，不追加转写标点。"
+              ]
+            },
+            {
+              "submission": {
+                "wake_segment": {
+                  "text": "星航",
+                  "start_ms": 350,
+                  "end_ms": 1250
+                },
+                "command_segment": {
+                  "text": "打开空调",
+                  "start_ms": 1320,
+                  "end_ms": 2400
+                },
+                "command_intent": "climate_on"
+              },
+              "error_type": "wake_boundary_mismatch",
+              "feedback": "唤醒词文本正确，但区间包含了前后静音。",
+              "remediation": [
+                "使用 token_timeline 中星航的实际发音区间 [500,1100)。"
+              ]
+            },
+            {
+              "submission": {
+                "wake_segment": {
+                  "text": "星航",
+                  "start_ms": 500,
+                  "end_ms": 1100
+                },
+                "command_segment": {
+                  "text": "打开空调",
+                  "start_ms": 1200,
+                  "end_ms": 2550
+                },
+                "command_intent": "climate_on"
+              },
+              "error_type": "command_boundary_mismatch",
+              "feedback": "命令文本和意图正确，但区间扩入了命令前后的非语音部分。",
+              "remediation": [
+                "在对齐练习表中将 command_segment 收紧到 [1320,2400)。"
+              ]
+            },
+            {
+              "submission": {
+                "wake_segment": {
+                  "text": "星航",
+                  "start_ms": 500,
+                  "end_ms": 1100
+                },
+                "command_segment": {
+                  "text": "打开空调",
+                  "start_ms": 1320,
+                  "end_ms": 2400
+                },
+                "command_intent": "climate_off"
+              },
+              "error_type": "command_intent_mismatch",
+              "feedback": "区间均正确，但打开空调被映射成了 climate_off。",
+              "remediation": [
+                "对照 input.command_intents 原样选择打开空调对应的 climate_on。"
+              ]
+            }
+          ],
+          "correct_feedback": "唤醒词、命令边界和命令意图均已正确提交。",
+          "incorrect_feedback": {
+            "error_type": "command_intent_mismatch",
+            "feedback": "提交未同时满足角色拆分、精确边界和配置内意图映射。",
+            "remediation": [
+              "先拆分 wake 与 command，再核对各自边界，最后映射命令意图。"
+            ]
+          }
+        },
+        "data_version": "1.0.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": [
+          "CAP-AUD-WAKE-COMMAND-001"
+        ],
+        "error_types": [
+          "wake_command_role_conflation",
+          "wake_word_mismatch",
+          "wake_boundary_mismatch",
+          "command_boundary_mismatch",
+          "command_intent_mismatch"
+        ],
+        "asset_authorization": {
+          "type": "self-authored",
+          "student_use_allowed": true
+        }
+      },
+      "practice_variants": [
+        {
+          "exercise_id": "EX-AUDIO-COMMAND-CLASSIFICATION-001",
+          "exercise_type": "limited_vocabulary_classification",
+          "asset_ref": "ASSET-SELF-AUDIO-COMMAND-PRACTICE-001",
+          "input": {
+            "configured_target_classes": [
+              "volume_up",
+              "volume_down"
+            ],
+            "required_non_target_classes": [
+              "unknown",
+              "silence"
+            ],
+            "clips": [
+              {
+                "clip_id": "cmd-a",
+                "audible_speech": true,
+                "transcript": "音量大一点",
+                "configured_mapping": "volume_up"
+              },
+              {
+                "clip_id": "cmd-b",
+                "audible_speech": true,
+                "transcript": "今天天气真好",
+                "configured_mapping": null
+              },
+              {
+                "clip_id": "cmd-c",
+                "audible_speech": false,
+                "transcript": "",
+                "configured_mapping": null
+              }
+            ]
+          },
+          "student_action": "提交 JSON：按 clips 顺序为每个 clip_id 给出一个 classification。",
+          "answer": {
+            "classifications": [
+              {
+                "clip_id": "cmd-a",
+                "label": "volume_up"
+              },
+              {
+                "clip_id": "cmd-b",
+                "label": "unknown"
+              },
+              {
+                "clip_id": "cmd-c",
+                "label": "silence"
+              }
+            ]
+          },
+          "evaluation": {
+            "method": "ordered_exact_match",
+            "version": "1.0.0",
+            "normalization": "JSON 对象键顺序忽略；classifications 数组顺序和标签字符串必须完全一致",
+            "diagnostic_precedence": "array_order_first_exact_match",
+            "error_precedence": [
+              "target_command_class_mismatch",
+              "unknown_class_mismatch",
+              "silence_class_mismatch"
+            ],
+            "diagnostic_rules": [
+              {
+                "submission": {
+                  "classifications": [
+                    {
+                      "clip_id": "cmd-a",
+                      "label": "volume_down"
+                    },
+                    {
+                      "clip_id": "cmd-b",
+                      "label": "unknown"
+                    },
+                    {
+                      "clip_id": "cmd-c",
+                      "label": "silence"
+                    }
+                  ]
+                },
+                "error_type": "target_command_class_mismatch",
+                "feedback": "cmd-a 是配置内 volume_up 命令，却被标成 volume_down。",
+                "remediation": [
+                  "优先使用 clip 中明确给出的 configured_mapping，不凭近义语义改写标签。"
+                ]
+              },
+              {
+                "submission": {
+                  "classifications": [
+                    {
+                      "clip_id": "cmd-a",
+                      "label": "volume_up"
+                    },
+                    {
+                      "clip_id": "cmd-b",
+                      "label": "volume_up"
+                    },
+                    {
+                      "clip_id": "cmd-c",
+                      "label": "silence"
+                    }
+                  ]
+                },
+                "error_type": "unknown_class_mismatch",
+                "feedback": "cmd-b 有可听语音但不属于任何 configured_target_classes，应标为 unknown。",
+                "remediation": [
+                  "先检查是否存在配置映射；有语音但无映射时使用 unknown。"
+                ]
+              },
+              {
+                "submission": {
+                  "classifications": [
+                    {
+                      "clip_id": "cmd-a",
+                      "label": "volume_up"
+                    },
+                    {
+                      "clip_id": "cmd-b",
+                      "label": "unknown"
+                    },
+                    {
+                      "clip_id": "cmd-c",
+                      "label": "unknown"
+                    }
+                  ]
+                },
+                "error_type": "silence_class_mismatch",
+                "feedback": "cmd-c 没有可听语音，应使用 silence 而不是 unknown。",
+                "remediation": [
+                  "先判定 audible_speech；false 直接进入 silence 类别。"
+                ]
+              }
+            ],
+            "correct_feedback": "目标命令、unknown 与 silence 已按本地规则正确区分。",
+            "incorrect_feedback": {
+              "error_type": "target_command_class_mismatch",
+              "feedback": "分类序列未与配置映射和非目标类别规则完全一致。",
+              "remediation": [
+                "依次判定是否有语音、是否存在配置映射，再选择 target、unknown 或 silence。"
+              ]
+            }
+          },
+          "data_version": "1.0.0",
+          "pass_condition": "score == 1.0",
+          "capability_refs": [
+            "CAP-AUD-WAKE-COMMAND-001"
+          ],
+          "error_types": [
+            "target_command_class_mismatch",
+            "unknown_class_mismatch",
+            "silence_class_mismatch"
+          ],
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "common_errors": [
+        "把唤醒词和命令合并成一个区间",
+        "把转写标点或静音包含进唤醒词边界",
+        "将有语音但不在目标词表内的片段误标为 silence"
+      ],
+      "remediation": [
+        "使用 RES-AUD-ALIGNMENT-WORKSHEET-001 分别复核 wake 与 command 的区间",
+        "使用 RES-AUD-TRANSCRIPT-STYLE-SHEET-001 核对 target、unknown、silence 和本地 intent 标签写法"
+      ],
+      "learning_path": {
+        "error_mappings": [
+          {
+            "error_type": "wake_command_role_conflation",
+            "rule_refs": [
+              "KNG-AUD-WAKEWORD-BOUNDARY-001",
+              "KNG-AUD-COMMAND-INTENT-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-WAKE-COMMAND-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-ALIGNMENT-WORKSHEET-001",
+              "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
+            ]
+          },
+          {
+            "error_type": "wake_word_mismatch",
+            "rule_refs": [
+              "KNG-AUD-WAKEWORD-BOUNDARY-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-WAKE-COMMAND-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
+            ]
+          },
+          {
+            "error_type": "wake_boundary_mismatch",
+            "rule_refs": [
+              "KNG-AUD-WAKEWORD-BOUNDARY-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-WAKE-COMMAND-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-ALIGNMENT-WORKSHEET-001"
+            ]
+          },
+          {
+            "error_type": "command_boundary_mismatch",
+            "rule_refs": [
+              "KNG-AUD-WAKEWORD-BOUNDARY-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-WAKE-COMMAND-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-ALIGNMENT-WORKSHEET-001"
+            ]
+          },
+          {
+            "error_type": "command_intent_mismatch",
+            "rule_refs": [
+              "KNG-AUD-COMMAND-INTENT-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-WAKE-COMMAND-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
+            ]
+          },
+          {
+            "error_type": "target_command_class_mismatch",
+            "rule_refs": [
+              "KNG-AUD-COMMAND-INTENT-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-WAKE-COMMAND-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
+            ]
+          },
+          {
+            "error_type": "unknown_class_mismatch",
+            "rule_refs": [
+              "KNG-AUD-COMMAND-INTENT-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-WAKE-COMMAND-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
+            ]
+          },
+          {
+            "error_type": "silence_class_mismatch",
+            "rule_refs": [
+              "KNG-AUD-COMMAND-INTENT-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-WAKE-COMMAND-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
+            ]
+          }
+        ]
+      },
+      "review_records": [],
+      "review_status": "draft",
+      "student_visible": false
+    }
+  ]
+}
