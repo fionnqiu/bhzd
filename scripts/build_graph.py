@@ -54,20 +54,23 @@ def build_teaching_unit_links(
 ) -> list[dict[str, Any]]:
     units_by_id = {unit["id"]: unit for unit in teaching_units.get("units", [])}
     links = []
+    visible_index = set(teaching_units.get("student_visible_unit_ids", []))
     for unit_id in sorted(references):
         if unit_id not in units_by_id:
             raise ValueError(f"unknown teaching unit reference: {unit_id}")
         unit = units_by_id[unit_id]
+        in_student_visible_index = unit_id in visible_index
         consumable = (
             unit.get("review_status") == "published"
             and unit.get("student_visible") is True
-            and unit_id in teaching_units.get("student_visible_unit_ids", [])
+            and in_student_visible_index
         )
         links.append(
             {
                 "unit_id": unit_id,
                 "review_status": unit.get("review_status"),
                 "student_visible": unit.get("student_visible") is True,
+                "in_student_visible_index": in_student_visible_index,
                 "consumable": consumable,
             }
         )

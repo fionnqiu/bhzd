@@ -95,3 +95,32 @@
 - Graph nodes, scenario overlays, and teaching-unit links remain development drafts and are not student-consumable. Domain-specific KNG claims and every `INSCN` override still require concept-level source expansion and independent content review before development publication.
 - `MAPCERT` is a non-authoritative curriculum display mapping; official certificate/occupational-standard alignment must be verified against pinned primary sources before external use.
 - Final competition submission or real-student release still requires human domain-expert confirmation in Tasks 6-9.
+
+## [2026-07-12 20:41] Repair Task 2 provenance and parity review findings
+
+**Changed files:**
+- `data/sources/source-registry.json`
+- `data/graph/graph-catalog.json`
+- `data/graph/annotation-capability-graph.json`
+- `data/graph/annotation-capability-graph.graphml`
+- `scripts/build_graph.py`
+- `scripts/validate_graph.py`
+- `tests/graph/test_graph_integrity.py`
+- `docs/教学内容与图谱数据规范.md`
+- `docs/logs/document-changelog.md`
+
+**Reason:**
+- Resolve the independent specification review findings for claim-level provenance, the three-condition teaching-unit publication gate, INSCN base-rule compatibility, meaningful task support relations, and complete JSON/GraphML attribute parity.
+- Replace syntactically resolvable but unsupported KNG citations with explicit claim scopes, honest draft states, and narrowly compatible references.
+
+**Verification:**
+- Added focused regression tests first and ran `PYTHONDONTWRITEBYTECODE=1 python -m pytest tests/graph/test_graph_integrity.py -q -p no:cacheprovider`; the expected RED was 6 failed and 16 passed for the six reviewed gaps.
+- Rebuilt JSON and GraphML from the corrected catalog; output remained exactly 166 nodes and 240 edges.
+- Ran `PYTHONDONTWRITEBYTECODE=1 python scripts/validate_graph.py data/graph/annotation-capability-graph.json`; all eight checks passed, including claim provenance, publication traceability, and scenario compatibility.
+- Ran the targeted graph suite with 23 passed tests and the full suite with 31 passed tests, both with bytecode and pytest cache generation disabled.
+- `git diff --check` returned no whitespace errors.
+
+**Remaining verification:**
+- The release-pinned Label Studio document candidates and CVAT v2.51 annotation-format candidate remain `unverified`, `publishable=false`, and draft-only until their exact paths, contents, and licenses are checked directly.
+- KNG nodes marked `curriculum_draft` intentionally have no authority source and cannot support a published/student-visible task until a compatible source or explicitly identified project-policy record is reviewed.
+- Citation permission does not grant asset redistribution; all external media or datasets still require separate license evidence before packaging.

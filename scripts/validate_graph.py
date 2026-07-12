@@ -241,6 +241,93 @@ def load_source_registry(
     }
 
 
+def compatible_source_refs(
+    knowledge: dict[str, Any],
+    sources_by_id: dict[str, dict[str, Any]],
+    *,
+    require_publishable: bool = False,
+) -> list[str]:
+    compatible = []
+    claim_type = knowledge.get("claim_type")
+    knowledge_data_types = set(knowledge.get("data_types", []))
+    for source_ref in knowledge.get("source_refs", []):
+        source = sources_by_id.get(source_ref)
+        if source is None:
+            continue
+        if claim_type not in source.get("supported_claim_types", []):
+            continue
+        source_data_types = set(
+            source.get("supported_data_types", [source.get("data_type")])
+        )
+        if not knowledge_data_types <= source_data_types:
+            continue
+        if (
+            knowledge.get("claim_basis") == "project_policy"
+            and source.get("source_kind") != "project_policy"
+        ):
+            continue
+        if require_publishable:
+            authorization = source.get("license_or_authorization", {})
+            usage_rights = source.get("usage_rights", {})
+            if (
+                source.get("status") != "verified"
+                or authorization.get("publishable") is not True
+                or usage_rights.get("citation_allowed") is not True
+            ):
+                continue
+        compatible.append(source_ref)
+    return compatible
+
+
+def validate_knowledge_provenance(
+    nodes_by_id: dict[str, dict[str, Any]],
+    sources_by_id: dict[str, dict[str, Any]],
+    errors: list[str],
+) -> None:
+    allowed_bases = {"external_reference", "curriculum_draft", "project_policy"}
+    for knowledge in (
+        node for node in nodes_by_id.values() if node.get("type") == "KNG"
+    ):
+        node_id = knowledge["id"]
+        claim_type = knowledge.get("claim_type")
+        claim_basis = knowledge.get("claim_basis")
+        source_refs = knowledge.get("source_refs")
+        if not isinstance(claim_type, str) or not claim_type:
+            add_error(errors, "knowledge_claim_type", f"{node_id}: claim_type required")
+        if claim_basis not in allowed_bases:
+            add_error(errors, "knowledge_claim_basis", f"{node_id}: invalid claim_basis")
+        if not isinstance(source_refs, list):
+            add_error(errors, "knowledge_source", f"{node_id}: source_refs must be an array")
+            continue
+        if claim_basis == "curriculum_draft" and source_refs:
+            add_error(
+                errors,
+                "knowledge_source_scope",
+                f"{node_id}: curriculum_draft must not cite authority sources",
+            )
+        missing_refs = sorted(ref for ref in source_refs if ref not in sources_by_id)
+        if missing_refs:
+            add_error(
+                errors,
+                "knowledge_source",
+                f"{node_id}: unresolved sources {missing_refs}",
+            )
+        if source_refs and len(compatible_source_refs(knowledge, sources_by_id)) != len(
+            source_refs
+        ):
+            add_error(
+                errors,
+                "knowledge_source_scope",
+                f"{node_id}: one or more sources do not support {claim_type!r}",
+            )
+        if claim_basis in {"external_reference", "project_policy"} and not source_refs:
+            add_error(
+                errors,
+                "knowledge_source",
+                f"{node_id}: {claim_basis} requires a source",
+            )
+
+
 def validate_task_traceability(
     graph: dict[str, Any],
     nodes_by_id: dict[str, dict[str, Any]],
@@ -259,17 +346,11 @@ def validate_task_traceability(
         supporters = inbound_support[task["id"]]
         capabilities = [node for node in supporters if node.get("type") == "CAP"]
         knowledge = [node for node in supporters if node.get("type") == "KNG"]
-        resolved_knowledge = [
-            node
-            for node in knowledge
-            if node.get("source_refs")
-            and all(source_ref in sources_by_id for source_ref in node["source_refs"])
-        ]
-        if not capabilities or not resolved_knowledge:
+        if not capabilities or not knowledge:
             add_error(
                 errors,
                 "task_traceability",
-                f"{task['id']}: requires inbound CAP and sourced KNG support",
+                f"{task['id']}: requires inbound CAP and KNG support",
             )
 
         links = task.get("teaching_unit_links")
@@ -284,6 +365,7 @@ def validate_task_traceability(
             expected_consumable = (
                 link.get("review_status") == "published"
                 and link.get("student_visible") is True
+                and link.get("in_student_visible_index") is True
             )
             if link.get("consumable") is not expected_consumable:
                 add_error(
@@ -293,16 +375,13 @@ def validate_task_traceability(
                 )
 
         if task.get("status") == "published" or task.get("student_visible") is True:
-            verified_sources = []
-            for node in resolved_knowledge:
-                for source_ref in node["source_refs"]:
-                    source = sources_by_id[source_ref]
-                    authorization = source.get("license_or_authorization", {})
-                    if (
-                        source.get("status") == "verified"
-                        and authorization.get("publishable") is True
-                    ):
-                        verified_sources.append(source_ref)
+            verified_sources = [
+                source_ref
+                for node in knowledge
+                for source_ref in compatible_source_refs(
+                    node, sources_by_id, require_publishable=True
+                )
+            ]
             if not verified_sources:
                 add_error(
                     errors,
@@ -393,6 +472,18 @@ def validate_scenarios(
                 "inscn_data_type",
                 f"{edge.get('id')}: rule data_types are incompatible",
             )
+        if (
+            isinstance(edge_types, list)
+            and edge_types
+            and base_rule is not None
+            and base_rule.get("type") == "KNG"
+            and not set(edge_types) <= set(base_rule.get("data_types", []))
+        ):
+            add_error(
+                errors,
+                "inscn_base_data_type",
+                f"{edge.get('id')}: base KNG data_types are incompatible",
+            )
     missing_coverage = sorted(set(scenarios) - covered)
     if missing_coverage:
         add_error(
@@ -408,6 +499,7 @@ def validate_graph(graph: dict[str, Any]) -> list[str]:
     nodes_by_id = validate_ids_and_endpoints(graph, errors)
     validate_pre_acyclicity(graph, nodes_by_id, errors)
     sources_by_id = load_source_registry(graph, errors)
+    validate_knowledge_provenance(nodes_by_id, sources_by_id, errors)
     validate_task_traceability(graph, nodes_by_id, sources_by_id, errors)
     validate_scenarios(graph, nodes_by_id, errors)
     return errors
@@ -442,6 +534,7 @@ def main() -> int:
         "unique IDs",
         "edge endpoints/types",
         "PRE acyclicity",
+        "claim provenance",
         "task traceability",
         "scenario compatibility",
     )

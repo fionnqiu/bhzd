@@ -17,6 +17,7 @@ GRAPHML_PATH = ROOT / "data" / "graph" / "annotation-capability-graph.graphml"
 BUILD_SCRIPT = ROOT / "scripts" / "build_graph.py"
 VALIDATE_SCRIPT = ROOT / "scripts" / "validate_graph.py"
 TEACHING_UNITS_PATH = ROOT / "data" / "curriculum" / "teaching-units.json"
+SOURCE_REGISTRY_PATH = ROOT / "data" / "sources" / "source-registry.json"
 EXPECTED_NODE_COUNTS = {
     "CAP": 40,
     "KNG": 60,
@@ -26,6 +27,28 @@ EXPECTED_NODE_COUNTS = {
     "CERT": 12,
 }
 EXPECTED_RELATIONS = {"PRE", "ISA", "SUP", "REL", "INSCN", "MAPCERT"}
+EXPECTED_TASK_KNOWLEDGE = {
+    "TSK-TXT-LABEL-AUDIT-001": "KNG-TXT-LABEL-VOCAB-001",
+    "TSK-TXT-DOCUMENT-CLASSIFY-001": "KNG-TXT-SINGLE-MULTI-LABEL-001",
+    "TSK-TXT-NER-ANNOTATE-001": "KNG-TXT-ENTITY-BOUNDARY-001",
+    "TSK-TXT-RELATION-LINK-001": "KNG-TXT-RELATION-DIRECTION-001",
+    "TSK-TXT-INTENT-REVIEW-001": "KNG-TXT-INTENT-HIERARCHY-001",
+    "TSK-IMG-RECT-AUDIT-001": "KNG-IMG-RECT-BOUNDS-001",
+    "TSK-IMG-OBJECT-BOX-001": "KNG-IMG-BOX-TIGHTNESS-001",
+    "TSK-IMG-POLYGON-TRACE-001": "KNG-IMG-POLYGON-VERTEX-001",
+    "TSK-IMG-KEYPOINT-MARK-001": "KNG-IMG-KEYPOINT-VISIBILITY-001",
+    "TSK-IMG-MASK-REVIEW-001": "KNG-IMG-INSTANCE-ID-001",
+    "TSK-AUD-CONFIG-AUDIT-001": "KNG-AUD-DATA-BINDING-001",
+    "TSK-AUD-TRANSCRIPT-ALIGN-001": "KNG-AUD-SEGMENT-TIMESTAMP-001",
+    "TSK-AUD-SPEAKER-DIARIZE-001": "KNG-AUD-SPEAKER-TURN-001",
+    "TSK-AUD-EMOTION-EVENT-001": "KNG-AUD-EMOTION-LABEL-001",
+    "TSK-AUD-COMMAND-SEGMENT-001": "KNG-AUD-COMMAND-INTENT-001",
+    "TSK-VID-TRACK-ID-AUDIT-001": "KNG-VID-TRACK-ID-001",
+    "TSK-VID-FRAME-LABEL-001": "KNG-VID-FRAME-ANNOTATION-001",
+    "TSK-VID-OBJECT-TRACK-001": "KNG-VID-TRACK-CONTINUITY-001",
+    "TSK-VID-ACTION-EVENT-001": "KNG-VID-EVENT-START-END-001",
+    "TSK-VID-TRACK-QA-001": "KNG-VID-QUALITY-METRICS-001",
+}
 REQUIRED_PATHS = (
     CATALOG_PATH,
     GRAPH_JSON_PATH,
@@ -199,7 +222,7 @@ def test_pre_relations_form_a_directed_acyclic_graph(graph):
     assert set(visited) == capability_ids
 
 
-def test_every_task_is_traceable_to_capability_and_sourced_knowledge(graph):
+def test_every_task_is_traceable_to_capability_and_direct_knowledge(graph):
     nodes_by_id = {node["id"]: node for node in graph["nodes"]}
     inbound_support = defaultdict(list)
     for edge in graph["edges"]:
@@ -211,10 +234,36 @@ def test_every_task_is_traceable_to_capability_and_sourced_knowledge(graph):
     for task in tasks:
         supporters = inbound_support[task["id"]]
         assert any(node["type"] == "CAP" for node in supporters), task["id"]
-        assert any(
-            node["type"] == "KNG" and node["source_refs"]
-            for node in supporters
-        ), task["id"]
+        knowledge_ids = {node["id"] for node in supporters if node["type"] == "KNG"}
+        assert EXPECTED_TASK_KNOWLEDGE[task["id"]] in knowledge_ids, task["id"]
+
+
+def test_knowledge_source_refs_match_claim_scope(graph):
+    source_registry = load_json(SOURCE_REGISTRY_PATH)
+    sources_by_id = {
+        source["source_id"]: source for source in source_registry["sources"]
+    }
+    knowledge_nodes = [node for node in graph["nodes"] if node["type"] == "KNG"]
+
+    missing_claim_types = [node["id"] for node in knowledge_nodes if not node.get("claim_type")]
+    assert not missing_claim_types, f"KNG nodes missing claim_type: {missing_claim_types}"
+    for node in knowledge_nodes:
+        assert node["claim_basis"] in {"external_reference", "curriculum_draft", "project_policy"}
+        if node["claim_basis"] == "curriculum_draft":
+            assert node["source_refs"] == []
+        for source_ref in node["source_refs"]:
+            source = sources_by_id[source_ref]
+            assert node["claim_type"] in source["supported_claim_types"], (
+                node["id"],
+                source_ref,
+                node["claim_type"],
+            )
+            source_data_types = set(
+                source.get("supported_data_types", [source["data_type"]])
+            )
+            assert set(node["data_types"]) <= source_data_types
+            if node["claim_basis"] == "project_policy":
+                assert source["source_kind"] == "project_policy"
 
 
 def test_teaching_unit_links_respect_publication_gate(graph):
@@ -228,8 +277,13 @@ def test_teaching_unit_links_respect_publication_gate(graph):
             unit = units_by_id[link["unit_id"]]
             assert link["review_status"] == unit["review_status"]
             assert link["student_visible"] is unit["student_visible"]
+            assert link["in_student_visible_index"] is (
+                unit["id"] in teaching_units["student_visible_unit_ids"]
+            )
             assert link["consumable"] is (
-                unit["review_status"] == "published" and unit["student_visible"]
+                unit["review_status"] == "published"
+                and unit["student_visible"]
+                and unit["id"] in teaching_units["student_visible_unit_ids"]
             )
             if link["consumable"]:
                 assert unit["id"] in teaching_units["student_visible_unit_ids"]
@@ -261,10 +315,13 @@ def test_scenario_edges_have_compatible_rule_metadata(graph):
         assert metadata["rule_id"].startswith("SCNR-")
         assert metadata["base_rule_ref"].startswith("KNG-")
         assert metadata["base_rule_ref"] in nodes_by_id
+        base_rule = nodes_by_id[metadata["base_rule_ref"]]
+        assert base_rule["type"] == "KNG"
         assert metadata["override_type"] in {"add", "replace"}
         assert metadata["description"]
         assert edge_data_types
         assert edge_data_types <= set(source["data_types"])
+        assert edge_data_types <= set(base_rule["data_types"])
         assert edge_data_types <= set(scenario["supported_data_types"])
 
     covered_scenarios = {edge["target"] for edge in scenario_edges}
@@ -291,38 +348,30 @@ def test_graphml_is_well_formed_and_structurally_matches_json(graph):
     for node in root.findall(".//g:node", namespace):
         values = data_values(node)
         graphml_nodes[node.attrib["id"]] = {
+            "id": node.attrib["id"],
             "type": values["type"],
             "label": values["label"],
+            "description": values["description"],
             "data_types": json.loads(values["data_types"]),
+            "status": values["status"],
+            "source_refs": json.loads(values["source_refs"]),
+            **json.loads(values["attributes"]),
         }
 
     graphml_edges = {}
     for edge in root.findall(".//g:edge", namespace):
         values = data_values(edge)
         graphml_edges[edge.attrib["id"]] = {
+            "id": edge.attrib["id"],
             "source": edge.attrib["source"],
             "target": edge.attrib["target"],
             "relation": values["relation"],
+            "label": values["label"],
             "metadata": json.loads(values["metadata"]),
         }
 
-    assert graphml_nodes == {
-        node["id"]: {
-            "type": node["type"],
-            "label": node["label"],
-            "data_types": node["data_types"],
-        }
-        for node in graph["nodes"]
-    }
-    assert graphml_edges == {
-        edge["id"]: {
-            "source": edge["source"],
-            "target": edge["target"],
-            "relation": edge["relation"],
-            "metadata": edge["metadata"],
-        }
-        for edge in graph["edges"]
-    }
+    assert graphml_nodes == {node["id"]: node for node in graph["nodes"]}
+    assert graphml_edges == {edge["id"]: edge for edge in graph["edges"]}
 
 
 def test_validator_reports_all_checks_passed(graph):
@@ -335,6 +384,7 @@ def test_validator_reports_all_checks_passed(graph):
         "unique IDs",
         "edge endpoints/types",
         "PRE acyclicity",
+        "claim provenance",
         "task traceability",
         "scenario compatibility",
         "Graph validation succeeded: 166 nodes, 240 edges",
@@ -381,9 +431,42 @@ def corrupt_task_traceability(graph):
     ]
 
 
+def corrupt_knowledge_source_scope(graph):
+    knowledge = next(
+        node for node in graph["nodes"] if node["id"] == "KNG-AUD-DATA-BINDING-001"
+    )
+    knowledge["claim_type"] = "audio_transcript_timing"
+
+
+def corrupt_publication_index_gate(graph):
+    task = next(node for node in graph["nodes"] if node.get("teaching_unit_links"))
+    link = task["teaching_unit_links"][0]
+    link["review_status"] = "published"
+    link["student_visible"] = True
+    link["in_student_visible_index"] = False
+    link["consumable"] = True
+
+
+def corrupt_published_task_with_unverified_source(graph):
+    task = next(
+        node for node in graph["nodes"] if node["id"] == "TSK-TXT-DOCUMENT-CLASSIFY-001"
+    )
+    task["status"] = "published"
+    task["student_visible"] = True
+
+
 def corrupt_scenario_compatibility(graph):
     edge = next(edge for edge in graph["edges"] if edge["relation"] == "INSCN")
     edge["metadata"]["data_types"] = ["unsupported-type"]
+
+
+def corrupt_scenario_base_rule_data_type(graph):
+    edge = next(
+        edge
+        for edge in graph["edges"]
+        if edge["relation"] == "INSCN" and edge["metadata"]["data_types"] == ["audio"]
+    )
+    edge["metadata"]["base_rule_ref"] = "KNG-TXT-ENTITY-BOUNDARY-001"
 
 
 @pytest.mark.parametrize(
@@ -396,7 +479,11 @@ def corrupt_scenario_compatibility(graph):
         (corrupt_relation_endpoint, "relation_endpoint"),
         (corrupt_pre_cycle, "pre_cycle"),
         (corrupt_task_traceability, "task_traceability"),
+        (corrupt_knowledge_source_scope, "knowledge_source_scope"),
+        (corrupt_publication_index_gate, "publication_gate"),
+        (corrupt_published_task_with_unverified_source, "task_traceability"),
         (corrupt_scenario_compatibility, "inscn_data_type"),
+        (corrupt_scenario_base_rule_data_type, "inscn_base_data_type"),
     ],
 )
 def test_validator_rejects_invalid_graphs(graph, tmp_path, mutation, error_code):
