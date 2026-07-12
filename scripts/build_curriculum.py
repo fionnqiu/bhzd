@@ -4,7 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import copy
+import hashlib
 import json
+import re
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -12,11 +16,17 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CURRICULUM_ROOT = ROOT / "data" / "curriculum"
 DEFAULT_CENTRAL = DEFAULT_CURRICULUM_ROOT / "teaching-units.json"
+DEFAULT_LEGACY_SNAPSHOT = (
+    DEFAULT_CURRICULUM_ROOT / "legacy" / "teaching-units.json"
+)
 DEFAULT_SOURCE_REGISTRY = ROOT / "data" / "sources" / "source-registry.json"
 DEFAULT_REVIEW_REGISTRY = ROOT / "data" / "reviews" / "content-review-registry.json"
 DOMAIN_ORDER = ("text", "image", "audio", "video")
 TASK3_SOURCE_DOMAINS = {"text", "image"}
 TASK3_LEGACY_FALLBACK_DOMAINS = {"audio", "video"}
+REVIEWED_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
+CONTENT_DIGEST_PATTERN = re.compile(r"[0-9a-f]{64}")
+LIFECYCLE_FIELDS = {"review_status", "student_visible", "review_records"}
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -48,9 +58,56 @@ def _load_domain(path: Path, domain: str) -> list[dict[str, Any]]:
         ids.append(unit_id)
     if ids != sorted(ids):
         raise ValueError(f"non-canonical teaching unit ordering in {path}")
-    if len(ids) != len(set(ids)):
+    if any(count > 1 for count in Counter(ids).values()):
         raise ValueError(f"duplicate teaching unit ID within {path}")
     return units
+
+
+def _load_legacy_snapshot(path: Path) -> list[dict[str, Any]]:
+    document = load_json(path)
+    if document.get("schema_version") != "1.1.0":
+        raise ValueError(f"{path} schema_version must be 1.1.0")
+    if not isinstance(document.get("snapshot_version"), str) or not document[
+        "snapshot_version"
+    ]:
+        raise ValueError(f"{path} snapshot_version must be a non-empty string")
+    domains = document.get("domains")
+    if domains != sorted(TASK3_LEGACY_FALLBACK_DOMAINS):
+        raise ValueError(f"{path} domains must contain audio and video")
+    units = document.get("units")
+    if not isinstance(units, list) or not units:
+        raise ValueError(f"{path} units must be a non-empty list")
+    ids: list[str] = []
+    for unit in units:
+        if not isinstance(unit, dict):
+            raise ValueError(f"{path} contains a non-object teaching unit")
+        unit_id = unit.get("id")
+        if not isinstance(unit_id, str) or not unit_id:
+            raise ValueError(f"{path} contains a teaching unit without an ID")
+        if unit.get("data_type") not in TASK3_LEGACY_FALLBACK_DOMAINS:
+            raise ValueError(f"{unit_id} has invalid legacy data_type")
+        ids.append(unit_id)
+    duplicates = sorted(
+        unit_id for unit_id, count in Counter(ids).items() if count > 1
+    )
+    if duplicates:
+        raise ValueError(f"duplicate teaching unit ID: {', '.join(duplicates)}")
+    if ids != sorted(ids):
+        raise ValueError(f"non-canonical teaching unit ordering in {path}")
+    return units
+
+
+def content_digest(unit: dict[str, Any]) -> str:
+    reviewed_content = copy.deepcopy(unit)
+    for field in LIFECYCLE_FIELDS:
+        reviewed_content.pop(field, None)
+    canonical = json.dumps(
+        reviewed_content,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _unique_index(records: Any, key: str, label: str) -> dict[str, dict[str, Any]]:
@@ -122,28 +179,56 @@ def _validate_review_registry(review_registry: dict[str, Any]) -> dict[str, dict
                 for field in ("unit_id", "data_version", "evaluation_version")
             ):
                 raise ValueError(f"review {review_id} has incomplete unit version")
+            digest = version.get("content_digest")
+            if review["decision"] == "approved" and review[
+                "authorizes_publication"
+            ] is True:
+                if not isinstance(digest, str) or not CONTENT_DIGEST_PATTERN.fullmatch(
+                    digest
+                ):
+                    raise ValueError(
+                        f"review {review_id} has invalid content_digest"
+                    )
+            elif digest is not None and (
+                not isinstance(digest, str)
+                or not CONTENT_DIGEST_PATTERN.fullmatch(digest)
+            ):
+                raise ValueError(f"review {review_id} has invalid content_digest")
         for field in ("reviewer_id", "reviewed_at", "reviewed_commit"):
             if not isinstance(review[field], str) or not review[field]:
                 raise ValueError(f"review {review_id} has invalid {field}")
+        if not REVIEWED_COMMIT_PATTERN.fullmatch(review["reviewed_commit"]):
+            raise ValueError(f"review {review_id} has invalid reviewed_commit")
     return reviews
 
 
-def _review_approves_unit(review: dict[str, Any], unit: dict[str, Any]) -> bool:
+def _review_version_binding(
+    review: dict[str, Any], unit: dict[str, Any]
+) -> dict[str, Any] | None:
     if review["decision"] != "approved" or review["authorizes_publication"] is not True:
-        return False
+        return None
     if unit["id"] not in review["scope"]["unit_ids"]:
-        return False
+        return None
     if review["reviewer_type"] == "ai_agent" and review.get(
         "independent_of_implementation"
     ) is not True:
-        return False
-    return any(
-        version["unit_id"] == unit["id"]
-        and version["data_version"] == unit["exercise"]["data_version"]
-        and version["evaluation_version"]
-        == unit["exercise"]["evaluation"]["version"]
-        for version in review["unit_versions"]
+        return None
+    return next(
+        (
+            version
+            for version in review["unit_versions"]
+            if version["unit_id"] == unit["id"]
+            and version["data_version"] == unit["exercise"]["data_version"]
+            and version["evaluation_version"]
+            == unit["exercise"]["evaluation"]["version"]
+        ),
+        None,
     )
+
+
+def _review_approves_unit(review: dict[str, Any], unit: dict[str, Any]) -> bool:
+    version = _review_version_binding(review, unit)
+    return version is not None and version["content_digest"] == content_digest(unit)
 
 
 def validate_publication_contract(
@@ -185,7 +270,19 @@ def validate_publication_contract(
         if status == "draft":
             continue
 
-        for source_ref in unit.get("source_refs", []):
+        source_refs = unit.get("source_refs")
+        if (
+            not isinstance(source_refs, list)
+            or not source_refs
+            or any(
+                not isinstance(source_ref, str) or not source_ref.strip()
+                for source_ref in source_refs
+            )
+        ):
+            raise ValueError(f"{unit_id} source_refs must be a non-empty string list")
+        if any(count > 1 for count in Counter(source_refs).values()):
+            raise ValueError(f"{unit_id} source_refs must be unique")
+        for source_ref in source_refs:
             source = sources.get(source_ref)
             authorization = source.get("license_or_authorization", {}) if source else {}
             usage_rights = source.get("usage_rights", {}) if source else {}
@@ -198,21 +295,24 @@ def validate_publication_contract(
                 raise ValueError(
                     f"{unit_id} source eligibility failed for {source_ref}"
                 )
-        if not any(
+        if any(
             _review_approves_unit(reviews[review_ref], unit)
             for review_ref in review_refs
         ):
-            raise ValueError(f"{unit_id} requires a complete approved review")
+            continue
+        if any(
+            _review_version_binding(reviews[review_ref], unit) is not None
+            for review_ref in review_refs
+        ):
+            raise ValueError(f"{unit_id} content_digest does not match approved review")
+        raise ValueError(f"{unit_id} requires a complete approved review")
 
 
 def build_curriculum(
     curriculum_root: Path,
-    legacy_central: Path,
+    legacy_snapshot: Path,
 ) -> dict[str, Any]:
-    legacy_document = load_json(legacy_central)
-    legacy_units = legacy_document.get("units")
-    if not isinstance(legacy_units, list):
-        raise ValueError(f"{legacy_central} units must be a list")
+    legacy_units = _load_legacy_snapshot(legacy_snapshot)
 
     all_units: list[dict[str, Any]] = []
     loaded_domains: set[str] = set()
@@ -235,7 +335,9 @@ def build_curriculum(
     ids = [unit.get("id") for unit in all_units]
     if any(not isinstance(unit_id, str) or not unit_id for unit_id in ids):
         raise ValueError("all teaching units must have non-empty string IDs")
-    duplicates = sorted({unit_id for unit_id in ids if ids.count(unit_id) > 1})
+    duplicates = sorted(
+        unit_id for unit_id, count in Counter(ids).items() if count > 1
+    )
     if duplicates:
         raise ValueError(f"duplicate teaching unit ID: {', '.join(duplicates)}")
     units = sorted(all_units, key=lambda unit: unit["id"])
@@ -261,7 +363,9 @@ def write_document(document: dict[str, Any], output: Path) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--curriculum-root", type=Path, default=DEFAULT_CURRICULUM_ROOT)
-    parser.add_argument("--legacy-central", type=Path, default=DEFAULT_CENTRAL)
+    parser.add_argument(
+        "--legacy-snapshot", type=Path, default=DEFAULT_LEGACY_SNAPSHOT
+    )
     parser.add_argument("--source-registry", type=Path, default=DEFAULT_SOURCE_REGISTRY)
     parser.add_argument("--review-registry", type=Path, default=DEFAULT_REVIEW_REGISTRY)
     parser.add_argument("--output", type=Path, default=DEFAULT_CENTRAL)
@@ -270,7 +374,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    document = build_curriculum(args.curriculum_root, args.legacy_central)
+    document = build_curriculum(args.curriculum_root, args.legacy_snapshot)
     validate_publication_contract(
         document,
         load_json(args.source_registry),

@@ -1,0 +1,259 @@
+{
+  "schema_version": "1.1.0",
+  "snapshot_version": "1.0.0",
+  "source_document": "data/curriculum/teaching-units.json",
+  "source_commit": "cb7d73d8c86a34eaf49e5b52b470b7bd79da69b3",
+  "domains": [
+    "audio",
+    "video"
+  ],
+  "units": [
+    {
+      "id": "TU-AUDIO-DATA-BINDING-001",
+      "data_type": "audio",
+      "title": "校验音频任务数据绑定",
+      "learning_objectives": [
+        "识别 Audio 标签 value 对任务数据字段的引用",
+        "区分数据字段引用与普通字符串"
+      ],
+      "prerequisites": [],
+      "rule_refs": [
+        "KNG-AUD-DATA-BINDING-001"
+      ],
+      "source_refs": [
+        "SRC-LS-AUDIO-TAG-001"
+      ],
+      "positive_examples": [
+        {
+          "id": "EX-AUDIO-POS-001",
+          "asset_ref": "ASSET-SELF-AUDIO-CONFIG-001",
+          "input": {
+            "task_data_fields": [
+              "audio"
+            ],
+            "audio_tag": {
+              "name": "audio_player",
+              "value": "$audio"
+            }
+          },
+          "expected": {
+            "valid": true
+          },
+          "explanation": "$audio 引用了存在的任务数据字段 audio。",
+          "source_ref": "SRC-LS-AUDIO-TAG-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-AUDIO-NEG-001",
+          "asset_ref": "ASSET-SELF-AUDIO-CONFIG-002",
+          "input": {
+            "task_data_fields": [
+              "audio"
+            ],
+            "audio_tag": {
+              "name": "audio_player",
+              "value": "$recording"
+            }
+          },
+          "expected": {
+            "valid": false,
+            "error": "unknown_data_field"
+          },
+          "explanation": "任务数据中不存在 recording 字段。",
+          "source_ref": "SRC-LS-AUDIO-TAG-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "asset_ref": "ASSET-SELF-AUDIO-EXERCISE-001",
+        "input": {
+          "task_data_fields": [
+            "clip_url",
+            "speaker"
+          ],
+          "audio_tag": {
+            "name": "clip",
+            "value": "$clip_url"
+          }
+        },
+        "student_action": "提交 JSON：判断 Audio 标签是否引用了存在的任务数据字段。",
+        "answer": {
+          "valid": true
+        },
+        "evaluation": {
+          "method": "exact_match",
+          "version": "1.0.0",
+          "normalization": "JSON 对象键顺序忽略，布尔值必须完全一致"
+        },
+        "data_version": "1.0.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": [
+          "CAP-AUD-CONFIG-VALIDATE-001"
+        ],
+        "error_types": [
+          "missing_binding_prefix",
+          "unknown_data_field"
+        ],
+        "asset_authorization": {
+          "type": "self-authored",
+          "student_use_allowed": true
+        }
+      },
+      "common_errors": [
+        "遗漏字段引用前缀 $",
+        "引用任务数据中不存在的字段名"
+      ],
+      "remediation": [
+        "对照 task_data_fields 逐字核对 value 中的字段名"
+      ],
+      "review_status": "draft",
+      "student_visible": false
+    },
+    {
+      "id": "TU-VIDEO-TRACK-ID-001",
+      "data_type": "video",
+      "title": "校验跨帧目标轨迹 ID",
+      "learning_objectives": [
+        "识别同一目标跨帧轨迹 ID 是否保持一致",
+        "发现轨迹中的意外 ID 切换"
+      ],
+      "prerequisites": [],
+      "rule_refs": [
+        "KNG-VID-TRACK-ID-001"
+      ],
+      "source_refs": [
+        "SRC-CVAT-VIDEO-TRACK-001"
+      ],
+      "positive_examples": [
+        {
+          "id": "EX-VIDEO-POS-001",
+          "asset_ref": "ASSET-SELF-VIDEO-TRACK-001",
+          "input": {
+            "same_physical_object": true,
+            "observations": [
+              {
+                "frame": 1,
+                "track_id": "car-7"
+              },
+              {
+                "frame": 2,
+                "track_id": "car-7"
+              },
+              {
+                "frame": 3,
+                "track_id": "car-7"
+              }
+            ]
+          },
+          "expected": {
+            "valid": true
+          },
+          "explanation": "同一目标在所有已给帧中使用同一 track_id。",
+          "source_ref": "SRC-CVAT-VIDEO-TRACK-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-VIDEO-NEG-001",
+          "asset_ref": "ASSET-SELF-VIDEO-TRACK-002",
+          "input": {
+            "same_physical_object": true,
+            "observations": [
+              {
+                "frame": 1,
+                "track_id": "car-7"
+              },
+              {
+                "frame": 2,
+                "track_id": "car-9"
+              }
+            ]
+          },
+          "expected": {
+            "valid": false,
+            "error": "track_id_switch",
+            "details": {
+              "first_error_frame": 2,
+              "previous_track_id": "car-7",
+              "observed_track_id": "car-9"
+            }
+          },
+          "explanation": "同一目标在第 2 帧由 car-7 切换为 car-9。",
+          "source_ref": "SRC-CVAT-VIDEO-TRACK-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "asset_ref": "ASSET-SELF-VIDEO-EXERCISE-001",
+        "input": {
+          "same_physical_object": true,
+          "observations": [
+            {
+              "frame": 10,
+              "track_id": "person-3"
+            },
+            {
+              "frame": 11,
+              "track_id": "person-3"
+            },
+            {
+              "frame": 12,
+              "track_id": "person-8"
+            }
+          ]
+        },
+        "student_action": "提交 JSON：判断轨迹 ID 是否一致，并在切换时报告首个错误帧。",
+        "answer": {
+          "valid": false,
+          "error": "track_id_switch",
+          "details": {
+            "first_error_frame": 12,
+            "previous_track_id": "person-3",
+            "observed_track_id": "person-8"
+          }
+        },
+        "evaluation": {
+          "method": "exact_match",
+          "version": "1.0.0",
+          "normalization": "JSON 对象键顺序忽略，其余值完全一致"
+        },
+        "data_version": "1.0.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": [
+          "CAP-VID-TRACK-VALIDATE-001"
+        ],
+        "error_types": [
+          "track_id_switch"
+        ],
+        "asset_authorization": {
+          "type": "self-authored",
+          "student_use_allowed": true
+        }
+      },
+      "common_errors": [
+        "把类别 ID 当作轨迹 ID",
+        "目标短暂遮挡后无依据地创建新轨迹 ID"
+      ],
+      "remediation": [
+        "按帧序列定位第一个 ID 变化点后重做同规则练习"
+      ],
+      "review_status": "draft",
+      "student_visible": false
+    }
+  ]
+}

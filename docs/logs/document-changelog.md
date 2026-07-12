@@ -285,3 +285,39 @@
 - The approved reviewers are AI agents only. No human, teacher, or domain-expert review is claimed.
 - Publication is limited to development use; both project-policy sources remain `publication_scope=development_only` and `human_release_allowed=false`.
 - Formal competition submission and real-student release remain gated on human domain-expert confirmation.
+
+## [2026-07-12 22:57] Harden Task 3 publication binding and generated-input boundaries
+
+**Changed files:**
+- `data/curriculum/legacy/teaching-units.json`
+- `data/reviews/content-review-registry.json`
+- `scripts/build_curriculum.py`
+- `scripts/evaluate_exercise.py`
+- `scripts/validate_graph.py`
+- `tests/content/test_text_image_evaluation.py`
+- `tests/graph/test_graph_integrity.py`
+- `docs/教学内容与图谱数据规范.md`
+- `docs/logs/document-changelog.md`
+
+**Reason:**
+- Bind each approved Task 3 unit review to a canonical SHA-256 digest of the reviewed content, excluding only the three top-level lifecycle fields, and require a full lowercase Git commit ID.
+- Require every reviewed or published unit to declare a non-empty, unique list of nonblank source IDs whose records are verified, publishable, and citation-allowed.
+- Reject coercible, non-finite, or out-of-range `allowed_answers.pass_score` values while retaining numeric `[0, 1]` boundaries and the `1.0` default.
+- Gate published, visible, or consumable tasks on eligible provenance for their exact primary KNG and every linked teaching-unit rule KNG, including compatible project-policy overlays without accepting unrelated KNG evidence.
+- Replace the generated central curriculum file as a fallback input with an explicit versioned audio/video legacy snapshot; per-domain sources supersede the matching legacy domain and legacy collisions are rejected.
+
+**Verification:**
+- Initial shared RED: Task 3 content had 19 failures and 33 passes for score, snapshot, digest, commit, and source-reference contracts; graph integrity had 2 failures and 33 passes for missing exact task provenance.
+- A separate whitespace-source RED failed with the expected malformed-reference path before the nonblank-string check was added.
+- Rebuilt the curriculum with `python -B scripts/build_curriculum.py`; output reported exactly 12 units, including the explicit audio/video fallback.
+- Rebuilt the graph with `python -B scripts/build_graph.py`; output reported exactly 166 nodes and 240 edges.
+- Ran `python -B -m pytest tests/content/test_text_image_evaluation.py -q -p no:cacheprovider`; all 52 Task 3 tests passed, including deletion/corruption independence, domain override, and byte determinism.
+- Ran `python -B -m pytest tests/content/test_teaching_units.py -q -p no:cacheprovider`; all 8 legacy content tests passed.
+- Ran `python -B -m pytest tests/graph/test_graph_integrity.py -q -p no:cacheprovider`; all 36 graph tests passed, including black-box primary/rule provenance mutations and eligible overlay acceptance.
+- Ran `python -B scripts/validate_graph.py data/graph/annotation-capability-graph.json`; all checks passed with exactly 166 nodes and 240 edges.
+- Ran `python -B -m pytest -q -p no:cacheprovider`; the complete suite passed all 96 tests.
+
+**Remaining verification:**
+- The ten approved reviews remain independent AI reviews limited to development publication; no human, teacher, domain-expert, competition, or real-student release approval is implied.
+- Lifecycle-only changes intentionally do not alter `content_digest`; any other teaching-unit content change invalidates the approval until a new digest-bound review is recorded.
+- The duplicated stable-KNG baseline manifest in validator/tests remains a minor maintenance concern and is intentionally outside this focused hardening change.

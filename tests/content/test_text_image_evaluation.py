@@ -1,7 +1,9 @@
 import copy
+import hashlib
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -14,6 +16,9 @@ ROOT = Path(__file__).resolve().parents[2]
 TEXT_UNITS_PATH = ROOT / "data" / "curriculum" / "text" / "teaching-units.json"
 IMAGE_UNITS_PATH = ROOT / "data" / "curriculum" / "image" / "teaching-units.json"
 CENTRAL_UNITS_PATH = ROOT / "data" / "curriculum" / "teaching-units.json"
+LEGACY_UNITS_PATH = (
+    ROOT / "data" / "curriculum" / "legacy" / "teaching-units.json"
+)
 SOURCE_REGISTRY_PATH = ROOT / "data" / "sources" / "source-registry.json"
 GRAPH_CATALOG_PATH = ROOT / "data" / "graph" / "graph-catalog.json"
 REVIEW_REGISTRY_PATH = ROOT / "data" / "reviews" / "content-review-registry.json"
@@ -83,6 +88,27 @@ def run_python(*args: object) -> subprocess.CompletedProcess[str]:
 
 def unit_by_id(document: dict, unit_id: str) -> dict:
     return next(unit for unit in document["units"] if unit["id"] == unit_id)
+
+
+def canonical_content_digest(unit: dict) -> str:
+    reviewed_content = copy.deepcopy(unit)
+    for field in ("review_status", "student_visible", "review_records"):
+        reviewed_content.pop(field, None)
+    canonical = json.dumps(
+        reviewed_content,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def copy_curriculum_sources(destination: Path) -> Path:
+    curriculum_root = destination / "curriculum"
+    shutil.copytree(TEXT_UNITS_PATH.parent, curriculum_root / "text")
+    shutil.copytree(IMAGE_UNITS_PATH.parent, curriculum_root / "image")
+    shutil.copytree(LEGACY_UNITS_PATH.parent, curriculum_root / "legacy")
+    return curriculum_root
 
 
 def synthetic_unit(method: str, answer: object) -> dict:
@@ -228,6 +254,54 @@ def test_evaluator_supports_exact_ordered_and_allowed_answer_scoring():
     assert partial_result["passed"] is False
     assert partial_result["manual_review_required"] is True
     assert partial_result["error_type"] == partial["error_type"]
+
+
+@pytest.mark.parametrize("pass_score", (0, 0.5, 1))
+def test_allowed_answers_accept_finite_numeric_pass_score_boundaries(pass_score):
+    evaluator = load_module(EVALUATOR_PATH, f"pass_score_boundary_{pass_score}")
+    unit = copy.deepcopy(
+        unit_by_id(load_json(TEXT_UNITS_PATH), "TU-TEXT-INTENT-AMBIGUITY-001")
+    )
+    evaluation = unit["exercise"]["evaluation"]
+    candidate = next(
+        item
+        for item in evaluation["allowed_answers"]
+        if item["score"] == 1.0 and not item["manual_review_required"]
+    )
+    evaluation["pass_score"] = pass_score
+    assert evaluator.evaluate_unit(unit, candidate["answer"])["passed"] is True
+
+
+def test_allowed_answers_default_pass_score_is_one():
+    evaluator = load_module(EVALUATOR_PATH, "pass_score_default")
+    unit = copy.deepcopy(
+        unit_by_id(load_json(TEXT_UNITS_PATH), "TU-TEXT-INTENT-AMBIGUITY-001")
+    )
+    evaluation = unit["exercise"]["evaluation"]
+    evaluation.pop("pass_score", None)
+    full = next(item for item in evaluation["allowed_answers"] if item["score"] == 1.0)
+    partial = next(
+        item for item in evaluation["allowed_answers"] if 0 < item["score"] < 1
+    )
+    assert evaluator.evaluate_unit(unit, full["answer"])["passed"] is True
+    assert evaluator.evaluate_unit(unit, partial["answer"])["passed"] is False
+
+
+@pytest.mark.parametrize(
+    "pass_score",
+    (True, False, "0.5", None, float("nan"), float("inf"), -0.01, 1.01),
+    ids=("true", "false", "string", "null", "nan", "infinity", "negative", "above-one"),
+)
+def test_allowed_answers_reject_invalid_pass_scores(pass_score):
+    evaluator = load_module(EVALUATOR_PATH, f"pass_score_invalid_{pass_score!r}")
+    unit = copy.deepcopy(
+        unit_by_id(load_json(TEXT_UNITS_PATH), "TU-TEXT-INTENT-AMBIGUITY-001")
+    )
+    evaluation = unit["exercise"]["evaluation"]
+    candidate = next(item for item in evaluation["allowed_answers"] if item["score"] == 1.0)
+    evaluation["pass_score"] = pass_score
+    with pytest.raises(ValueError, match="pass_score"):
+        evaluator.evaluate_unit(unit, candidate["answer"])
 
 
 def test_evaluator_result_contract_and_serialization_are_deterministic():
@@ -432,6 +506,11 @@ def test_approved_ai_reviews_bind_clean_commit_versions_and_development_scope():
             "unit_ids": IMAGE_UNIT_IDS,
         },
     }
+    units_by_id = {
+        unit["id"]: unit
+        for document in (load_json(TEXT_UNITS_PATH), load_json(IMAGE_UNITS_PATH))
+        for unit in document["units"]
+    }
     for review_id, expected_record in expected.items():
         record = records[review_id]
         assert record["reviewer_id"] == expected_record["reviewer_id"]
@@ -441,6 +520,7 @@ def test_approved_ai_reviews_bind_clean_commit_versions_and_development_scope():
         assert record["reviewed_commit"] == (
             "06eee9aa8a7c921bc9db4900bd52f72353fc84e2"
         )
+        assert re.fullmatch(r"[0-9a-f]{40}", record["reviewed_commit"])
         assert set(record["scope"]["unit_ids"]) == expected_record["unit_ids"]
         assert record["decision"] == "approved"
         assert record["findings"] == []
@@ -454,6 +534,9 @@ def test_approved_ai_reviews_bind_clean_commit_versions_and_development_scope():
         for version in versions.values():
             assert version["data_version"] == "1.1.0"
             assert version["evaluation_version"] == "1.1.0"
+            assert version["content_digest"] == canonical_content_digest(
+                units_by_id[version["unit_id"]]
+            )
 
 
 def test_task3_development_publication_is_exact_and_legacy_stays_draft():
@@ -515,37 +598,92 @@ def test_semantic_tasks_use_local_policy_primary_knowledge():
             assert knowledge[knowledge_id]["policy_overlays"]
 
 
-def test_curriculum_builder_is_deterministic_and_preserves_legacy_domains(tmp_path):
+def test_curriculum_builder_is_deterministic_without_reading_central_output(tmp_path):
     if not BUILD_CURRICULUM_PATH.exists():
         pytest.skip(f"Task 3 builder is missing: {BUILD_CURRICULUM_PATH}")
-    first = tmp_path / "first.json"
-    second = tmp_path / "second.json"
+    curriculum_root = copy_curriculum_sources(tmp_path)
+    output = curriculum_root / "teaching-units.json"
     command = (
         BUILD_CURRICULUM_PATH,
         "--curriculum-root",
-        ROOT / "data" / "curriculum",
-        "--legacy-central",
-        CENTRAL_UNITS_PATH,
+        curriculum_root,
+        "--legacy-snapshot",
+        curriculum_root / "legacy" / "teaching-units.json",
+        "--source-registry",
+        SOURCE_REGISTRY_PATH,
+        "--review-registry",
+        REVIEW_REGISTRY_PATH,
+        "--output",
+        output,
     )
-    first_result = run_python(*command, "--output", first)
-    second_result = run_python(*command, "--output", second)
-    assert first_result.returncode == 0, first_result.stderr or first_result.stdout
-    assert second_result.returncode == 0, second_result.stderr or second_result.stdout
-    assert first.read_bytes() == second.read_bytes()
-    assert first.read_bytes() == CENTRAL_UNITS_PATH.read_bytes()
+    first = run_python(*command)
+    assert first.returncode == 0, first.stderr or first.stdout
+    assert output.read_bytes() == CENTRAL_UNITS_PATH.read_bytes()
 
-    legacy = load_json(CENTRAL_UNITS_PATH)
-    rebuilt = load_json(first)
-    legacy_units = {
-        unit["id"]: unit
-        for unit in legacy["units"]
-        if unit["data_type"] in {"audio", "video"}
-    }
-    rebuilt_units = {unit["id"]: unit for unit in rebuilt["units"]}
-    assert legacy_units
-    for unit_id, unit in legacy_units.items():
-        assert rebuilt_units[unit_id] == unit
-    assert [unit["id"] for unit in rebuilt["units"]] == sorted(rebuilt_units)
+    output.write_text('{"corrupt":true}\n', encoding="utf-8")
+    second = run_python(*command)
+    assert second.returncode == 0, second.stderr or second.stdout
+    assert output.read_bytes() == CENTRAL_UNITS_PATH.read_bytes()
+
+    output.unlink()
+    third = run_python(*command)
+    assert third.returncode == 0, third.stderr or third.stdout
+    assert output.read_bytes() == CENTRAL_UNITS_PATH.read_bytes()
+
+
+def test_curriculum_domain_sources_override_legacy_by_domain(tmp_path):
+    curriculum_root = copy_curriculum_sources(tmp_path)
+    legacy = load_json(curriculum_root / "legacy" / "teaching-units.json")
+    audio_unit = copy.deepcopy(
+        next(unit for unit in legacy["units"] if unit["data_type"] == "audio")
+    )
+    audio_unit["title"] = "显式音频域事实源"
+    audio_path = curriculum_root / "audio" / "teaching-units.json"
+    audio_path.parent.mkdir(parents=True)
+    audio_path.write_text(
+        json.dumps(
+            {"schema_version": "1.1.0", "data_type": "audio", "units": [audio_unit]},
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    output = tmp_path / "override.json"
+    result = run_python(
+        BUILD_CURRICULUM_PATH,
+        "--curriculum-root",
+        curriculum_root,
+        "--legacy-snapshot",
+        curriculum_root / "legacy" / "teaching-units.json",
+        "--output",
+        output,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    rebuilt = load_json(output)
+    assert unit_by_id(rebuilt, audio_unit["id"])["title"] == "显式音频域事实源"
+    assert any(unit["data_type"] == "video" for unit in rebuilt["units"])
+
+
+def test_curriculum_builder_rejects_duplicate_legacy_snapshot_ids(tmp_path):
+    curriculum_root = copy_curriculum_sources(tmp_path)
+    legacy_path = curriculum_root / "legacy" / "teaching-units.json"
+    legacy = load_json(legacy_path)
+    legacy["units"].append(copy.deepcopy(legacy["units"][0]))
+    legacy_path.write_text(
+        json.dumps(legacy, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    result = run_python(
+        BUILD_CURRICULUM_PATH,
+        "--curriculum-root",
+        curriculum_root,
+        "--legacy-snapshot",
+        legacy_path,
+        "--output",
+        tmp_path / "duplicate-legacy.json",
+    )
+    assert result.returncode != 0
+    assert "duplicate teaching unit ID" in (result.stdout + result.stderr)
 
 
 def test_curriculum_builder_rejects_duplicate_ids_and_noncanonical_domain_order(
@@ -568,8 +706,8 @@ def test_curriculum_builder_rejects_duplicate_ids_and_noncanonical_domain_order(
         BUILD_CURRICULUM_PATH,
         "--curriculum-root",
         curriculum_root,
-        "--legacy-central",
-        CENTRAL_UNITS_PATH,
+        "--legacy-snapshot",
+        LEGACY_UNITS_PATH,
         "--output",
         tmp_path / "duplicate.json",
     )
@@ -589,8 +727,8 @@ def test_curriculum_builder_rejects_duplicate_ids_and_noncanonical_domain_order(
         BUILD_CURRICULUM_PATH,
         "--curriculum-root",
         curriculum_root,
-        "--legacy-central",
-        CENTRAL_UNITS_PATH,
+        "--legacy-snapshot",
+        LEGACY_UNITS_PATH,
         "--output",
         tmp_path / "unstable.json",
     )
@@ -713,13 +851,14 @@ def approved_review_for(unit: dict) -> dict:
         "reviewer_type": "ai_agent",
         "independent_of_implementation": True,
         "reviewed_at": "2026-07-12",
-        "reviewed_commit": "test-commit",
+        "reviewed_commit": "0" * 40,
         "scope": {"data_type": unit["data_type"], "unit_ids": [unit["id"]]},
         "unit_versions": [
             {
                 "unit_id": unit["id"],
                 "data_version": unit["exercise"]["data_version"],
                 "evaluation_version": unit["exercise"]["evaluation"]["version"],
+                "content_digest": canonical_content_digest(unit),
             }
         ],
         "decision": "approved",
@@ -770,3 +909,60 @@ def test_publication_contract_requires_eligible_sources_and_approved_review():
         )
 
     builder.validate_publication_contract(reviewed, eligible_sources, approved_reviews)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ("rule_explanation", "student_action", "answer"),
+)
+def test_publication_contract_rejects_stale_review_after_content_mutation(mutation):
+    builder = load_module(BUILD_CURRICULUM_PATH, f"stale_review_{mutation}")
+    central = copy.deepcopy(load_json(CENTRAL_UNITS_PATH))
+    unit = next(item for item in central["units"] if item["data_type"] == "text")
+    if mutation == "rule_explanation":
+        unit["rule_explanation"] = {"mutated_without_version_bump": True}
+    elif mutation == "student_action":
+        unit["exercise"]["student_action"] += " mutated"
+    else:
+        unit["exercise"]["answer"] = {"mutated_without_version_bump": True}
+
+    with pytest.raises(ValueError, match="content_digest"):
+        builder.validate_publication_contract(
+            central,
+            load_json(SOURCE_REGISTRY_PATH),
+            load_json(REVIEW_REGISTRY_PATH),
+        )
+
+
+def test_publication_contract_requires_lowercase_full_reviewed_commit():
+    builder = load_module(BUILD_CURRICULUM_PATH, "reviewed_commit_format")
+    reviews = copy.deepcopy(load_json(REVIEW_REGISTRY_PATH))
+    approved = next(record for record in reviews["records"] if record["decision"] == "approved")
+    approved["reviewed_commit"] = "ABC123"
+    with pytest.raises(ValueError, match="reviewed_commit"):
+        builder.validate_publication_contract(
+            load_json(CENTRAL_UNITS_PATH),
+            load_json(SOURCE_REGISTRY_PATH),
+            reviews,
+        )
+
+
+@pytest.mark.parametrize("case", ("missing", "empty", "duplicate", "malformed"))
+def test_non_draft_units_require_well_formed_unique_source_refs(case):
+    builder = load_module(BUILD_CURRICULUM_PATH, f"source_refs_{case}")
+    central = copy.deepcopy(load_json(CENTRAL_UNITS_PATH))
+    unit = next(item for item in central["units"] if item["review_status"] != "draft")
+    if case == "missing":
+        unit.pop("source_refs")
+    elif case == "empty":
+        unit["source_refs"] = []
+    elif case == "duplicate":
+        unit["source_refs"] = [unit["source_refs"][0], unit["source_refs"][0]]
+    else:
+        unit["source_refs"] = [unit["source_refs"][0], " "]
+    with pytest.raises(ValueError, match="source_refs"):
+        builder.validate_publication_contract(
+            central,
+            load_json(SOURCE_REGISTRY_PATH),
+            load_json(REVIEW_REGISTRY_PATH),
+        )

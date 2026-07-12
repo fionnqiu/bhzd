@@ -100,11 +100,11 @@
         ]
       },
       "unit_versions": [
-        {"unit_id": "TU-TEXT-DOCUMENT-CLASSIFY-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
-        {"unit_id": "TU-TEXT-INTENT-AMBIGUITY-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
-        {"unit_id": "TU-TEXT-LABEL-VOCAB-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
-        {"unit_id": "TU-TEXT-NER-BOUNDARY-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
-        {"unit_id": "TU-TEXT-RELATION-DIRECTION-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"}
+        {"unit_id": "TU-TEXT-DOCUMENT-CLASSIFY-001", "data_version": "1.1.0", "evaluation_version": "1.1.0", "content_digest": "37bba217f0739f97c1ff710351390f7da0ce084c43e423665d5ab30c751c58f4"},
+        {"unit_id": "TU-TEXT-INTENT-AMBIGUITY-001", "data_version": "1.1.0", "evaluation_version": "1.1.0", "content_digest": "fb04fb099692cf63b095e5520cd69225261c4a46ee7c57582ab8427e1daf0bd4"},
+        {"unit_id": "TU-TEXT-LABEL-VOCAB-001", "data_version": "1.1.0", "evaluation_version": "1.1.0", "content_digest": "6b44725840464c81bbfab84d2fbd584e990cff61a4d0119a570bd2c69dc49395"},
+        {"unit_id": "TU-TEXT-NER-BOUNDARY-001", "data_version": "1.1.0", "evaluation_version": "1.1.0", "content_digest": "84eba91aa5243015b9acf341f9a833866167e33fec996e110b09bc3a9314ea60"},
+        {"unit_id": "TU-TEXT-RELATION-DIRECTION-001", "data_version": "1.1.0", "evaluation_version": "1.1.0", "content_digest": "e8d36473dede4e61ebc7679eeb7454c22eaea57778196219358fd281f6618db3"}
       ],
       "decision": "approved",
       "findings": [],
@@ -137,11 +137,11 @@
         ]
       },
       "unit_versions": [
-        {"unit_id": "TU-IMAGE-KEYPOINT-VISIBILITY-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
-        {"unit_id": "TU-IMAGE-MASK-INSTANCE-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
-        {"unit_id": "TU-IMAGE-OCCLUSION-TRUNCATION-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
-        {"unit_id": "TU-IMAGE-POLYGON-VERTICES-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
-        {"unit_id": "TU-IMAGE-RECT-BOUNDS-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"}
+        {"unit_id": "TU-IMAGE-KEYPOINT-VISIBILITY-001", "data_version": "1.1.0", "evaluation_version": "1.1.0", "content_digest": "8d035723bb0c9fe658e5489166b9c198057b2a787e9961ff861a7afe13786f7b"},
+        {"unit_id": "TU-IMAGE-MASK-INSTANCE-001", "data_version": "1.1.0", "evaluation_version": "1.1.0", "content_digest": "d56fbf379c325136ded87f2b6a900258eabc07ec9f0ebe0616486a3aee68a8fc"},
+        {"unit_id": "TU-IMAGE-OCCLUSION-TRUNCATION-001", "data_version": "1.1.0", "evaluation_version": "1.1.0", "content_digest": "2f83b50f31e21382b507268438006ea1cc797de771199d6016eb613d7a2b261c"},
+        {"unit_id": "TU-IMAGE-POLYGON-VERTICES-001", "data_version": "1.1.0", "evaluation_version": "1.1.0", "content_digest": "3161c42f0092a0cbea80b47007a76948d8cf6b35e5311c1be023a8626e13695e"},
+        {"unit_id": "TU-IMAGE-RECT-BOUNDS-001", "data_version": "1.1.0", "evaluation_version": "1.1.0", "content_digest": "cdc0da7b34362b5b806a5235c3228756cde61304213146c36efee33c9007c1d9"}
       ],
       "decision": "approved",
       "findings": [],

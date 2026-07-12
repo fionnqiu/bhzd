@@ -358,6 +358,30 @@ def compatible_source_refs(
     return compatible
 
 
+def has_eligible_publication_provenance(
+    knowledge: dict[str, Any],
+    sources_by_id: dict[str, dict[str, Any]],
+) -> bool:
+    if compatible_source_refs(
+        knowledge, sources_by_id, require_publishable=True
+    ):
+        return True
+    for overlay in knowledge.get("policy_overlays", []):
+        if not isinstance(overlay, dict):
+            continue
+        overlay_claim = {
+            "claim_type": overlay.get("claim_type"),
+            "claim_basis": "project_policy",
+            "data_types": knowledge.get("data_types", []),
+            "source_refs": overlay.get("source_refs", []),
+        }
+        if compatible_source_refs(
+            overlay_claim, sources_by_id, require_publishable=True
+        ):
+            return True
+    return False
+
+
 def validate_knowledge_provenance(
     nodes_by_id: dict[str, dict[str, Any]],
     sources_by_id: dict[str, dict[str, Any]],
@@ -577,6 +601,7 @@ def validate_task_traceability(
             )
             continue
         seen_unit_ids = set()
+        linked_units: list[dict[str, Any]] = []
         for link in links:
             if not isinstance(link, dict):
                 add_error(
@@ -601,6 +626,7 @@ def validate_task_traceability(
                     f"{task['id']}: unknown teaching unit {unit_id}",
                 )
                 continue
+            linked_units.append(unit)
             expected_consumable = (
                 link.get("review_status") == "published"
                 and link.get("student_visible") is True
@@ -634,6 +660,60 @@ def validate_task_traceability(
                     "teaching_unit_snapshot",
                     f"{task['id']}: stale fields for {unit_id}: {stale_fields}",
                 )
+
+        requires_publication_provenance = (
+            task.get("status") == "published"
+            or task.get("student_visible") is True
+            or any(
+                isinstance(link, dict) and link.get("consumable") is True
+                for link in links
+            )
+        )
+        if requires_publication_provenance:
+            if not (
+                primary_knowledge
+                and primary_knowledge.get("type") == "KNG"
+                and has_eligible_publication_provenance(
+                    primary_knowledge, sources_by_id
+                )
+            ):
+                add_error(
+                    errors,
+                    "task_provenance",
+                    f"{task['id']}: primary_knowledge_ref lacks eligible provenance",
+                )
+
+            required_rule_refs: set[str] = set()
+            malformed_rule_refs = False
+            for unit in linked_units:
+                rule_refs = unit.get("rule_refs")
+                if not isinstance(rule_refs, list) or any(
+                    not isinstance(rule_ref, str) or not rule_ref
+                    for rule_ref in rule_refs
+                ):
+                    malformed_rule_refs = True
+                    continue
+                required_rule_refs.update(rule_refs)
+            if malformed_rule_refs:
+                add_error(
+                    errors,
+                    "task_provenance",
+                    f"{task['id']}: linked teaching unit has invalid rule_refs",
+                )
+            for rule_ref in sorted(required_rule_refs):
+                knowledge_rule = nodes_by_id.get(rule_ref)
+                if not (
+                    knowledge_rule
+                    and knowledge_rule.get("type") == "KNG"
+                    and has_eligible_publication_provenance(
+                        knowledge_rule, sources_by_id
+                    )
+                ):
+                    add_error(
+                        errors,
+                        "task_provenance",
+                        f"{task['id']}: required rule {rule_ref!r} lacks eligible provenance",
+                    )
 
         if task.get("status") == "published" or task.get("student_visible") is True:
             verified_sources = [

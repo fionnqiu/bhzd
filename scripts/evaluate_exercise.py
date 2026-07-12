@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +40,15 @@ def _require_string_list(value: Any, field: str) -> list[str]:
     if any(not isinstance(item, str) or not item.strip() for item in value):
         raise ValueError(f"{field} must contain non-empty strings")
     return list(value)
+
+
+def _require_unit_interval_number(value: Any, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field} must be numeric")
+    numeric = float(value)
+    if not math.isfinite(numeric) or not 0.0 <= numeric <= 1.0:
+        raise ValueError(f"{field} must be finite and within [0, 1]")
+    return numeric
 
 
 def _base_result(unit: dict[str, Any]) -> dict[str, Any]:
@@ -139,11 +149,9 @@ def _validate_allowed_answers(
         if canonical in canonical_answers:
             raise ValueError("allowed_answers contains duplicate canonical answers")
         canonical_answers.add(canonical)
-        score = candidate.get("score")
-        if isinstance(score, bool) or not isinstance(score, (int, float)):
-            raise ValueError(f"allowed_answers[{index}].score must be numeric")
-        if not 0.0 <= float(score) <= 1.0:
-            raise ValueError(f"allowed_answers[{index}].score must be within [0, 1]")
+        _require_unit_interval_number(
+            candidate.get("score"), f"allowed_answers[{index}].score"
+        )
         if not isinstance(candidate["manual_review_required"], bool):
             raise ValueError(
                 f"allowed_answers[{index}].manual_review_required must be boolean"
@@ -237,8 +245,13 @@ def evaluate_unit(unit: dict[str, Any], submission: Any) -> dict[str, Any]:
     )
     diagnostic_rules = _validate_diagnostic_rules(evaluation, error_types)
     allowed_answers: list[dict[str, Any]] = []
+    pass_score = 1.0
     if method == "allowed_answers":
         allowed_answers = _validate_allowed_answers(evaluation, error_types)
+        pass_score = _require_unit_interval_number(
+            evaluation.get("pass_score", 1.0),
+            "unit.exercise.evaluation.pass_score",
+        )
 
     diagnostic_keys = {
         canonical_json(rule["submission"]) for rule in diagnostic_rules
@@ -276,7 +289,6 @@ def evaluate_unit(unit: dict[str, Any], submission: Any) -> dict[str, Any]:
             continue
         score = float(candidate["score"])
         manual_review = bool(candidate.get("manual_review_required", False))
-        pass_score = float(evaluation.get("pass_score", 1.0))
         result.update(
             {
                 "score": score,

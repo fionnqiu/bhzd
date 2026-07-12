@@ -576,6 +576,30 @@ def corrupt_published_task_with_unverified_source(graph):
     task["student_visible"] = True
 
 
+def corrupt_consumable_task_primary_provenance_masked_by_unrelated_kng(graph):
+    nodes = {node["id"]: node for node in graph["nodes"]}
+    task = nodes["TSK-TXT-DOCUMENT-CLASSIFY-001"]
+    primary = nodes[task["primary_knowledge_ref"]]
+    primary["claim_basis"] = "curriculum_draft"
+    primary["source_refs"] = []
+    capability_edge = next(
+        edge
+        for edge in graph["edges"]
+        if edge["relation"] == "SUP"
+        and edge["target"] == task["id"]
+        and nodes[edge["source"]]["type"] == "CAP"
+    )
+    capability_edge["source"] = "KNG-TXT-CLASS-EXCLUSION-001"
+
+
+def corrupt_consumable_task_required_rule_provenance(graph):
+    knowledge = next(
+        node for node in graph["nodes"] if node["id"] == "KNG-TXT-ENTITY-TYPE-001"
+    )
+    knowledge["claim_basis"] = "curriculum_draft"
+    knowledge["source_refs"] = []
+
+
 def corrupt_stale_teaching_unit_snapshot(graph):
     task = next(node for node in graph["nodes"] if node.get("teaching_unit_links"))
     task["teaching_unit_links"][0]["review_status"] = "reviewed"
@@ -649,6 +673,11 @@ def corrupt_scenario_base_rule_data_type(graph):
         (corrupt_policy_overlay_source_scope, "knowledge_overlay_source_scope"),
         (corrupt_publication_index_gate, "publication_gate"),
         (corrupt_published_task_with_unverified_source, "task_traceability"),
+        (
+            corrupt_consumable_task_primary_provenance_masked_by_unrelated_kng,
+            "task_provenance",
+        ),
+        (corrupt_consumable_task_required_rule_provenance, "task_provenance"),
         (corrupt_stale_teaching_unit_snapshot, "teaching_unit_snapshot"),
         (corrupt_unknown_teaching_unit_link, "teaching_unit_unknown"),
         (corrupt_duplicate_teaching_unit_link, "teaching_unit_duplicate"),
@@ -672,3 +701,30 @@ def test_validator_rejects_invalid_graphs(graph, tmp_path, mutation, error_code)
     result = run_python(VALIDATE_SCRIPT, graph_path)
     assert result.returncode != 0
     assert f"[{error_code}]" in (result.stdout + result.stderr)
+
+
+def test_validator_accepts_eligible_policy_overlay_for_consumable_rule(graph, tmp_path):
+    overlaid = copy.deepcopy(graph)
+    knowledge = next(
+        node
+        for node in overlaid["nodes"]
+        if node["id"] == "KNG-TXT-ENTITY-TYPE-001"
+    )
+    knowledge["claim_basis"] = "curriculum_draft"
+    knowledge["source_refs"] = []
+    knowledge["policy_overlays"] = [
+        {
+            "overlay_id": "POLICY-TEST-TXT-ENTITY-TYPE-001",
+            "claim_type": "text_entity_boundary_policy",
+            "source_refs": ["SRC-POLICY-TEXT-TASK3-001"],
+            "description": "Test-only eligible project policy overlay.",
+            "version": "1.0.0",
+        }
+    ]
+    graph_path = tmp_path / "eligible-overlay.json"
+    graph_path.write_text(
+        json.dumps(overlaid, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    result = run_python(VALIDATE_SCRIPT, graph_path)
+    assert result.returncode == 0, result.stdout + result.stderr
