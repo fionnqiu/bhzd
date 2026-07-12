@@ -1,0 +1,36 @@
+{
+  "asset_id": "ASSET-AUDIO-TASK4-TONE-SILENCE-TONE-001",
+  "authorization": {
+    "contains_personal_data": false,
+    "development_publication_allowed": true,
+    "statement": "This synthetic tone-silence-tone sample was generated locally for Task 4 by the repository script; it contains no recorded voice, third-party performance, or personal data.",
+    "student_use_allowed": true,
+    "type": "self-authored"
+  },
+  "file": "task4-segmentation-alignment.wav",
+  "generation": {
+    "algorithm": "deterministic_harmonic_tone_with_fixed_envelope",
+    "deterministic": true,
+    "script": "scripts/generate_task4_audio_evidence.py",
+    "speech_anchor_surrogates_ms": [
+      {
+        "end_ms": 1550,
+        "start_ms": 400
+      },
+      {
+        "end_ms": 3350,
+        "start_ms": 2100
+      }
+    ]
+  },
+  "schema_version": "1.0.0",
+  "sha256": "26b3cadaf7677da6ead19899d8513b4acd37c0b42aad64400885237ddb1b6752",
+  "technical_metadata": {
+    "channels": 1,
+    "codec": "PCM signed 16-bit little-endian",
+    "duration_seconds": 3.9,
+    "frame_count": 62400,
+    "sample_rate_hz": 16000,
+    "sample_width_bytes": 2
+  }
+}

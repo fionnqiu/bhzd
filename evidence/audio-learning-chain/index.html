@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>语音切割与对齐 | 学习证据</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">TASK 4 / AUDIO EVIDENCE</p>
+        <h1>语音切割与对齐</h1>
+      </div>
+      <div class="source-stamp" aria-label="证据来源">
+        <span>课程源</span>
+        <strong id="unit-id">正在加载</strong>
+      </div>
+    </header>
+
+    <main>
+      <aside class="lesson-rail" aria-label="学习路径">
+        <p class="section-label">学习闭环</p>
+        <ol class="steps">
+          <li class="is-active" data-step="rule"><span>01</span>学习规则</li>
+          <li data-step="attempt"><span>02</span>提交练习</li>
+          <li data-step="feedback"><span>03</span>反馈补强</li>
+          <li data-step="retry"><span>04</span>成功重试</li>
+        </ol>
+
+        <section class="audio-station" aria-labelledby="audio-heading">
+          <p class="section-label" id="audio-heading">授权样例</p>
+          <audio controls preload="metadata" aria-label="切割与对齐练习音频"></audio>
+          <div class="audio-facts">
+            <span>PCM16</span><span>MONO</span><span>16 KHZ</span><span>3.9 S</span>
+          </div>
+        </section>
+
+        <div class="legend" aria-label="时间轴图例">
+          <span><i class="anchor-swatch"></i>语音锚点</span>
+          <span><i class="submission-swatch"></i>当前提交</span>
+        </div>
+      </aside>
+
+      <section class="workbench" aria-live="polite">
+        <div class="rule-band">
+          <div>
+            <p class="section-label">当前规则</p>
+            <h2 id="unit-title">加载课程数据中</h2>
+          </div>
+          <p id="project-policy">正在从课程源读取 project_policy。</p>
+          <div class="rule-refs" id="rule-refs"></div>
+        </div>
+
+        <section class="timeline-section" aria-labelledby="timeline-heading">
+          <div class="section-heading">
+            <div>
+              <p class="section-label">练习</p>
+              <h2 id="timeline-heading">为两个片段设置精确边界</h2>
+            </div>
+            <p id="interval-convention">区间约定加载中</p>
+          </div>
+
+          <div class="timeline" aria-label="3900 毫秒音频时间轴">
+            <div class="ticks" aria-hidden="true">
+              <span>0</span><span>1000</span><span>2000</span><span>3000</span><span>3900 ms</span>
+            </div>
+            <div class="track anchor-track" id="anchor-track"></div>
+            <div class="track submission-track" id="submission-track"></div>
+          </div>
+
+          <form id="alignment-form">
+            <div class="segment-table" role="group" aria-label="片段边界输入">
+              <div class="table-head">
+                <span>片段</span><span>开始 ms</span><span>结束 ms</span><span>转写</span>
+              </div>
+              <div class="segment-row">
+                <strong>seg-001</strong>
+                <input id="segment-one-start" name="segment-one-start" type="number" aria-label="第一段开始毫秒">
+                <input id="segment-one-end" name="segment-one-end" type="number" aria-label="第一段结束毫秒">
+                <input id="segment-one-text" name="segment-one-text" type="text" aria-label="第一段转写">
+              </div>
+              <div class="segment-row">
+                <strong>seg-002</strong>
+                <input id="segment-two-start" name="segment-two-start" type="number" aria-label="第二段开始毫秒">
+                <input id="segment-two-end" name="segment-two-end" type="number" aria-label="第二段结束毫秒">
+                <input id="segment-two-text" name="segment-two-text" type="text" aria-label="第二段转写">
+              </div>
+            </div>
+            <button class="primary-action" type="submit" data-testid="submit-attempt">提交当前边界</button>
+          </form>
+        </section>
+
+        <section class="feedback-section" id="feedback-panel" data-state="ready" aria-labelledby="feedback-heading">
+          <div class="feedback-status">
+            <p class="section-label">判定</p>
+            <h2 id="feedback-heading">等待提交</h2>
+            <p id="feedback-message">先依据规则检查时间轴，再提交边界。</p>
+          </div>
+          <div class="feedback-links">
+            <div><span>ERROR</span><strong id="error-type">-</strong></div>
+            <div><span>RULE</span><strong id="feedback-rule">-</strong></div>
+            <div><span>CAPABILITY</span><strong id="feedback-capability">-</strong></div>
+          </div>
+          <div class="remediation-panel" id="remediation-panel" hidden>
+            <div>
+              <p class="section-label">补强资源</p>
+              <strong id="remediation-resource">-</strong>
+              <p id="remediation-copy"></p>
+            </div>
+            <button type="button" class="secondary-action" data-testid="apply-remediation">应用锚点边界</button>
+          </div>
+          <div class="feedback-actions" id="feedback-actions" hidden>
+            <button type="button" class="secondary-action" data-testid="open-remediation">打开补强练习表</button>
+            <button type="button" class="primary-action" data-testid="retry-attempt">重新提交</button>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <div class="load-error" id="load-error" role="alert" hidden></div>
+    <script src="app.js"></script>
+  </body>
+</html>
