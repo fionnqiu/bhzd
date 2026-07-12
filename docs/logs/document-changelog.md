@@ -219,3 +219,34 @@
 - Both recorded AI reviews are `changes_required` with `authorizes_publication=false`; corrected candidates still require independent re-review.
 - All ten units remain `draft`, `student_visible=false`, and Task 3 Step 3 remains unchecked.
 - Project-policy sources are development-only and `human_release_allowed=false`; formal competition or real-student release still requires human domain-expert confirmation.
+
+## [2026-07-12 22:18] Restore stable KNG identities with additive policy overlays
+
+**Changed files:**
+- `data/curriculum/text/teaching-units.json`
+- `data/curriculum/image/teaching-units.json`
+- `data/curriculum/teaching-units.json`
+- `data/graph/graph-catalog.json`
+- `data/graph/annotation-capability-graph.json`
+- `data/graph/annotation-capability-graph.graphml`
+- `scripts/validate_graph.py`
+- `tests/content/test_text_image_evaluation.py`
+- `tests/graph/test_graph_integrity.py`
+- `docs/教学内容与图谱数据规范.md`
+- `docs/logs/document-changelog.md`
+
+**Reason:**
+- Restore seven KNG rows to their `c05413a` identity and meaning rather than reusing stable IDs for unrelated local semantics.
+- Attach Task 3 local rules additively to meaning-aligned base KNGs through structured project-policy overlays.
+- Return task primary knowledge and direct SUP mappings to stable base concepts without changing graph counts or version.
+
+**Verification:**
+- Added stable-identity and overlay regressions first; focused RED was 4 failed and 57 deselected for mutated base fields, missing validator checks, invalid overlay provenance acceptance, and stale task primaries.
+- Focused GREEN was 4 passed and 57 deselected after restoring identities and adding overlays.
+- Deterministic curriculum and graph rebuilds remained byte-identical to their generated outputs.
+- Task 3 suite passed 28 tests; graph integrity passed 33 tests; full suite passed 69 tests.
+- Standalone graph validation passed all checks with exactly 60 KNG nodes, 166 total nodes, 240 edges, and graph version 1.0.0.
+
+**Remaining verification:**
+- This commit is a corrected draft candidate only. The recorded prior AI reviews remain `changes_required` and do not authorize publication.
+- All Task 3 units remain `draft` and hidden; Task 3 Step 3 remains unchecked pending re-review.

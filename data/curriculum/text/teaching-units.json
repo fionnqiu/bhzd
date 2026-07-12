@@ -426,8 +426,7 @@
         "CAP-CORE-LABEL-SCHEMA-001"
       ],
       "rule_refs": [
-        "KNG-TXT-LABEL-VOCAB-001",
-        "KNG-TXT-CLASS-EXCLUSION-001"
+        "KNG-TXT-LABEL-VOCAB-001"
       ],
       "source_refs": [
         "SRC-LS-TEXT-LABELS-001",
@@ -614,8 +613,7 @@
       "rule_refs": [
         "KNG-TXT-SPAN-OFFSET-001",
         "KNG-TXT-ENTITY-BOUNDARY-001",
-        "KNG-TXT-ENTITY-TYPE-001",
-        "KNG-TXT-NESTED-ENTITY-001"
+        "KNG-TXT-ENTITY-TYPE-001"
       ],
       "source_refs": [
         "SRC-LS-TEXT-SPANS-PINNED-001",
@@ -886,8 +884,7 @@
         "CAP-TXT-ENTITY-TYPE-001"
       ],
       "rule_refs": [
-        "KNG-TXT-RELATION-DIRECTION-001",
-        "KNG-TXT-INTERANNOTATOR-001"
+        "KNG-TXT-RELATION-DIRECTION-001"
       ],
       "source_refs": [
         "SRC-LS-RELATIONS-PINNED-001",

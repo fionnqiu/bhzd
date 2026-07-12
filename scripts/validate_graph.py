@@ -24,6 +24,15 @@ EXPECTED_NODE_COUNTS = {
 EXPECTED_EDGE_COUNT = 240
 RELATION_ORDER = ("PRE", "ISA", "SUP", "REL", "INSCN", "MAPCERT")
 ALLOWED_DATA_TYPES = {"text", "image", "audio", "video"}
+STABLE_KNG_IDENTITIES = {
+    "KNG-TXT-CLASS-EXCLUSION-001": ("文本类别互斥条件", "本项目练习规定互斥类别不得在同一作用范围同时出现。", "text_class_exclusion", "project_policy", ["SRC-POLICY-TEXT-TASK3-001"]),
+    "KNG-TXT-NESTED-ENTITY-001": ("嵌套实体处理", "本项目练习明确声明重叠或嵌套选区是否允许。", "text_nested_entity_policy", "project_policy", ["SRC-POLICY-TEXT-TASK3-001"]),
+    "KNG-TXT-INTERANNOTATOR-001": ("文本标注一致性", "一致性复核应定位标签、边界或关系分歧。", "text_agreement_policy", "curriculum_draft", []),
+    "KNG-IMG-CLASS-DEFINITION-001": ("图像类别定义", "本项目练习为类别给出可观察判据和排除条件。", "image_class_policy", "project_policy", ["SRC-POLICY-IMAGE-TASK3-001"]),
+    "KNG-IMG-SMALL-OBJECT-001": ("小目标标注阈值", "本项目任务规则声明小目标的最小可标尺寸。", "image_small_object_policy", "project_policy", ["SRC-POLICY-IMAGE-TASK3-001"]),
+    "KNG-IMG-OVERLAP-ORDER-001": ("重叠目标轮廓顺序", "本项目练习要求相邻实例轮廓分别闭合且不混用 ID。", "image_overlap_policy", "project_policy", ["SRC-POLICY-IMAGE-TASK3-001"]),
+    "KNG-IMG-QUALITY-METRICS-001": ("图像标注质量指标", "本项目对框、点和掩码使用与结构相适应的质量检查。", "image_quality_policy", "project_policy", ["SRC-POLICY-IMAGE-TASK3-001"]),
+}
 ALLOWED_ENDPOINTS = {
     "PRE": {("CAP", "CAP")},
     "ISA": {
@@ -355,6 +364,24 @@ def validate_knowledge_provenance(
     errors: list[str],
 ) -> None:
     allowed_bases = {"external_reference", "curriculum_draft", "project_policy"}
+    for node_id, expected in STABLE_KNG_IDENTITIES.items():
+        knowledge = nodes_by_id.get(node_id)
+        if knowledge is None:
+            continue
+        actual = tuple(
+            knowledge.get(field)
+            for field in (
+                "label",
+                "description",
+                "claim_type",
+                "claim_basis",
+                "source_refs",
+            )
+        )
+        if actual != expected:
+            add_error(errors, "knowledge_identity", f"{node_id}: stable identity mutated")
+
+    overlay_ids: set[str] = set()
     for knowledge in (
         node for node in nodes_by_id.values() if node.get("type") == "KNG"
     ):
@@ -396,6 +423,90 @@ def validate_knowledge_provenance(
                 "knowledge_source",
                 f"{node_id}: {claim_basis} requires a source",
             )
+
+        overlays = knowledge.get("policy_overlays", [])
+        if not isinstance(overlays, list):
+            add_error(
+                errors,
+                "knowledge_overlay_schema",
+                f"{node_id}: policy_overlays must be an array",
+            )
+            continue
+        for index, overlay in enumerate(overlays):
+            if not isinstance(overlay, dict):
+                add_error(
+                    errors,
+                    "knowledge_overlay_schema",
+                    f"{node_id}: overlay[{index}] must be an object",
+                )
+                continue
+            required = {
+                "overlay_id",
+                "claim_type",
+                "source_refs",
+                "description",
+                "version",
+            }
+            missing = sorted(required - overlay.keys())
+            if missing:
+                add_error(
+                    errors,
+                    "knowledge_overlay_schema",
+                    f"{node_id}: overlay[{index}] missing {missing[0]}",
+                )
+                continue
+            overlay_id = overlay["overlay_id"]
+            if not isinstance(overlay_id, str) or not overlay_id:
+                add_error(
+                    errors,
+                    "knowledge_overlay_schema",
+                    f"{node_id}: overlay[{index}] overlay_id required",
+                )
+            elif overlay_id in overlay_ids:
+                add_error(
+                    errors,
+                    "knowledge_overlay_id",
+                    f"duplicate overlay_id: {overlay_id}",
+                )
+            else:
+                overlay_ids.add(overlay_id)
+            if not isinstance(overlay["description"], str) or not overlay["description"]:
+                add_error(
+                    errors,
+                    "knowledge_overlay_schema",
+                    f"{node_id}: overlay[{index}] description required",
+                )
+            if not isinstance(overlay["version"], str) or not overlay["version"]:
+                add_error(
+                    errors,
+                    "knowledge_overlay_schema",
+                    f"{node_id}: overlay[{index}] version required",
+                )
+            overlay_sources = overlay["source_refs"]
+            overlay_claim = overlay["claim_type"]
+            if not isinstance(overlay_sources, list) or not overlay_sources:
+                add_error(
+                    errors,
+                    "knowledge_overlay_source_scope",
+                    f"{node_id}: overlay[{index}] project-policy source required",
+                )
+                continue
+            for source_ref in overlay_sources:
+                source = sources_by_id.get(source_ref)
+                source_data_types = set(
+                    source.get("supported_data_types", [source.get("data_type")])
+                ) if source else set()
+                if not (
+                    source
+                    and source.get("source_kind") == "project_policy"
+                    and overlay_claim in source.get("supported_claim_types", [])
+                    and set(knowledge.get("data_types", [])) <= source_data_types
+                ):
+                    add_error(
+                        errors,
+                        "knowledge_overlay_source_scope",
+                        f"{node_id}: overlay {overlay_id!r} source {source_ref!r} does not support {overlay_claim!r}",
+                    )
 
 
 def validate_task_traceability(

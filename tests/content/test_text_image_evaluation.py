@@ -413,19 +413,20 @@ def test_semantic_tasks_use_local_policy_primary_knowledge():
     catalog = load_json(GRAPH_CATALOG_PATH)
     tasks = {task["id"]: task for task in catalog["nodes"]["TSK"]}
     expected = {
-        "TSK-TXT-DOCUMENT-CLASSIFY-001": "KNG-TXT-CLASS-EXCLUSION-001",
-        "TSK-TXT-NER-ANNOTATE-001": "KNG-TXT-NESTED-ENTITY-001",
-        "TSK-TXT-RELATION-LINK-001": "KNG-TXT-INTERANNOTATOR-001",
-        "TSK-IMG-RECT-AUDIT-001": "KNG-IMG-CLASS-DEFINITION-001",
+        "TSK-TXT-DOCUMENT-CLASSIFY-001": "KNG-TXT-SINGLE-MULTI-LABEL-001",
+        "TSK-TXT-NER-ANNOTATE-001": "KNG-TXT-ENTITY-BOUNDARY-001",
+        "TSK-TXT-RELATION-LINK-001": "KNG-TXT-RELATION-DIRECTION-001",
+        "TSK-IMG-RECT-AUDIT-001": "KNG-IMG-RECT-BOUNDS-001",
         "TSK-IMG-OBJECT-BOX-001": "KNG-IMG-OCCLUSION-TRUNCATION-001",
-        "TSK-IMG-POLYGON-TRACE-001": "KNG-IMG-OVERLAP-ORDER-001",
-        "TSK-IMG-KEYPOINT-MARK-001": "KNG-IMG-SMALL-OBJECT-001",
-        "TSK-IMG-MASK-REVIEW-001": "KNG-IMG-QUALITY-METRICS-001",
+        "TSK-IMG-POLYGON-TRACE-001": "KNG-IMG-POLYGON-VERTEX-001",
+        "TSK-IMG-KEYPOINT-MARK-001": "KNG-IMG-KEYPOINT-VISIBILITY-001",
+        "TSK-IMG-MASK-REVIEW-001": "KNG-IMG-INSTANCE-ID-001",
     }
     knowledge = {node["id"]: node for node in catalog["nodes"]["KNG"]}
     for task_id, knowledge_id in expected.items():
         assert tasks[task_id]["primary_knowledge_ref"] == knowledge_id
-        assert knowledge[knowledge_id]["claim_basis"] == "project_policy"
+        if task_id != "TSK-TXT-DOCUMENT-CLASSIFY-001":
+            assert knowledge[knowledge_id]["policy_overlays"]
 
 
 def test_curriculum_builder_is_deterministic_and_preserves_legacy_domains(tmp_path):

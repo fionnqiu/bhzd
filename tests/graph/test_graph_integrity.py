@@ -27,6 +27,67 @@ EXPECTED_NODE_COUNTS = {
     "CERT": 12,
 }
 EXPECTED_RELATIONS = {"PRE", "ISA", "SUP", "REL", "INSCN", "MAPCERT"}
+STABLE_KNG_IDENTITIES = {
+    "KNG-TXT-CLASS-EXCLUSION-001": {
+        "label": "文本类别互斥条件",
+        "description": "本项目练习规定互斥类别不得在同一作用范围同时出现。",
+        "claim_type": "text_class_exclusion",
+        "claim_basis": "project_policy",
+        "source_refs": ["SRC-POLICY-TEXT-TASK3-001"],
+    },
+    "KNG-TXT-NESTED-ENTITY-001": {
+        "label": "嵌套实体处理",
+        "description": "本项目练习明确声明重叠或嵌套选区是否允许。",
+        "claim_type": "text_nested_entity_policy",
+        "claim_basis": "project_policy",
+        "source_refs": ["SRC-POLICY-TEXT-TASK3-001"],
+    },
+    "KNG-TXT-INTERANNOTATOR-001": {
+        "label": "文本标注一致性",
+        "description": "一致性复核应定位标签、边界或关系分歧。",
+        "claim_type": "text_agreement_policy",
+        "claim_basis": "curriculum_draft",
+        "source_refs": [],
+    },
+    "KNG-IMG-CLASS-DEFINITION-001": {
+        "label": "图像类别定义",
+        "description": "本项目练习为类别给出可观察判据和排除条件。",
+        "claim_type": "image_class_policy",
+        "claim_basis": "project_policy",
+        "source_refs": ["SRC-POLICY-IMAGE-TASK3-001"],
+    },
+    "KNG-IMG-SMALL-OBJECT-001": {
+        "label": "小目标标注阈值",
+        "description": "本项目任务规则声明小目标的最小可标尺寸。",
+        "claim_type": "image_small_object_policy",
+        "claim_basis": "project_policy",
+        "source_refs": ["SRC-POLICY-IMAGE-TASK3-001"],
+    },
+    "KNG-IMG-OVERLAP-ORDER-001": {
+        "label": "重叠目标轮廓顺序",
+        "description": "本项目练习要求相邻实例轮廓分别闭合且不混用 ID。",
+        "claim_type": "image_overlap_policy",
+        "claim_basis": "project_policy",
+        "source_refs": ["SRC-POLICY-IMAGE-TASK3-001"],
+    },
+    "KNG-IMG-QUALITY-METRICS-001": {
+        "label": "图像标注质量指标",
+        "description": "本项目对框、点和掩码使用与结构相适应的质量检查。",
+        "claim_type": "image_quality_policy",
+        "claim_basis": "project_policy",
+        "source_refs": ["SRC-POLICY-IMAGE-TASK3-001"],
+    },
+}
+EXPECTED_POLICY_OVERLAYS = {
+    "KNG-TXT-LABEL-VOCAB-001": "text_label_normalization_policy",
+    "KNG-TXT-ENTITY-BOUNDARY-001": "text_entity_boundary_policy",
+    "KNG-TXT-RELATION-DIRECTION-001": "text_relation_semantics_policy",
+    "KNG-IMG-RECT-BOUNDS-001": "image_coordinate_validation_policy",
+    "KNG-IMG-POLYGON-VERTEX-001": "image_polygon_geometry_policy",
+    "KNG-IMG-KEYPOINT-VISIBILITY-001": "image_keypoint_visibility_policy",
+    "KNG-IMG-INSTANCE-ID-001": "image_instance_mask_policy",
+    "KNG-IMG-OCCLUSION-TRUNCATION-001": "image_occlusion_policy",
+}
 REQUIRED_PATHS = (
     CATALOG_PATH,
     GRAPH_JSON_PATH,
@@ -250,6 +311,37 @@ def test_knowledge_source_refs_match_claim_scope(graph):
                 assert source["source_kind"] == "project_policy"
 
 
+def test_stable_kng_identities_and_additive_policy_overlays(graph):
+    source_registry = load_json(SOURCE_REGISTRY_PATH)
+    sources = {
+        source["source_id"]: source for source in source_registry["sources"]
+    }
+    knowledge = {node["id"]: node for node in graph["nodes"] if node["type"] == "KNG"}
+
+    for node_id, expected in STABLE_KNG_IDENTITIES.items():
+        assert {field: knowledge[node_id][field] for field in expected} == expected
+        assert "policy_overlays" not in knowledge[node_id]
+
+    for node_id, claim_type in EXPECTED_POLICY_OVERLAYS.items():
+        overlays = knowledge[node_id]["policy_overlays"]
+        assert len(overlays) == 1
+        overlay = overlays[0]
+        assert {
+            "overlay_id",
+            "claim_type",
+            "source_refs",
+            "description",
+            "version",
+        } <= overlay.keys()
+        assert overlay["claim_type"] == claim_type
+        assert overlay["description"]
+        assert overlay["version"] == "1.0.0"
+        assert len(overlay["source_refs"]) == 1
+        source = sources[overlay["source_refs"][0]]
+        assert source["source_kind"] == "project_policy"
+        assert claim_type in source["supported_claim_types"]
+
+
 def test_teaching_unit_links_respect_publication_gate(graph):
     teaching_units = load_json(TEACHING_UNITS_PATH)
     units_by_id = {unit["id"]: unit for unit in teaching_units["units"]}
@@ -422,6 +514,28 @@ def corrupt_knowledge_source_scope(graph):
     knowledge["claim_type"] = "audio_transcript_timing"
 
 
+def corrupt_stable_kng_identity(graph):
+    knowledge = next(
+        node for node in graph["nodes"] if node["id"] == "KNG-TXT-CLASS-EXCLUSION-001"
+    )
+    knowledge["label"] = "mutated identity"
+
+
+def corrupt_policy_overlay_source_scope(graph):
+    knowledge = next(
+        node for node in graph["nodes"] if node["id"] == "KNG-TXT-LABEL-VOCAB-001"
+    )
+    knowledge["policy_overlays"] = [
+        {
+            "overlay_id": "POLICY-TXT-LABEL-NORMALIZATION-001",
+            "claim_type": "text_label_normalization_policy",
+            "source_refs": ["SRC-LS-TEXT-LABELS-001"],
+            "description": "invalid external source for a local policy",
+            "version": "1.0.0",
+        }
+    ]
+
+
 def corrupt_publication_index_gate(graph):
     task = next(node for node in graph["nodes"] if node.get("teaching_unit_links"))
     link = task["teaching_unit_links"][0]
@@ -518,6 +632,8 @@ def corrupt_scenario_base_rule_data_type(graph):
         (corrupt_pre_cycle, "pre_cycle"),
         (corrupt_task_traceability, "task_traceability"),
         (corrupt_knowledge_source_scope, "knowledge_source_scope"),
+        (corrupt_stable_kng_identity, "knowledge_identity"),
+        (corrupt_policy_overlay_source_scope, "knowledge_overlay_source_scope"),
         (corrupt_publication_index_gate, "publication_gate"),
         (corrupt_published_task_with_unverified_source, "task_traceability"),
         (corrupt_stale_teaching_unit_snapshot, "teaching_unit_snapshot"),

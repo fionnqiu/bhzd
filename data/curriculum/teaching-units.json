@@ -123,14 +123,13 @@
         "CAP-IMG-OBJECT-CLASS-001"
       ],
       "rule_refs": [
-        "KNG-IMG-KEYPOINT-VISIBILITY-001",
-        "KNG-IMG-SMALL-OBJECT-001"
+        "KNG-IMG-KEYPOINT-VISIBILITY-001"
       ],
       "source_refs": [
         "SRC-CVAT-ANNOTATION-FORMAT-251",
         "SRC-POLICY-IMAGE-TASK3-001"
       ],
-      "rule_explanation": "外部格式事实（SRC-CVAT-ANNOTATION-FORMAT-251）：图像关键点可由点几何及其属性表达；该事实不规定本课程的可见性枚举或坐标保留规则。 本项目本地语义策略（SRC-POLICY-IMAGE-TASK3-001；KNG-IMG-SMALL-OBJECT-001）：visibility 只能是 visible、occluded、outside_image。关键点在画面内且可直接观察时为 visible；在画面内、有明确前景遮挡证据且位置可确定时为 occluded；关键点在画面外时为 outside_image。visible 与 occluded 必须保留确定坐标，outside_image 坐标必须为 null。证据不足或位置不可确定时进入 unknown 工作流，unknown 不是 visibility 枚举值，不得作为 visibility 提交。",
+      "rule_explanation": "外部格式事实（SRC-CVAT-ANNOTATION-FORMAT-251）：图像关键点可由点几何及其属性表达；该事实不规定本课程的可见性枚举或坐标保留规则。 本项目本地语义策略（SRC-POLICY-IMAGE-TASK3-001；KNG-IMG-KEYPOINT-VISIBILITY-001.policy_overlays）：visibility 只能是 visible、occluded、outside_image。关键点在画面内且可直接观察时为 visible；在画面内、有明确前景遮挡证据且位置可确定时为 occluded；关键点在画面外时为 outside_image。visible 与 occluded 必须保留确定坐标，outside_image 坐标必须为 null。证据不足或位置不可确定时进入 unknown 工作流，unknown 不是 visibility 枚举值，不得作为 visibility 提交。",
       "visibility_policy": {
         "visibility_enum": [
           "visible",
@@ -557,14 +556,13 @@
       ],
       "rule_refs": [
         "KNG-IMG-SEMANTIC-MASK-001",
-        "KNG-IMG-INSTANCE-ID-001",
-        "KNG-IMG-QUALITY-METRICS-001"
+        "KNG-IMG-INSTANCE-ID-001"
       ],
       "source_refs": [
         "SRC-CVAT-ANNOTATION-FORMAT-251",
         "SRC-POLICY-IMAGE-TASK3-001"
       ],
-      "rule_explanation": "外部格式事实（SRC-CVAT-ANNOTATION-FORMAT-251）：掩码几何可与标签一起保存，多个带标签的掩码实例可以分别保存；该事实不规定课程的实例 ID 命名或属性作用域。 本项目本地语义策略（SRC-POLICY-IMAGE-TASK3-001；KNG-IMG-QUALITY-METRICS-001）：semantic 模式只输出每个像素的 class_label，同类区域不分配 instance_id，且不绑定对象级属性；instance 模式为每个独立对象保留独立掩码，instance_id 必须按 {class_label}-{object_index:02d} 生成，object_index 从 1 开始，同一类别内唯一。required_attributes 必须只绑定到对应实例；属性不改变像素类别，也不替代 instance_id。",
+      "rule_explanation": "外部格式事实（SRC-CVAT-ANNOTATION-FORMAT-251）：掩码几何可与标签一起保存，多个带标签的掩码实例可以分别保存；该事实不规定课程的实例 ID 命名或属性作用域。 本项目本地语义策略（SRC-POLICY-IMAGE-TASK3-001；KNG-IMG-INSTANCE-ID-001.policy_overlays）：semantic 模式只输出每个像素的 class_label，同类区域不分配 instance_id，且不绑定对象级属性；instance 模式为每个独立对象保留独立掩码，instance_id 必须按 {class_label}-{object_index:02d} 生成，object_index 从 1 开始，同一类别内唯一。required_attributes 必须只绑定到对应实例；属性不改变像素类别，也不替代 instance_id。",
       "instance_policy": {
         "instance_id_template": "{class_label}-{object_index:02d}",
         "object_index_origin": 1,
@@ -1136,14 +1134,13 @@
         "CAP-IMG-BOX-ANNOTATE-001"
       ],
       "rule_refs": [
-        "KNG-IMG-POLYGON-VERTEX-001",
-        "KNG-IMG-OVERLAP-ORDER-001"
+        "KNG-IMG-POLYGON-VERTEX-001"
       ],
       "source_refs": [
         "SRC-CVAT-ANNOTATION-FORMAT-251",
         "SRC-POLICY-IMAGE-TASK3-001"
       ],
-      "rule_explanation": "外部格式事实（SRC-CVAT-ANNOTATION-FORMAT-251）：多边形几何由有序坐标点序列表达，点顺序是几何数据的一部分；该事实不规定课程的起点、方向、闭合或自交判定。 本项目本地语义策略（SRC-POLICY-IMAGE-TASK3-001；KNG-IMG-OVERLAP-ORDER-001）：多边形至少包含 3 个互异顶点；从 (y, x) 字典序最小顶点开始，在图像坐标系中按顺时针排列；答案不重复首点，closure 必须为 implicit_last_to_first，最后一点隐式连接首点；任意非相邻边相交均判为 self_intersection。校验顺序固定为 vertex_count_mismatch、polygon_not_closed、self_intersection、vertex_order_mismatch，首个失败项为错误码。",
+      "rule_explanation": "外部格式事实（SRC-CVAT-ANNOTATION-FORMAT-251）：多边形几何由有序坐标点序列表达，点顺序是几何数据的一部分；该事实不规定课程的起点、方向、闭合或自交判定。 本项目本地语义策略（SRC-POLICY-IMAGE-TASK3-001；KNG-IMG-POLYGON-VERTEX-001.policy_overlays）：多边形至少包含 3 个互异顶点；从 (y, x) 字典序最小顶点开始，在图像坐标系中按顺时针排列；答案不重复首点，closure 必须为 implicit_last_to_first，最后一点隐式连接首点；任意非相邻边相交均判为 self_intersection。校验顺序固定为 vertex_count_mismatch、polygon_not_closed、self_intersection、vertex_order_mismatch，首个失败项为错误码。",
       "validation_precedence": [
         "vertex_count_mismatch",
         "polygon_not_closed",
@@ -1565,14 +1562,13 @@
         "CAP-CORE-ASSET-QUALITY-001"
       ],
       "rule_refs": [
-        "KNG-IMG-RECT-BOUNDS-001",
-        "KNG-IMG-CLASS-DEFINITION-001"
+        "KNG-IMG-RECT-BOUNDS-001"
       ],
       "source_refs": [
         "SRC-CVAT-IMAGE-RECT-001",
         "SRC-POLICY-IMAGE-TASK3-001"
       ],
-      "rule_explanation": "外部格式事实（SRC-CVAT-IMAGE-RECT-001）：矩形标注以图像上的矩形几何和两个角点坐标表达目标区域；该事实不替代项目的数值边界约定。 本项目本地语义策略（SRC-POLICY-IMAGE-TASK3-001；KNG-IMG-CLASS-DEFINITION-001）：对 width x height 图像，坐标边界为闭区间端点约束 0 <= x_min < x_max <= width 且 0 <= y_min < y_max <= height。先检查坐标是否位于 [0,width] 和 [0,height]，再检查最小值与最大值顺序；相等为 zero_area，最小值大于最大值为 coordinate_order_invalid。",
+      "rule_explanation": "外部格式事实（SRC-CVAT-IMAGE-RECT-001）：矩形标注以图像上的矩形几何和两个角点坐标表达目标区域；该事实不替代项目的数值边界约定。 本项目本地语义策略（SRC-POLICY-IMAGE-TASK3-001；KNG-IMG-RECT-BOUNDS-001.policy_overlays）：对 width x height 图像，坐标边界为闭区间端点约束 0 <= x_min < x_max <= width 且 0 <= y_min < y_max <= height。先检查坐标是否位于 [0,width] 和 [0,height]，再检查最小值与最大值顺序；相等为 zero_area，最小值大于最大值为 coordinate_order_invalid。",
       "validation_precedence": [
         "coordinate_out_of_bounds",
         "zero_area",
@@ -2331,8 +2327,7 @@
         "CAP-CORE-LABEL-SCHEMA-001"
       ],
       "rule_refs": [
-        "KNG-TXT-LABEL-VOCAB-001",
-        "KNG-TXT-CLASS-EXCLUSION-001"
+        "KNG-TXT-LABEL-VOCAB-001"
       ],
       "source_refs": [
         "SRC-LS-TEXT-LABELS-001",
@@ -2519,8 +2514,7 @@
       "rule_refs": [
         "KNG-TXT-SPAN-OFFSET-001",
         "KNG-TXT-ENTITY-BOUNDARY-001",
-        "KNG-TXT-ENTITY-TYPE-001",
-        "KNG-TXT-NESTED-ENTITY-001"
+        "KNG-TXT-ENTITY-TYPE-001"
       ],
       "source_refs": [
         "SRC-LS-TEXT-SPANS-PINNED-001",
@@ -2791,8 +2785,7 @@
         "CAP-TXT-ENTITY-TYPE-001"
       ],
       "rule_refs": [
-        "KNG-TXT-RELATION-DIRECTION-001",
-        "KNG-TXT-INTERANNOTATOR-001"
+        "KNG-TXT-RELATION-DIRECTION-001"
       ],
       "source_refs": [
         "SRC-LS-RELATIONS-PINNED-001",

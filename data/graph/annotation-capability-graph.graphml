@@ -679,12 +679,12 @@
     </node>
     <node id="KNG-IMG-CLASS-DEFINITION-001">
       <data key="n0">KNG</data>
-      <data key="n1">本地图像坐标校验策略</data>
-      <data key="n2">本项目练习要求坐标位于图像范围内、最小值小于最大值且矩形面积非零。</data>
+      <data key="n1">图像类别定义</data>
+      <data key="n2">本项目练习为类别给出可观察判据和排除条件。</data>
       <data key="n3">["image"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-POLICY-IMAGE-TASK3-001"]</data>
-      <data key="n6">{"claim_basis":"project_policy","claim_type":"image_coordinate_validation_policy"}</data>
+      <data key="n6">{"claim_basis":"project_policy","claim_type":"image_class_policy"}</data>
     </node>
     <node id="KNG-IMG-COORDINATE-SYSTEM-001">
       <data key="n0">KNG</data>
@@ -711,7 +711,7 @@
       <data key="n3">["image"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-CVAT-ANNOTATION-FORMAT-251"]</data>
-      <data key="n6">{"claim_basis":"external_reference","claim_type":"image_annotation_format"}</data>
+      <data key="n6">{"claim_basis":"external_reference","claim_type":"image_annotation_format","policy_overlays":[{"claim_type":"image_instance_mask_policy","description":"本项目规定实例 ID 模板和实例属性作用域。","overlay_id":"POLICY-IMG-INSTANCE-MASK-001","source_refs":["SRC-POLICY-IMAGE-TASK3-001"],"version":"1.0.0"}]}</data>
     </node>
     <node id="KNG-IMG-KEYPOINT-VISIBILITY-001">
       <data key="n0">KNG</data>
@@ -720,7 +720,7 @@
       <data key="n3">["image"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-CVAT-ANNOTATION-FORMAT-251"]</data>
-      <data key="n6">{"claim_basis":"external_reference","claim_type":"image_annotation_format"}</data>
+      <data key="n6">{"claim_basis":"external_reference","claim_type":"image_annotation_format","policy_overlays":[{"claim_type":"image_keypoint_visibility_policy","description":"本项目规定可见性枚举以及遮挡点保留坐标、画面外点使用空坐标。","overlay_id":"POLICY-IMG-KEYPOINT-VISIBILITY-001","source_refs":["SRC-POLICY-IMAGE-TASK3-001"],"version":"1.0.0"}]}</data>
     </node>
     <node id="KNG-IMG-OCCLUSION-TRUNCATION-001">
       <data key="n0">KNG</data>
@@ -729,16 +729,16 @@
       <data key="n3">["image"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-POLICY-IMAGE-TASK3-001"]</data>
-      <data key="n6">{"claim_basis":"project_policy","claim_type":"image_occlusion_policy"}</data>
+      <data key="n6">{"claim_basis":"project_policy","claim_type":"image_occlusion_policy","policy_overlays":[{"claim_type":"image_occlusion_policy","description":"本项目独立判断画面内遮挡与目标出画，并允许两者同时成立。","overlay_id":"POLICY-IMG-OCCLUSION-001","source_refs":["SRC-POLICY-IMAGE-TASK3-001"],"version":"1.0.0"}]}</data>
     </node>
     <node id="KNG-IMG-OVERLAP-ORDER-001">
       <data key="n0">KNG</data>
-      <data key="n1">本地多边形几何策略</data>
-      <data key="n2">本项目练习要求固定起点与顺时针顶点顺序、隐式闭合且禁止蝴蝶结自交。</data>
+      <data key="n1">重叠目标轮廓顺序</data>
+      <data key="n2">本项目练习要求相邻实例轮廓分别闭合且不混用 ID。</data>
       <data key="n3">["image"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-POLICY-IMAGE-TASK3-001"]</data>
-      <data key="n6">{"claim_basis":"project_policy","claim_type":"image_polygon_geometry_policy"}</data>
+      <data key="n6">{"claim_basis":"project_policy","claim_type":"image_overlap_policy"}</data>
     </node>
     <node id="KNG-IMG-POLYGON-VERTEX-001">
       <data key="n0">KNG</data>
@@ -747,16 +747,16 @@
       <data key="n3">["image"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-CVAT-ANNOTATION-FORMAT-251"]</data>
-      <data key="n6">{"claim_basis":"external_reference","claim_type":"image_annotation_format"}</data>
+      <data key="n6">{"claim_basis":"external_reference","claim_type":"image_annotation_format","policy_overlays":[{"claim_type":"image_polygon_geometry_policy","description":"本项目固定起点与顺时针顺序，要求隐式闭合且禁止自交。","overlay_id":"POLICY-IMG-POLYGON-GEOMETRY-001","source_refs":["SRC-POLICY-IMAGE-TASK3-001"],"version":"1.0.0"}]}</data>
     </node>
     <node id="KNG-IMG-QUALITY-METRICS-001">
       <data key="n0">KNG</data>
-      <data key="n1">本地实例掩码与属性策略</data>
-      <data key="n2">本项目使用 {class_label}-{object_index:02d} 实例 ID，并限制实例属性的作用域。</data>
+      <data key="n1">图像标注质量指标</data>
+      <data key="n2">本项目对框、点和掩码使用与结构相适应的质量检查。</data>
       <data key="n3">["image"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-POLICY-IMAGE-TASK3-001"]</data>
-      <data key="n6">{"claim_basis":"project_policy","claim_type":"image_instance_mask_policy"}</data>
+      <data key="n6">{"claim_basis":"project_policy","claim_type":"image_quality_policy"}</data>
     </node>
     <node id="KNG-IMG-RECT-BOUNDS-001">
       <data key="n0">KNG</data>
@@ -765,7 +765,7 @@
       <data key="n3">["image"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-CVAT-IMAGE-RECT-001"]</data>
-      <data key="n6">{"claim_basis":"external_reference","claim_type":"image_rectangle_geometry"}</data>
+      <data key="n6">{"claim_basis":"external_reference","claim_type":"image_rectangle_geometry","policy_overlays":[{"claim_type":"image_coordinate_validation_policy","description":"本项目要求坐标在界内、最小值小于最大值且矩形面积非零。","overlay_id":"POLICY-IMG-RECT-VALIDATION-001","source_refs":["SRC-POLICY-IMAGE-TASK3-001"],"version":"1.0.0"}]}</data>
     </node>
     <node id="KNG-IMG-SEMANTIC-MASK-001">
       <data key="n0">KNG</data>
@@ -778,12 +778,12 @@
     </node>
     <node id="KNG-IMG-SMALL-OBJECT-001">
       <data key="n0">KNG</data>
-      <data key="n1">本地关键点可见性策略</data>
-      <data key="n2">本项目使用 visible、occluded、outside_image 状态；遮挡点保留坐标，画面外点使用空坐标，unknown 不等同于可见性。</data>
+      <data key="n1">小目标标注阈值</data>
+      <data key="n2">本项目任务规则声明小目标的最小可标尺寸。</data>
       <data key="n3">["image"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-POLICY-IMAGE-TASK3-001"]</data>
-      <data key="n6">{"claim_basis":"project_policy","claim_type":"image_keypoint_visibility_policy"}</data>
+      <data key="n6">{"claim_basis":"project_policy","claim_type":"image_small_object_policy"}</data>
     </node>
     <node id="KNG-TXT-AMBIGUITY-SET-001">
       <data key="n0">KNG</data>
@@ -796,12 +796,12 @@
     </node>
     <node id="KNG-TXT-CLASS-EXCLUSION-001">
       <data key="n0">KNG</data>
-      <data key="n1">本地文本标签提交策略</data>
-      <data key="n2">本项目练习要求标签严格区分大小写、不自动去除空格，并按配置校验分类基数与成员资格。</data>
+      <data key="n1">文本类别互斥条件</data>
+      <data key="n2">本项目练习规定互斥类别不得在同一作用范围同时出现。</data>
       <data key="n3">["text"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-POLICY-TEXT-TASK3-001"]</data>
-      <data key="n6">{"claim_basis":"project_policy","claim_type":"text_label_normalization_policy"}</data>
+      <data key="n6">{"claim_basis":"project_policy","claim_type":"text_class_exclusion"}</data>
     </node>
     <node id="KNG-TXT-ENTITY-BOUNDARY-001">
       <data key="n0">KNG</data>
@@ -810,7 +810,7 @@
       <data key="n3">["text"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-LS-TEXT-SPANS-PINNED-001"]</data>
-      <data key="n6">{"claim_basis":"external_reference","claim_type":"text_span_annotation"}</data>
+      <data key="n6">{"claim_basis":"external_reference","claim_type":"text_span_annotation","policy_overlays":[{"claim_type":"text_entity_boundary_policy","description":"本项目使用零基、end-exclusive 偏移，包含组织后缀并排除句末标点。","overlay_id":"POLICY-TXT-ENTITY-BOUNDARY-001","source_refs":["SRC-POLICY-TEXT-TASK3-001"],"version":"1.0.0"}]}</data>
     </node>
     <node id="KNG-TXT-ENTITY-TYPE-001">
       <data key="n0">KNG</data>
@@ -841,12 +841,12 @@
     </node>
     <node id="KNG-TXT-INTERANNOTATOR-001">
       <data key="n0">KNG</data>
-      <data key="n1">本地 works_for 关系策略</data>
-      <data key="n2">本项目练习只接受 PERSON 到 ORG 的有向 works_for 关系，且端点必须引用已声明实体。</data>
+      <data key="n1">文本标注一致性</data>
+      <data key="n2">一致性复核应定位标签、边界或关系分歧。</data>
       <data key="n3">["text"]</data>
       <data key="n4">draft</data>
-      <data key="n5">["SRC-POLICY-TEXT-TASK3-001"]</data>
-      <data key="n6">{"claim_basis":"project_policy","claim_type":"text_relation_semantics_policy"}</data>
+      <data key="n5">[]</data>
+      <data key="n6">{"claim_basis":"curriculum_draft","claim_type":"text_agreement_policy"}</data>
     </node>
     <node id="KNG-TXT-LABEL-VOCAB-001">
       <data key="n0">KNG</data>
@@ -855,16 +855,16 @@
       <data key="n3">["text"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-LS-TEXT-LABELS-001"]</data>
-      <data key="n6">{"claim_basis":"external_reference","claim_type":"text_label_vocabulary"}</data>
+      <data key="n6">{"claim_basis":"external_reference","claim_type":"text_label_vocabulary","policy_overlays":[{"claim_type":"text_label_normalization_policy","description":"本项目标签严格区分大小写且不自动去除首尾空格。","overlay_id":"POLICY-TXT-LABEL-NORMALIZATION-001","source_refs":["SRC-POLICY-TEXT-TASK3-001"],"version":"1.0.0"}]}</data>
     </node>
     <node id="KNG-TXT-NESTED-ENTITY-001">
       <data key="n0">KNG</data>
-      <data key="n1">本地实体边界策略</data>
-      <data key="n2">本项目练习使用零基、end-exclusive 偏移，包含组织后缀并排除句末标点。</data>
+      <data key="n1">嵌套实体处理</data>
+      <data key="n2">本项目练习明确声明重叠或嵌套选区是否允许。</data>
       <data key="n3">["text"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-POLICY-TEXT-TASK3-001"]</data>
-      <data key="n6">{"claim_basis":"project_policy","claim_type":"text_entity_boundary_policy"}</data>
+      <data key="n6">{"claim_basis":"project_policy","claim_type":"text_nested_entity_policy"}</data>
     </node>
     <node id="KNG-TXT-RELATION-DIRECTION-001">
       <data key="n0">KNG</data>
@@ -873,7 +873,7 @@
       <data key="n3">["text"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-LS-RELATIONS-PINNED-001"]</data>
-      <data key="n6">{"claim_basis":"external_reference","claim_type":"text_relation_annotation"}</data>
+      <data key="n6">{"claim_basis":"external_reference","claim_type":"text_relation_annotation","policy_overlays":[{"claim_type":"text_relation_semantics_policy","description":"本项目 works_for 关系固定由已声明 PERSON 指向已声明 ORG。","overlay_id":"POLICY-TXT-RELATION-SEMANTICS-001","source_refs":["SRC-POLICY-TEXT-TASK3-001"],"version":"1.0.0"}]}</data>
     </node>
     <node id="KNG-TXT-SENTIMENT-POLARITY-001">
       <data key="n0">KNG</data>
@@ -1377,7 +1377,7 @@
       <data key="n3">["image"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-IMG-KEYPOINT-001","primary_knowledge_ref":"KNG-IMG-SMALL-OBJECT-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-IMAGE-KEYPOINT-VISIBILITY-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-IMG-KEYPOINT-001","primary_knowledge_ref":"KNG-IMG-KEYPOINT-VISIBILITY-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-IMAGE-KEYPOINT-VISIBILITY-001"}]}</data>
     </node>
     <node id="TSK-IMG-MASK-REVIEW-001">
       <data key="n0">TSK</data>
@@ -1386,7 +1386,7 @@
       <data key="n3">["image"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-IMG-INSTANCE-SEGMENT-001","primary_knowledge_ref":"KNG-IMG-QUALITY-METRICS-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-IMAGE-MASK-INSTANCE-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-IMG-INSTANCE-SEGMENT-001","primary_knowledge_ref":"KNG-IMG-INSTANCE-ID-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-IMAGE-MASK-INSTANCE-001"}]}</data>
     </node>
     <node id="TSK-IMG-OBJECT-BOX-001">
       <data key="n0">TSK</data>
@@ -1404,7 +1404,7 @@
       <data key="n3">["image"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-IMG-POLYGON-001","primary_knowledge_ref":"KNG-IMG-OVERLAP-ORDER-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-IMAGE-POLYGON-VERTICES-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-IMG-POLYGON-001","primary_knowledge_ref":"KNG-IMG-POLYGON-VERTEX-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-IMAGE-POLYGON-VERTICES-001"}]}</data>
     </node>
     <node id="TSK-IMG-RECT-AUDIT-001">
       <data key="n0">TSK</data>
@@ -1413,7 +1413,7 @@
       <data key="n3">["image"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-IMG-RECT-VALIDATE-001","primary_knowledge_ref":"KNG-IMG-CLASS-DEFINITION-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-IMAGE-RECT-BOUNDS-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-IMG-RECT-VALIDATE-001","primary_knowledge_ref":"KNG-IMG-RECT-BOUNDS-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-IMAGE-RECT-BOUNDS-001"}]}</data>
     </node>
     <node id="TSK-TXT-DOCUMENT-CLASSIFY-001">
       <data key="n0">TSK</data>
@@ -1422,7 +1422,7 @@
       <data key="n3">["text"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-TXT-CLASSIFY-001","primary_knowledge_ref":"KNG-TXT-CLASS-EXCLUSION-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-TEXT-DOCUMENT-CLASSIFY-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-TXT-CLASSIFY-001","primary_knowledge_ref":"KNG-TXT-SINGLE-MULTI-LABEL-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-TEXT-DOCUMENT-CLASSIFY-001"}]}</data>
     </node>
     <node id="TSK-TXT-INTENT-REVIEW-001">
       <data key="n0">TSK</data>
@@ -1449,7 +1449,7 @@
       <data key="n3">["text"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-TXT-ENTITY-BOUNDARY-001","primary_knowledge_ref":"KNG-TXT-NESTED-ENTITY-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-TEXT-NER-BOUNDARY-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-TXT-ENTITY-BOUNDARY-001","primary_knowledge_ref":"KNG-TXT-ENTITY-BOUNDARY-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-TEXT-NER-BOUNDARY-001"}]}</data>
     </node>
     <node id="TSK-TXT-RELATION-LINK-001">
       <data key="n0">TSK</data>
@@ -1458,7 +1458,7 @@
       <data key="n3">["text"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-TXT-RELATION-001","primary_knowledge_ref":"KNG-TXT-INTERANNOTATOR-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-TEXT-RELATION-DIRECTION-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-TXT-RELATION-001","primary_knowledge_ref":"KNG-TXT-RELATION-DIRECTION-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-TEXT-RELATION-DIRECTION-001"}]}</data>
     </node>
     <node id="TSK-VID-ACTION-EVENT-001">
       <data key="n0">TSK</data>
@@ -1760,7 +1760,7 @@
       <data key="e1">归属于</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0052" source="KNG-IMG-CLASS-DEFINITION-001" target="CAP-IMG-RECT-VALIDATE-001">
+    <edge id="EDGE-0052" source="KNG-IMG-CLASS-DEFINITION-001" target="CAP-IMG-OBJECT-CLASS-001">
       <data key="e0">ISA</data>
       <data key="e1">归属于</data>
       <data key="e2">{}</data>
@@ -1800,7 +1800,7 @@
       <data key="e1">归属于</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0060" source="KNG-IMG-SMALL-OBJECT-001" target="CAP-IMG-KEYPOINT-001">
+    <edge id="EDGE-0060" source="KNG-IMG-SMALL-OBJECT-001" target="CAP-IMG-BOX-ANNOTATE-001">
       <data key="e0">ISA</data>
       <data key="e1">归属于</data>
       <data key="e2">{}</data>
@@ -1830,7 +1830,7 @@
       <data key="e1">归属于</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0066" source="KNG-TXT-NESTED-ENTITY-001" target="CAP-TXT-ENTITY-BOUNDARY-001">
+    <edge id="EDGE-0066" source="KNG-TXT-NESTED-ENTITY-001" target="CAP-TXT-AMBIGUITY-001">
       <data key="e0">ISA</data>
       <data key="e1">归属于</data>
       <data key="e2">{}</data>
@@ -2060,32 +2060,32 @@
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0112" source="KNG-IMG-CLASS-DEFINITION-001" target="TSK-IMG-RECT-AUDIT-001">
+    <edge id="EDGE-0112" source="KNG-IMG-INSTANCE-ID-001" target="TSK-IMG-MASK-REVIEW-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0113" source="KNG-IMG-OCCLUSION-TRUNCATION-001" target="TSK-IMG-OBJECT-BOX-001">
+    <edge id="EDGE-0113" source="KNG-IMG-KEYPOINT-VISIBILITY-001" target="TSK-IMG-KEYPOINT-MARK-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0114" source="KNG-IMG-OVERLAP-ORDER-001" target="TSK-IMG-POLYGON-TRACE-001">
+    <edge id="EDGE-0114" source="KNG-IMG-OCCLUSION-TRUNCATION-001" target="TSK-IMG-OBJECT-BOX-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0115" source="KNG-IMG-QUALITY-METRICS-001" target="TSK-IMG-MASK-REVIEW-001">
+    <edge id="EDGE-0115" source="KNG-IMG-POLYGON-VERTEX-001" target="TSK-IMG-POLYGON-TRACE-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0116" source="KNG-IMG-SMALL-OBJECT-001" target="TSK-IMG-KEYPOINT-MARK-001">
+    <edge id="EDGE-0116" source="KNG-IMG-RECT-BOUNDS-001" target="TSK-IMG-RECT-AUDIT-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0117" source="KNG-TXT-CLASS-EXCLUSION-001" target="TSK-TXT-DOCUMENT-CLASSIFY-001">
+    <edge id="EDGE-0117" source="KNG-TXT-ENTITY-BOUNDARY-001" target="TSK-TXT-NER-ANNOTATE-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
@@ -2095,17 +2095,17 @@
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0119" source="KNG-TXT-INTERANNOTATOR-001" target="TSK-TXT-RELATION-LINK-001">
+    <edge id="EDGE-0119" source="KNG-TXT-LABEL-VOCAB-001" target="TSK-TXT-LABEL-AUDIT-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0120" source="KNG-TXT-LABEL-VOCAB-001" target="TSK-TXT-LABEL-AUDIT-001">
+    <edge id="EDGE-0120" source="KNG-TXT-RELATION-DIRECTION-001" target="TSK-TXT-RELATION-LINK-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0121" source="KNG-TXT-NESTED-ENTITY-001" target="TSK-TXT-NER-ANNOTATE-001">
+    <edge id="EDGE-0121" source="KNG-TXT-SINGLE-MULTI-LABEL-001" target="TSK-TXT-DOCUMENT-CLASSIFY-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
