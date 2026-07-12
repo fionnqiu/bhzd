@@ -59,12 +59,88 @@ def add_error(errors: list[str], code: str, message: str) -> None:
     errors.append(f"[{code}] {message}")
 
 
+def normalize_graph_records(
+    graph: dict[str, Any], errors: list[str]
+) -> dict[str, Any]:
+    normalized = dict(graph)
+    for field, item_code in (("nodes", "schema_node_item"), ("edges", "schema_edge_item")):
+        raw_records = graph.get(field)
+        if not isinstance(raw_records, list):
+            add_error(errors, f"schema_{field}", f"{field} must be an array")
+            normalized[field] = []
+            continue
+        records = []
+        for index, record in enumerate(raw_records):
+            if not isinstance(record, dict):
+                add_error(errors, item_code, f"{field}[{index}] must be an object")
+                continue
+            records.append(record)
+        normalized[field] = records
+    return normalized
+
+
 def resolve_registry_path(graph: dict[str, Any]) -> Path | None:
     value = graph.get("source_registry")
     if not isinstance(value, str) or not value:
         return None
     path = Path(value)
     return path if path.is_absolute() else ROOT / path
+
+
+def resolve_project_path(
+    graph: dict[str, Any], field: str, graph_path: Path, errors: list[str]
+) -> Path | None:
+    value = graph.get(field)
+    if not isinstance(value, str) or not value:
+        add_error(errors, field, f"{field} path is required")
+        return None
+    root = ROOT.resolve()
+    candidate = Path(value)
+    if not candidate.is_absolute():
+        root_candidate = (root / candidate).resolve()
+        graph_candidate = (graph_path.resolve().parent / candidate).resolve()
+        candidate = root_candidate if root_candidate.exists() else graph_candidate
+    else:
+        candidate = candidate.resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        add_error(errors, field, f"{field} path escapes project root: {candidate}")
+        return None
+    return candidate
+
+
+def load_teaching_units(
+    graph: dict[str, Any], graph_path: Path, errors: list[str]
+) -> tuple[dict[str, dict[str, Any]], set[str]]:
+    path = resolve_project_path(graph, "teaching_units", graph_path, errors)
+    if path is None or not path.exists():
+        add_error(errors, "teaching_units", f"teaching units not found: {path}")
+        return {}, set()
+    try:
+        data = load_json(path)
+    except (OSError, json.JSONDecodeError) as exc:
+        add_error(errors, "teaching_units", f"cannot read {path}: {exc}")
+        return {}, set()
+    if not isinstance(data, dict):
+        add_error(errors, "teaching_units", "teaching unit file root must be an object")
+        return {}, set()
+    raw_units = data.get("units")
+    raw_visible_ids = data.get("student_visible_unit_ids")
+    if not isinstance(raw_units, list) or not isinstance(raw_visible_ids, list):
+        add_error(errors, "teaching_units", "units and student_visible_unit_ids must be arrays")
+        return {}, set()
+    units_by_id: dict[str, dict[str, Any]] = {}
+    for index, unit in enumerate(raw_units):
+        if not isinstance(unit, dict) or not isinstance(unit.get("id"), str):
+            add_error(errors, "teaching_units", f"units[{index}] must have a string id")
+            continue
+        if unit["id"] in units_by_id:
+            add_error(errors, "teaching_units", f"duplicate canonical unit {unit['id']}")
+            continue
+        units_by_id[unit["id"]] = unit
+    visible_ids = {unit_id for unit_id in raw_visible_ids if isinstance(unit_id, str)}
+    return units_by_id, visible_ids
 
 
 def validate_schema_and_counts(graph: dict[str, Any], errors: list[str]) -> None:
@@ -83,14 +159,8 @@ def validate_schema_and_counts(graph: dict[str, Any], errors: list[str]) -> None
     if graph.get("graph_id") != "annotation-capability-graph":
         add_error(errors, "graph_id", "graph_id must be annotation-capability-graph")
 
-    nodes = graph.get("nodes")
-    edges = graph.get("edges")
-    if not isinstance(nodes, list):
-        add_error(errors, "schema_nodes", "nodes must be an array")
-        nodes = []
-    if not isinstance(edges, list):
-        add_error(errors, "schema_edges", "edges must be an array")
-        edges = []
+    nodes = graph.get("nodes", [])
+    edges = graph.get("edges", [])
 
     computed_node_counts = Counter(
         node.get("type") for node in nodes if isinstance(node, dict)
@@ -332,6 +402,8 @@ def validate_task_traceability(
     graph: dict[str, Any],
     nodes_by_id: dict[str, dict[str, Any]],
     sources_by_id: dict[str, dict[str, Any]],
+    units_by_id: dict[str, dict[str, Any]],
+    visible_unit_ids: set[str],
     errors: list[str],
 ) -> None:
     inbound_support: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -353,6 +425,38 @@ def validate_task_traceability(
                 f"{task['id']}: requires inbound CAP and KNG support",
             )
 
+        task_data_types = set(task.get("data_types", []))
+        for supporter in (*capabilities, *knowledge):
+            if not task_data_types <= set(supporter.get("data_types", [])):
+                add_error(
+                    errors,
+                    "task_support_data_type",
+                    f"{task['id']}: {supporter['id']} does not cover task data_types",
+                )
+        supporter_ids = {node["id"] for node in supporters}
+        primary_capability = nodes_by_id.get(task.get("primary_capability_ref"))
+        if (
+            primary_capability is None
+            or primary_capability.get("type") != "CAP"
+            or primary_capability["id"] not in supporter_ids
+        ):
+            add_error(
+                errors,
+                "task_primary_capability",
+                f"{task['id']}: primary_capability_ref must resolve through SUP",
+            )
+        primary_knowledge = nodes_by_id.get(task.get("primary_knowledge_ref"))
+        if (
+            primary_knowledge is None
+            or primary_knowledge.get("type") != "KNG"
+            or primary_knowledge["id"] not in supporter_ids
+        ):
+            add_error(
+                errors,
+                "task_primary_knowledge",
+                f"{task['id']}: primary_knowledge_ref must resolve through SUP",
+            )
+
         links = task.get("teaching_unit_links")
         if not isinstance(links, list):
             add_error(
@@ -361,7 +465,31 @@ def validate_task_traceability(
                 f"{task['id']}: teaching_unit_links must be an array",
             )
             continue
+        seen_unit_ids = set()
         for link in links:
+            if not isinstance(link, dict):
+                add_error(
+                    errors,
+                    "teaching_unit_snapshot",
+                    f"{task['id']}: teaching unit link must be an object",
+                )
+                continue
+            unit_id = link.get("unit_id")
+            if unit_id in seen_unit_ids:
+                add_error(
+                    errors,
+                    "teaching_unit_duplicate",
+                    f"{task['id']}: duplicate teaching unit link {unit_id}",
+                )
+            seen_unit_ids.add(unit_id)
+            unit = units_by_id.get(unit_id)
+            if unit is None:
+                add_error(
+                    errors,
+                    "teaching_unit_unknown",
+                    f"{task['id']}: unknown teaching unit {unit_id}",
+                )
+                continue
             expected_consumable = (
                 link.get("review_status") == "published"
                 and link.get("student_visible") is True
@@ -372,6 +500,28 @@ def validate_task_traceability(
                     errors,
                     "publication_gate",
                     f"{task['id']}: invalid link gate for {link.get('unit_id')}",
+                )
+            canonical_indexed = unit_id in visible_unit_ids
+            canonical_values = {
+                "review_status": unit.get("review_status"),
+                "student_visible": unit.get("student_visible") is True,
+                "in_student_visible_index": canonical_indexed,
+                "consumable": (
+                    unit.get("review_status") == "published"
+                    and unit.get("student_visible") is True
+                    and canonical_indexed
+                ),
+            }
+            stale_fields = [
+                field
+                for field, expected in canonical_values.items()
+                if field not in link or link.get(field) != expected
+            ]
+            if stale_fields:
+                add_error(
+                    errors,
+                    "teaching_unit_snapshot",
+                    f"{task['id']}: stale fields for {unit_id}: {stale_fields}",
                 )
 
         if task.get("status") == "published" or task.get("student_visible") is True:
@@ -493,14 +643,23 @@ def validate_scenarios(
         )
 
 
-def validate_graph(graph: dict[str, Any]) -> list[str]:
+def validate_graph(graph: dict[str, Any], graph_path: Path) -> list[str]:
     errors: list[str] = []
+    graph = normalize_graph_records(graph, errors)
     validate_schema_and_counts(graph, errors)
     nodes_by_id = validate_ids_and_endpoints(graph, errors)
     validate_pre_acyclicity(graph, nodes_by_id, errors)
     sources_by_id = load_source_registry(graph, errors)
+    units_by_id, visible_unit_ids = load_teaching_units(graph, graph_path, errors)
     validate_knowledge_provenance(nodes_by_id, sources_by_id, errors)
-    validate_task_traceability(graph, nodes_by_id, sources_by_id, errors)
+    validate_task_traceability(
+        graph,
+        nodes_by_id,
+        sources_by_id,
+        units_by_id,
+        visible_unit_ids,
+        errors,
+    )
     validate_scenarios(graph, nodes_by_id, errors)
     return errors
 
@@ -521,7 +680,11 @@ def main() -> int:
         print(f"[graph_read] cannot read {args.graph}: {exc}")
         return 1
 
-    errors = validate_graph(graph)
+    if not isinstance(graph, dict):
+        print("Graph validation failed with 1 error(s):")
+        print("- [schema_root] graph root must be an object")
+        return 1
+    errors = validate_graph(graph, args.graph)
     if errors:
         print(f"Graph validation failed with {len(errors)} error(s):")
         for error in errors:

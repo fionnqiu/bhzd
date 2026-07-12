@@ -124,3 +124,27 @@
 - The release-pinned Label Studio document candidates and CVAT v2.51 annotation-format candidate remain `unverified`, `publishable=false`, and draft-only until their exact paths, contents, and licenses are checked directly.
 - KNG nodes marked `curriculum_draft` intentionally have no authority source and cannot support a published/student-visible task until a compatible source or explicitly identified project-policy record is reviewed.
 - Citation permission does not grant asset redistribution; all external media or datasets still require separate license evidence before packaging.
+
+## [2026-07-12 20:55] Harden Task 2 canonical and semantic validation
+
+**Changed files:**
+- `data/graph/graph-catalog.json`
+- `data/graph/annotation-capability-graph.json`
+- `data/graph/annotation-capability-graph.graphml`
+- `scripts/validate_graph.py`
+- `tests/graph/test_graph_integrity.py`
+- `docs/教学内容与图谱数据规范.md`
+- `docs/logs/document-changelog.md`
+
+**Reason:**
+- Resolve code-quality findings for canonical teaching-unit snapshot validation, machine-readable primary task support, supporter data-type compatibility, and malformed node/edge robustness.
+
+**Verification:**
+- Added black-box regressions first; the expected RED was 8 failed and 22 passed for missing primary references, stale/unknown/duplicate teaching links, cross-domain support, uncovered primary knowledge, and non-object records.
+- Rebuilt deterministic artifacts with the same 166 nodes and 240 edges.
+- The targeted graph suite passed 30 tests; the full suite passed 38 tests with bytecode and pytest cache generation disabled.
+- The standalone validator loaded canonical teaching units and passed schema/version, exact counts, IDs, endpoints/types, PRE acyclicity, provenance, task traceability, and scenario compatibility.
+- `git diff --check` returned no whitespace errors.
+
+**Remaining verification:**
+- No new factual claims were introduced. Existing draft-source and human-release gates from the prior entry remain in force.

@@ -7,7 +7,7 @@
   "publication_state": "development",
   "generated_from": "data/graph/graph-catalog.json",
   "generated_by": "scripts/build_graph.py",
-  "catalog_sha256": "48f4681593396bca8fdbd8e5a371b5a0d3ac503d787d883f2fae41477050a64b",
+  "catalog_sha256": "2030f54d12f65ddecc4b65128c30319c3f4e47c026f6c8065ca80173691cd245",
   "source_registry": "data/sources/source-registry.json",
   "teaching_units": "data/curriculum/teaching-units.json",
   "node_type_counts": {
@@ -1915,6 +1915,8 @@
       "data_types": [
         "audio"
       ],
+      "primary_capability_ref": "CAP-AUD-WAKE-COMMAND-001",
+      "primary_knowledge_ref": "KNG-AUD-COMMAND-INTENT-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -1928,6 +1930,8 @@
       "data_types": [
         "audio"
       ],
+      "primary_capability_ref": "CAP-AUD-CONFIG-VALIDATE-001",
+      "primary_knowledge_ref": "KNG-AUD-DATA-BINDING-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -1949,6 +1953,8 @@
       "data_types": [
         "audio"
       ],
+      "primary_capability_ref": "CAP-AUD-EMOTION-PARALING-001",
+      "primary_knowledge_ref": "KNG-AUD-EMOTION-LABEL-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -1962,6 +1968,8 @@
       "data_types": [
         "audio"
       ],
+      "primary_capability_ref": "CAP-AUD-SPEAKER-001",
+      "primary_knowledge_ref": "KNG-AUD-SPEAKER-TURN-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -1975,6 +1983,8 @@
       "data_types": [
         "audio"
       ],
+      "primary_capability_ref": "CAP-AUD-TRANSCRIBE-PUNCT-001",
+      "primary_knowledge_ref": "KNG-AUD-SEGMENT-TIMESTAMP-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -1988,6 +1998,8 @@
       "data_types": [
         "image"
       ],
+      "primary_capability_ref": "CAP-IMG-KEYPOINT-001",
+      "primary_knowledge_ref": "KNG-IMG-KEYPOINT-VISIBILITY-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -2001,6 +2013,8 @@
       "data_types": [
         "image"
       ],
+      "primary_capability_ref": "CAP-IMG-INSTANCE-SEGMENT-001",
+      "primary_knowledge_ref": "KNG-IMG-INSTANCE-ID-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -2014,6 +2028,8 @@
       "data_types": [
         "image"
       ],
+      "primary_capability_ref": "CAP-IMG-BOX-ANNOTATE-001",
+      "primary_knowledge_ref": "KNG-IMG-BOX-TIGHTNESS-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -2027,6 +2043,8 @@
       "data_types": [
         "image"
       ],
+      "primary_capability_ref": "CAP-IMG-POLYGON-001",
+      "primary_knowledge_ref": "KNG-IMG-POLYGON-VERTEX-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -2040,6 +2058,8 @@
       "data_types": [
         "image"
       ],
+      "primary_capability_ref": "CAP-IMG-RECT-VALIDATE-001",
+      "primary_knowledge_ref": "KNG-IMG-RECT-BOUNDS-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -2061,6 +2081,8 @@
       "data_types": [
         "text"
       ],
+      "primary_capability_ref": "CAP-TXT-CLASSIFY-001",
+      "primary_knowledge_ref": "KNG-TXT-SINGLE-MULTI-LABEL-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -2074,6 +2096,8 @@
       "data_types": [
         "text"
       ],
+      "primary_capability_ref": "CAP-TXT-INTENT-001",
+      "primary_knowledge_ref": "KNG-TXT-INTENT-HIERARCHY-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -2087,6 +2111,8 @@
       "data_types": [
         "text"
       ],
+      "primary_capability_ref": "CAP-TXT-LABEL-VALIDATE-001",
+      "primary_knowledge_ref": "KNG-TXT-LABEL-VOCAB-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -2108,6 +2134,8 @@
       "data_types": [
         "text"
       ],
+      "primary_capability_ref": "CAP-TXT-ENTITY-BOUNDARY-001",
+      "primary_knowledge_ref": "KNG-TXT-ENTITY-BOUNDARY-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -2121,6 +2149,8 @@
       "data_types": [
         "text"
       ],
+      "primary_capability_ref": "CAP-TXT-RELATION-001",
+      "primary_knowledge_ref": "KNG-TXT-RELATION-DIRECTION-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -2134,6 +2164,8 @@
       "data_types": [
         "video"
       ],
+      "primary_capability_ref": "CAP-VID-ACTION-EVENT-001",
+      "primary_knowledge_ref": "KNG-VID-EVENT-START-END-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -2147,6 +2179,8 @@
       "data_types": [
         "video"
       ],
+      "primary_capability_ref": "CAP-VID-FRAME-ANNOTATE-001",
+      "primary_knowledge_ref": "KNG-VID-FRAME-ANNOTATION-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -2160,6 +2194,8 @@
       "data_types": [
         "video"
       ],
+      "primary_capability_ref": "CAP-VID-OBJECT-TRACK-001",
+      "primary_knowledge_ref": "KNG-VID-TRACK-CONTINUITY-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -2173,6 +2209,8 @@
       "data_types": [
         "video"
       ],
+      "primary_capability_ref": "CAP-VID-TRACK-VALIDATE-001",
+      "primary_knowledge_ref": "KNG-VID-TRACK-ID-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -2194,6 +2232,8 @@
       "data_types": [
         "video"
       ],
+      "primary_capability_ref": "CAP-VID-EXPORT-QA-001",
+      "primary_knowledge_ref": "KNG-VID-QUALITY-METRICS-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",

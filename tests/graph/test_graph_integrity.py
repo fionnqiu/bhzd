@@ -27,28 +27,6 @@ EXPECTED_NODE_COUNTS = {
     "CERT": 12,
 }
 EXPECTED_RELATIONS = {"PRE", "ISA", "SUP", "REL", "INSCN", "MAPCERT"}
-EXPECTED_TASK_KNOWLEDGE = {
-    "TSK-TXT-LABEL-AUDIT-001": "KNG-TXT-LABEL-VOCAB-001",
-    "TSK-TXT-DOCUMENT-CLASSIFY-001": "KNG-TXT-SINGLE-MULTI-LABEL-001",
-    "TSK-TXT-NER-ANNOTATE-001": "KNG-TXT-ENTITY-BOUNDARY-001",
-    "TSK-TXT-RELATION-LINK-001": "KNG-TXT-RELATION-DIRECTION-001",
-    "TSK-TXT-INTENT-REVIEW-001": "KNG-TXT-INTENT-HIERARCHY-001",
-    "TSK-IMG-RECT-AUDIT-001": "KNG-IMG-RECT-BOUNDS-001",
-    "TSK-IMG-OBJECT-BOX-001": "KNG-IMG-BOX-TIGHTNESS-001",
-    "TSK-IMG-POLYGON-TRACE-001": "KNG-IMG-POLYGON-VERTEX-001",
-    "TSK-IMG-KEYPOINT-MARK-001": "KNG-IMG-KEYPOINT-VISIBILITY-001",
-    "TSK-IMG-MASK-REVIEW-001": "KNG-IMG-INSTANCE-ID-001",
-    "TSK-AUD-CONFIG-AUDIT-001": "KNG-AUD-DATA-BINDING-001",
-    "TSK-AUD-TRANSCRIPT-ALIGN-001": "KNG-AUD-SEGMENT-TIMESTAMP-001",
-    "TSK-AUD-SPEAKER-DIARIZE-001": "KNG-AUD-SPEAKER-TURN-001",
-    "TSK-AUD-EMOTION-EVENT-001": "KNG-AUD-EMOTION-LABEL-001",
-    "TSK-AUD-COMMAND-SEGMENT-001": "KNG-AUD-COMMAND-INTENT-001",
-    "TSK-VID-TRACK-ID-AUDIT-001": "KNG-VID-TRACK-ID-001",
-    "TSK-VID-FRAME-LABEL-001": "KNG-VID-FRAME-ANNOTATION-001",
-    "TSK-VID-OBJECT-TRACK-001": "KNG-VID-TRACK-CONTINUITY-001",
-    "TSK-VID-ACTION-EVENT-001": "KNG-VID-EVENT-START-END-001",
-    "TSK-VID-TRACK-QA-001": "KNG-VID-QUALITY-METRICS-001",
-}
 REQUIRED_PATHS = (
     CATALOG_PATH,
     GRAPH_JSON_PATH,
@@ -233,9 +211,15 @@ def test_every_task_is_traceable_to_capability_and_direct_knowledge(graph):
     assert len(tasks) == 20
     for task in tasks:
         supporters = inbound_support[task["id"]]
-        assert any(node["type"] == "CAP" for node in supporters), task["id"]
-        knowledge_ids = {node["id"] for node in supporters if node["type"] == "KNG"}
-        assert EXPECTED_TASK_KNOWLEDGE[task["id"]] in knowledge_ids, task["id"]
+        supporter_ids = {node["id"] for node in supporters}
+        primary_capability = nodes_by_id[task["primary_capability_ref"]]
+        primary_knowledge = nodes_by_id[task["primary_knowledge_ref"]]
+        assert primary_capability["type"] == "CAP"
+        assert primary_knowledge["type"] == "KNG"
+        assert task["primary_capability_ref"] in supporter_ids
+        assert task["primary_knowledge_ref"] in supporter_ids
+        assert set(task["data_types"]) <= set(primary_capability["data_types"])
+        assert set(task["data_types"]) <= set(primary_knowledge["data_types"])
 
 
 def test_knowledge_source_refs_match_claim_scope(graph):
@@ -455,6 +439,50 @@ def corrupt_published_task_with_unverified_source(graph):
     task["student_visible"] = True
 
 
+def corrupt_stale_teaching_unit_snapshot(graph):
+    task = next(node for node in graph["nodes"] if node.get("teaching_unit_links"))
+    task["teaching_unit_links"][0]["review_status"] = "reviewed"
+
+
+def corrupt_unknown_teaching_unit_link(graph):
+    task = next(node for node in graph["nodes"] if node.get("teaching_unit_links"))
+    task["teaching_unit_links"][0]["unit_id"] = "TU-UNKNOWN-001"
+
+
+def corrupt_duplicate_teaching_unit_link(graph):
+    task = next(node for node in graph["nodes"] if node.get("teaching_unit_links"))
+    task["teaching_unit_links"].append(copy.deepcopy(task["teaching_unit_links"][0]))
+
+
+def corrupt_task_support_domain(graph):
+    nodes_by_id = {node["id"]: node for node in graph["nodes"]}
+    task = nodes_by_id["TSK-AUD-CONFIG-AUDIT-001"]
+    for edge in graph["edges"]:
+        if edge["relation"] != "SUP" or edge["target"] != task["id"]:
+            continue
+        if nodes_by_id[edge["source"]]["type"] == "CAP":
+            edge["source"] = "CAP-TXT-LABEL-VALIDATE-001"
+        elif nodes_by_id[edge["source"]]["type"] == "KNG":
+            edge["source"] = "KNG-TXT-LABEL-VOCAB-001"
+    task["primary_capability_ref"] = "CAP-TXT-LABEL-VALIDATE-001"
+    task["primary_knowledge_ref"] = "KNG-TXT-LABEL-VOCAB-001"
+
+
+def corrupt_task_primary_knowledge(graph):
+    task = next(
+        node for node in graph["nodes"] if node["id"] == "TSK-AUD-CONFIG-AUDIT-001"
+    )
+    task["primary_knowledge_ref"] = "KNG-AUD-SPEAKER-TURN-001"
+
+
+def corrupt_non_object_node(graph):
+    graph["nodes"][0] = 1
+
+
+def corrupt_non_object_edge(graph):
+    graph["edges"][0] = 1
+
+
 def corrupt_scenario_compatibility(graph):
     edge = next(edge for edge in graph["edges"] if edge["relation"] == "INSCN")
     edge["metadata"]["data_types"] = ["unsupported-type"]
@@ -482,6 +510,13 @@ def corrupt_scenario_base_rule_data_type(graph):
         (corrupt_knowledge_source_scope, "knowledge_source_scope"),
         (corrupt_publication_index_gate, "publication_gate"),
         (corrupt_published_task_with_unverified_source, "task_traceability"),
+        (corrupt_stale_teaching_unit_snapshot, "teaching_unit_snapshot"),
+        (corrupt_unknown_teaching_unit_link, "teaching_unit_unknown"),
+        (corrupt_duplicate_teaching_unit_link, "teaching_unit_duplicate"),
+        (corrupt_task_support_domain, "task_support_data_type"),
+        (corrupt_task_primary_knowledge, "task_primary_knowledge"),
+        (corrupt_non_object_node, "schema_node_item"),
+        (corrupt_non_object_edge, "schema_edge_item"),
         (corrupt_scenario_compatibility, "inscn_data_type"),
         (corrupt_scenario_base_rule_data_type, "inscn_base_data_type"),
     ],
