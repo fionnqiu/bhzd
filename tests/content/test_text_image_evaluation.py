@@ -15,6 +15,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 TEXT_UNITS_PATH = ROOT / "data" / "curriculum" / "text" / "teaching-units.json"
 IMAGE_UNITS_PATH = ROOT / "data" / "curriculum" / "image" / "teaching-units.json"
+AUDIO_UNITS_ROOT = ROOT / "data" / "curriculum" / "audio"
 CENTRAL_UNITS_PATH = ROOT / "data" / "curriculum" / "teaching-units.json"
 LEGACY_UNITS_PATH = (
     ROOT / "data" / "curriculum" / "legacy" / "teaching-units.json"
@@ -107,6 +108,7 @@ def copy_curriculum_sources(destination: Path) -> Path:
     curriculum_root = destination / "curriculum"
     shutil.copytree(TEXT_UNITS_PATH.parent, curriculum_root / "text")
     shutil.copytree(IMAGE_UNITS_PATH.parent, curriculum_root / "image")
+    shutil.copytree(AUDIO_UNITS_ROOT, curriculum_root / "audio")
     shutil.copytree(LEGACY_UNITS_PATH.parent, curriculum_root / "legacy")
     return curriculum_root
 
@@ -221,7 +223,7 @@ def test_evaluator_supports_exact_ordered_and_allowed_answer_scoring():
     text = load_json(TEXT_UNITS_PATH)
     image = load_json(IMAGE_UNITS_PATH)
 
-    exact_unit = unit_by_id(central, "TU-AUDIO-DATA-BINDING-001")
+    exact_unit = unit_by_id(central, "TU-TEXT-DOCUMENT-CLASSIFY-001")
     exact = evaluator.evaluate_unit(exact_unit, exact_unit["exercise"]["answer"])
     assert exact["score"] == 1.0
     assert exact["passed"] is True
@@ -633,20 +635,12 @@ def test_curriculum_builder_is_deterministic_without_reading_central_output(tmp_
 
 def test_curriculum_domain_sources_override_legacy_by_domain(tmp_path):
     curriculum_root = copy_curriculum_sources(tmp_path)
-    legacy = load_json(curriculum_root / "legacy" / "teaching-units.json")
-    audio_unit = copy.deepcopy(
-        next(unit for unit in legacy["units"] if unit["data_type"] == "audio")
-    )
+    audio_path = curriculum_root / "audio" / "01-foundations.json"
+    audio_document = load_json(audio_path)
+    audio_unit = audio_document["units"][0]
     audio_unit["title"] = "显式音频域事实源"
-    audio_path = curriculum_root / "audio" / "teaching-units.json"
-    audio_path.parent.mkdir(parents=True)
     audio_path.write_text(
-        json.dumps(
-            {"schema_version": "1.1.0", "data_type": "audio", "units": [audio_unit]},
-            ensure_ascii=False,
-            indent=2,
-        )
-        + "\n",
+        json.dumps(audio_document, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     output = tmp_path / "override.json"
@@ -662,6 +656,9 @@ def test_curriculum_domain_sources_override_legacy_by_domain(tmp_path):
     assert result.returncode == 0, result.stderr or result.stdout
     rebuilt = load_json(output)
     assert unit_by_id(rebuilt, audio_unit["id"])["title"] == "显式音频域事实源"
+    assert not any(
+        unit["id"] == "TU-AUDIO-DATA-BINDING-001" for unit in rebuilt["units"]
+    )
     assert any(unit["data_type"] == "video" for unit in rebuilt["units"])
 
 
@@ -694,6 +691,7 @@ def test_curriculum_builder_rejects_duplicate_ids_and_noncanonical_domain_order(
     curriculum_root = tmp_path / "curriculum"
     shutil.copytree(TEXT_UNITS_PATH.parent, curriculum_root / "text")
     shutil.copytree(IMAGE_UNITS_PATH.parent, curriculum_root / "image")
+    shutil.copytree(AUDIO_UNITS_ROOT, curriculum_root / "audio")
 
     image_path = curriculum_root / "image" / "teaching-units.json"
     image = load_json(image_path)
@@ -717,6 +715,7 @@ def test_curriculum_builder_rejects_duplicate_ids_and_noncanonical_domain_order(
     shutil.rmtree(curriculum_root)
     shutil.copytree(TEXT_UNITS_PATH.parent, curriculum_root / "text")
     shutil.copytree(IMAGE_UNITS_PATH.parent, curriculum_root / "image")
+    shutil.copytree(AUDIO_UNITS_ROOT, curriculum_root / "audio")
     text_path = curriculum_root / "text" / "teaching-units.json"
     text = load_json(text_path)
     text["units"].reverse()

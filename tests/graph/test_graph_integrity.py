@@ -87,6 +87,16 @@ EXPECTED_POLICY_OVERLAYS = {
     "KNG-IMG-KEYPOINT-VISIBILITY-001": "image_keypoint_visibility_policy",
     "KNG-IMG-INSTANCE-ID-001": "image_instance_mask_policy",
     "KNG-IMG-OCCLUSION-TRUNCATION-001": "image_occlusion_policy",
+    "KNG-AUD-SAMPLE-RATE-CHANNEL-001": "audio_sample_format_policy",
+    "KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001": "audio_transcript_normalization_policy",
+    "KNG-AUD-PUNCTUATION-001": "audio_punctuation_deterministic_policy",
+    "KNG-AUD-SPEAKER-TURN-001": "audio_speaker_turn_policy",
+    "KNG-AUD-LANGUAGE-DIALECT-001": "audio_language_dialect_label_policy",
+    "KNG-AUD-EMOTION-LABEL-001": "audio_emotion_label_set_policy",
+    "KNG-AUD-PARALINGUISTIC-EVENT-001": "audio_paralinguistic_event_policy",
+    "KNG-AUD-WAKEWORD-BOUNDARY-001": "audio_wakeword_detection_policy",
+    "KNG-AUD-COMMAND-INTENT-001": "audio_command_intent_policy",
+    "KNG-AUD-SEGMENT-TIMESTAMP-001": "audio_segment_alignment_policy",
 }
 REQUIRED_PATHS = (
     CATALOG_PATH,
@@ -367,7 +377,12 @@ def test_teaching_unit_links_respect_publication_gate(graph):
     assert {
         "TU-TEXT-LABEL-VOCAB-001",
         "TU-IMAGE-RECT-BOUNDS-001",
-        "TU-AUDIO-DATA-BINDING-001",
+        "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001",
+        "TU-AUDIO-SPEAKER-TURNS-001",
+        "TU-AUDIO-LANGUAGE-DIALECT-001",
+        "TU-AUDIO-EMOTION-PARALINGUISTICS-001",
+        "TU-AUDIO-WAKE-COMMAND-WORDS-001",
+        "TU-AUDIO-SEGMENTATION-ALIGNMENT-001",
         "TU-VIDEO-TRACK-ID-001",
     } <= linked_units
     consumable_units = {

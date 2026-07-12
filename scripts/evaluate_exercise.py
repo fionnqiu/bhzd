@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -232,8 +233,42 @@ def _diagnostic_result(
     return None
 
 
-def evaluate_unit(unit: dict[str, Any], submission: Any) -> dict[str, Any]:
+def select_exercise(
+    unit: dict[str, Any], exercise_id: str | None = None
+) -> dict[str, Any]:
+    """Return a unit view whose primary exercise is the requested variant."""
+    primary = unit.get("exercise")
+    if not isinstance(primary, dict):
+        raise ValueError("unit.exercise must be an object")
+    if exercise_id is None:
+        return unit
+    _require_string(exercise_id, "exercise_id")
+
+    variants = unit.get("practice_variants", [])
+    if not isinstance(variants, list) or any(
+        not isinstance(variant, dict) for variant in variants
+    ):
+        raise ValueError("unit.practice_variants must be a list of objects")
+    candidates = [primary, *variants]
+    matches = [
+        exercise
+        for exercise in candidates
+        if exercise.get("exercise_id") == exercise_id
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            f"expected exactly one exercise_id {exercise_id!r}, found {len(matches)}"
+        )
+    selected = dict(unit)
+    selected["exercise"] = matches[0]
+    return selected
+
+
+def evaluate_unit(
+    unit: dict[str, Any], submission: Any, exercise_id: str | None = None
+) -> dict[str, Any]:
     """Evaluate one submission without time, randomness, I/O, or global state."""
+    unit = select_exercise(unit, exercise_id)
     result = _base_result(unit)
     exercise = unit["exercise"]
     evaluation = exercise["evaluation"]
@@ -325,6 +360,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--unit-file", type=Path, required=True)
     parser.add_argument("--unit-id")
+    parser.add_argument("--exercise-id")
     parser.add_argument("--submission", required=True, help="Submission as JSON")
     return parser.parse_args()
 
@@ -333,7 +369,10 @@ def main() -> int:
     args = parse_args()
     unit = load_unit(args.unit_file, args.unit_id)
     submission = json.loads(args.submission)
-    print(serialize_result(evaluate_unit(unit, submission)))
+    output = serialize_result(
+        evaluate_unit(unit, submission, exercise_id=args.exercise_id)
+    )
+    sys.stdout.buffer.write((output + "\n").encode("utf-8"))
     return 0
 
 

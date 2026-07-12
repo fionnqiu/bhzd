@@ -22,8 +22,8 @@ DEFAULT_LEGACY_SNAPSHOT = (
 DEFAULT_SOURCE_REGISTRY = ROOT / "data" / "sources" / "source-registry.json"
 DEFAULT_REVIEW_REGISTRY = ROOT / "data" / "reviews" / "content-review-registry.json"
 DOMAIN_ORDER = ("text", "image", "audio", "video")
-TASK3_SOURCE_DOMAINS = {"text", "image"}
-TASK3_LEGACY_FALLBACK_DOMAINS = {"audio", "video"}
+AUTHORED_SOURCE_DOMAINS = {"text", "image", "audio"}
+LEGACY_FALLBACK_DOMAINS = {"video"}
 REVIEWED_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
 CONTENT_DIGEST_PATTERN = re.compile(r"[0-9a-f]{64}")
 LIFECYCLE_FIELDS = {"review_status", "student_visible", "review_records"}
@@ -72,7 +72,7 @@ def _load_legacy_snapshot(path: Path) -> list[dict[str, Any]]:
     ]:
         raise ValueError(f"{path} snapshot_version must be a non-empty string")
     domains = document.get("domains")
-    if domains != sorted(TASK3_LEGACY_FALLBACK_DOMAINS):
+    if domains != ["audio", "video"]:
         raise ValueError(f"{path} domains must contain audio and video")
     units = document.get("units")
     if not isinstance(units, list) or not units:
@@ -84,7 +84,7 @@ def _load_legacy_snapshot(path: Path) -> list[dict[str, Any]]:
         unit_id = unit.get("id")
         if not isinstance(unit_id, str) or not unit_id:
             raise ValueError(f"{path} contains a teaching unit without an ID")
-        if unit.get("data_type") not in TASK3_LEGACY_FALLBACK_DOMAINS:
+        if unit.get("data_type") not in {"audio", "video"}:
             raise ValueError(f"{unit_id} has invalid legacy data_type")
         ids.append(unit_id)
     duplicates = sorted(
@@ -255,7 +255,7 @@ def validate_publication_contract(
         if (
             review_refs is None
             and status == "draft"
-            and unit.get("data_type") in TASK3_LEGACY_FALLBACK_DOMAINS
+            and unit.get("data_type") in LEGACY_FALLBACK_DOMAINS
         ):
             review_refs = []
         if not isinstance(review_refs, list) or any(
@@ -317,15 +317,21 @@ def build_curriculum(
     all_units: list[dict[str, Any]] = []
     loaded_domains: set[str] = set()
     for domain in DOMAIN_ORDER:
-        domain_path = curriculum_root / domain / "teaching-units.json"
-        if domain_path.exists():
-            all_units.extend(_load_domain(domain_path, domain))
+        domain_root = curriculum_root / domain
+        if domain == "audio":
+            domain_paths = sorted(domain_root.glob("*.json"))
+        else:
+            canonical_path = domain_root / "teaching-units.json"
+            domain_paths = [canonical_path] if canonical_path.exists() else []
+        if domain_paths:
+            for domain_path in domain_paths:
+                all_units.extend(_load_domain(domain_path, domain))
             loaded_domains.add(domain)
             continue
-        if domain in TASK3_SOURCE_DOMAINS:
-            raise ValueError(f"missing Task 3 domain source: {domain_path}")
+        if domain in AUTHORED_SOURCE_DOMAINS:
+            raise ValueError(f"missing authored domain source: {domain_root}")
 
-    fallback_domains = TASK3_LEGACY_FALLBACK_DOMAINS - loaded_domains
+    fallback_domains = LEGACY_FALLBACK_DOMAINS - loaded_domains
     all_units.extend(
         unit
         for unit in legacy_units
@@ -381,10 +387,10 @@ def main() -> int:
         load_json(args.review_registry),
     )
     write_document(document, args.output)
-    fallback = ", ".join(sorted(TASK3_LEGACY_FALLBACK_DOMAINS))
+    fallback = ", ".join(sorted(LEGACY_FALLBACK_DOMAINS))
     print(
         f"Built curriculum index: {len(document['units'])} units "
-        f"(Task 3 legacy fallback domains: {fallback})"
+        f"(legacy fallback domains: {fallback})"
     )
     print(f"Output: {args.output}")
     return 0

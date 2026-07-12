@@ -486,7 +486,7 @@
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-SPEECH-COMMANDS-PAPER-001"]</data>
-      <data key="n6">{"claim_basis":"external_reference","claim_type":"audio_command_classification"}</data>
+      <data key="n6">{"claim_basis":"external_reference","claim_type":"audio_command_classification","policy_overlays":[{"claim_type":"audio_command_intent_policy","description":"本项目命令意图只从题目配置集合选择，未配置词不自行扩展为新类别。","overlay_id":"POLICY-AUD-COMMAND-INTENT-001","source_refs":["SRC-POLICY-AUDIO-TASK4-001"],"version":"1.0.0"}]}</data>
     </node>
     <node id="KNG-AUD-DATA-BINDING-001">
       <data key="n0">KNG</data>
@@ -504,7 +504,7 @@
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-W3C-EMOTIONML-001"]</data>
-      <data key="n6">{"claim_basis":"external_reference","claim_type":"emotion_representation"}</data>
+      <data key="n6">{"claim_basis":"external_reference","claim_type":"emotion_representation","policy_overlays":[{"claim_type":"audio_emotion_label_set_policy","description":"本项目练习使用声明的离散情感标签集；EmotionML 本身不替本项目决定类别。","overlay_id":"POLICY-AUD-EMOTION-LABEL-001","source_refs":["SRC-POLICY-AUDIO-TASK4-001"],"version":"1.0.0"}]}</data>
     </node>
     <node id="KNG-AUD-EXPORT-FORMAT-001">
       <data key="n0">KNG</data>
@@ -522,7 +522,7 @@
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-IETF-RFC5646-001"]</data>
-      <data key="n6">{"claim_basis":"external_reference","claim_type":"language_tag_syntax"}</data>
+      <data key="n6">{"claim_basis":"external_reference","claim_type":"language_tag_syntax","policy_overlays":[{"claim_type":"audio_language_dialect_label_policy","description":"本项目只允许题目声明的 BCP 47 标签集，并将无法可靠细分的口音归入声明的回退标签。","overlay_id":"POLICY-AUD-LANGUAGE-DIALECT-001","source_refs":["SRC-POLICY-AUDIO-TASK4-001"],"version":"1.0.0"}]}</data>
     </node>
     <node id="KNG-AUD-NOISE-OVERLAP-001">
       <data key="n0">KNG</data>
@@ -540,7 +540,7 @@
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"claim_basis":"curriculum_draft","claim_type":"audio_paralinguistic_policy"}</data>
+      <data key="n6">{"claim_basis":"curriculum_draft","claim_type":"audio_paralinguistic_policy","policy_overlays":[{"claim_type":"audio_paralinguistic_event_policy","description":"本项目将笑声、叹气等事件与话语情感分字段记录，并仅使用题目列出的事件标签。","overlay_id":"POLICY-AUD-PARALINGUISTIC-EVENT-001","source_refs":["SRC-POLICY-AUDIO-TASK4-001"],"version":"1.0.0"}]}</data>
     </node>
     <node id="KNG-AUD-PUNCTUATION-001">
       <data key="n0">KNG</data>
@@ -549,7 +549,7 @@
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"claim_basis":"curriculum_draft","claim_type":"audio_punctuation_policy"}</data>
+      <data key="n6">{"claim_basis":"curriculum_draft","claim_type":"audio_punctuation_policy","policy_overlays":[{"claim_type":"audio_punctuation_deterministic_policy","description":"本项目练习按给定语义句界提交全角标点，禁止仅按停顿时长机械插入。","overlay_id":"POLICY-AUD-PUNCTUATION-001","source_refs":["SRC-POLICY-AUDIO-TASK4-001"],"version":"1.0.0"}]}</data>
     </node>
     <node id="KNG-AUD-SAMPLE-RATE-CHANNEL-001">
       <data key="n0">KNG</data>
@@ -558,7 +558,7 @@
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"claim_basis":"curriculum_draft","claim_type":"audio_sample_format"}</data>
+      <data key="n6">{"claim_basis":"curriculum_draft","claim_type":"audio_sample_format","policy_overlays":[{"claim_type":"audio_sample_format_policy","description":"本项目演示资产固定使用 16 kHz、单声道、16 位 PCM WAV，并以文件实测元数据为准。","overlay_id":"POLICY-AUD-SAMPLE-FORMAT-001","source_refs":["SRC-POLICY-AUDIO-TASK4-001"],"version":"1.0.0"}]}</data>
     </node>
     <node id="KNG-AUD-SEGMENT-TIMESTAMP-001">
       <data key="n0">KNG</data>
@@ -567,7 +567,7 @@
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-KALDI-DATA-PREP-001","SRC-PRAAT-TEXTGRID-001"]</data>
-      <data key="n6">{"claim_basis":"external_reference","claim_type":"audio_segment_timing"}</data>
+      <data key="n6">{"claim_basis":"external_reference","claim_type":"audio_segment_timing","policy_overlays":[{"claim_type":"audio_segment_alignment_policy","description":"本项目以秒为单位、保留三位小数，并要求区间有序、非重叠且对齐题目给出的音调边界。","overlay_id":"POLICY-AUD-SEGMENT-ALIGNMENT-001","source_refs":["SRC-POLICY-AUDIO-TASK4-001"],"version":"1.0.0"}]}</data>
     </node>
     <node id="KNG-AUD-SPEAKER-TURN-001">
       <data key="n0">KNG</data>
@@ -576,7 +576,7 @@
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-NIST-SCTK-FORMATS-001"]</data>
-      <data key="n6">{"claim_basis":"external_reference","claim_type":"audio_speaker_segments"}</data>
+      <data key="n6">{"claim_basis":"external_reference","claim_type":"audio_speaker_segments","policy_overlays":[{"claim_type":"audio_speaker_turn_policy","description":"本项目使用匿名 SPEAKER_01 等标签并在同一录音内保持身份一致。","overlay_id":"POLICY-AUD-SPEAKER-TURN-001","source_refs":["SRC-POLICY-AUDIO-TASK4-001"],"version":"1.0.0"}]}</data>
     </node>
     <node id="KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001">
       <data key="n0">KNG</data>
@@ -585,7 +585,7 @@
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"claim_basis":"curriculum_draft","claim_type":"audio_orthography_policy"}</data>
+      <data key="n6">{"claim_basis":"curriculum_draft","claim_type":"audio_orthography_policy","policy_overlays":[{"claim_type":"audio_transcript_normalization_policy","description":"本项目练习保留可听口语词并使用声明的不可听标记，不自行补写未听见内容。","overlay_id":"POLICY-AUD-TRANSCRIPT-NORMALIZATION-001","source_refs":["SRC-POLICY-AUDIO-TASK4-001"],"version":"1.0.0"}]}</data>
     </node>
     <node id="KNG-AUD-WAKEWORD-BOUNDARY-001">
       <data key="n0">KNG</data>
@@ -594,7 +594,7 @@
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"claim_basis":"curriculum_draft","claim_type":"audio_wakeword_boundary_policy"}</data>
+      <data key="n6">{"claim_basis":"curriculum_draft","claim_type":"audio_wakeword_boundary_policy","policy_overlays":[{"claim_type":"audio_wakeword_detection_policy","description":"本项目练习要求唤醒词完整命中且边界误差不超过题目声明阈值。","overlay_id":"POLICY-AUD-WAKEWORD-DETECTION-001","source_refs":["SRC-POLICY-AUDIO-TASK4-001"],"version":"1.0.0"}]}</data>
     </node>
     <node id="KNG-CORE-ASSET-AUTH-001">
       <data key="n0">KNG</data>
@@ -1332,7 +1332,7 @@
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-AUD-WAKE-COMMAND-001","primary_knowledge_ref":"KNG-AUD-COMMAND-INTENT-001","student_visible":false,"teaching_unit_links":[]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-AUD-WAKE-COMMAND-001","primary_knowledge_ref":"KNG-AUD-COMMAND-INTENT-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-AUDIO-WAKE-COMMAND-WORDS-001"}]}</data>
     </node>
     <node id="TSK-AUD-CONFIG-AUDIT-001">
       <data key="n0">TSK</data>
@@ -1341,7 +1341,7 @@
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-AUD-CONFIG-VALIDATE-001","primary_knowledge_ref":"KNG-AUD-DATA-BINDING-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-AUDIO-DATA-BINDING-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-AUD-CONFIG-VALIDATE-001","primary_knowledge_ref":"KNG-AUD-DATA-BINDING-001","student_visible":false,"teaching_unit_links":[]}</data>
     </node>
     <node id="TSK-AUD-EMOTION-EVENT-001">
       <data key="n0">TSK</data>
@@ -1350,7 +1350,7 @@
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-AUD-EMOTION-PARALING-001","primary_knowledge_ref":"KNG-AUD-EMOTION-LABEL-001","student_visible":false,"teaching_unit_links":[]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-AUD-EMOTION-PARALING-001","primary_knowledge_ref":"KNG-AUD-EMOTION-LABEL-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-AUDIO-EMOTION-PARALINGUISTICS-001"}]}</data>
     </node>
     <node id="TSK-AUD-SPEAKER-DIARIZE-001">
       <data key="n0">TSK</data>
@@ -1359,16 +1359,16 @@
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-AUD-SPEAKER-001","primary_knowledge_ref":"KNG-AUD-SPEAKER-TURN-001","student_visible":false,"teaching_unit_links":[]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-AUD-SPEAKER-001","primary_knowledge_ref":"KNG-AUD-SPEAKER-TURN-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-AUDIO-SPEAKER-TURNS-001"}]}</data>
     </node>
     <node id="TSK-AUD-TRANSCRIPT-ALIGN-001">
       <data key="n0">TSK</data>
       <data key="n1">转写并对齐语音</data>
-      <data key="n2">提交规范转写、标点和对应时间区间。</data>
+      <data key="n2">提交规范转写、语种标记、标点和对应时间区间。</data>
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-AUD-TRANSCRIBE-PUNCT-001","primary_knowledge_ref":"KNG-AUD-SEGMENT-TIMESTAMP-001","student_visible":false,"teaching_unit_links":[]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-AUD-TRANSCRIBE-PUNCT-001","primary_knowledge_ref":"KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-AUDIO-LANGUAGE-DIALECT-001"},{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-AUDIO-SEGMENTATION-ALIGNMENT-001"},{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001"}]}</data>
     </node>
     <node id="TSK-IMG-KEYPOINT-MARK-001">
       <data key="n0">TSK</data>
@@ -2020,12 +2020,12 @@
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0104" source="KNG-AUD-SEGMENT-TIMESTAMP-001" target="TSK-AUD-TRANSCRIPT-ALIGN-001">
+    <edge id="EDGE-0104" source="KNG-AUD-SPEAKER-TURN-001" target="TSK-AUD-SPEAKER-DIARIZE-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0105" source="KNG-AUD-SPEAKER-TURN-001" target="TSK-AUD-SPEAKER-DIARIZE-001">
+    <edge id="EDGE-0105" source="KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001" target="TSK-AUD-TRANSCRIPT-ALIGN-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>

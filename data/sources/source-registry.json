@@ -273,6 +273,58 @@
       "status": "verified"
     },
     {
+      "source_id": "SRC-POLICY-AUDIO-TASK4-001",
+      "data_type": "audio",
+      "source_kind": "project_policy",
+      "authority_scope": "local_project_policy_only",
+      "supported_claim_types": [
+        "audio_transcript_normalization_policy",
+        "audio_punctuation_deterministic_policy",
+        "audio_speaker_turn_policy",
+        "audio_language_dialect_label_policy",
+        "audio_emotion_label_set_policy",
+        "audio_paralinguistic_event_policy",
+        "audio_wakeword_detection_policy",
+        "audio_command_intent_policy",
+        "audio_segment_alignment_policy",
+        "audio_sample_format_policy"
+      ],
+      "name": "标航智导 Task 4 语音练习本地判定策略",
+      "author_or_organization": "标航智导项目",
+      "version_or_publication_date": "Draft 1.0.0, 2026-07-12",
+      "original_url_or_local_archive": "data/curriculum/audio/",
+      "access_date": "2026-07-12",
+      "license_or_authorization": {
+        "license_id": "Project-internal-draft; no external publication grant",
+        "license_url": "https://choosealicense.com/no-permission/",
+        "student_use_allowed": true,
+        "publishable": true,
+        "review_note": "The project owner authorized Task 4 development work. This local policy record does not grant human release, claim independent content review, or represent an external standard."
+      },
+      "publication_scope": "development_only",
+      "human_release_allowed": false,
+      "usage_rights": {
+        "citation_allowed": true,
+        "asset_redistribution_allowed": false,
+        "note": "Internal traceability is allowed; external authority, third-party asset redistribution, and student release are not claimed."
+      },
+      "citation_locations": [
+        "Task 4 audio unit rule_explanation.project_policy",
+        "Task 4 deterministic exercise diagnostic rules",
+        "Task 4 audio KNG policy_overlays"
+      ],
+      "verification": {
+        "method": "local_project_file_and_owner_task_approval_check",
+        "content_path_verified": true,
+        "owner_development_scope_recorded": true,
+        "independent_content_review_completed": false,
+        "verified_at": "2026-07-12"
+      },
+      "verified_by": "Codex local project path and approved Task 4 scope check",
+      "verified_at": "2026-07-12",
+      "status": "verified"
+    },
+    {
       "source_id": "SRC-NIST-SCTK-FORMATS-001",
       "data_type": "audio",
       "source_kind": "external_reference",
