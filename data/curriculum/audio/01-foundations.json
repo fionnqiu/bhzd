@@ -36,7 +36,7 @@
             ]
           },
           {
-            "statement": "IANA Language Subtag Registry 提供已登记子标签的查询事实，但不提供基于声音判断方言或混码的项目判定规则。",
+            "statement": "IANA Language Subtag Registry 提供已登记子标签的查询事实，例如普通话语言子标签 cmn，但不提供基于声音判断方言或混码的项目判定规则。",
             "source_refs": [
               "SRC-IANA-LANGUAGE-SUBTAG-001"
             ]
@@ -63,7 +63,7 @@
               "mixed",
               "und",
               "yue",
-              "zh-CN"
+              "cmn"
             ]
           },
           "expected": {
@@ -73,6 +73,7 @@
           "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
           "asset_authorization": {
             "type": "self-authored",
+            "representation": "structured_fixture",
             "student_use_allowed": true
           }
         }
@@ -92,10 +93,10 @@
               "mixed",
               "und",
               "yue",
-              "zh-CN"
+              "cmn"
             ],
             "submitted": {
-              "language_tag": "zh-CN"
+              "language_tag": "cmn"
             }
           },
           "expected": {
@@ -106,6 +107,7 @@
           "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
           "asset_authorization": {
             "type": "self-authored",
+            "representation": "structured_fixture",
             "student_use_allowed": true
           }
         }
@@ -120,7 +122,7 @@
             "mixed",
             "und",
             "yue",
-            "zh-CN"
+            "cmn"
           ],
           "policy_version": "1.0.0",
           "segments": [
@@ -152,7 +154,7 @@
           "labels": [
             {
               "segment_id": "LANG-01",
-              "language_tag": "zh-CN"
+              "language_tag": "cmn"
             },
             {
               "segment_id": "LANG-02",
@@ -166,9 +168,18 @@
         },
         "evaluation": {
           "method": "ordered_exact_match",
-          "version": "1.0.0",
+          "version": "1.1.0",
+          "response_space": {
+            "type": "finite_closed_set",
+            "recognized_submissions": [
+              "standard_answer",
+              "diagnostic_rules"
+            ],
+            "unmatched_behavior": "manual_review"
+          },
           "normalization": "JSON 对象键顺序忽略；labels 数组顺序、segment_id 和 language_tag 必须完全一致；标签区分大小写且不自动 trim。",
           "diagnostic_precedence": "diagnostic_rules 按数组顺序严格匹配，依次优先处理未配置标签、可听证据不符、混码折叠、证据不足时过度分类；首个命中规则生效，之后才匹配标准答案，最后使用 incorrect_feedback。",
+          "manual_review_on_unmatched": true,
           "diagnostic_rules": [
             {
               "submission": {
@@ -190,7 +201,7 @@
               "error_type": "language_tag_not_configured",
               "feedback": "zh-Hans-CN 即使可作为语言标签形式，也不在本题 configured_labels 中。",
               "remediation": [
-                "先使用语种方言标签卡核对 configured_labels，再原样选择 zh-CN。"
+                "先使用语种方言标签卡核对 configured_labels，再原样选择 cmn。"
               ]
             },
             {
@@ -213,7 +224,7 @@
               "error_type": "language_evidence_mismatch",
               "feedback": "LANG-01 的可听证据是普通话，不支持 yue。",
               "remediation": [
-                "只依据 audible_cues 重新选择 zh-CN，不使用说话人背景信息推断。"
+                "只依据 audible_cues 重新选择 cmn，不使用说话人背景信息推断。"
               ]
             },
             {
@@ -221,11 +232,11 @@
                 "labels": [
                   {
                     "segment_id": "LANG-01",
-                    "language_tag": "zh-CN"
+                    "language_tag": "cmn"
                   },
                   {
                     "segment_id": "LANG-02",
-                    "language_tag": "zh-CN"
+                    "language_tag": "cmn"
                   },
                   {
                     "segment_id": "LANG-03",
@@ -234,7 +245,7 @@
                 ]
               },
               "error_type": "code_switch_collapsed",
-              "feedback": "LANG-02 同时包含可辨识英语和普通话，不能折叠为单一 zh-CN。",
+              "feedback": "LANG-02 同时包含可辨识英语和普通话，不能折叠为单一 cmn。",
               "remediation": [
                 "在语种方言标签卡中复核 mixed 规则，并将 LANG-02 改为 mixed。"
               ]
@@ -244,7 +255,7 @@
                 "labels": [
                   {
                     "segment_id": "LANG-01",
-                    "language_tag": "zh-CN"
+                    "language_tag": "cmn"
                   },
                   {
                     "segment_id": "LANG-02",
@@ -265,14 +276,14 @@
           ],
           "correct_feedback": "三段语音均按可听证据、混码规则和不确定性规则完成标注。",
           "incorrect_feedback": {
-            "error_type": "language_evidence_mismatch",
-            "feedback": "至少一个语段的标签未同时满足配置集合和可听证据规则。",
+            "error_type": "unclassified_submission",
+            "feedback": "提交未命中标准答案或任何已声明诊断规则，无法安全归入某个具体错误。",
             "remediation": [
-              "依次检查标签是否配置、声音证据是否匹配、是否混码以及证据是否充分。"
+              "按有限响应集合重新提交；若多个错误同时存在，保留证据并请求人工复核。"
             ]
           }
         },
-        "data_version": "1.0.0",
+        "data_version": "1.1.0",
         "pass_condition": "score == 1.0",
         "capability_refs": [
           "CAP-AUD-LANGUAGE-DIALECT-001"
@@ -281,10 +292,12 @@
           "language_tag_not_configured",
           "language_evidence_mismatch",
           "code_switch_collapsed",
-          "uncertain_audio_overclassified"
+          "uncertain_audio_overclassified",
+          "unclassified_submission"
         ],
         "asset_authorization": {
           "type": "self-authored",
+          "representation": "structured_fixture",
           "student_use_allowed": true
         }
       },
@@ -299,7 +312,7 @@
               "mixed",
               "und",
               "yue",
-              "zh-CN"
+              "cmn"
             ],
             "audible_cues": [
               "完整可辨识普通话句子"
@@ -317,18 +330,27 @@
           "student_action": "提交 first_error_type 和 corrected_language_tag；必须先诊断优先级最高的错误。",
           "answer": {
             "first_error_type": "language_tag_not_configured",
-            "corrected_language_tag": "zh-CN"
+            "corrected_language_tag": "cmn"
           },
           "evaluation": {
             "method": "exact_match",
-            "version": "1.0.0",
+            "version": "1.1.0",
+            "response_space": {
+              "type": "finite_closed_set",
+              "recognized_submissions": [
+                "standard_answer",
+                "diagnostic_rules"
+              ],
+              "unmatched_behavior": "manual_review"
+            },
             "normalization": "JSON 对象键顺序忽略；两个字符串值必须完全一致。",
             "diagnostic_precedence": "先检查 first_error_type 是否遵守 input 中的 ordered_error_precedence，再检查 corrected_language_tag；首个严格匹配诊断生效。",
+            "manual_review_on_unmatched": true,
             "diagnostic_rules": [
               {
                 "submission": {
                   "first_error_type": "language_evidence_mismatch",
-                  "corrected_language_tag": "zh-CN"
+                  "corrected_language_tag": "cmn"
                 },
                 "error_type": "language_error_precedence_misapplied",
                 "feedback": "提交跳过了更早发生的 configured_labels 成员资格错误。",
@@ -339,23 +361,25 @@
             ],
             "correct_feedback": "已按优先级先识别未配置标签，并给出配置内修正值。",
             "incorrect_feedback": {
-              "error_type": "language_error_precedence_misapplied",
-              "feedback": "错误类型或修正标签与既定诊断顺序不一致。",
+              "error_type": "unclassified_submission",
+              "feedback": "提交未命中标准答案或任何已声明诊断规则，无法安全归入某个具体错误。",
               "remediation": [
-                "使用语种方言标签卡按成员资格、证据、混码、不确定性的顺序重新诊断。"
+                "按有限响应集合重新提交；若多个错误同时存在，保留证据并请求人工复核。"
               ]
             }
           },
-          "data_version": "1.0.0",
+          "data_version": "1.1.0",
           "pass_condition": "score == 1.0",
           "capability_refs": [
             "CAP-AUD-LANGUAGE-DIALECT-001"
           ],
           "error_types": [
-            "language_error_precedence_misapplied"
+            "language_error_precedence_misapplied",
+            "unclassified_submission"
           ],
           "asset_authorization": {
             "type": "self-authored",
+            "representation": "structured_fixture",
             "student_use_allowed": true
           }
         }
@@ -421,6 +445,18 @@
             "remediation_resource_refs": [
               "RES-AUD-DIALECT-LABEL-CARD-001"
             ]
+          },
+          {
+            "error_type": "unclassified_submission",
+            "rule_refs": [
+              "KNG-AUD-LANGUAGE-DIALECT-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-LANGUAGE-DIALECT-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-DIALECT-LABEL-CARD-001"
+            ]
           }
         ]
       },
@@ -465,7 +501,7 @@
       "rule_explanation": {
         "external_format_facts": [
           {
-            "statement": "NIST SCTK 的 STM 格式包含说话人、开始时间、时长和转写文本等字段，可用于表达说话人片段；该格式不规定本练习的说话人编号方式或错误优先级。",
+            "statement": "NIST SCTK 的 STM 格式包含说话人、begin/end 时间和转写文本等字段，可用于表达说话人片段；该格式不规定本练习的说话人编号方式或错误优先级。",
             "source_refs": [
               "SRC-NIST-SCTK-FORMATS-001"
             ]
@@ -503,6 +539,7 @@
           "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
           "asset_authorization": {
             "type": "self-authored",
+            "representation": "structured_fixture",
             "student_use_allowed": true
           }
         }
@@ -531,6 +568,7 @@
           "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
           "asset_authorization": {
             "type": "self-authored",
+            "representation": "structured_fixture",
             "student_use_allowed": true
           }
         }
@@ -597,9 +635,18 @@
         },
         "evaluation": {
           "method": "ordered_exact_match",
-          "version": "1.0.0",
+          "version": "1.1.0",
+          "response_space": {
+            "type": "finite_closed_set",
+            "recognized_submissions": [
+              "standard_answer",
+              "diagnostic_rules"
+            ],
+            "unmatched_behavior": "manual_review"
+          },
           "normalization": "JSON 对象键顺序忽略；turns 数组顺序、turn_id、speaker_id、毫秒时间和值必须完全一致。",
           "diagnostic_precedence": "diagnostic_rules 按数组顺序严格匹配，优先级为轮次数量、时间顺序、首次出现编号、身份一致性、轮次边界；首个命中规则生效，之后才匹配标准答案，最后使用 incorrect_feedback。",
+          "manual_review_on_unmatched": true,
           "diagnostic_rules": [
             {
               "submission": {
@@ -656,6 +703,38 @@
               "feedback": "turns 未按 start_ms 升序提交。",
               "remediation": [
                 "按 0、1200、2500 毫秒的开始时间重新排列轮次。"
+              ]
+            },
+            {
+              "submission": {
+                "turns": [
+                  {
+                    "turn_id": "TURN-01",
+                    "speaker_id": "spk_02",
+                    "start_ms": 0,
+                    "end_ms": 1200,
+                    "text": "您好。"
+                  },
+                  {
+                    "turn_id": "TURN-02",
+                    "speaker_id": "spk_01",
+                    "start_ms": 1200,
+                    "end_ms": 2500,
+                    "text": "您好，请问怎么查询订单？"
+                  },
+                  {
+                    "turn_id": "TURN-03",
+                    "speaker_id": "spk_02",
+                    "start_ms": 2500,
+                    "end_ms": 3400,
+                    "text": "我帮您查询。"
+                  }
+                ]
+              },
+              "error_type": "speaker_first_appearance_mismatch",
+              "feedback": "首个出现的 voice_alpha 必须分配 spk_01，后续 voice_beta 才分配 spk_02。",
+              "remediation": [
+                "从时间线第一轮开始编号，并将同一 voice_key 的后续轮次映射回首次分配的 speaker_id。"
               ]
             },
             {
@@ -725,14 +804,14 @@
           ],
           "correct_feedback": "轮次顺序、首次出现编号、身份复用和边界均符合项目策略。",
           "incorrect_feedback": {
-            "error_type": "speaker_identity_inconsistent",
-            "feedback": "提交的轮次结构未同时满足数量、顺序、身份和边界要求。",
+            "error_type": "unclassified_submission",
+            "feedback": "提交未命中标准答案或任何已声明诊断规则，无法安全归入某个具体错误。",
             "remediation": [
-              "依次核对轮次数量、start_ms 顺序、首次出现编号、同一声音复用和 handoff_ms。"
+              "按有限响应集合重新提交；若多个错误同时存在，保留证据并请求人工复核。"
             ]
           }
         },
-        "data_version": "1.0.0",
+        "data_version": "1.1.0",
         "pass_condition": "score == 1.0",
         "capability_refs": [
           "CAP-AUD-SPEAKER-001"
@@ -740,11 +819,14 @@
         "error_types": [
           "turn_count_mismatch",
           "turn_order_invalid",
+          "speaker_first_appearance_mismatch",
           "speaker_identity_inconsistent",
-          "turn_boundary_mismatch"
+          "turn_boundary_mismatch",
+          "unclassified_submission"
         ],
         "asset_authorization": {
           "type": "self-authored",
+          "representation": "structured_fixture",
           "student_use_allowed": true
         }
       },
@@ -758,17 +840,17 @@
               {
                 "turn_id": "REPAIR-01",
                 "voice_key": "voice_alpha",
-                "submitted_speaker_id": "agent_a"
+                "submitted_speaker_id": "spk_01"
               },
               {
                 "turn_id": "REPAIR-02",
                 "voice_key": "voice_beta",
-                "submitted_speaker_id": "customer_b"
+                "submitted_speaker_id": "spk_02"
               },
               {
                 "turn_id": "REPAIR-03",
                 "voice_key": "voice_alpha",
-                "submitted_speaker_id": "agent_c"
+                "submitted_speaker_id": "spk_03"
               }
             ],
             "required_label_pattern": "spk_XX by first audible appearance"
@@ -792,9 +874,18 @@
           },
           "evaluation": {
             "method": "ordered_exact_match",
-            "version": "1.0.0",
+            "version": "1.1.0",
+            "response_space": {
+              "type": "finite_closed_set",
+              "recognized_submissions": [
+                "standard_answer",
+                "diagnostic_rules"
+              ],
+              "unmatched_behavior": "manual_review"
+            },
             "normalization": "JSON 对象键顺序忽略；repaired_speaker_ids 数组顺序、turn_id 和 speaker_id 必须完全一致。",
             "diagnostic_precedence": "先检查首次出现编号，再检查同一 voice_key 的身份复用；diagnostic_rules 按数组顺序首个严格匹配生效。",
+            "manual_review_on_unmatched": true,
             "diagnostic_rules": [
               {
                 "submission": {
@@ -845,24 +936,26 @@
             ],
             "correct_feedback": "首次出现编号和同一声音身份复用均正确。",
             "incorrect_feedback": {
-              "error_type": "speaker_identity_inconsistent",
-              "feedback": "修复结果未按首次出现顺序稳定映射 voice_key。",
+              "error_type": "unclassified_submission",
+              "feedback": "提交未命中标准答案或任何已声明诊断规则，无法安全归入某个具体错误。",
               "remediation": [
-                "在说话人时间线上建立 voice_key 到 speaker_id 的唯一映射后重新提交。"
+                "按有限响应集合重新提交；若多个错误同时存在，保留证据并请求人工复核。"
               ]
             }
           },
-          "data_version": "1.0.0",
+          "data_version": "1.1.0",
           "pass_condition": "score == 1.0",
           "capability_refs": [
             "CAP-AUD-SPEAKER-001"
           ],
           "error_types": [
             "speaker_first_appearance_mismatch",
-            "speaker_identity_inconsistent"
+            "speaker_identity_inconsistent",
+            "unclassified_submission"
           ],
           "asset_authorization": {
             "type": "self-authored",
+            "representation": "structured_fixture",
             "student_use_allowed": true
           }
         }
@@ -884,8 +977,7 @@
           {
             "error_type": "turn_order_invalid",
             "rule_refs": [
-              "KNG-AUD-SPEAKER-TURN-001",
-              "KNG-AUD-EXPORT-FORMAT-001"
+              "KNG-AUD-SPEAKER-TURN-001"
             ],
             "capability_refs": [
               "CAP-AUD-SPEAKER-001"
@@ -921,8 +1013,19 @@
           {
             "error_type": "turn_boundary_mismatch",
             "rule_refs": [
-              "KNG-AUD-SPEAKER-TURN-001",
-              "KNG-AUD-EXPORT-FORMAT-001"
+              "KNG-AUD-SPEAKER-TURN-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-SPEAKER-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-SPEAKER-TIMELINE-001"
+            ]
+          },
+          {
+            "error_type": "unclassified_submission",
+            "rule_refs": [
+              "KNG-AUD-SPEAKER-TURN-001"
             ],
             "capability_refs": [
               "CAP-AUD-SPEAKER-001"
@@ -1007,6 +1110,7 @@
           "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
           "asset_authorization": {
             "type": "self-authored",
+            "representation": "structured_fixture",
             "student_use_allowed": true
           }
         }
@@ -1036,6 +1140,7 @@
           "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
           "asset_authorization": {
             "type": "self-authored",
+            "representation": "structured_fixture",
             "student_use_allowed": true
           }
         }
@@ -1065,9 +1170,18 @@
         },
         "evaluation": {
           "method": "exact_match",
-          "version": "1.0.0",
+          "version": "1.1.0",
+          "response_space": {
+            "type": "finite_closed_set",
+            "recognized_submissions": [
+              "standard_answer",
+              "diagnostic_rules"
+            ],
+            "unmatched_behavior": "manual_review"
+          },
           "normalization": "JSON 对象键顺序忽略；transcript 字符串逐字符匹配，不自动转换数字、标点或空白。",
           "diagnostic_precedence": "diagnostic_rules 按数组顺序严格匹配，优先级为内容完整性、正字法、标点缺失、标点过度切分；首个命中规则生效，之后才匹配标准答案，最后使用 incorrect_feedback。",
+          "manual_review_on_unmatched": true,
           "diagnostic_rules": [
             {
               "submission": {
@@ -1112,14 +1226,14 @@
           ],
           "correct_feedback": "可听内容、中文数字词形和确认问句标点均正确。",
           "incorrect_feedback": {
-            "error_type": "orthography_policy_mismatch",
-            "feedback": "转写未同时满足内容完整性、项目正字法和语义标点规则。",
+            "error_type": "unclassified_submission",
+            "feedback": "提交未命中标准答案或任何已声明诊断规则，无法安全归入某个具体错误。",
             "remediation": [
-              "按内容、正字法、标点的顺序使用转写风格表逐项复核。"
+              "按有限响应集合重新提交；若多个错误同时存在，保留证据并请求人工复核。"
             ]
           }
         },
-        "data_version": "1.0.0",
+        "data_version": "1.1.0",
         "pass_condition": "score == 1.0",
         "capability_refs": [
           "CAP-AUD-TRANSCRIBE-PUNCT-001"
@@ -1128,10 +1242,12 @@
           "transcript_content_omitted",
           "orthography_policy_mismatch",
           "punctuation_missing",
-          "punctuation_oversegmented"
+          "punctuation_oversegmented",
+          "unclassified_submission"
         ],
         "asset_authorization": {
           "type": "self-authored",
+          "representation": "structured_fixture",
           "student_use_allowed": true
         }
       },
@@ -1166,9 +1282,18 @@
           },
           "evaluation": {
             "method": "exact_match",
-            "version": "1.0.0",
+            "version": "1.1.0",
+            "response_space": {
+              "type": "finite_closed_set",
+              "recognized_submissions": [
+                "standard_answer",
+                "diagnostic_rules"
+              ],
+              "unmatched_behavior": "manual_review"
+            },
             "normalization": "JSON 对象键顺序忽略；first_error_type 和 corrected_transcript 字符串必须完全一致。",
             "diagnostic_precedence": "先检查 first_error_type 是否遵守 input 中的 ordered_error_precedence，再检查 corrected_transcript；diagnostic_rules 按数组顺序首个严格匹配生效。",
+            "manual_review_on_unmatched": true,
             "diagnostic_rules": [
               {
                 "submission": {
@@ -1184,23 +1309,25 @@
             ],
             "correct_feedback": "已先诊断正字法错误，并给出同时修复词形和标点的标准转写。",
             "incorrect_feedback": {
-              "error_type": "transcription_error_precedence_misapplied",
-              "feedback": "错误类型或修正文本未遵守项目诊断顺序。",
+              "error_type": "unclassified_submission",
+              "feedback": "提交未命中标准答案或任何已声明诊断规则，无法安全归入某个具体错误。",
               "remediation": [
-                "使用转写风格表先检查内容，再检查词形，最后检查标点。"
+                "按有限响应集合重新提交；若多个错误同时存在，保留证据并请求人工复核。"
               ]
             }
           },
-          "data_version": "1.0.0",
+          "data_version": "1.1.0",
           "pass_condition": "score == 1.0",
           "capability_refs": [
             "CAP-AUD-TRANSCRIBE-PUNCT-001"
           ],
           "error_types": [
-            "transcription_error_precedence_misapplied"
+            "transcription_error_precedence_misapplied",
+            "unclassified_submission"
           ],
           "asset_authorization": {
             "type": "self-authored",
+            "representation": "structured_fixture",
             "student_use_allowed": true
           }
         }
@@ -1257,6 +1384,19 @@
           },
           {
             "error_type": "transcription_error_precedence_misapplied",
+            "rule_refs": [
+              "KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001",
+              "KNG-AUD-PUNCTUATION-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-TRANSCRIBE-PUNCT-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
+            ]
+          },
+          {
+            "error_type": "unclassified_submission",
             "rule_refs": [
               "KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001",
               "KNG-AUD-PUNCTUATION-001"
