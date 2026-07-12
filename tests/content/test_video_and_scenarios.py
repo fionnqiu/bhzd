@@ -1,3 +1,4 @@
+import copy
 import importlib.util
 import json
 import os
@@ -26,6 +27,7 @@ GRAPH_CATALOG_PATH = ROOT / "data" / "graph" / "graph-catalog.json"
 GRAPH_PATH = ROOT / "data" / "graph" / "annotation-capability-graph.json"
 BUILD_CURRICULUM_PATH = ROOT / "scripts" / "build_curriculum.py"
 EVALUATOR_PATH = ROOT / "scripts" / "evaluate_exercise.py"
+SCENARIO_VALIDATOR_PATH = ROOT / "scripts" / "validate_scenarios.py"
 
 VIDEO_POLICY_SOURCE = "SRC-POLICY-VIDEO-TASK5-001"
 SCENARIO_POLICY_SOURCE = "SRC-POLICY-SCENARIOS-TASK5-001"
@@ -53,10 +55,10 @@ EXPECTED_VIDEO_UNITS = {
     },
 }
 EXPECTED_SCENARIO_TYPES = {
-    "SCN-MEDICAL-001": {"text", "image", "audio"},
-    "SCN-CUSTOMER-SERVICE-001": {"text", "audio"},
-    "SCN-IN-VEHICLE-001": {"audio"},
-    "SCN-CONTENT-SAFETY-001": {"text", "audio", "video"},
+    "SCN-MEDICAL-001": ["text", "image", "audio"],
+    "SCN-CUSTOMER-SERVICE-001": ["text", "audio"],
+    "SCN-IN-VEHICLE-001": ["audio"],
+    "SCN-CONTENT-SAFETY-001": ["text", "audio", "video"],
 }
 RESULT_FIELDS = {
     "score",
@@ -122,9 +124,16 @@ def scenario_documents() -> dict[str, dict]:
     if missing:
         pytest.skip(f"Task 5 scenario sources are not implemented: {missing}")
     return {
-        scenario_id: load_json(path)["scenario"]
+        scenario_id: load_json(path)
         for scenario_id, path in SCENARIO_PATHS.items()
     }
+
+
+@pytest.fixture(scope="module")
+def scenario_validator():
+    if not SCENARIO_VALIDATOR_PATH.is_file():
+        return None
+    return load_module(SCENARIO_VALIDATOR_PATH, "task5_scenario_validator")
 
 
 def test_task5_candidate_source_files_exist():
@@ -250,15 +259,28 @@ def test_video_exercises_are_deterministic_and_return_rule_linked_feedback(video
         assert wrong["remediation"] == diagnostic["remediation"]
 
 
-def test_scenario_files_declare_the_exact_graph_supported_types(scenario_documents):
+def test_scenario_files_declare_the_exact_graph_supported_types(
+    scenario_documents, scenario_validator
+):
+    assert scenario_validator is not None, (
+        f"Task 5 scenario validator is not implemented: {SCENARIO_VALIDATOR_PATH}"
+    )
     catalog = load_json(GRAPH_CATALOG_PATH)
+    errors = scenario_validator.validate_scenario_documents(
+        list(scenario_documents.values()), catalog
+    )
+    assert errors == []
+
     graph_scenarios = {node["id"]: node for node in catalog["nodes"]["SCN"]}
     assert set(scenario_documents) == set(EXPECTED_SCENARIO_TYPES)
     for scenario_id, expected_types in EXPECTED_SCENARIO_TYPES.items():
-        scenario = scenario_documents[scenario_id]
+        document = scenario_documents[scenario_id]
+        scenario = document["scenario"]
+        assert document["schema_version"] == "1.0.0"
+        assert set(document) == {"schema_version", "scenario"}
         assert scenario["id"] == scenario_id
-        assert set(scenario["supported_data_types"]) == expected_types
-        assert set(graph_scenarios[scenario_id]["supported_data_types"]) == expected_types
+        assert scenario["supported_data_types"] == expected_types
+        assert graph_scenarios[scenario_id]["supported_data_types"] == expected_types
         assert scenario["source_refs"]
         assert SCENARIO_POLICY_SOURCE in scenario["source_refs"]
         assert scenario["applicable_capability_refs"]
@@ -270,11 +292,11 @@ def test_every_declared_scenario_type_has_an_override_and_example(scenario_docum
     all_rule_ids = []
     all_example_ids = []
     for scenario_id, expected_types in EXPECTED_SCENARIO_TYPES.items():
-        scenario = scenario_documents[scenario_id]
+        scenario = scenario_documents[scenario_id]["scenario"]
         overrides = scenario["overrides"]
         examples = scenario["examples"]
-        assert {override["data_type"] for override in overrides} == expected_types
-        assert {example["data_type"] for example in examples} == expected_types
+        assert {override["data_type"] for override in overrides} == set(expected_types)
+        assert {example["data_type"] for example in examples} == set(expected_types)
 
         for override in overrides:
             all_rule_ids.append(override["rule_id"])
@@ -311,7 +333,8 @@ def test_scenario_overrides_match_compatible_inscn_relations(scenario_documents)
     inscn_by_rule = {
         edge["metadata"]["rule_id"]: edge for edge in catalog["relations"]["INSCN"]
     }
-    for scenario_id, scenario in scenario_documents.items():
+    for scenario_id, document in scenario_documents.items():
+        scenario = document["scenario"]
         for override in scenario["overrides"]:
             edge = inscn_by_rule[override["rule_id"]]
             assert edge["target"] == scenario_id
@@ -334,9 +357,114 @@ def test_scenarios_are_overlays_not_copied_curriculum_branches(scenario_document
     curriculum_ids = {
         unit["id"] for unit in load_json(CENTRAL_UNITS_PATH)["units"]
     }
-    for scenario in scenario_documents.values():
+    for document in scenario_documents.values():
+        scenario = document["scenario"]
         assert not (forbidden & scenario.keys())
         assert not ({override["rule_id"] for override in scenario["overrides"]} & curriculum_ids)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error_code"),
+    [
+        ("wrong_schema_version", "schema_version"),
+        ("unknown_root_key", "root_keys"),
+        ("duplicate_supported_type", "supported_data_types"),
+        ("noncanonical_supported_type_order", "supported_data_types"),
+        ("null_scenario_source_refs", "source_refs"),
+        ("malformed_scenario_source_ref", "source_refs"),
+        ("duplicate_scenario_source_ref", "source_refs"),
+        ("unknown_capability_ref", "capability_ref"),
+        ("incompatible_capability_ref", "capability_data_type"),
+        ("malformed_override_rule_ref", "rule_id"),
+        ("malformed_override_base_ref", "base_rule_ref"),
+        ("malformed_override_source_refs", "source_refs"),
+        ("duplicate_scenario_id", "duplicate_scenario_id"),
+        ("duplicate_rule_id", "duplicate_rule_id"),
+        ("duplicate_example_id", "duplicate_example_id"),
+        ("duplicate_inscn_rule_id", "inscn_rule_id"),
+    ],
+)
+def test_scenario_contract_rejects_schema_reference_and_identity_mutations(
+    scenario_documents, scenario_validator, mutation, error_code
+):
+    assert scenario_validator is not None, (
+        f"Task 5 scenario validator is not implemented: {SCENARIO_VALIDATOR_PATH}"
+    )
+    documents = copy.deepcopy(list(scenario_documents.values()))
+    catalog = copy.deepcopy(load_json(GRAPH_CATALOG_PATH))
+    medical = documents[0]["scenario"]
+    customer_service = documents[1]["scenario"]
+
+    if mutation == "wrong_schema_version":
+        documents[0]["schema_version"] = "1.0"
+    elif mutation == "unknown_root_key":
+        documents[0]["unexpected"] = True
+    elif mutation == "duplicate_supported_type":
+        medical["supported_data_types"].append("text")
+    elif mutation == "noncanonical_supported_type_order":
+        medical["supported_data_types"] = ["audio", "text", "image"]
+    elif mutation == "null_scenario_source_refs":
+        medical["source_refs"] = None
+    elif mutation == "malformed_scenario_source_ref":
+        medical["source_refs"] = ["not-a-source-ref"]
+    elif mutation == "duplicate_scenario_source_ref":
+        medical["source_refs"].append(medical["source_refs"][0])
+    elif mutation == "unknown_capability_ref":
+        medical["applicable_capability_refs"][0] = "CAP-UNKNOWN-001"
+    elif mutation == "incompatible_capability_ref":
+        medical["applicable_capability_refs"][0] = "CAP-VID-ACTION-EVENT-001"
+    elif mutation == "malformed_override_rule_ref":
+        medical["overrides"][0]["rule_id"] = None
+    elif mutation == "malformed_override_base_ref":
+        medical["overrides"][0]["base_rule_ref"] = "not-a-kng-ref"
+    elif mutation == "malformed_override_source_refs":
+        medical["overrides"][0]["source_refs"] = [None]
+    elif mutation == "duplicate_scenario_id":
+        customer_service["id"] = medical["id"]
+    elif mutation == "duplicate_rule_id":
+        customer_service["overrides"][0]["rule_id"] = medical["overrides"][0][
+            "rule_id"
+        ]
+    elif mutation == "duplicate_example_id":
+        customer_service["examples"][0]["example_id"] = medical["examples"][0][
+            "example_id"
+        ]
+    elif mutation == "duplicate_inscn_rule_id":
+        duplicate = copy.deepcopy(catalog["relations"]["INSCN"][0])
+        catalog["relations"]["INSCN"].append(duplicate)
+    else:  # pragma: no cover - parametrization defines the complete mutation set.
+        raise AssertionError(f"unknown mutation: {mutation}")
+
+    errors = scenario_validator.validate_scenario_documents(documents, catalog)
+    assert any(f"[{error_code}]" in error for error in errors), errors
+
+
+def test_scenario_validator_cli_accepts_canonical_documents_and_rejects_a_mutation(
+    tmp_path,
+):
+    valid = run_python(
+        SCENARIO_VALIDATOR_PATH,
+        "--graph-catalog",
+        GRAPH_CATALOG_PATH,
+        *SCENARIO_PATHS.values(),
+    )
+    assert valid.returncode == 0, valid.stderr or valid.stdout
+    assert "Scenario validation succeeded" in valid.stdout
+
+    mutated = load_json(SCENARIO_PATHS["SCN-MEDICAL-001"])
+    mutated["scenario"]["supported_data_types"].append("text")
+    mutated_path = tmp_path / "medical-duplicate-type.json"
+    mutated_path.write_text(
+        json.dumps(mutated, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    invalid = run_python(
+        SCENARIO_VALIDATOR_PATH,
+        "--graph-catalog",
+        GRAPH_CATALOG_PATH,
+        mutated_path,
+    )
+    assert invalid.returncode == 1, invalid.stderr or invalid.stdout
+    assert "[supported_data_types]" in invalid.stdout
 
 
 def test_task5_policy_sources_are_local_development_policy_only():
