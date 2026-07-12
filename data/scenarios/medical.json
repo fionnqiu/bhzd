@@ -1,0 +1,160 @@
+{
+  "schema_version": "1.0.0",
+  "scenario": {
+    "id": "SCN-MEDICAL-001",
+    "name": "医疗数据标注",
+    "description": "用于合成教学素材的医疗场景规则覆盖层，不包含真实病例、诊断结论或用药建议。",
+    "supported_data_types": [
+      "text",
+      "image",
+      "audio"
+    ],
+    "source_refs": [
+      "SRC-POLICY-SCENARIOS-TASK5-001"
+    ],
+    "applicable_capability_refs": [
+      "CAP-TXT-ENTITY-TYPE-001",
+      "CAP-IMG-SEMANTIC-SEGMENT-001",
+      "CAP-AUD-TRANSCRIBE-PUNCT-001"
+    ],
+    "overrides": [
+      {
+        "rule_id": "SCNR-MED-TXT-ENTITY-001",
+        "data_type": "text",
+        "base_rule_ref": "KNG-TXT-ENTITY-TYPE-001",
+        "override_type": "add",
+        "content": "本地开发覆盖：仅在本场景的合成练习中，将已圈定的虚构名称“药品甲”标为 MEDICATION，将“症状乙”标为 SYMPTOM；该标签约定不表示真实诊断、疗效或用药关系。",
+        "source_refs": [
+          "SRC-POLICY-SCENARIOS-TASK5-001"
+        ],
+        "review_status": "draft",
+        "review_records": []
+      },
+      {
+        "rule_id": "SCNR-MED-IMG-MASK-001",
+        "data_type": "image",
+        "base_rule_ref": "KNG-IMG-SEMANTIC-MASK-001",
+        "override_type": "add",
+        "content": "本地开发覆盖：仅在合成网格练习中，把 region_grid 中值为 1 的单元标为 TARGET_REGION，值为 0 的单元标为 BACKGROUND；该掩码约定不构成医学影像判断。",
+        "source_refs": [
+          "SRC-POLICY-SCENARIOS-TASK5-001"
+        ],
+        "review_status": "draft",
+        "review_records": []
+      },
+      {
+        "rule_id": "SCNR-MED-AUD-TRANSCRIPT-001",
+        "data_type": "audio",
+        "base_rule_ref": "KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001",
+        "override_type": "add",
+        "content": "本地开发覆盖：合成音频转写中的虚构词“药品甲”必须按给定词表原样保留，句末补全全角句号；不得把虚构词改写为真实药品名称。",
+        "source_refs": [
+          "SRC-POLICY-SCENARIOS-TASK5-001"
+        ],
+        "review_status": "draft",
+        "review_records": []
+      }
+    ],
+    "examples": [
+      {
+        "example_id": "EX-SCN-MED-TEXT-ENTITY-001",
+        "rule_id": "SCNR-MED-TXT-ENTITY-001",
+        "data_type": "text",
+        "input": {
+          "fixture_notice": "合成教学文本，不对应真实患者、机构、药品或病例。",
+          "selected_span": "症状乙",
+          "configured_labels": [
+            "MEDICATION",
+            "SYMPTOM"
+          ]
+        },
+        "expected": {
+          "label": "SYMPTOM"
+        },
+        "explanation": "所选虚构名称在本地场景词表中映射为 SYMPTOM；结论只适用于该合成练习。",
+        "asset_authorization": {
+          "type": "self-authored",
+          "contains_personal_data": false,
+          "representation": "structured_fixture"
+        }
+      },
+      {
+        "example_id": "EX-SCN-MED-IMG-MASK-001",
+        "rule_id": "SCNR-MED-IMG-MASK-001",
+        "data_type": "image",
+        "input": {
+          "fixture_notice": "合成二值网格，不包含医学影像或患者数据。",
+          "region_grid": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              1
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ]
+        },
+        "expected": {
+          "semantic_mask": [
+            [
+              "BACKGROUND",
+              "BACKGROUND",
+              "BACKGROUND"
+            ],
+            [
+              "BACKGROUND",
+              "TARGET_REGION",
+              "TARGET_REGION"
+            ],
+            [
+              "BACKGROUND",
+              "TARGET_REGION",
+              "BACKGROUND"
+            ]
+          ]
+        },
+        "explanation": "按本地合成练习约定逐格映射 0 和 1，不推断任何医学含义。",
+        "asset_authorization": {
+          "type": "self-authored",
+          "contains_personal_data": false,
+          "representation": "structured_fixture"
+        }
+      },
+      {
+        "example_id": "EX-SCN-MED-AUD-TRANSCRIPT-001",
+        "rule_id": "SCNR-MED-AUD-TRANSCRIPT-001",
+        "data_type": "audio",
+        "input": {
+          "fixture_notice": "合成令牌序列，不包含录音、说话人或真实医疗内容。",
+          "audible_tokens": [
+            "教学样例",
+            "提到",
+            "药品甲"
+          ],
+          "lexicon": [
+            "药品甲"
+          ]
+        },
+        "expected": {
+          "transcript": "教学样例提到药品甲。"
+        },
+        "explanation": "虚构词按词表原样保留，并按本地覆盖规则补全句末标点。",
+        "asset_authorization": {
+          "type": "self-authored",
+          "contains_personal_data": false,
+          "representation": "structured_fixture"
+        }
+      }
+    ],
+    "review_status": "draft",
+    "review_records": []
+  }
+}

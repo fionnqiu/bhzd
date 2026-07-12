@@ -1,0 +1,110 @@
+{
+  "schema_version": "1.0.0",
+  "scenario": {
+    "id": "SCN-CUSTOMER-SERVICE-001",
+    "name": "智能客服标注",
+    "description": "用于合成教学素材的客服场景规则覆盖层，不包含真实客户、账户、订单或通话数据。",
+    "supported_data_types": [
+      "text",
+      "audio"
+    ],
+    "source_refs": [
+      "SRC-POLICY-SCENARIOS-TASK5-001"
+    ],
+    "applicable_capability_refs": [
+      "CAP-TXT-INTENT-001",
+      "CAP-AUD-SPEAKER-001"
+    ],
+    "overrides": [
+      {
+        "rule_id": "SCNR-CS-TXT-INTENT-001",
+        "data_type": "text",
+        "base_rule_ref": "KNG-TXT-INTENT-HIERARCHY-001",
+        "override_type": "add",
+        "content": "本地开发覆盖：合成客服文本使用 INFORMATION_QUERY、SERVICE_REQUEST、COMPLAINT 三个叶级意图；只询问操作方法或状态的样例标为 INFORMATION_QUERY，不据此推断真实账户或交易状态。",
+        "source_refs": [
+          "SRC-POLICY-SCENARIOS-TASK5-001"
+        ],
+        "review_status": "draft",
+        "review_records": []
+      },
+      {
+        "rule_id": "SCNR-CS-AUD-SPEAKER-001",
+        "data_type": "audio",
+        "base_rule_ref": "KNG-AUD-SPEAKER-TURN-001",
+        "override_type": "add",
+        "content": "本地开发覆盖：在合成双通道通话练习中，channel_a 固定映射为 AGENT，channel_b 固定映射为 CUSTOMER；角色仅由练习声明的通道元数据决定。",
+        "source_refs": [
+          "SRC-POLICY-SCENARIOS-TASK5-001"
+        ],
+        "review_status": "draft",
+        "review_records": []
+      }
+    ],
+    "examples": [
+      {
+        "example_id": "EX-SCN-CS-TEXT-INTENT-001",
+        "rule_id": "SCNR-CS-TXT-INTENT-001",
+        "data_type": "text",
+        "input": {
+          "fixture_notice": "合成教学文本，不对应真实客户、账户或订单。",
+          "utterance": "如何查看演示订单的处理进度？",
+          "configured_intents": [
+            "INFORMATION_QUERY",
+            "SERVICE_REQUEST",
+            "COMPLAINT"
+          ]
+        },
+        "expected": {
+          "intent": "INFORMATION_QUERY"
+        },
+        "explanation": "该合成文本只询问查看方法，按本地客服意图层级归入 INFORMATION_QUERY。",
+        "asset_authorization": {
+          "type": "self-authored",
+          "contains_personal_data": false,
+          "representation": "structured_fixture"
+        }
+      },
+      {
+        "example_id": "EX-SCN-CS-AUD-SPEAKER-001",
+        "rule_id": "SCNR-CS-AUD-SPEAKER-001",
+        "data_type": "audio",
+        "input": {
+          "fixture_notice": "合成通道片段，不包含录音、真实说话人或通话内容。",
+          "segments": [
+            {
+              "segment_id": "seg-001",
+              "channel": "channel_a",
+              "text": "这里是合成坐席提示。"
+            },
+            {
+              "segment_id": "seg-002",
+              "channel": "channel_b",
+              "text": "这里是合成客户提问。"
+            }
+          ]
+        },
+        "expected": {
+          "speaker_roles": [
+            {
+              "segment_id": "seg-001",
+              "role": "AGENT"
+            },
+            {
+              "segment_id": "seg-002",
+              "role": "CUSTOMER"
+            }
+          ]
+        },
+        "explanation": "按练习声明的通道映射分配角色，不根据内容或身份进行推断。",
+        "asset_authorization": {
+          "type": "self-authored",
+          "contains_personal_data": false,
+          "representation": "structured_fixture"
+        }
+      }
+    ],
+    "review_status": "draft",
+    "review_records": []
+  }
+}
