@@ -1,0 +1,132 @@
+{
+  "schema_version": "1.0.0",
+  "scenario": {
+    "id": "SCN-CONTENT-SAFETY-001",
+    "name": "内容安全审核",
+    "description": "用于合成教学素材的内容安全场景规则覆盖层，仅使用抽象风险标记，不包含真实敏感文本、录音、视频或个人数据。",
+    "supported_data_types": [
+      "text",
+      "audio",
+      "video"
+    ],
+    "source_refs": [
+      "SRC-POLICY-SCENARIOS-TASK5-001"
+    ],
+    "applicable_capability_refs": [
+      "CAP-TXT-CLASSIFY-001",
+      "CAP-AUD-EMOTION-PARALING-001",
+      "CAP-VID-ACTION-EVENT-001"
+    ],
+    "overrides": [
+      {
+        "rule_id": "SCNR-CSAFE-TXT-CLASS-001",
+        "data_type": "text",
+        "base_rule_ref": "KNG-TXT-CLASS-EXCLUSION-001",
+        "override_type": "replace",
+        "content": "本地开发覆盖：合成文本夹具在同一片段内只能选择 BENIGN_TEXT 或 REVIEW_REQUIRED_TEXT；出现题目声明的抽象风险标记时选择 REVIEW_REQUIRED_TEXT，否则选择 BENIGN_TEXT，两类不得同时出现。",
+        "source_refs": [
+          "SRC-POLICY-SCENARIOS-TASK5-001"
+        ],
+        "review_status": "draft",
+        "review_records": []
+      },
+      {
+        "rule_id": "SCNR-CSAFE-AUD-EVENT-001",
+        "data_type": "audio",
+        "base_rule_ref": "KNG-AUD-PARALINGUISTIC-EVENT-001",
+        "override_type": "add",
+        "content": "本地开发覆盖：合成音频事件练习增加 REVIEW_REQUIRED_AUDIO_EVENT 标签；仅当结构化夹具包含题目声明的 review_event 标记时使用该标签，不依据真实声音或说话人属性作判断。",
+        "source_refs": [
+          "SRC-POLICY-SCENARIOS-TASK5-001"
+        ],
+        "review_status": "draft",
+        "review_records": []
+      },
+      {
+        "rule_id": "SCNR-CSAFE-VID-ACTION-001",
+        "data_type": "video",
+        "base_rule_ref": "KNG-VID-ACTION-TAXONOMY-001",
+        "override_type": "replace",
+        "content": "本地开发覆盖：合成视频行为夹具使用 BENIGN_ACTION 与 REVIEW_REQUIRED_ACTION；参与者、动作和排除标记均由题目结构化字段声明，仅当 action_marker 为 review_action 且 exclusion_marker 为 none 时选择 REVIEW_REQUIRED_ACTION。",
+        "source_refs": [
+          "SRC-POLICY-SCENARIOS-TASK5-001"
+        ],
+        "review_status": "draft",
+        "review_records": []
+      }
+    ],
+    "examples": [
+      {
+        "example_id": "EX-SCN-CSAFE-TXT-CLASS-001",
+        "rule_id": "SCNR-CSAFE-TXT-CLASS-001",
+        "data_type": "text",
+        "input": {
+          "fixture_notice": "合成文本标记，不包含真实敏感内容或个人数据。",
+          "text": "这是仅供教学的抽象风险占位文本 RISK_MARKER_A。",
+          "declared_risk_markers": [
+            "RISK_MARKER_A"
+          ]
+        },
+        "expected": {
+          "label": "REVIEW_REQUIRED_TEXT"
+        },
+        "explanation": "夹具包含题目声明的抽象风险标记，因此按本地互斥规则只选择 REVIEW_REQUIRED_TEXT。",
+        "asset_authorization": {
+          "type": "self-authored",
+          "contains_personal_data": false,
+          "representation": "structured_fixture"
+        }
+      },
+      {
+        "example_id": "EX-SCN-CSAFE-AUD-EVENT-001",
+        "rule_id": "SCNR-CSAFE-AUD-EVENT-001",
+        "data_type": "audio",
+        "input": {
+          "fixture_notice": "合成事件清单，不包含录音、说话人或真实敏感声音。",
+          "events": [
+            {
+              "event_id": "event-001",
+              "event_marker": "review_event"
+            }
+          ]
+        },
+        "expected": {
+          "event_labels": [
+            {
+              "event_id": "event-001",
+              "label": "REVIEW_REQUIRED_AUDIO_EVENT"
+            }
+          ]
+        },
+        "explanation": "结构化事件包含题目声明的 review_event 标记，因此增加本地复核标签。",
+        "asset_authorization": {
+          "type": "self-authored",
+          "contains_personal_data": false,
+          "representation": "structured_fixture"
+        }
+      },
+      {
+        "example_id": "EX-SCN-CSAFE-VID-ACTION-001",
+        "rule_id": "SCNR-CSAFE-VID-ACTION-001",
+        "data_type": "video",
+        "input": {
+          "fixture_notice": "合成行为字段，不包含视频、真实人物、场所或敏感事件。",
+          "participant": "fictional_actor_a",
+          "action_marker": "review_action",
+          "exclusion_marker": "none"
+        },
+        "expected": {
+          "action_label": "REVIEW_REQUIRED_ACTION"
+        },
+        "explanation": "参与者与动作均为合成字段；review_action 且无排除标记时，按本地行为本体选择 REVIEW_REQUIRED_ACTION。",
+        "asset_authorization": {
+          "type": "self-authored",
+          "contains_personal_data": false,
+          "representation": "structured_fixture"
+        }
+      }
+    ],
+    "review_status": "draft",
+    "review_records": []
+  }
+}

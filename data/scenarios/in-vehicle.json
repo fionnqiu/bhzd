@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0.0",
+  "scenario": {
+    "id": "SCN-IN-VEHICLE-001",
+    "name": "车载语音标注",
+    "description": "用于合成教学素材的车载语音场景规则覆盖层，不包含真实车辆、位置、乘员或录音数据。",
+    "supported_data_types": [
+      "audio"
+    ],
+    "source_refs": [
+      "SRC-POLICY-SCENARIOS-TASK5-001"
+    ],
+    "applicable_capability_refs": [
+      "CAP-AUD-WAKE-COMMAND-001"
+    ],
+    "overrides": [
+      {
+        "rule_id": "SCNR-IV-AUD-COMMAND-001",
+        "data_type": "audio",
+        "base_rule_ref": "KNG-AUD-COMMAND-INTENT-001",
+        "override_type": "add",
+        "content": "本地开发覆盖：合成车载命令练习在题目配置集合中增加 VEHICLE_CONTROL、NAVIGATION 和 MEDIA 三个意图；仅按夹具声明的命令令牌选择意图，不推断真实车辆状态、位置或乘员身份。",
+        "source_refs": [
+          "SRC-POLICY-SCENARIOS-TASK5-001"
+        ],
+        "review_status": "draft",
+        "review_records": []
+      }
+    ],
+    "examples": [
+      {
+        "example_id": "EX-SCN-IV-AUD-COMMAND-001",
+        "rule_id": "SCNR-IV-AUD-COMMAND-001",
+        "data_type": "audio",
+        "input": {
+          "fixture_notice": "合成命令令牌，不包含录音、真实车辆、位置或乘员数据。",
+          "audible_tokens": [
+            "播放",
+            "演示音轨"
+          ],
+          "configured_intents": [
+            "VEHICLE_CONTROL",
+            "NAVIGATION",
+            "MEDIA"
+          ]
+        },
+        "expected": {
+          "intent": "MEDIA"
+        },
+        "explanation": "合成命令令牌请求播放演示音轨，因此按本地车载覆盖词表标为 MEDIA。",
+        "asset_authorization": {
+          "type": "self-authored",
+          "contains_personal_data": false,
+          "representation": "structured_fixture"
+        }
+      }
+    ],
+    "review_status": "draft",
+    "review_records": []
+  }
+}
