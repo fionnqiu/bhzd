@@ -439,6 +439,69 @@ def test_scenario_contract_rejects_schema_reference_and_identity_mutations(
     assert any(f"[{error_code}]" in error for error in errors), errors
 
 
+@pytest.mark.parametrize(
+    "malformed_types",
+    [[{}], [None], [[]]],
+    ids=("object", "null", "nested-array"),
+)
+def test_scenario_contract_rejects_json_shaped_malformed_supported_data_types(
+    scenario_documents, scenario_validator, malformed_types
+):
+    documents = copy.deepcopy(list(scenario_documents.values()))
+    documents[0]["scenario"]["supported_data_types"] = malformed_types
+
+    errors = scenario_validator.validate_scenario_documents(
+        documents, load_json(GRAPH_CATALOG_PATH)
+    )
+
+    assert any("[supported_data_types]" in error for error in errors), errors
+
+
+@pytest.mark.parametrize(
+    "malformed_types",
+    [[{}], [None], [[]]],
+    ids=("object", "null", "nested-array"),
+)
+def test_scenario_contract_rejects_json_shaped_malformed_inscn_data_types(
+    scenario_documents, scenario_validator, malformed_types
+):
+    catalog = copy.deepcopy(load_json(GRAPH_CATALOG_PATH))
+    catalog["relations"]["INSCN"][0]["metadata"]["data_types"] = malformed_types
+
+    errors = scenario_validator.validate_scenario_documents(
+        list(scenario_documents.values()), catalog
+    )
+
+    assert any("[inscn_data_types]" in error for error in errors), errors
+
+
+@pytest.mark.parametrize(
+    ("node_type", "node_id"),
+    [
+        ("CAP", "CAP-TXT-ENTITY-TYPE-001"),
+        ("KNG", "KNG-TXT-ENTITY-TYPE-001"),
+        ("SCN", "SCN-MEDICAL-001"),
+    ],
+)
+@pytest.mark.parametrize(
+    "malformed_types",
+    [None, "text", [{}]],
+    ids=("null", "non-array", "unhashable-element"),
+)
+def test_scenario_contract_rejects_malformed_graph_node_data_types_without_raising(
+    scenario_documents, scenario_validator, node_type, node_id, malformed_types
+):
+    catalog = copy.deepcopy(load_json(GRAPH_CATALOG_PATH))
+    node = next(node for node in catalog["nodes"][node_type] if node["id"] == node_id)
+    node["data_types"] = malformed_types
+
+    errors = scenario_validator.validate_scenario_documents(
+        list(scenario_documents.values()), catalog
+    )
+
+    assert any("[catalog_node_data_types]" in error for error in errors), errors
+
+
 def test_scenario_validator_cli_accepts_canonical_documents_and_rejects_a_mutation(
     tmp_path,
 ):
@@ -465,6 +528,34 @@ def test_scenario_validator_cli_accepts_canonical_documents_and_rejects_a_mutati
     )
     assert invalid.returncode == 1, invalid.stderr or invalid.stdout
     assert "[supported_data_types]" in invalid.stdout
+
+
+@pytest.mark.parametrize(
+    "malformed_types",
+    [[{}], [None], [[]]],
+    ids=("object", "null", "nested-array"),
+)
+def test_scenario_validator_cli_reports_malformed_json_types_without_traceback(
+    tmp_path, malformed_types
+):
+    mutated = load_json(SCENARIO_PATHS["SCN-MEDICAL-001"])
+    mutated["scenario"]["supported_data_types"] = malformed_types
+    mutated_path = tmp_path / "medical-malformed-types.json"
+    mutated_path.write_text(
+        json.dumps(mutated, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+    invalid = run_python(
+        SCENARIO_VALIDATOR_PATH,
+        "--graph-catalog",
+        GRAPH_CATALOG_PATH,
+        mutated_path,
+    )
+
+    assert invalid.returncode == 1
+    assert "Scenario validation failed" in invalid.stdout
+    assert "[supported_data_types]" in invalid.stdout
+    assert "Traceback" not in invalid.stderr
 
 
 def test_task5_policy_sources_are_local_development_policy_only():

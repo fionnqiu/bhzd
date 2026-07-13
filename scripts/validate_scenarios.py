@@ -77,39 +77,52 @@ def validate_data_types(
     if not isinstance(value, list) or not value:
         add_error(errors, code, f"{location} must be a nonempty array")
         return []
-    if any(not isinstance(data_type, str) or data_type not in DATA_TYPE_SET for data_type in value):
+    valid_values = [
+        data_type
+        for data_type in value
+        if isinstance(data_type, str) and data_type in DATA_TYPE_SET
+    ]
+    if len(valid_values) != len(value):
         add_error(
             errors,
             code,
             f"{location} may contain only {list(DATA_TYPE_ORDER)}",
         )
-        return [data_type for data_type in value if data_type in DATA_TYPE_SET]
 
-    if len(value) != len(set(value)):
+    if len(valid_values) != len(set(valid_values)):
         add_error(errors, code, f"{location} must not contain duplicates")
-    canonical = [data_type for data_type in DATA_TYPE_ORDER if data_type in value]
-    if value != canonical:
+    canonical = [
+        data_type for data_type in DATA_TYPE_ORDER if data_type in valid_values
+    ]
+    if valid_values != canonical:
         add_error(
             errors,
             code,
             f"{location} must use canonical text/image/audio/video order",
         )
-    return value
+    return valid_values
 
 
 def build_catalog_index(
     catalog: Any, errors: list[str]
-) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
+) -> tuple[
+    dict[str, dict[str, Any]],
+    dict[str, str],
+    dict[str, list[str]],
+    dict[str, list[str]],
+]:
     if not isinstance(catalog, dict):
         add_error(errors, "catalog_root", "graph catalog root must be an object")
-        return {}, {}
+        return {}, {}, {}, {}
     nodes = catalog.get("nodes")
     if not isinstance(nodes, dict):
         add_error(errors, "catalog_nodes", "graph catalog nodes must be an object")
-        return {}, {}
+        return {}, {}, {}, {}
 
     nodes_by_id: dict[str, dict[str, Any]] = {}
     node_types_by_id: dict[str, str] = {}
+    node_data_types_by_id: dict[str, list[str]] = {}
+    scenario_supported_types_by_id: dict[str, list[str]] = {}
     for node_type in NODE_TYPES:
         records = nodes.get(node_type)
         if not isinstance(records, list):
@@ -140,13 +153,40 @@ def build_catalog_index(
                 continue
             nodes_by_id[node_id] = node
             node_types_by_id[node_id] = node_type
-    return nodes_by_id, node_types_by_id
+            node_data_types_by_id[node_id] = validate_data_types(
+                node.get("data_types"),
+                location=f"nodes.{node_type}[{index}].data_types",
+                errors=errors,
+                code="catalog_node_data_types",
+            )
+            if node_type == "SCN":
+                supported_types = validate_data_types(
+                    node.get("supported_data_types"),
+                    location=f"nodes.SCN[{index}].supported_data_types",
+                    errors=errors,
+                    code="catalog_scenario_supported_data_types",
+                )
+                scenario_supported_types_by_id[node_id] = supported_types
+                if node_data_types_by_id[node_id] != supported_types:
+                    add_error(
+                        errors,
+                        "catalog_scenario_supported_data_types",
+                        f"{node_id} data_types must match supported_data_types",
+                    )
+    return (
+        nodes_by_id,
+        node_types_by_id,
+        node_data_types_by_id,
+        scenario_supported_types_by_id,
+    )
 
 
 def validate_inscn_edges(
     catalog: Any,
     nodes_by_id: dict[str, dict[str, Any]],
     node_types_by_id: dict[str, str],
+    node_data_types_by_id: dict[str, list[str]],
+    scenario_supported_types_by_id: dict[str, list[str]],
     errors: list[str],
 ) -> dict[str, list[dict[str, Any]]]:
     if not isinstance(catalog, dict):
@@ -217,21 +257,25 @@ def validate_inscn_edges(
             code="inscn_data_types",
         )
         edge_type_set = set(edge_types)
-        if source_node is not None and not edge_type_set <= set(source_node.get("data_types", [])):
+        if source_node is not None and not edge_type_set <= set(
+            node_data_types_by_id.get(source, [])
+        ):
             add_error(
                 errors,
                 "inscn_data_type",
                 f"{location} data_types are incompatible with source {source}",
             )
         if target_node is not None and not edge_type_set <= set(
-            target_node.get("supported_data_types", [])
+            scenario_supported_types_by_id.get(target, [])
         ):
             add_error(
                 errors,
                 "inscn_data_type",
                 f"{location} data_types are incompatible with target {target}",
             )
-        if base_rule is not None and not edge_type_set <= set(base_rule.get("data_types", [])):
+        if base_rule is not None and not edge_type_set <= set(
+            node_data_types_by_id.get(base_rule_ref, [])
+        ):
             add_error(
                 errors,
                 "inscn_data_type",
@@ -262,9 +306,19 @@ def validate_scenario_documents(
         add_error(errors, "documents", "at least one scenario document is required")
         return errors
 
-    nodes_by_id, node_types_by_id = build_catalog_index(catalog, errors)
+    (
+        nodes_by_id,
+        node_types_by_id,
+        node_data_types_by_id,
+        scenario_supported_types_by_id,
+    ) = build_catalog_index(catalog, errors)
     inscn_by_rule_id = validate_inscn_edges(
-        catalog, nodes_by_id, node_types_by_id, errors
+        catalog,
+        nodes_by_id,
+        node_types_by_id,
+        node_data_types_by_id,
+        scenario_supported_types_by_id,
+        errors,
     )
     seen_scenario_ids: set[str] = set()
     seen_rule_ids: set[str] = set()
@@ -338,7 +392,7 @@ def validate_scenario_documents(
                 "scenario_ref",
                 f"{scenario_location} must resolve to a graph SCN node",
             )
-        elif graph_scenario.get("supported_data_types") != supported_types:
+        elif scenario_supported_types_by_id.get(scenario_id, []) != supported_types:
             add_error(
                 errors,
                 "scenario_graph_types",
@@ -355,7 +409,7 @@ def validate_scenario_documents(
                     f"{scenario_location}: unknown CAP reference {capability_ref}",
                 )
                 continue
-            capability_types = set(capability.get("data_types", []))
+            capability_types = set(node_data_types_by_id.get(capability_ref, []))
             if not capability_types or not capability_types <= supported_type_set:
                 add_error(
                     errors,
@@ -430,7 +484,7 @@ def validate_scenario_documents(
             if (
                 base_rule is not None
                 and isinstance(data_type, str)
-                and data_type not in set(base_rule.get("data_types", []))
+                and data_type not in set(node_data_types_by_id.get(base_rule_ref, []))
             ):
                 add_error(
                     errors,
