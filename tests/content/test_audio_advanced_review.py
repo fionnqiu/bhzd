@@ -8,6 +8,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 ADVANCED_PATH = ROOT / "data" / "curriculum" / "audio" / "02-advanced.json"
 GRAPH_CATALOG_PATH = ROOT / "data" / "graph" / "graph-catalog.json"
+SOURCE_REGISTRY_PATH = ROOT / "data" / "sources" / "source-registry.json"
 ASSET_AUTH_PATH = (
     ROOT
     / "data"
@@ -302,28 +303,76 @@ def test_remediation_uses_best_current_resources_and_exposes_graph_follow_ups(
     catalog = load_json(GRAPH_CATALOG_PATH)
     event_description = graph_node(catalog, "RES", EVENT_RESOURCE)["description"]
     config_description = graph_node(catalog, "RES", CONFIG_RESOURCE)["description"]
-    assert "情感" not in event_description
+    assert "emotion_label" in event_description
     assert "命令意图" not in config_description
 
     follow_ups = {
         item["target_ref"]: item for item in advanced_document["shared_follow_ups"]
     }
-    assert follow_ups[EVENT_RESOURCE]["follow_up_type"] == (
-        "resource_description_and_support_alignment"
-    )
-    assert "情感" in follow_ups[EVENT_RESOURCE]["required_description_scope"]
+    event_follow_up = follow_ups[EVENT_RESOURCE]
+    assert event_follow_up["follow_up_type"] == "resource_content_implementation"
+    assert event_follow_up["required_content"] == [
+        "local_cue_mapping",
+        "ambiguous_allowed_answers",
+        "partial_score_and_manual_review",
+        "dual_track_event_and_timestamp_remediation",
+    ]
+    assert event_follow_up["status"] == "pending_shared_change"
+    assert "resolution_ref" not in event_follow_up
     assert follow_ups[CONFIG_RESOURCE]["follow_up_type"] == (
         "resource_description_and_support_alignment"
     )
     assert "命令意图" in follow_ups[CONFIG_RESOURCE]["required_description_scope"]
-    assert follow_ups[EVENT_RESOURCE]["status"] == "resolved"
-    assert follow_ups[EVENT_RESOURCE]["resolution_ref"] == (
-        "data/graph/graph-catalog.json#RES-AUD-EVENT-CATALOG-001"
-    )
     assert follow_ups[CONFIG_RESOURCE]["status"] == "resolved"
     assert follow_ups[CONFIG_RESOURCE]["resolution_ref"] == (
         "data/graph/graph-catalog.json#RES-AUD-CONFIG-CHECKLIST-001->CAP-AUD-WAKE-COMMAND-001"
     )
+
+
+def test_audio_policy_source_version_follow_up_remains_pending(advanced_document):
+    registry = load_json(SOURCE_REGISTRY_PATH)
+    source = next(
+        item
+        for item in registry["sources"]
+        if item["source_id"] == "SRC-POLICY-AUDIO-TASK4-001"
+    )
+    assert source["version_or_publication_date"] == "Draft 1.0.0, 2026-07-12"
+
+    matches = [
+        item
+        for item in advanced_document["shared_follow_ups"]
+        if item["target_ref"] == "SRC-POLICY-AUDIO-TASK4-001"
+    ]
+    assert len(matches) == 1
+    follow_up = matches[0]
+    assert follow_up["follow_up_type"] == "source_policy_version_alignment"
+    assert follow_up["current_registry_version"] == source[
+        "version_or_publication_date"
+    ]
+    assert follow_up["required_registry_version"] == "Draft 1.1.0, 2026-07-13"
+    assert follow_up["required_verification_scope"] == [
+        "integer_ms_timebase",
+        "decimal_half_up_conversion",
+        "half_open_interval_convention",
+    ]
+    assert follow_up["status"] == "pending_shared_change"
+    assert "resolution_ref" not in follow_up
+
+
+def test_segmentation_policy_and_data_versions_advance_without_evaluator_change(
+    units_by_key,
+):
+    segmentation = units_by_key["segmentation_alignment"]
+    assert segmentation["rule_explanation"]["project_policy"]["version"] == "1.1.0"
+    for exercise in exercises_for(segmentation):
+        assert exercise["data_version"] == "1.1.1"
+        assert exercise["evaluation"]["version"] == "1.1.0"
+
+    for capability_key in ("emotion_paralinguistics", "wake_command_words"):
+        unit = units_by_key[capability_key]
+        for exercise in exercises_for(unit):
+            assert exercise["data_version"] == "1.1.0"
+            assert exercise["evaluation"]["version"] == "1.1.0"
 
 
 def test_review_fix_versions_and_lifecycle_remain_candidate_only(units_by_key):
@@ -331,6 +380,3 @@ def test_review_fix_versions_and_lifecycle_remain_candidate_only(units_by_key):
         assert unit["review_status"] == "draft"
         assert unit["student_visible"] is False
         assert unit["review_records"] == []
-        for exercise in exercises_for(unit):
-            assert exercise["data_version"] == "1.1.0"
-            assert exercise["evaluation"]["version"] == "1.1.0"
