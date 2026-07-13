@@ -44,7 +44,15 @@
         ],
         "project_policy": {
           "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
-          "statement": "本项目草稿策略只允许从 configured_labels 原样选择标签：单一且证据充分的语段标为对应语言或方言；同一语段包含两种可辨识语言时标为 mixed；证据不足时标为 und；不得根据姓名、地区或其他不可听属性推断。该策略不是 RFC 或 IANA 的外部标准。",
+          "configured_bcp47_labels": [
+            "cmn",
+            "yue",
+            "und"
+          ],
+          "configured_project_sentinel_labels": [
+            "mixed"
+          ],
+          "statement": "本项目草稿策略将 cmn、yue、und 作为配置内 BCP 47 标签，将 mixed 明确定义为项目专用哨兵标签而不是 BCP 47 标签；单一且证据充分的语段使用对应 BCP 47 标签，同一语段包含两种可辨识语言时使用 mixed，证据不足时使用 und；不得根据姓名、地区或其他不可听属性推断。该策略不是 RFC 或 IANA 的外部标准。",
           "version": "1.0.0"
         }
       },
@@ -59,11 +67,18 @@
               "无其他语言词项"
             ],
             "configured_labels": [
-              "en",
-              "mixed",
-              "und",
+              "cmn",
               "yue",
-              "cmn"
+              "und",
+              "mixed"
+            ],
+            "configured_bcp47_labels": [
+              "cmn",
+              "yue",
+              "und"
+            ],
+            "configured_project_sentinel_labels": [
+              "mixed"
             ]
           },
           "expected": {
@@ -89,11 +104,18 @@
             ],
             "speaker_profile_hint": "常住北京",
             "configured_labels": [
-              "en",
-              "mixed",
-              "und",
+              "cmn",
               "yue",
-              "cmn"
+              "und",
+              "mixed"
+            ],
+            "configured_bcp47_labels": [
+              "cmn",
+              "yue",
+              "und"
+            ],
+            "configured_project_sentinel_labels": [
+              "mixed"
             ],
             "submitted": {
               "language_tag": "cmn"
@@ -118,11 +140,18 @@
         "asset_ref": "ASSET-SELF-AUDIO-LANGUAGE-EXERCISE-001",
         "input": {
           "configured_labels": [
-            "en",
-            "mixed",
-            "und",
+            "cmn",
             "yue",
-            "cmn"
+            "und",
+            "mixed"
+          ],
+          "configured_bcp47_labels": [
+            "cmn",
+            "yue",
+            "und"
+          ],
+          "configured_project_sentinel_labels": [
+            "mixed"
           ],
           "policy_version": "1.0.0",
           "segments": [
@@ -175,7 +204,15 @@
               "standard_answer",
               "diagnostic_rules"
             ],
-            "unmatched_behavior": "manual_review"
+            "unmatched_behavior": "manual_review",
+            "configured_bcp47_labels": [
+              "cmn",
+              "yue",
+              "und"
+            ],
+            "configured_project_sentinel_labels": [
+              "mixed"
+            ]
           },
           "normalization": "JSON 对象键顺序忽略；labels 数组顺序、segment_id 和 language_tag 必须完全一致；标签区分大小写且不自动 trim。",
           "diagnostic_precedence": "diagnostic_rules 按数组顺序严格匹配，依次优先处理未配置标签、可听证据不符、混码折叠、证据不足时过度分类；首个命中规则生效，之后才匹配标准答案，最后使用 incorrect_feedback。",
@@ -283,7 +320,7 @@
             ]
           }
         },
-        "data_version": "1.1.0",
+        "data_version": "1.1.1",
         "pass_condition": "score == 1.0",
         "capability_refs": [
           "CAP-AUD-LANGUAGE-DIALECT-001"
@@ -308,11 +345,18 @@
           "asset_ref": "ASSET-SELF-AUDIO-LANGUAGE-PRACTICE-001",
           "input": {
             "configured_labels": [
-              "en",
-              "mixed",
-              "und",
+              "cmn",
               "yue",
-              "cmn"
+              "und",
+              "mixed"
+            ],
+            "configured_bcp47_labels": [
+              "cmn",
+              "yue",
+              "und"
+            ],
+            "configured_project_sentinel_labels": [
+              "mixed"
             ],
             "audible_cues": [
               "完整可辨识普通话句子"
@@ -341,7 +385,15 @@
                 "standard_answer",
                 "diagnostic_rules"
               ],
-              "unmatched_behavior": "manual_review"
+              "unmatched_behavior": "manual_review",
+              "configured_bcp47_labels": [
+                "cmn",
+                "yue",
+                "und"
+              ],
+              "configured_project_sentinel_labels": [
+                "mixed"
+              ]
             },
             "normalization": "JSON 对象键顺序忽略；两个字符串值必须完全一致。",
             "diagnostic_precedence": "先检查 first_error_type 是否遵守 input 中的 ordered_error_precedence，再检查 corrected_language_tag；首个严格匹配诊断生效。",
@@ -368,7 +420,7 @@
               ]
             }
           },
-          "data_version": "1.1.0",
+          "data_version": "1.1.1",
           "pass_condition": "score == 1.0",
           "capability_refs": [
             "CAP-AUD-LANGUAGE-DIALECT-001"
