@@ -145,6 +145,42 @@ def test_vid_003_tracking_requires_observable_occlusion_and_reid_evidence():
     assert reid["spatial_continuity"] is True
 
 
+def test_vid_003r_positive_example_has_sufficient_declared_reid_evidence():
+    tracking = units_by_key()["object_tracking"]
+    example = tracking["positive_examples"][0]
+    example_input = example["input"]
+    requirements = tracking["rule_explanation"]["project_policy"][
+        "reidentification_requirements"
+    ]
+    assert requirements == [
+        "appearance_signature_match",
+        "motion_direction_consistent",
+        "spatial_continuity",
+    ]
+
+    reid = example_input["reidentification_evidence"]
+    assert all(reid[requirement] is True for requirement in requirements)
+    observations = {
+        item["observation_id"]: item for item in example_input["observations"]
+    }
+    before = observations[reid["pre_occlusion_observation_id"]]
+    after = observations[reid["post_occlusion_observation_id"]]
+    assert before["motion_direction"] == after["motion_direction"] == "right"
+    assert reid["identity_key"] == before["identity_key"] == after["identity_key"]
+
+    assert example["explanation_evidence_refs"] == [
+        "input.visibility_evidence",
+        "input.reidentification_evidence.appearance_signature_match",
+        "input.reidentification_evidence.motion_direction_consistent",
+        "input.reidentification_evidence.spatial_continuity",
+    ]
+    assert example["explanation"] == (
+        "两个缺失帧均有 visibility_evidence；reidentification_evidence 明确给出 "
+        "appearance_signature_match=true、motion_direction_consistent=true、"
+        "spatial_continuity=true，因此按项目策略复用 trk_01。"
+    )
+
+
 def test_vid_004_tracking_assesses_first_appearance_with_id_swap_diagnostic():
     tracking = units_by_key()["object_tracking"]
     exercise = tracking["exercise"]
@@ -253,9 +289,14 @@ def test_vid_006_frame_prerequisite_follows_pre_and_image_box_is_rel_only():
 
 
 def test_review_fix_versions_and_visibility_gate_are_explicit():
-    for unit in units_by_key().values():
+    expected_data_versions = {
+        "behavior_event": "1.1.0",
+        "frame_annotation": "1.1.0",
+        "object_tracking": "1.1.1",
+    }
+    for capability_key, unit in units_by_key().items():
         exercise = unit["exercise"]
-        assert exercise["data_version"] == "1.1.0"
+        assert exercise["data_version"] == expected_data_versions[capability_key]
         assert exercise["evaluation"]["version"] == "1.1.0"
         assert unit["review_status"] == "draft"
         assert unit["student_visible"] is False

@@ -941,6 +941,11 @@
         "project_policy": {
           "source_ref": "SRC-POLICY-VIDEO-TASK5-001",
           "statement": "本项目开发策略按目标首次出现顺序使用 trk_XX 命名；缺帧本身绝不构成遮挡证据。只有每个缺失帧都有可观察遮挡物证据，且遮挡前后外观、运动方向和空间位置连续时，才可在不超过 2 帧的间隔内复用原 track_id，并把已证实的遮挡帧列入 occluded_frame_indices；观察和遮挡帧都按升序提交。这些阈值、命名和重识别规则均为本地策略。",
+          "reidentification_requirements": [
+            "appearance_signature_match",
+            "motion_direction_consistent",
+            "spatial_continuity"
+          ],
           "version": "1.0.0"
         }
       },
@@ -953,17 +958,20 @@
               {
                 "observation_id": "obs-20-a",
                 "frame_index": 20,
-                "identity_key": "vehicle-a"
+                "identity_key": "vehicle-a",
+                "motion_direction": "right"
               },
               {
                 "observation_id": "obs-21-a",
                 "frame_index": 21,
-                "identity_key": "vehicle-a"
+                "identity_key": "vehicle-a",
+                "motion_direction": "right"
               },
               {
                 "observation_id": "obs-24-a",
                 "frame_index": 24,
-                "identity_key": "vehicle-a"
+                "identity_key": "vehicle-a",
+                "motion_direction": "right"
               }
             ],
             "occluded_frame_indices": [
@@ -986,7 +994,15 @@
                 "occluder_ref": "truck-static-01",
                 "observable_evidence": "the overlap persists while vehicle-a remains behind the truck"
               }
-            ]
+            ],
+            "reidentification_evidence": {
+              "identity_key": "vehicle-a",
+              "pre_occlusion_observation_id": "obs-21-a",
+              "post_occlusion_observation_id": "obs-24-a",
+              "appearance_signature_match": true,
+              "motion_direction_consistent": true,
+              "spatial_continuity": true
+            }
           },
           "expected": {
             "track_id": "trk_01",
@@ -1000,7 +1016,13 @@
               23
             ]
           },
-          "explanation": "三个观察具有同一身份键，两个缺失帧均有明确遮挡物证据，且遮挡前后外观、运动和空间连续，因此复用首次出现的 trk_01。",
+          "explanation_evidence_refs": [
+            "input.visibility_evidence",
+            "input.reidentification_evidence.appearance_signature_match",
+            "input.reidentification_evidence.motion_direction_consistent",
+            "input.reidentification_evidence.spatial_continuity"
+          ],
+          "explanation": "两个缺失帧均有 visibility_evidence；reidentification_evidence 明确给出 appearance_signature_match=true、motion_direction_consistent=true、spatial_continuity=true，因此按项目策略复用 trk_01。",
           "source_ref": "SRC-POLICY-VIDEO-TASK5-001",
           "asset_authorization": {
             "type": "self-authored",
@@ -1385,7 +1407,7 @@
             ]
           }
         },
-        "data_version": "1.1.0",
+        "data_version": "1.1.1",
         "pass_condition": "score == 1.0",
         "capability_refs": [
           "CAP-VID-OBJECT-TRACK-001"
