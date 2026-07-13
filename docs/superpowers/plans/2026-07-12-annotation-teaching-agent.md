@@ -56,9 +56,9 @@
 - Create: `tests/content/test_audio_learning_path.py`
 - Modify: `data/graph/annotation-capability-graph.json`
 
-- [ ] **Step 1: 建立转写与标点、说话人、语种/方言、情感与副语言、唤醒词/命令词、切割与对齐六项前置能力链及其练习。**
-- [ ] **Step 2: 运行 `python -m pytest tests/content/test_audio_learning_path.py -q`；预期结果为每项错误都能回链至规则、能力和补强资源。**
-- [ ] **Step 3: 使用授权音频完成一条“学习-练习-反馈-补强”录屏，并保留原始样例与许可记录。**
+- [x] **Step 1: 建立转写与标点、说话人、语种/方言、情感与副语言、唤醒词/命令词、切割与对齐六项前置能力链及其练习。**
+- [x] **Step 2: 运行 `python -m pytest tests/content/test_audio_learning_path.py -q`；预期结果为每项错误都能回链至规则、能力和补强资源。**
+- [x] **Step 3: 使用授权音频完成一条“学习-练习-反馈-补强”录屏，并保留原始样例与许可记录。**
 
 ### Task 5: 扩展视频教学与场景规则
 
@@ -68,9 +68,9 @@
 - Create: `tests/content/test_video_and_scenarios.py`
 - Modify: `data/graph/annotation-capability-graph.json`
 
-- [ ] **Step 1: 增加视频帧标注、目标追踪、行为事件教学单元，复用统一练习和反馈结构。**
-- [ ] **Step 2: 为首批行业案例创建场景覆盖规则，声明支持的数据类型，并通过 `base_rule_ref`、`override_type`、SCN 与 INSCN 关系挂载。**
-- [ ] **Step 3: 运行 `python -m pytest tests/content/test_video_and_scenarios.py -q`；预期结果为场景改变规则或案例，不复制或破坏通用课程结构。**
+- [x] **Step 1: 增加视频帧标注、目标追踪、行为事件教学单元，复用统一练习和反馈结构。**
+- [x] **Step 2: 为首批行业案例创建场景覆盖规则，声明支持的数据类型，并通过 `base_rule_ref`、`override_type`、SCN 与 INSCN 关系挂载。**
+- [x] **Step 3: 运行 `python -m pytest tests/content/test_video_and_scenarios.py -q`；预期结果为场景改变规则或案例，不复制或破坏通用课程结构。**
 
 ### Task 6: 交付教学应用、诊断和参赛包
 

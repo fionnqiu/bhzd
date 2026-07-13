@@ -321,3 +321,72 @@
 - The ten approved reviews remain independent AI reviews limited to development publication; no human, teacher, domain-expert, competition, or real-student release approval is implied.
 - Lifecycle-only changes intentionally do not alter `content_digest`; any other teaching-unit content change invalidates the approval until a new digest-bound review is recorded.
 - The duplicated stable-KNG baseline manifest in validator/tests remains a minor maintenance concern and is intentionally outside this focused hardening change.
+
+## [2026-07-13 09:52] Complete Tasks 4-5 development publication and review gates
+
+**Changed files:**
+- `data/assets/audio/task4-segmentation-alignment.authorization.json`
+- `data/assets/audio/task4-segmentation-alignment.wav`
+- `data/assets/audio/task4-structured-fixture-manifest.json`
+- `data/curriculum/audio/01-foundations.json`
+- `data/curriculum/audio/02-advanced.json`
+- `data/curriculum/video/teaching-units.json`
+- `data/curriculum/teaching-units.json`
+- `data/graph/graph-catalog.json`
+- `data/graph/annotation-capability-graph.json`
+- `data/graph/annotation-capability-graph.graphml`
+- `data/resources/audio/emotion-event-review.json`
+- `data/reviews/content-review-registry.json`
+- `data/reviews/scenario-review-registry.json`
+- `data/scenarios/content-safety.json`
+- `data/scenarios/customer-service.json`
+- `data/scenarios/in-vehicle.json`
+- `data/scenarios/medical.json`
+- `data/sources/source-registry.json`
+- `evidence/audio-learning-chain/app.js`
+- `evidence/audio-learning-chain/ffprobe-mp4.json`
+- `evidence/audio-learning-chain/ffprobe-webm.json`
+- `evidence/audio-learning-chain/index.html`
+- `evidence/audio-learning-chain/learning-loop.mp4`
+- `evidence/audio-learning-chain/learning-loop.webm`
+- `evidence/audio-learning-chain/learning-loop-desktop.png`
+- `evidence/audio-learning-chain/learning-loop-mobile.png`
+- `evidence/audio-learning-chain/recording-metadata.json`
+- `evidence/audio-learning-chain/record-learning-loop.js`
+- `evidence/audio-learning-chain/styles.css`
+- `scripts/build_curriculum.py`
+- `scripts/evaluate_exercise.py`
+- `scripts/generate_task4_audio_evidence.py`
+- `scripts/validate_scenarios.py`
+- `tests/content/test_audio_advanced_review.py`
+- `tests/content/test_audio_foundations_review.py`
+- `tests/content/test_audio_learning_path.py`
+- `tests/content/test_audio_review_integration.py`
+- `tests/content/test_task5_lifecycle.py`
+- `tests/content/test_text_image_evaluation.py`
+- `tests/content/test_video_and_scenarios.py`
+- `tests/content/test_video_review_fixes.py`
+- `tests/graph/test_graph_integrity.py`
+- `docs/教学内容与图谱数据规范.md`
+- `docs/superpowers/plans/2026-07-12-annotation-teaching-agent.md`
+- `docs/logs/document-changelog.md`
+- `E:\\ObsidianWorkSpace\\codex\\Work Log 2026-07-13.md`
+
+**Reason:**
+- Complete the six-capability audio learning chain, authorized WAV and recorded learning-practice-feedback-remediation evidence, including the reviewed language, ambiguity, timestamp, asset, and remediation corrections.
+- Add and publish three video teaching units plus four scenario documents with nine strict overrides and nine structured examples without duplicating the common curriculum.
+- Retain all `changes_required` review history, record independent AI approvals with exact content digests, and publish all Task 4-5 units only for development use.
+- Restore the three-field teaching-unit digest contract, reject malformed review scopes with `ValueError`, and enforce development-only boundaries through the approved AI review and qualified local project-policy source.
+- Mark all Task 4 and Task 5 plan steps complete after the reviewed implementation and evidence gates passed.
+
+**Verification:**
+- Followed TDD for Task 5 review hardening (`13 failed, 2 passed` then target GREEN), the development-boundary bypass (`8 failed` then GREEN), and Task 4 publication (`4 failed, 26 passed` then audio GREEN `48 passed`).
+- Independent AI reviewers approved the Task 4 foundation and advanced content, the Task 5 specification and code quality, and the final Task 4 publication integration; no human or expert approval was recorded.
+- The complete test suite passed `234` tests; graph validation passed at exactly `166` nodes and `240` edges; scenario validation passed `4` scenarios, `9` overrides, and `9` examples.
+- Temporary rebuilds of the central curriculum JSON, graph JSON, and GraphML were byte-identical to the committed artifacts.
+- The 24 audio asset references resolve to 23 structured fixtures and one authorized WAV with matching SHA-256 values. WAV, MP4, and WebM decode successfully; desktop/mobile screenshots and an MP4 middle frame were visually checked.
+
+**Remaining verification:**
+- All approvals are from independent AI agents and authorize development use only. Formal competition submission and real-student release still require human domain-expert review.
+- The MP4/WebM evidence files contain video only. The evidence proves that the authorized WAV is loaded and used by the timeline exercise, but it does not prove audible playback within the recording.
+- Synthetic structured fixtures and one authorized sample do not establish real-world audio or video annotation performance.
