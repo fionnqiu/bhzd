@@ -232,6 +232,115 @@
       "publication_scope": "development_only",
       "human_release_allowed": false,
       "authorizes_publication": false
+    },
+    {
+      "review_id": "REVIEW-TASK5-VIDEO-3A425AC-001",
+      "reviewer_id": "codex-task5-video-review",
+      "reviewer_type": "ai_agent",
+      "independent_of_implementation": true,
+      "reviewed_at": "2026-07-13",
+      "reviewed_commit": "3a425ac49566405b4a2d80cd8e4efeea637e4b36",
+      "scope": {
+        "data_type": "video",
+        "publication_scope": "development_only",
+        "human_release_allowed": false,
+        "unit_ids": [
+          "TU-VIDEO-BEHAVIOR-EVENT-001",
+          "TU-VIDEO-FRAME-ANNOTATION-001",
+          "TU-VIDEO-OBJECT-TRACKING-001"
+        ]
+      },
+      "unit_versions": [
+        {"unit_id": "TU-VIDEO-BEHAVIOR-EVENT-001", "data_version": "1.0.0", "evaluation_version": "1.0.0"},
+        {"unit_id": "TU-VIDEO-FRAME-ANNOTATION-001", "data_version": "1.0.0", "evaluation_version": "1.0.0"},
+        {"unit_id": "TU-VIDEO-OBJECT-TRACKING-001", "data_version": "1.0.0", "evaluation_version": "1.0.0"}
+      ],
+      "decision": "changes_required",
+      "findings": [
+        {"finding_id": "VID-001", "severity": "high", "summary": "Behavior examples did not provide observable evidence that distinguishes door entry from door exit."},
+        {"finding_id": "VID-002", "severity": "high", "summary": "Boundary and occlusion errors bypassed dedicated capability and knowledge paths."},
+        {"finding_id": "VID-003", "severity": "high", "summary": "Missing frames were incorrectly treated as sufficient evidence of occlusion."},
+        {"finding_id": "VID-004", "severity": "medium", "summary": "A single target could not assess first-appearance track ID assignment."},
+        {"finding_id": "VID-005", "severity": "medium", "summary": "Multi-fault negative examples were not reproducible through deterministic diagnostics."},
+        {"finding_id": "VID-006", "severity": "medium", "summary": "The frame-annotation prerequisite did not match the graph PRE relation."}
+      ],
+      "finding_count": 6,
+      "remaining_risks": [
+        "A corrected video candidate requires independent AI re-review before development publication.",
+        "Formal competition and real-student release still require human domain-expert review."
+      ],
+      "publication_scope": "development_only",
+      "human_release_allowed": false,
+      "authorizes_publication": false
+    },
+    {
+      "review_id": "REVIEW-TASK5-VIDEO-ED484E7-002",
+      "reviewer_id": "codex-task5-video-review",
+      "reviewer_type": "ai_agent",
+      "independent_of_implementation": true,
+      "reviewed_at": "2026-07-13",
+      "reviewed_commit": "ed484e757cf5334624ab09f4438e0d0283c81fcf",
+      "scope": {
+        "data_type": "video",
+        "publication_scope": "development_only",
+        "human_release_allowed": false,
+        "unit_ids": [
+          "TU-VIDEO-BEHAVIOR-EVENT-001",
+          "TU-VIDEO-FRAME-ANNOTATION-001",
+          "TU-VIDEO-OBJECT-TRACKING-001"
+        ]
+      },
+      "unit_versions": [
+        {"unit_id": "TU-VIDEO-BEHAVIOR-EVENT-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
+        {"unit_id": "TU-VIDEO-FRAME-ANNOTATION-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"},
+        {"unit_id": "TU-VIDEO-OBJECT-TRACKING-001", "data_version": "1.1.0", "evaluation_version": "1.1.0"}
+      ],
+      "decision": "changes_required",
+      "findings": [
+        {"finding_id": "VID-003R", "severity": "high", "summary": "The tracking positive example asserted appearance, motion, and spatial continuity without supplying the required reidentification evidence."}
+      ],
+      "finding_count": 1,
+      "remaining_risks": [
+        "A corrected video candidate requires independent AI re-review before development publication.",
+        "Formal competition and real-student release still require human domain-expert review."
+      ],
+      "publication_scope": "development_only",
+      "human_release_allowed": false,
+      "authorizes_publication": false
+    },
+    {
+      "review_id": "REVIEW-TASK5-VIDEO-CF9696E-003",
+      "reviewer_id": "codex-task5-video-review",
+      "reviewer_type": "ai_agent",
+      "independent_of_implementation": true,
+      "reviewed_at": "2026-07-13",
+      "reviewed_commit": "cf9696e37da10a56cd5115736abb423229e0b02c",
+      "scope": {
+        "data_type": "video",
+        "publication_scope": "development_only",
+        "human_release_allowed": false,
+        "unit_ids": [
+          "TU-VIDEO-BEHAVIOR-EVENT-001",
+          "TU-VIDEO-FRAME-ANNOTATION-001",
+          "TU-VIDEO-OBJECT-TRACKING-001"
+        ]
+      },
+      "unit_versions": [
+        {"unit_id": "TU-VIDEO-BEHAVIOR-EVENT-001", "data_version": "1.1.0", "evaluation_version": "1.1.0", "content_digest": "c75e20ea6fd81fd5efbc2c96ce560ef3580b272fee5c4403ace5070a8d79ec65"},
+        {"unit_id": "TU-VIDEO-FRAME-ANNOTATION-001", "data_version": "1.1.0", "evaluation_version": "1.1.0", "content_digest": "8ba77f32cbe46e96768cdbab6fd08af0b37b14e8d42dc15de95fcb15f995819d"},
+        {"unit_id": "TU-VIDEO-OBJECT-TRACKING-001", "data_version": "1.1.1", "evaluation_version": "1.1.0", "content_digest": "193ebd6180ddc0d4759dc07f6a724060a5abfb98f60a3303b6c87e65c53cc7ef"}
+      ],
+      "decision": "approved",
+      "findings": [],
+      "finding_count": 0,
+      "remaining_risks": [
+        "Approval is limited to development publication by an independent AI reviewer.",
+        "Structured fixtures do not demonstrate real visual annotation skill.",
+        "Formal competition and real-student release still require human domain-expert confirmation."
+      ],
+      "publication_scope": "development_only",
+      "human_release_allowed": false,
+      "authorizes_publication": true
     }
   ]
 }

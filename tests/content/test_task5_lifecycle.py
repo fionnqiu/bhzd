@@ -1,0 +1,478 @@
+import copy
+import hashlib
+import importlib.util
+import inspect
+import json
+import shutil
+from pathlib import Path
+
+import pytest
+
+
+ROOT = Path(__file__).resolve().parents[2]
+VIDEO_PATH = ROOT / "data" / "curriculum" / "video" / "teaching-units.json"
+CENTRAL_PATH = ROOT / "data" / "curriculum" / "teaching-units.json"
+LEGACY_PATH = ROOT / "data" / "curriculum" / "legacy" / "teaching-units.json"
+CONTENT_REVIEW_PATH = ROOT / "data" / "reviews" / "content-review-registry.json"
+SCENARIO_REVIEW_PATH = ROOT / "data" / "reviews" / "scenario-review-registry.json"
+SOURCE_REGISTRY_PATH = ROOT / "data" / "sources" / "source-registry.json"
+GRAPH_CATALOG_PATH = ROOT / "data" / "graph" / "graph-catalog.json"
+GRAPH_PATH = ROOT / "data" / "graph" / "annotation-capability-graph.json"
+BUILD_CURRICULUM_PATH = ROOT / "scripts" / "build_curriculum.py"
+SCENARIO_VALIDATOR_PATH = ROOT / "scripts" / "validate_scenarios.py"
+SCENARIO_PATHS = {
+    "SCN-CONTENT-SAFETY-001": ROOT / "data" / "scenarios" / "content-safety.json",
+    "SCN-CUSTOMER-SERVICE-001": ROOT / "data" / "scenarios" / "customer-service.json",
+    "SCN-IN-VEHICLE-001": ROOT / "data" / "scenarios" / "in-vehicle.json",
+    "SCN-MEDICAL-001": ROOT / "data" / "scenarios" / "medical.json",
+}
+
+LIFECYCLE_FIELDS = {
+    "review_status",
+    "student_visible",
+    "review_records",
+    "publication_scope",
+    "human_release_allowed",
+}
+VIDEO_REVIEW_HISTORY = [
+    "REVIEW-TASK5-VIDEO-3A425AC-001",
+    "REVIEW-TASK5-VIDEO-ED484E7-002",
+    "REVIEW-TASK5-VIDEO-CF9696E-003",
+]
+VIDEO_UNIT_VERSIONS = {
+    "TU-VIDEO-BEHAVIOR-EVENT-001": (
+        "1.1.0",
+        "1.1.0",
+        "c75e20ea6fd81fd5efbc2c96ce560ef3580b272fee5c4403ace5070a8d79ec65",
+    ),
+    "TU-VIDEO-FRAME-ANNOTATION-001": (
+        "1.1.0",
+        "1.1.0",
+        "8ba77f32cbe46e96768cdbab6fd08af0b37b14e8d42dc15de95fcb15f995819d",
+    ),
+    "TU-VIDEO-OBJECT-TRACKING-001": (
+        "1.1.1",
+        "1.1.0",
+        "193ebd6180ddc0d4759dc07f6a724060a5abfb98f60a3303b6c87e65c53cc7ef",
+    ),
+}
+VIDEO_NEGATIVE_REVIEWS = {
+    "REVIEW-TASK5-VIDEO-3A425AC-001": {
+        "commit": "3a425ac49566405b4a2d80cd8e4efeea637e4b36",
+        "finding_ids": {
+            "VID-001",
+            "VID-002",
+            "VID-003",
+            "VID-004",
+            "VID-005",
+            "VID-006",
+        },
+        "versions": {
+            unit_id: ("1.0.0", "1.0.0") for unit_id in VIDEO_UNIT_VERSIONS
+        },
+    },
+    "REVIEW-TASK5-VIDEO-ED484E7-002": {
+        "commit": "ed484e757cf5334624ab09f4438e0d0283c81fcf",
+        "finding_ids": {"VID-003R"},
+        "versions": {
+            unit_id: ("1.1.0", "1.1.0") for unit_id in VIDEO_UNIT_VERSIONS
+        },
+    },
+}
+
+SCENARIO_REVIEWS = {
+    "REVIEW-TASK5-SCENARIOS-C5A91CB-001": {
+        "commit": "c5a91cb7146316d479f7051b1e92a6edd693c892",
+        "scenario_digests": {
+            "SCN-CUSTOMER-SERVICE-001": "d5e6a69cb8cb0e5d59fc1de09f294da30f3f75db911a4794181c84f8f3b6489d",
+            "SCN-MEDICAL-001": "4c86b98e27d8204c31967797062c988143a405d2deca4c8fbfa5b009b5449cd6",
+        },
+        "rule_ids": {
+            "SCNR-CS-AUD-SPEAKER-001",
+            "SCNR-CS-TXT-INTENT-001",
+            "SCNR-MED-AUD-TRANSCRIPT-001",
+            "SCNR-MED-IMG-MASK-001",
+            "SCNR-MED-TXT-ENTITY-001",
+        },
+    },
+    "REVIEW-TASK5-SCENARIOS-09638A7-001": {
+        "commit": "09638a7efc899910f39a3268f7fa9d7781333423",
+        "scenario_digests": {
+            "SCN-CONTENT-SAFETY-001": "ffd9596da8418fdb29bb5c432014d032c5dbd708a2b991a52bf30344c88fb357",
+            "SCN-IN-VEHICLE-001": "736cfb1c8e625f9d3c1af86af2c9c1ec17e9574efa9258b1dac88b8b61fcb4c8",
+        },
+        "rule_ids": {
+            "SCNR-CSAFE-AUD-EVENT-001",
+            "SCNR-CSAFE-TXT-CLASS-001",
+            "SCNR-CSAFE-VID-ACTION-001",
+            "SCNR-IV-AUD-COMMAND-001",
+        },
+    },
+}
+
+
+def load_json(path: Path) -> dict:
+    with path.open(encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def strip_lifecycle(value):
+    if isinstance(value, dict):
+        return {
+            key: strip_lifecycle(item)
+            for key, item in value.items()
+            if key not in LIFECYCLE_FIELDS
+        }
+    if isinstance(value, list):
+        return [strip_lifecycle(item) for item in value]
+    return value
+
+
+def canonical_digest(value) -> str:
+    canonical = json.dumps(
+        strip_lifecycle(value),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def test_video_review_history_is_exact_and_digest_bound():
+    records = {
+        record["review_id"]: record
+        for record in load_json(CONTENT_REVIEW_PATH)["records"]
+    }
+    assert set(VIDEO_REVIEW_HISTORY) <= records.keys()
+
+    for review_id, expected in VIDEO_NEGATIVE_REVIEWS.items():
+        record = records[review_id]
+        assert record["reviewer_id"] == "codex-task5-video-review"
+        assert record["reviewer_type"] == "ai_agent"
+        assert record["independent_of_implementation"] is True
+        assert record["reviewed_at"] == "2026-07-13"
+        assert record["reviewed_commit"] == expected["commit"]
+        assert record["decision"] == "changes_required"
+        assert record["authorizes_publication"] is False
+        assert {item["finding_id"] for item in record["findings"]} == expected[
+            "finding_ids"
+        ]
+        assert record["finding_count"] == len(expected["finding_ids"])
+        versions = {
+            item["unit_id"]: (item["data_version"], item["evaluation_version"])
+            for item in record["unit_versions"]
+        }
+        assert versions == expected["versions"]
+
+    approved = records[VIDEO_REVIEW_HISTORY[-1]]
+    assert approved["reviewer_id"] == "codex-task5-video-review"
+    assert approved["reviewer_type"] == "ai_agent"
+    assert approved["independent_of_implementation"] is True
+    assert approved["reviewed_at"] == "2026-07-13"
+    assert approved["reviewed_commit"] == (
+        "cf9696e37da10a56cd5115736abb423229e0b02c"
+    )
+    assert approved["decision"] == "approved"
+    assert approved["findings"] == []
+    assert approved["finding_count"] == 0
+    assert approved["authorizes_publication"] is True
+    assert approved["publication_scope"] == "development_only"
+    assert approved["human_release_allowed"] is False
+    versions = {
+        item["unit_id"]: (
+            item["data_version"],
+            item["evaluation_version"],
+            item["content_digest"],
+        )
+        for item in approved["unit_versions"]
+    }
+    assert versions == VIDEO_UNIT_VERSIONS
+
+    units = load_json(VIDEO_PATH)["units"]
+    assert {unit["id"] for unit in units} == set(VIDEO_UNIT_VERSIONS)
+    for unit in units:
+        assert canonical_digest(unit) == VIDEO_UNIT_VERSIONS[unit["id"]][2]
+        assert unit["review_status"] == "published"
+        assert unit["student_visible"] is True
+        assert unit["review_records"] == VIDEO_REVIEW_HISTORY
+        assert unit["publication_scope"] == "development_only"
+        assert unit["human_release_allowed"] is False
+
+
+def test_scenario_review_registry_binds_four_scenarios_and_nine_rules():
+    assert SCENARIO_REVIEW_PATH.is_file(), (
+        f"missing scenario review registry: {SCENARIO_REVIEW_PATH}"
+    )
+    registry = load_json(SCENARIO_REVIEW_PATH)
+    assert registry["schema_version"] == "1.0.0"
+    assert set(registry["digest_contract"]["excluded_fields"]) == LIFECYCLE_FIELDS
+    records = {record["review_id"]: record for record in registry["records"]}
+    assert set(records) == set(SCENARIO_REVIEWS)
+
+    scenario_to_review = {}
+    for review_id, expected in SCENARIO_REVIEWS.items():
+        record = records[review_id]
+        assert record["reviewer_id"] == "codex-task5-scenario-review"
+        assert record["reviewer_type"] == "ai_agent"
+        assert record["independent_of_implementation"] is True
+        assert record["reviewed_at"] == "2026-07-13"
+        assert record["reviewed_commit"] == expected["commit"]
+        assert record["decision"] == "approved"
+        assert record["findings"] == []
+        assert record["finding_count"] == 0
+        assert record["authorizes_publication"] is True
+        assert record["publication_scope"] == "development_only"
+        assert record["human_release_allowed"] is False
+        assert record["scope"]["publication_scope"] == "development_only"
+        assert record["scope"]["human_release_allowed"] is False
+        assert set(record["scope"]["scenario_ids"]) == set(
+            expected["scenario_digests"]
+        )
+        assert set(record["scope"]["rule_ids"]) == expected["rule_ids"]
+        versions = {
+            item["scenario_id"]: item["content_digest"]
+            for item in record["scenario_versions"]
+        }
+        assert versions == expected["scenario_digests"]
+        scenario_to_review.update(
+            {scenario_id: review_id for scenario_id in expected["scenario_digests"]}
+        )
+
+    override_count = 0
+    for scenario_id, path in SCENARIO_PATHS.items():
+        document = load_json(path)
+        scenario = document["scenario"]
+        review_id = scenario_to_review[scenario_id]
+        expected_digest = SCENARIO_REVIEWS[review_id]["scenario_digests"][scenario_id]
+        assert canonical_digest(document) == expected_digest
+        assert scenario["review_status"] == "published"
+        assert scenario["student_visible"] is True
+        assert scenario["review_records"] == [review_id]
+        assert scenario["publication_scope"] == "development_only"
+        assert scenario["human_release_allowed"] is False
+        for override in scenario["overrides"]:
+            override_count += 1
+            assert override["rule_id"] in SCENARIO_REVIEWS[review_id]["rule_ids"]
+            assert override["review_status"] == "published"
+            assert override["review_records"] == [review_id]
+            assert override["publication_scope"] == "development_only"
+            assert override["human_release_allowed"] is False
+    assert override_count == 9
+
+
+def test_scenario_validator_requires_source_eligibility_and_review_digest():
+    validator = load_module(SCENARIO_VALIDATOR_PATH, "task5_lifecycle_validator")
+    parameters = inspect.signature(validator.validate_scenario_documents).parameters
+    assert {"source_registry", "review_registry"} <= parameters.keys()
+
+    documents = [load_json(path) for path in SCENARIO_PATHS.values()]
+    catalog = load_json(GRAPH_CATALOG_PATH)
+    sources = load_json(SOURCE_REGISTRY_PATH)
+    reviews = load_json(SCENARIO_REVIEW_PATH)
+    assert validator.validate_scenario_documents(
+        documents,
+        catalog,
+        source_registry=sources,
+        review_registry=reviews,
+    ) == []
+
+    ineligible_sources = copy.deepcopy(sources)
+    policy = next(
+        source
+        for source in ineligible_sources["sources"]
+        if source["source_id"] == "SRC-POLICY-SCENARIOS-TASK5-001"
+    )
+    policy["license_or_authorization"]["publishable"] = False
+    errors = validator.validate_scenario_documents(
+        documents,
+        catalog,
+        source_registry=ineligible_sources,
+        review_registry=reviews,
+    )
+    assert any("[source_eligibility]" in error for error in errors), errors
+
+    stale_reviews = copy.deepcopy(reviews)
+    stale_reviews["records"][0]["scenario_versions"][0]["content_digest"] = "0" * 64
+    errors = validator.validate_scenario_documents(
+        documents,
+        catalog,
+        source_registry=sources,
+        review_registry=stale_reviews,
+    )
+    assert any("[review_content_digest]" in error for error in errors), errors
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error_code"),
+    (
+        ("unhashable_source_id", "source_registry"),
+        ("unhashable_excluded_field", "review_registry"),
+        ("empty_reviewer_id", "review_registry"),
+        ("external_scope", "review_approval"),
+    ),
+)
+def test_scenario_validator_reports_malformed_lifecycle_registries_without_raising(
+    mutation, error_code
+):
+    validator = load_module(SCENARIO_VALIDATOR_PATH, f"malformed_{mutation}")
+    documents = [load_json(path) for path in SCENARIO_PATHS.values()]
+    catalog = load_json(GRAPH_CATALOG_PATH)
+    sources = load_json(SOURCE_REGISTRY_PATH)
+    reviews = load_json(SCENARIO_REVIEW_PATH)
+    if mutation == "unhashable_source_id":
+        sources["sources"][0]["source_id"] = {}
+    elif mutation == "unhashable_excluded_field":
+        reviews["digest_contract"]["excluded_fields"] = [{}]
+    elif mutation == "empty_reviewer_id":
+        reviews["records"][0]["reviewer_id"] = ""
+    else:
+        reviews["records"][0]["scope"]["publication_scope"] = "external_release"
+
+    errors = validator.validate_scenario_documents(
+        documents,
+        catalog,
+        source_registry=sources,
+        review_registry=reviews,
+    )
+    assert any(f"[{error_code}]" in error for error in errors), errors
+
+    mutated_documents = copy.deepcopy(documents)
+    mutated_documents[0]["scenario"]["description"] += " unreviewed"
+    errors = validator.validate_scenario_documents(
+        mutated_documents,
+        catalog,
+        source_registry=sources,
+        review_registry=reviews,
+    )
+    assert any("[review_content_digest]" in error for error in errors), errors
+
+
+def test_graph_publishes_exactly_reviewed_scenarios_and_nine_inscn_rules():
+    catalog = load_json(GRAPH_CATALOG_PATH)
+    scenario_nodes = {node["id"]: node for node in catalog["nodes"]["SCN"]}
+    assert set(scenario_nodes) == set(SCENARIO_PATHS)
+    for scenario_id, node in scenario_nodes.items():
+        expected_review = next(
+            review_id
+            for review_id, expected in SCENARIO_REVIEWS.items()
+            if scenario_id in expected["scenario_digests"]
+        )
+        assert node["status"] == "published"
+        assert node["student_visible"] is True
+        assert node["review_records"] == [expected_review]
+        assert node["publication_scope"] == "development_only"
+        assert node["human_release_allowed"] is False
+
+    published_edges = []
+    draft_edges = []
+    expected_rule_reviews = {
+        rule_id: review_id
+        for review_id, expected in SCENARIO_REVIEWS.items()
+        for rule_id in expected["rule_ids"]
+    }
+    for edge in catalog["relations"]["INSCN"]:
+        metadata = edge["metadata"]
+        if metadata["review_status"] == "published":
+            published_edges.append(edge)
+            rule_id = metadata["rule_id"]
+            assert metadata["review_records"] == [expected_rule_reviews[rule_id]]
+            assert metadata["publication_scope"] == "development_only"
+            assert metadata["human_release_allowed"] is False
+        else:
+            draft_edges.append(edge)
+            assert metadata["review_status"] == "draft"
+    assert {edge["metadata"]["rule_id"] for edge in published_edges} == set(
+        expected_rule_reviews
+    )
+    assert len(published_edges) == 9
+    assert len(draft_edges) == 15
+
+
+def test_curriculum_requires_all_authored_domains_without_legacy_fallback(tmp_path):
+    builder = load_module(BUILD_CURRICULUM_PATH, "task5_no_fallback_builder")
+    assert set(builder.AUTHORED_SOURCE_DOMAINS) == set(builder.DOMAIN_ORDER)
+    assert builder.LEGACY_FALLBACK_DOMAINS == set()
+
+    curriculum_root = tmp_path / "curriculum"
+    shutil.copytree(ROOT / "data" / "curriculum", curriculum_root)
+    shutil.rmtree(curriculum_root / "video")
+    with pytest.raises(ValueError, match="missing authored domain source:.*video"):
+        builder.build_curriculum(curriculum_root, curriculum_root / "legacy" / "teaching-units.json")
+
+    legacy = load_json(LEGACY_PATH)
+    assert legacy["snapshot_version"]
+    assert legacy["domains"] == ["audio", "video"]
+    assert legacy["units"]
+
+
+def test_task5_central_and_graph_publish_video_while_audio_remains_draft():
+    central = load_json(CENTRAL_PATH)
+    graph = load_json(GRAPH_PATH)
+    by_domain = {
+        domain: [unit for unit in central["units"] if unit["data_type"] == domain]
+        for domain in ("text", "image", "audio", "video")
+    }
+    assert len(central["units"]) == 19
+    assert len(central["student_visible_unit_ids"]) == 13
+    assert all(unit["review_status"] == "published" for unit in by_domain["text"])
+    assert all(unit["review_status"] == "published" for unit in by_domain["image"])
+    assert all(unit["review_status"] == "draft" for unit in by_domain["audio"])
+    assert all(unit["student_visible"] is False for unit in by_domain["audio"])
+    assert all(unit["review_status"] == "published" for unit in by_domain["video"])
+    assert all(unit["student_visible"] is True for unit in by_domain["video"])
+
+    task_links = {
+        link["unit_id"]: link
+        for node in graph["nodes"]
+        if node["type"] == "TSK"
+        for link in node["teaching_unit_links"]
+    }
+    assert all(task_links[unit["id"]]["consumable"] for unit in by_domain["video"])
+    assert all(not task_links[unit["id"]]["consumable"] for unit in by_domain["audio"])
+    assert len(graph["nodes"]) == 166
+    assert len(graph["edges"]) == 240
+
+
+def test_unit_digest_ignores_lifecycle_but_rejects_content_changes():
+    builder = load_module(BUILD_CURRICULUM_PATH, "task5_lifecycle_digest")
+    unit = load_json(VIDEO_PATH)["units"][0]
+    baseline = builder.content_digest(unit)
+    lifecycle_only = copy.deepcopy(unit)
+    lifecycle_only["review_status"] = "draft"
+    lifecycle_only["student_visible"] = False
+    lifecycle_only["review_records"] = []
+    lifecycle_only["publication_scope"] = "internal_test"
+    lifecycle_only["human_release_allowed"] = True
+    assert builder.content_digest(lifecycle_only) == baseline
+
+    content_change = copy.deepcopy(unit)
+    content_change["title"] += " unreviewed"
+    assert builder.content_digest(content_change) != baseline
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("publication_scope", "external_release"),
+        ("human_release_allowed", True),
+    ),
+)
+def test_unit_publication_gate_requires_development_only_lifecycle(field, value):
+    builder = load_module(BUILD_CURRICULUM_PATH, f"task5_gate_{field}")
+    central = copy.deepcopy(load_json(CENTRAL_PATH))
+    unit = next(item for item in central["units"] if item["data_type"] == "video")
+    unit[field] = value
+    with pytest.raises(ValueError, match="development-only lifecycle"):
+        builder.validate_publication_contract(
+            central,
+            load_json(SOURCE_REGISTRY_PATH),
+            load_json(CONTENT_REVIEW_PATH),
+        )

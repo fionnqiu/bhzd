@@ -298,6 +298,12 @@ def test_review_fix_versions_and_visibility_gate_are_explicit():
         exercise = unit["exercise"]
         assert exercise["data_version"] == expected_data_versions[capability_key]
         assert exercise["evaluation"]["version"] == "1.1.0"
-        assert unit["review_status"] == "draft"
-        assert unit["student_visible"] is False
-        assert unit["review_records"] == []
+        assert unit["review_status"] == "published"
+        assert unit["student_visible"] is True
+        assert unit["review_records"] == [
+            "REVIEW-TASK5-VIDEO-3A425AC-001",
+            "REVIEW-TASK5-VIDEO-ED484E7-002",
+            "REVIEW-TASK5-VIDEO-CF9696E-003",
+        ]
+        assert unit["publication_scope"] == "development_only"
+        assert unit["human_release_allowed"] is False

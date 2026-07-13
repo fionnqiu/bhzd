@@ -27,8 +27,10 @@
         "source_refs": [
           "SRC-POLICY-SCENARIOS-TASK5-001"
         ],
-        "review_status": "draft",
-        "review_records": []
+        "review_status": "published",
+        "review_records": ["REVIEW-TASK5-SCENARIOS-C5A91CB-001"],
+        "publication_scope": "development_only",
+        "human_release_allowed": false
       },
       {
         "rule_id": "SCNR-MED-IMG-MASK-001",
@@ -39,8 +41,10 @@
         "source_refs": [
           "SRC-POLICY-SCENARIOS-TASK5-001"
         ],
-        "review_status": "draft",
-        "review_records": []
+        "review_status": "published",
+        "review_records": ["REVIEW-TASK5-SCENARIOS-C5A91CB-001"],
+        "publication_scope": "development_only",
+        "human_release_allowed": false
       },
       {
         "rule_id": "SCNR-MED-AUD-TRANSCRIPT-001",
@@ -51,8 +55,10 @@
         "source_refs": [
           "SRC-POLICY-SCENARIOS-TASK5-001"
         ],
-        "review_status": "draft",
-        "review_records": []
+        "review_status": "published",
+        "review_records": ["REVIEW-TASK5-SCENARIOS-C5A91CB-001"],
+        "publication_scope": "development_only",
+        "human_release_allowed": false
       }
     ],
     "examples": [
@@ -154,7 +160,10 @@
         }
       }
     ],
-    "review_status": "draft",
-    "review_records": []
+    "review_status": "published",
+    "student_visible": true,
+    "review_records": ["REVIEW-TASK5-SCENARIOS-C5A91CB-001"],
+    "publication_scope": "development_only",
+    "human_release_allowed": false
   }
 }

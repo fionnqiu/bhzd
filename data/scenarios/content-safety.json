@@ -27,8 +27,10 @@
         "source_refs": [
           "SRC-POLICY-SCENARIOS-TASK5-001"
         ],
-        "review_status": "draft",
-        "review_records": []
+        "review_status": "published",
+        "review_records": ["REVIEW-TASK5-SCENARIOS-09638A7-001"],
+        "publication_scope": "development_only",
+        "human_release_allowed": false
       },
       {
         "rule_id": "SCNR-CSAFE-AUD-EVENT-001",
@@ -39,8 +41,10 @@
         "source_refs": [
           "SRC-POLICY-SCENARIOS-TASK5-001"
         ],
-        "review_status": "draft",
-        "review_records": []
+        "review_status": "published",
+        "review_records": ["REVIEW-TASK5-SCENARIOS-09638A7-001"],
+        "publication_scope": "development_only",
+        "human_release_allowed": false
       },
       {
         "rule_id": "SCNR-CSAFE-VID-ACTION-001",
@@ -51,8 +55,10 @@
         "source_refs": [
           "SRC-POLICY-SCENARIOS-TASK5-001"
         ],
-        "review_status": "draft",
-        "review_records": []
+        "review_status": "published",
+        "review_records": ["REVIEW-TASK5-SCENARIOS-09638A7-001"],
+        "publication_scope": "development_only",
+        "human_release_allowed": false
       }
     ],
     "examples": [
@@ -126,7 +132,10 @@
         }
       }
     ],
-    "review_status": "draft",
-    "review_records": []
+    "review_status": "published",
+    "student_visible": true,
+    "review_records": ["REVIEW-TASK5-SCENARIOS-09638A7-001"],
+    "publication_scope": "development_only",
+    "human_release_allowed": false
   }
 }

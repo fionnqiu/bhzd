@@ -381,7 +381,7 @@ def test_failed_task4_ai_reviews_are_retained_exactly_for_audit():
         assert record["remaining_risks"] == EXPECTED_REMAINING_RISKS
 
 
-def test_central_build_has_19_units_and_all_task4_task5_draft_links():
+def test_central_build_has_19_units_and_domain_appropriate_lifecycle_links():
     central = load_json(CENTRAL_PATH)
     graph = load_json(GRAPH_PATH)
     task_nodes = {
@@ -393,11 +393,16 @@ def test_central_build_has_19_units_and_all_task4_task5_draft_links():
     assert len(central["units"]) == 19
     assert len(audio_units) == 6
     assert len(video_units) == 3
-    assert all(unit["review_status"] == "draft" for unit in audio_units + video_units)
-    assert all(unit["student_visible"] is False for unit in audio_units + video_units)
-    assert {
-        unit["id"] for unit in audio_units + video_units
-    }.isdisjoint(central["student_visible_unit_ids"])
+    assert all(unit["review_status"] == "draft" for unit in audio_units)
+    assert all(unit["student_visible"] is False for unit in audio_units)
+    assert {unit["id"] for unit in audio_units}.isdisjoint(
+        central["student_visible_unit_ids"]
+    )
+    assert all(unit["review_status"] == "published" for unit in video_units)
+    assert all(unit["student_visible"] is True for unit in video_units)
+    assert {unit["id"] for unit in video_units} <= set(
+        central["student_visible_unit_ids"]
+    )
 
     linked_audio = {
         link["unit_id"]
@@ -412,10 +417,10 @@ def test_central_build_has_19_units_and_all_task4_task5_draft_links():
         assert all(
             link == {
                 "unit_id": link["unit_id"],
-                "review_status": "draft",
-                "student_visible": False,
-                "in_student_visible_index": False,
-                "consumable": False,
+                "review_status": "published",
+                "student_visible": True,
+                "in_student_visible_index": True,
+                "consumable": True,
             }
             for link in links
         )

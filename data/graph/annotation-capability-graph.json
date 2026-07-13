@@ -7,7 +7,7 @@
   "publication_state": "development",
   "generated_from": "data/graph/graph-catalog.json",
   "generated_by": "scripts/build_graph.py",
-  "catalog_sha256": "f5156cfd9e70c170c54e2a35c23306e2a4abb4a583935ea508efc33c3db2c450",
+  "catalog_sha256": "24faac0a27e6c9af21b24920b0afdcf8e1b9916c9a3dd06c2fc2e965651002f6",
   "source_registry": "data/sources/source-registry.json",
   "teaching_units": "data/curriculum/teaching-units.json",
   "node_type_counts": {
@@ -2134,8 +2134,14 @@
         "audio",
         "video"
       ],
+      "status": "published",
+      "student_visible": true,
+      "review_records": [
+        "REVIEW-TASK5-SCENARIOS-09638A7-001"
+      ],
+      "publication_scope": "development_only",
+      "human_release_allowed": false,
       "type": "SCN",
-      "status": "draft",
       "source_refs": []
     },
     {
@@ -2150,8 +2156,14 @@
         "text",
         "audio"
       ],
+      "status": "published",
+      "student_visible": true,
+      "review_records": [
+        "REVIEW-TASK5-SCENARIOS-C5A91CB-001"
+      ],
+      "publication_scope": "development_only",
+      "human_release_allowed": false,
       "type": "SCN",
-      "status": "draft",
       "source_refs": []
     },
     {
@@ -2164,8 +2176,14 @@
       "supported_data_types": [
         "audio"
       ],
+      "status": "published",
+      "student_visible": true,
+      "review_records": [
+        "REVIEW-TASK5-SCENARIOS-09638A7-001"
+      ],
+      "publication_scope": "development_only",
+      "human_release_allowed": false,
       "type": "SCN",
-      "status": "draft",
       "source_refs": []
     },
     {
@@ -2182,8 +2200,14 @@
         "image",
         "audio"
       ],
+      "status": "published",
+      "student_visible": true,
+      "review_records": [
+        "REVIEW-TASK5-SCENARIOS-C5A91CB-001"
+      ],
+      "publication_scope": "development_only",
+      "human_release_allowed": false,
       "type": "SCN",
-      "status": "draft",
       "source_refs": []
     },
     {
@@ -2553,10 +2577,10 @@
       "teaching_unit_links": [
         {
           "unit_id": "TU-VIDEO-BEHAVIOR-EVENT-001",
-          "review_status": "draft",
-          "student_visible": false,
-          "in_student_visible_index": false,
-          "consumable": false
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
         }
       ]
     },
@@ -2576,10 +2600,10 @@
       "teaching_unit_links": [
         {
           "unit_id": "TU-VIDEO-FRAME-ANNOTATION-001",
-          "review_status": "draft",
-          "student_visible": false,
-          "in_student_visible_index": false,
-          "consumable": false
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
         }
       ]
     },
@@ -2599,10 +2623,10 @@
       "teaching_unit_links": [
         {
           "unit_id": "TU-VIDEO-OBJECT-TRACKING-001",
-          "review_status": "draft",
-          "student_visible": false,
-          "in_student_visible_index": false,
-          "consumable": false
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
         }
       ]
     },
@@ -4064,7 +4088,12 @@
           "audio"
         ],
         "description": "增加需复核的音频非言语事件类别。",
-        "review_status": "draft"
+        "review_status": "published",
+        "review_records": [
+          "REVIEW-TASK5-SCENARIOS-09638A7-001"
+        ],
+        "publication_scope": "development_only",
+        "human_release_allowed": false
       },
       "relation": "INSCN",
       "label": "应用于场景"
@@ -4081,7 +4110,12 @@
           "audio"
         ],
         "description": "增加坐席与客户说话人角色约束。",
-        "review_status": "draft"
+        "review_status": "published",
+        "review_records": [
+          "REVIEW-TASK5-SCENARIOS-C5A91CB-001"
+        ],
+        "publication_scope": "development_only",
+        "human_release_allowed": false
       },
       "relation": "INSCN",
       "label": "应用于场景"
@@ -4098,7 +4132,12 @@
           "audio"
         ],
         "description": "补充医学术语转写与标准化案例。",
-        "review_status": "draft"
+        "review_status": "published",
+        "review_records": [
+          "REVIEW-TASK5-SCENARIOS-C5A91CB-001"
+        ],
+        "publication_scope": "development_only",
+        "human_release_allowed": false
       },
       "relation": "INSCN",
       "label": "应用于场景"
@@ -4115,7 +4154,12 @@
           "audio"
         ],
         "description": "增加车控、导航和媒体命令意图。",
-        "review_status": "draft"
+        "review_status": "published",
+        "review_records": [
+          "REVIEW-TASK5-SCENARIOS-09638A7-001"
+        ],
+        "publication_scope": "development_only",
+        "human_release_allowed": false
       },
       "relation": "INSCN",
       "label": "应用于场景"
@@ -4132,7 +4176,12 @@
           "image"
         ],
         "description": "补充医学影像区域掩码案例。",
-        "review_status": "draft"
+        "review_status": "published",
+        "review_records": [
+          "REVIEW-TASK5-SCENARIOS-C5A91CB-001"
+        ],
+        "publication_scope": "development_only",
+        "human_release_allowed": false
       },
       "relation": "INSCN",
       "label": "应用于场景"
@@ -4149,7 +4198,12 @@
           "text"
         ],
         "description": "使用内容安全类别和互斥规则覆盖通用分类。",
-        "review_status": "draft"
+        "review_status": "published",
+        "review_records": [
+          "REVIEW-TASK5-SCENARIOS-09638A7-001"
+        ],
+        "publication_scope": "development_only",
+        "human_release_allowed": false
       },
       "relation": "INSCN",
       "label": "应用于场景"
@@ -4166,7 +4220,12 @@
           "text"
         ],
         "description": "补充医学实体类型和术语边界案例。",
-        "review_status": "draft"
+        "review_status": "published",
+        "review_records": [
+          "REVIEW-TASK5-SCENARIOS-C5A91CB-001"
+        ],
+        "publication_scope": "development_only",
+        "human_release_allowed": false
       },
       "relation": "INSCN",
       "label": "应用于场景"
@@ -4183,7 +4242,12 @@
           "text"
         ],
         "description": "增加客服咨询、办理和投诉意图层级。",
-        "review_status": "draft"
+        "review_status": "published",
+        "review_records": [
+          "REVIEW-TASK5-SCENARIOS-C5A91CB-001"
+        ],
+        "publication_scope": "development_only",
+        "human_release_allowed": false
       },
       "relation": "INSCN",
       "label": "应用于场景"
@@ -4200,7 +4264,12 @@
           "video"
         ],
         "description": "使用内容安全行为本体覆盖通用事件类别。",
-        "review_status": "draft"
+        "review_status": "published",
+        "review_records": [
+          "REVIEW-TASK5-SCENARIOS-09638A7-001"
+        ],
+        "publication_scope": "development_only",
+        "human_release_allowed": false
       },
       "relation": "INSCN",
       "label": "应用于场景"

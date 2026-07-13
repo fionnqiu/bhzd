@@ -543,7 +543,7 @@ def test_approved_ai_reviews_bind_clean_commit_versions_and_development_scope():
             )
 
 
-def test_task3_development_publication_is_exact_and_legacy_stays_draft():
+def test_task3_development_publication_remains_visible_after_task5_video_release():
     text = load_json(TEXT_UNITS_PATH)
     image = load_json(IMAGE_UNITS_PATH)
     central = load_json(CENTRAL_UNITS_PATH)
@@ -565,15 +565,24 @@ def test_task3_development_publication_is_exact_and_legacy_stays_draft():
                 assert source["license_or_authorization"]["publishable"] is True
                 assert source["usage_rights"]["citation_allowed"] is True
 
-    assert set(central["student_visible_unit_ids"]) == expected_visible
+    visible_ids = set(central["student_visible_unit_ids"])
+    assert expected_visible <= visible_ids
+    assert visible_ids - expected_visible == {
+        "TU-VIDEO-BEHAVIOR-EVENT-001",
+        "TU-VIDEO-FRAME-ANNOTATION-001",
+        "TU-VIDEO-OBJECT-TRACKING-001",
+    }
     central_units = {unit["id"]: unit for unit in central["units"]}
     for unit in text["units"] + image["units"]:
         assert central_units[unit["id"]] == unit
     for unit in central["units"]:
-        if unit["data_type"] in {"audio", "video"}:
+        if unit["data_type"] == "audio":
             assert unit["review_status"] == "draft"
             assert unit["student_visible"] is False
-            assert unit["id"] not in central["student_visible_unit_ids"]
+        elif unit["data_type"] == "video":
+            assert unit["review_status"] == "published"
+            assert unit["student_visible"] is True
+            assert unit["id"] in central["student_visible_unit_ids"]
 
     for source_id in (
         "SRC-POLICY-TEXT-TASK3-001",
@@ -694,6 +703,7 @@ def test_curriculum_builder_rejects_duplicate_ids_and_noncanonical_domain_order(
     shutil.copytree(TEXT_UNITS_PATH.parent, curriculum_root / "text")
     shutil.copytree(IMAGE_UNITS_PATH.parent, curriculum_root / "image")
     shutil.copytree(AUDIO_UNITS_ROOT, curriculum_root / "audio")
+    shutil.copytree(VIDEO_UNITS_ROOT, curriculum_root / "video")
 
     image_path = curriculum_root / "image" / "teaching-units.json"
     image = load_json(image_path)

@@ -31,6 +31,17 @@ SCENARIO_VALIDATOR_PATH = ROOT / "scripts" / "validate_scenarios.py"
 
 VIDEO_POLICY_SOURCE = "SRC-POLICY-VIDEO-TASK5-001"
 SCENARIO_POLICY_SOURCE = "SRC-POLICY-SCENARIOS-TASK5-001"
+VIDEO_REVIEW_HISTORY = [
+    "REVIEW-TASK5-VIDEO-3A425AC-001",
+    "REVIEW-TASK5-VIDEO-ED484E7-002",
+    "REVIEW-TASK5-VIDEO-CF9696E-003",
+]
+SCENARIO_REVIEWS = {
+    "SCN-MEDICAL-001": "REVIEW-TASK5-SCENARIOS-C5A91CB-001",
+    "SCN-CUSTOMER-SERVICE-001": "REVIEW-TASK5-SCENARIOS-C5A91CB-001",
+    "SCN-IN-VEHICLE-001": "REVIEW-TASK5-SCENARIOS-09638A7-001",
+    "SCN-CONTENT-SAFETY-001": "REVIEW-TASK5-SCENARIOS-09638A7-001",
+}
 EXPECTED_VIDEO_UNITS = {
     "frame_annotation": {
         "unit_id": "TU-VIDEO-FRAME-ANNOTATION-001",
@@ -202,9 +213,11 @@ def test_video_units_reuse_the_common_exercise_and_feedback_contract(
         incorrect = exercise["evaluation"]["incorrect_feedback"]
         assert incorrect["feedback"]
         assert incorrect["remediation"]
-        assert unit["review_status"] == "draft"
-        assert unit["student_visible"] is False
-        assert unit["review_records"] == []
+        assert unit["review_status"] == "published"
+        assert unit["student_visible"] is True
+        assert unit["review_records"] == VIDEO_REVIEW_HISTORY
+        assert unit["publication_scope"] == "development_only"
+        assert unit["human_release_allowed"] is False
 
     assert len(exercise_ids) == len(set(exercise_ids))
 
@@ -284,8 +297,11 @@ def test_scenario_files_declare_the_exact_graph_supported_types(
         assert scenario["source_refs"]
         assert SCENARIO_POLICY_SOURCE in scenario["source_refs"]
         assert scenario["applicable_capability_refs"]
-        assert scenario["review_status"] == "draft"
-        assert scenario["review_records"] == []
+        assert scenario["review_status"] == "published"
+        assert scenario["student_visible"] is True
+        assert scenario["review_records"] == [SCENARIO_REVIEWS[scenario_id]]
+        assert scenario["publication_scope"] == "development_only"
+        assert scenario["human_release_allowed"] is False
 
 
 def test_every_declared_scenario_type_has_an_override_and_example(scenario_documents):
@@ -304,8 +320,10 @@ def test_every_declared_scenario_type_has_an_override_and_example(scenario_docum
             assert override["override_type"] in {"add", "replace"}
             assert override["content"]
             assert override["source_refs"]
-            assert override["review_status"] == "draft"
-            assert override["review_records"] == []
+            assert override["review_status"] == "published"
+            assert override["review_records"] == [SCENARIO_REVIEWS[scenario_id]]
+            assert override["publication_scope"] == "development_only"
+            assert override["human_release_allowed"] is False
 
         by_rule = {override["rule_id"]: override for override in overrides}
         for example in examples:
@@ -595,15 +613,16 @@ def test_curriculum_build_replaces_legacy_video_and_keeps_all_authored_domains()
     }
 
 
-def test_central_index_and_graph_keep_task5_candidates_hidden_with_exact_counts():
+def test_central_index_and_graph_publish_reviewed_task5_video_with_exact_counts():
     central = load_json(CENTRAL_UNITS_PATH)
     graph = load_json(GRAPH_PATH)
     video_units = [unit for unit in central["units"] if unit["data_type"] == "video"]
     assert len(central["units"]) == 19
     assert len(video_units) == 3
-    assert all(unit["review_status"] == "draft" for unit in video_units)
-    assert all(unit["student_visible"] is False for unit in video_units)
-    assert not ({unit["id"] for unit in video_units} & set(central["student_visible_unit_ids"]))
+    assert all(unit["review_status"] == "published" for unit in video_units)
+    assert all(unit["student_visible"] is True for unit in video_units)
+    assert {unit["id"] for unit in video_units} <= set(central["student_visible_unit_ids"])
+    assert len(central["student_visible_unit_ids"]) == 13
     assert len(graph["nodes"]) == 166
     assert len(graph["edges"]) == 240
 
@@ -616,10 +635,10 @@ def test_central_index_and_graph_keep_task5_candidates_hidden_with_exact_counts(
     for expected in EXPECTED_VIDEO_UNITS.values():
         task_id, link = task_links[expected["unit_id"]]
         assert task_id == expected["task_ref"]
-        assert link["review_status"] == "draft"
-        assert link["student_visible"] is False
-        assert link["in_student_visible_index"] is False
-        assert link["consumable"] is False
+        assert link["review_status"] == "published"
+        assert link["student_visible"] is True
+        assert link["in_student_visible_index"] is True
+        assert link["consumable"] is True
 
 
 def test_task5_evaluator_cli_uses_the_video_exercise_id(video_units):

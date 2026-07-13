@@ -22,11 +22,17 @@ DEFAULT_LEGACY_SNAPSHOT = (
 DEFAULT_SOURCE_REGISTRY = ROOT / "data" / "sources" / "source-registry.json"
 DEFAULT_REVIEW_REGISTRY = ROOT / "data" / "reviews" / "content-review-registry.json"
 DOMAIN_ORDER = ("text", "image", "audio", "video")
-AUTHORED_SOURCE_DOMAINS = {"text", "image", "audio"}
-LEGACY_FALLBACK_DOMAINS = {"video"}
+AUTHORED_SOURCE_DOMAINS = set(DOMAIN_ORDER)
+LEGACY_FALLBACK_DOMAINS: set[str] = set()
 REVIEWED_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
 CONTENT_DIGEST_PATTERN = re.compile(r"[0-9a-f]{64}")
-LIFECYCLE_FIELDS = {"review_status", "student_visible", "review_records"}
+LIFECYCLE_FIELDS = {
+    "review_status",
+    "student_visible",
+    "review_records",
+    "publication_scope",
+    "human_release_allowed",
+}
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -269,6 +275,12 @@ def validate_publication_contract(
             raise ValueError(f"{unit_id} references unknown review: {unknown_reviews[0]}")
         if status == "draft":
             continue
+
+        if unit.get("data_type") in {"audio", "video"} and (
+            unit.get("publication_scope") != "development_only"
+            or unit.get("human_release_allowed") is not False
+        ):
+            raise ValueError(f"{unit_id} requires development-only lifecycle")
 
         source_refs = unit.get("source_refs")
         if (

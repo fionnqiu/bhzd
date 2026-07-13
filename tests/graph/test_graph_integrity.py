@@ -503,6 +503,9 @@ def test_teaching_unit_links_respect_publication_gate(graph):
         "TU-IMAGE-OCCLUSION-TRUNCATION-001",
         "TU-IMAGE-POLYGON-VERTICES-001",
         "TU-IMAGE-RECT-BOUNDS-001",
+        "TU-VIDEO-BEHAVIOR-EVENT-001",
+        "TU-VIDEO-FRAME-ANNOTATION-001",
+        "TU-VIDEO-OBJECT-TRACKING-001",
     }
 
 

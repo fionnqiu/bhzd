@@ -1294,36 +1294,36 @@
       <data key="n1">内容安全审核</data>
       <data key="n2">文本、音频和视频内容安全教学规则覆盖层。</data>
       <data key="n3">["audio","text","video"]</data>
-      <data key="n4">draft</data>
+      <data key="n4">published</data>
       <data key="n5">[]</data>
-      <data key="n6">{"supported_data_types":["text","audio","video"]}</data>
+      <data key="n6">{"human_release_allowed":false,"publication_scope":"development_only","review_records":["REVIEW-TASK5-SCENARIOS-09638A7-001"],"student_visible":true,"supported_data_types":["text","audio","video"]}</data>
     </node>
     <node id="SCN-CUSTOMER-SERVICE-001">
       <data key="n0">SCN</data>
       <data key="n1">智能客服标注</data>
       <data key="n2">客服文本意图与通话语音教学规则覆盖层。</data>
       <data key="n3">["audio","text"]</data>
-      <data key="n4">draft</data>
+      <data key="n4">published</data>
       <data key="n5">[]</data>
-      <data key="n6">{"supported_data_types":["text","audio"]}</data>
+      <data key="n6">{"human_release_allowed":false,"publication_scope":"development_only","review_records":["REVIEW-TASK5-SCENARIOS-C5A91CB-001"],"student_visible":true,"supported_data_types":["text","audio"]}</data>
     </node>
     <node id="SCN-IN-VEHICLE-001">
       <data key="n0">SCN</data>
       <data key="n1">车载语音标注</data>
       <data key="n2">车载唤醒、命令和噪声环境教学规则覆盖层。</data>
       <data key="n3">["audio"]</data>
-      <data key="n4">draft</data>
+      <data key="n4">published</data>
       <data key="n5">[]</data>
-      <data key="n6">{"supported_data_types":["audio"]}</data>
+      <data key="n6">{"human_release_allowed":false,"publication_scope":"development_only","review_records":["REVIEW-TASK5-SCENARIOS-09638A7-001"],"student_visible":true,"supported_data_types":["audio"]}</data>
     </node>
     <node id="SCN-MEDICAL-001">
       <data key="n0">SCN</data>
       <data key="n1">医疗数据标注</data>
       <data key="n2">医疗文本、影像和语音教学规则覆盖层。</data>
       <data key="n3">["audio","image","text"]</data>
-      <data key="n4">draft</data>
+      <data key="n4">published</data>
       <data key="n5">[]</data>
-      <data key="n6">{"supported_data_types":["text","image","audio"]}</data>
+      <data key="n6">{"human_release_allowed":false,"publication_scope":"development_only","review_records":["REVIEW-TASK5-SCENARIOS-C5A91CB-001"],"student_visible":true,"supported_data_types":["text","image","audio"]}</data>
     </node>
     <node id="TSK-AUD-COMMAND-SEGMENT-001">
       <data key="n0">TSK</data>
@@ -1467,7 +1467,7 @@
       <data key="n3">["video"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-VID-ACTION-EVENT-001","primary_knowledge_ref":"KNG-VID-EVENT-START-END-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-VIDEO-BEHAVIOR-EVENT-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-VID-ACTION-EVENT-001","primary_knowledge_ref":"KNG-VID-EVENT-START-END-001","student_visible":false,"teaching_unit_links":[{"consumable":true,"in_student_visible_index":true,"review_status":"published","student_visible":true,"unit_id":"TU-VIDEO-BEHAVIOR-EVENT-001"}]}</data>
     </node>
     <node id="TSK-VID-FRAME-LABEL-001">
       <data key="n0">TSK</data>
@@ -1476,7 +1476,7 @@
       <data key="n3">["video"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-VID-FRAME-ANNOTATE-001","primary_knowledge_ref":"KNG-VID-FRAME-ANNOTATION-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-VIDEO-FRAME-ANNOTATION-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-VID-FRAME-ANNOTATE-001","primary_knowledge_ref":"KNG-VID-FRAME-ANNOTATION-001","student_visible":false,"teaching_unit_links":[{"consumable":true,"in_student_visible_index":true,"review_status":"published","student_visible":true,"unit_id":"TU-VIDEO-FRAME-ANNOTATION-001"}]}</data>
     </node>
     <node id="TSK-VID-OBJECT-TRACK-001">
       <data key="n0">TSK</data>
@@ -1485,7 +1485,7 @@
       <data key="n3">["video"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-VID-OBJECT-TRACK-001","primary_knowledge_ref":"KNG-VID-TRACK-CONTINUITY-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-VIDEO-OBJECT-TRACKING-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-VID-OBJECT-TRACK-001","primary_knowledge_ref":"KNG-VID-TRACK-CONTINUITY-001","student_visible":false,"teaching_unit_links":[{"consumable":true,"in_student_visible_index":true,"review_status":"published","student_visible":true,"unit_id":"TU-VIDEO-OBJECT-TRACKING-001"}]}</data>
     </node>
     <node id="TSK-VID-TRACK-ID-AUDIT-001">
       <data key="n0">TSK</data>
@@ -2388,47 +2388,47 @@
     <edge id="EDGE-0177" source="CAP-AUD-EMOTION-PARALING-001" target="SCN-CONTENT-SAFETY-001">
       <data key="e0">INSCN</data>
       <data key="e1">应用于场景</data>
-      <data key="e2">{"base_rule_ref":"KNG-AUD-PARALINGUISTIC-EVENT-001","data_types":["audio"],"description":"增加需复核的音频非言语事件类别。","override_type":"add","review_status":"draft","rule_id":"SCNR-CSAFE-AUD-EVENT-001"}</data>
+      <data key="e2">{"base_rule_ref":"KNG-AUD-PARALINGUISTIC-EVENT-001","data_types":["audio"],"description":"增加需复核的音频非言语事件类别。","human_release_allowed":false,"override_type":"add","publication_scope":"development_only","review_records":["REVIEW-TASK5-SCENARIOS-09638A7-001"],"review_status":"published","rule_id":"SCNR-CSAFE-AUD-EVENT-001"}</data>
     </edge>
     <edge id="EDGE-0178" source="CAP-AUD-SPEAKER-001" target="SCN-CUSTOMER-SERVICE-001">
       <data key="e0">INSCN</data>
       <data key="e1">应用于场景</data>
-      <data key="e2">{"base_rule_ref":"KNG-AUD-SPEAKER-TURN-001","data_types":["audio"],"description":"增加坐席与客户说话人角色约束。","override_type":"add","review_status":"draft","rule_id":"SCNR-CS-AUD-SPEAKER-001"}</data>
+      <data key="e2">{"base_rule_ref":"KNG-AUD-SPEAKER-TURN-001","data_types":["audio"],"description":"增加坐席与客户说话人角色约束。","human_release_allowed":false,"override_type":"add","publication_scope":"development_only","review_records":["REVIEW-TASK5-SCENARIOS-C5A91CB-001"],"review_status":"published","rule_id":"SCNR-CS-AUD-SPEAKER-001"}</data>
     </edge>
     <edge id="EDGE-0179" source="CAP-AUD-TRANSCRIBE-PUNCT-001" target="SCN-MEDICAL-001">
       <data key="e0">INSCN</data>
       <data key="e1">应用于场景</data>
-      <data key="e2">{"base_rule_ref":"KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001","data_types":["audio"],"description":"补充医学术语转写与标准化案例。","override_type":"add","review_status":"draft","rule_id":"SCNR-MED-AUD-TRANSCRIPT-001"}</data>
+      <data key="e2">{"base_rule_ref":"KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001","data_types":["audio"],"description":"补充医学术语转写与标准化案例。","human_release_allowed":false,"override_type":"add","publication_scope":"development_only","review_records":["REVIEW-TASK5-SCENARIOS-C5A91CB-001"],"review_status":"published","rule_id":"SCNR-MED-AUD-TRANSCRIPT-001"}</data>
     </edge>
     <edge id="EDGE-0180" source="CAP-AUD-WAKE-COMMAND-001" target="SCN-IN-VEHICLE-001">
       <data key="e0">INSCN</data>
       <data key="e1">应用于场景</data>
-      <data key="e2">{"base_rule_ref":"KNG-AUD-COMMAND-INTENT-001","data_types":["audio"],"description":"增加车控、导航和媒体命令意图。","override_type":"add","review_status":"draft","rule_id":"SCNR-IV-AUD-COMMAND-001"}</data>
+      <data key="e2">{"base_rule_ref":"KNG-AUD-COMMAND-INTENT-001","data_types":["audio"],"description":"增加车控、导航和媒体命令意图。","human_release_allowed":false,"override_type":"add","publication_scope":"development_only","review_records":["REVIEW-TASK5-SCENARIOS-09638A7-001"],"review_status":"published","rule_id":"SCNR-IV-AUD-COMMAND-001"}</data>
     </edge>
     <edge id="EDGE-0181" source="CAP-IMG-SEMANTIC-SEGMENT-001" target="SCN-MEDICAL-001">
       <data key="e0">INSCN</data>
       <data key="e1">应用于场景</data>
-      <data key="e2">{"base_rule_ref":"KNG-IMG-SEMANTIC-MASK-001","data_types":["image"],"description":"补充医学影像区域掩码案例。","override_type":"add","review_status":"draft","rule_id":"SCNR-MED-IMG-MASK-001"}</data>
+      <data key="e2">{"base_rule_ref":"KNG-IMG-SEMANTIC-MASK-001","data_types":["image"],"description":"补充医学影像区域掩码案例。","human_release_allowed":false,"override_type":"add","publication_scope":"development_only","review_records":["REVIEW-TASK5-SCENARIOS-C5A91CB-001"],"review_status":"published","rule_id":"SCNR-MED-IMG-MASK-001"}</data>
     </edge>
     <edge id="EDGE-0182" source="CAP-TXT-CLASSIFY-001" target="SCN-CONTENT-SAFETY-001">
       <data key="e0">INSCN</data>
       <data key="e1">应用于场景</data>
-      <data key="e2">{"base_rule_ref":"KNG-TXT-CLASS-EXCLUSION-001","data_types":["text"],"description":"使用内容安全类别和互斥规则覆盖通用分类。","override_type":"replace","review_status":"draft","rule_id":"SCNR-CSAFE-TXT-CLASS-001"}</data>
+      <data key="e2">{"base_rule_ref":"KNG-TXT-CLASS-EXCLUSION-001","data_types":["text"],"description":"使用内容安全类别和互斥规则覆盖通用分类。","human_release_allowed":false,"override_type":"replace","publication_scope":"development_only","review_records":["REVIEW-TASK5-SCENARIOS-09638A7-001"],"review_status":"published","rule_id":"SCNR-CSAFE-TXT-CLASS-001"}</data>
     </edge>
     <edge id="EDGE-0183" source="CAP-TXT-ENTITY-TYPE-001" target="SCN-MEDICAL-001">
       <data key="e0">INSCN</data>
       <data key="e1">应用于场景</data>
-      <data key="e2">{"base_rule_ref":"KNG-TXT-ENTITY-TYPE-001","data_types":["text"],"description":"补充医学实体类型和术语边界案例。","override_type":"add","review_status":"draft","rule_id":"SCNR-MED-TXT-ENTITY-001"}</data>
+      <data key="e2">{"base_rule_ref":"KNG-TXT-ENTITY-TYPE-001","data_types":["text"],"description":"补充医学实体类型和术语边界案例。","human_release_allowed":false,"override_type":"add","publication_scope":"development_only","review_records":["REVIEW-TASK5-SCENARIOS-C5A91CB-001"],"review_status":"published","rule_id":"SCNR-MED-TXT-ENTITY-001"}</data>
     </edge>
     <edge id="EDGE-0184" source="CAP-TXT-INTENT-001" target="SCN-CUSTOMER-SERVICE-001">
       <data key="e0">INSCN</data>
       <data key="e1">应用于场景</data>
-      <data key="e2">{"base_rule_ref":"KNG-TXT-INTENT-HIERARCHY-001","data_types":["text"],"description":"增加客服咨询、办理和投诉意图层级。","override_type":"add","review_status":"draft","rule_id":"SCNR-CS-TXT-INTENT-001"}</data>
+      <data key="e2">{"base_rule_ref":"KNG-TXT-INTENT-HIERARCHY-001","data_types":["text"],"description":"增加客服咨询、办理和投诉意图层级。","human_release_allowed":false,"override_type":"add","publication_scope":"development_only","review_records":["REVIEW-TASK5-SCENARIOS-C5A91CB-001"],"review_status":"published","rule_id":"SCNR-CS-TXT-INTENT-001"}</data>
     </edge>
     <edge id="EDGE-0185" source="CAP-VID-ACTION-EVENT-001" target="SCN-CONTENT-SAFETY-001">
       <data key="e0">INSCN</data>
       <data key="e1">应用于场景</data>
-      <data key="e2">{"base_rule_ref":"KNG-VID-ACTION-TAXONOMY-001","data_types":["video"],"description":"使用内容安全行为本体覆盖通用事件类别。","override_type":"replace","review_status":"draft","rule_id":"SCNR-CSAFE-VID-ACTION-001"}</data>
+      <data key="e2">{"base_rule_ref":"KNG-VID-ACTION-TAXONOMY-001","data_types":["video"],"description":"使用内容安全行为本体覆盖通用事件类别。","human_release_allowed":false,"override_type":"replace","publication_scope":"development_only","review_records":["REVIEW-TASK5-SCENARIOS-09638A7-001"],"review_status":"published","rule_id":"SCNR-CSAFE-VID-ACTION-001"}</data>
     </edge>
     <edge id="EDGE-0186" source="KNG-AUD-LANGUAGE-DIALECT-001" target="SCN-MEDICAL-001">
       <data key="e0">INSCN</data>

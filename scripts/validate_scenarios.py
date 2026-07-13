@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import copy
+import hashlib
 import json
 import re
 from collections import Counter, defaultdict
@@ -12,6 +14,8 @@ from typing import Any, Iterable
 
 
 ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_SOURCE_REGISTRY = ROOT / "data" / "sources" / "source-registry.json"
+DEFAULT_REVIEW_REGISTRY = ROOT / "data" / "reviews" / "scenario-review-registry.json"
 EXPECTED_SCHEMA_VERSION = "1.0.0"
 EXPECTED_ROOT_KEYS = {"schema_version", "scenario"}
 DATA_TYPE_ORDER = ("text", "image", "audio", "video")
@@ -20,6 +24,16 @@ NODE_TYPES = ("CAP", "KNG", "TSK", "SCN", "RES", "CERT")
 REF_PATTERNS = {
     prefix: re.compile(rf"^{prefix}(?:-[A-Z0-9]+)+-\d{{3}}$")
     for prefix in ("CAP", "KNG", "SCN", "SCNR", "SRC", "TSK", "EX")
+}
+REVIEW_ID_PATTERN = re.compile(r"^REVIEW(?:-[A-Z0-9]+)+-\d{3}$")
+COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+LIFECYCLE_FIELDS = {
+    "review_status",
+    "student_visible",
+    "review_records",
+    "publication_scope",
+    "human_release_allowed",
 }
 
 
@@ -30,6 +44,228 @@ def load_json(path: Path) -> Any:
 
 def add_error(errors: list[str], code: str, message: str) -> None:
     errors.append(f"[{code}] {message}")
+
+
+def strip_lifecycle(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: strip_lifecycle(item)
+            for key, item in value.items()
+            if key not in LIFECYCLE_FIELDS
+        }
+    if isinstance(value, list):
+        return [strip_lifecycle(item) for item in value]
+    return value
+
+
+def scenario_content_digest(document: Any) -> str:
+    canonical = json.dumps(
+        strip_lifecycle(copy.deepcopy(document)),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def unique_registry_index(
+    registry: Any,
+    *,
+    records_key: str,
+    id_key: str,
+    label: str,
+    errors: list[str],
+) -> dict[str, dict[str, Any]]:
+    if not isinstance(registry, dict):
+        add_error(errors, f"{label}_registry", f"{label} registry must be an object")
+        return {}
+    records = registry.get(records_key)
+    if not isinstance(records, list):
+        add_error(
+            errors,
+            f"{label}_registry",
+            f"{label} registry {records_key} must be an array",
+        )
+        return {}
+    index: dict[str, dict[str, Any]] = {}
+    for position, record in enumerate(records):
+        if not isinstance(record, dict):
+            add_error(
+                errors,
+                f"{label}_registry",
+                f"{label} registry record {position} must be an object",
+            )
+            continue
+        record_id = record.get(id_key)
+        if not isinstance(record_id, str) or not record_id:
+            add_error(
+                errors,
+                f"{label}_registry",
+                f"{label} registry record {position} requires {id_key}",
+            )
+            continue
+        if record_id in index:
+            add_error(errors, f"{label}_registry", f"duplicate {id_key}: {record_id}")
+            continue
+        index[record_id] = record
+    return index
+
+
+def validate_source_registry(
+    source_registry: Any, errors: list[str]
+) -> dict[str, dict[str, Any]]:
+    sources = unique_registry_index(
+        source_registry,
+        records_key="sources",
+        id_key="source_id",
+        label="source",
+        errors=errors,
+    )
+    return sources
+
+
+def source_is_eligible(source: Any) -> bool:
+    if not isinstance(source, dict):
+        return False
+    authorization = source.get("license_or_authorization")
+    rights = source.get("usage_rights")
+    return bool(
+        source.get("source_kind") == "project_policy"
+        and source.get("authority_scope") == "local_project_policy_only"
+        and source.get("status") == "verified"
+        and source.get("publication_scope") == "development_only"
+        and source.get("human_release_allowed") is False
+        and isinstance(authorization, dict)
+        and authorization.get("publishable") is True
+        and isinstance(rights, dict)
+        and rights.get("citation_allowed") is True
+        and rights.get("asset_redistribution_allowed") is False
+    )
+
+
+def validate_scenario_review_registry(
+    review_registry: Any, errors: list[str]
+) -> dict[str, dict[str, Any]]:
+    if not isinstance(review_registry, dict):
+        add_error(errors, "review_registry", "scenario review registry must be an object")
+        return {}
+    if review_registry.get("schema_version") != "1.0.0":
+        add_error(errors, "review_registry", "scenario review schema_version must be 1.0.0")
+    contract = review_registry.get("digest_contract")
+    excluded = contract.get("excluded_fields") if isinstance(contract, dict) else None
+    if (
+        not isinstance(excluded, list)
+        or not all(isinstance(field, str) for field in excluded)
+        or set(excluded) != LIFECYCLE_FIELDS
+    ):
+        add_error(
+            errors,
+            "review_registry",
+            "scenario review digest_contract must declare the lifecycle exclusions",
+        )
+    reviews = unique_registry_index(
+        review_registry,
+        records_key="records",
+        id_key="review_id",
+        label="review",
+        errors=errors,
+    )
+    required = {
+        "review_id",
+        "reviewer_id",
+        "reviewer_type",
+        "independent_of_implementation",
+        "reviewed_at",
+        "reviewed_commit",
+        "scope",
+        "scenario_versions",
+        "decision",
+        "findings",
+        "finding_count",
+        "remaining_risks",
+        "publication_scope",
+        "human_release_allowed",
+        "authorizes_publication",
+    }
+    for review_id, review in reviews.items():
+        missing = sorted(required - review.keys())
+        if missing:
+            add_error(errors, "review_registry", f"{review_id} missing {missing[0]}")
+            continue
+        if REVIEW_ID_PATTERN.fullmatch(review_id) is None:
+            add_error(errors, "review_registry", f"invalid review_id: {review_id}")
+        for field in ("reviewer_id", "reviewed_at"):
+            if not isinstance(review.get(field), str) or not review[field]:
+                add_error(errors, "review_registry", f"{review_id} has invalid {field}")
+        if review.get("reviewer_type") not in {"ai_agent", "human"}:
+            add_error(errors, "review_registry", f"{review_id} has invalid reviewer_type")
+        if review.get("reviewer_type") == "ai_agent" and review.get(
+            "independent_of_implementation"
+        ) is not True:
+            add_error(errors, "review_independence", f"{review_id} AI review is not independent")
+        if not isinstance(review.get("reviewed_commit"), str) or COMMIT_PATTERN.fullmatch(
+            review["reviewed_commit"]
+        ) is None:
+            add_error(errors, "review_registry", f"{review_id} has invalid reviewed_commit")
+        if review.get("decision") != "approved" or review.get(
+            "authorizes_publication"
+        ) is not True:
+            add_error(errors, "review_approval", f"{review_id} does not authorize publication")
+        if review.get("publication_scope") != "development_only" or review.get(
+            "human_release_allowed"
+        ) is not False:
+            add_error(errors, "review_approval", f"{review_id} is not development-only")
+        findings = review.get("findings")
+        if not isinstance(findings, list) or review.get("finding_count") != len(findings):
+            add_error(errors, "review_registry", f"{review_id} finding_count mismatch")
+        if not isinstance(review.get("remaining_risks"), list):
+            add_error(errors, "review_registry", f"{review_id} remaining_risks must be an array")
+
+        scope = review.get("scope")
+        scenario_ids = scope.get("scenario_ids") if isinstance(scope, dict) else None
+        rule_ids = scope.get("rule_ids") if isinstance(scope, dict) else None
+        if not isinstance(scope, dict) or scope.get(
+            "publication_scope"
+        ) != "development_only" or scope.get("human_release_allowed") is not False:
+            add_error(
+                errors,
+                "review_approval",
+                f"{review_id} scope is not development-only",
+            )
+        if not isinstance(scenario_ids, list) or not scenario_ids or not all(
+            valid_ref(item, "SCN") for item in scenario_ids
+        ) or len(scenario_ids) != len(set(scenario_ids)):
+            add_error(errors, "review_registry", f"{review_id} has invalid scenario scope")
+            scenario_ids = []
+        if not isinstance(rule_ids, list) or not rule_ids or not all(
+            valid_ref(item, "SCNR") for item in rule_ids
+        ) or len(rule_ids) != len(set(rule_ids)):
+            add_error(errors, "review_registry", f"{review_id} has invalid rule scope")
+            rule_ids = []
+        versions = review.get("scenario_versions")
+        if not isinstance(versions, list):
+            add_error(errors, "review_registry", f"{review_id} scenario_versions must be an array")
+            continue
+        version_ids: list[str] = []
+        for version in versions:
+            if not isinstance(version, dict):
+                add_error(errors, "review_registry", f"{review_id} has invalid scenario version")
+                continue
+            scenario_id = version.get("scenario_id")
+            digest = version.get("content_digest")
+            if not valid_ref(scenario_id, "SCN"):
+                add_error(errors, "review_registry", f"{review_id} has invalid scenario_id")
+                continue
+            version_ids.append(scenario_id)
+            if version.get("schema_version") != EXPECTED_SCHEMA_VERSION:
+                add_error(errors, "review_registry", f"{review_id} has invalid schema_version")
+            if not isinstance(digest, str) or DIGEST_PATTERN.fullmatch(digest) is None:
+                add_error(errors, "review_registry", f"{review_id} has invalid content_digest")
+        if len(version_ids) != len(set(version_ids)) or set(version_ids) != set(
+            scenario_ids
+        ):
+            add_error(errors, "review_registry", f"{review_id} scope/version mismatch")
+    return reviews
 
 
 def valid_ref(value: Any, prefix: str) -> bool:
@@ -101,6 +337,119 @@ def validate_data_types(
             f"{location} must use canonical text/image/audio/video order",
         )
     return valid_values
+
+
+def validate_review_refs(
+    value: Any,
+    *,
+    location: str,
+    errors: list[str],
+    required: bool,
+) -> list[str]:
+    if not isinstance(value, list):
+        add_error(errors, "review_refs", f"{location} must be an array")
+        return []
+    if required and not value:
+        add_error(errors, "review_approval", f"{location} requires an approved review")
+    valid_values = []
+    for index, review_ref in enumerate(value):
+        if not isinstance(review_ref, str) or REVIEW_ID_PATTERN.fullmatch(review_ref) is None:
+            add_error(
+                errors,
+                "review_refs",
+                f"{location}[{index}] must be a canonical REVIEW-* reference",
+            )
+            continue
+        valid_values.append(review_ref)
+    if len(valid_values) != len(set(valid_values)):
+        add_error(errors, "review_refs", f"{location} must not contain duplicates")
+    return valid_values
+
+
+def validate_policy_sources(
+    source_refs: list[str],
+    *,
+    sources: dict[str, dict[str, Any]],
+    location: str,
+    errors: list[str],
+) -> None:
+    for source_ref in source_refs:
+        if not source_is_eligible(sources.get(source_ref)):
+            add_error(
+                errors,
+                "source_eligibility",
+                f"{location} source {source_ref} is not an eligible local development policy",
+            )
+
+
+def review_version_for_scenario(
+    review: dict[str, Any], scenario_id: str, schema_version: str
+) -> dict[str, Any] | None:
+    scope = review.get("scope")
+    if not isinstance(scope, dict) or scenario_id not in scope.get("scenario_ids", []):
+        return None
+    versions = review.get("scenario_versions")
+    if not isinstance(versions, list):
+        return None
+    return next(
+        (
+            version
+            for version in versions
+            if isinstance(version, dict)
+            and version.get("scenario_id") == scenario_id
+            and version.get("schema_version") == schema_version
+        ),
+        None,
+    )
+
+
+def approved_scenario_reviews(
+    review_refs: list[str],
+    *,
+    reviews: dict[str, dict[str, Any]],
+    scenario_id: str,
+    schema_version: str,
+    content_digest: str,
+    errors: list[str],
+    location: str,
+) -> list[dict[str, Any]]:
+    matching_versions: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for review_ref in review_refs:
+        review = reviews.get(review_ref)
+        if review is None:
+            add_error(errors, "review_ref", f"{location} references unknown review {review_ref}")
+            continue
+        if review.get("decision") != "approved" or review.get(
+            "authorizes_publication"
+        ) is not True:
+            continue
+        if review.get("reviewer_type") == "ai_agent" and review.get(
+            "independent_of_implementation"
+        ) is not True:
+            continue
+        version = review_version_for_scenario(review, scenario_id, schema_version)
+        if version is not None:
+            matching_versions.append((review, version))
+    approved = [
+        review
+        for review, version in matching_versions
+        if version.get("content_digest") == content_digest
+    ]
+    if approved:
+        return approved
+    if matching_versions:
+        add_error(
+            errors,
+            "review_content_digest",
+            f"{location} content_digest does not match its approved review",
+        )
+    else:
+        add_error(
+            errors,
+            "review_approval",
+            f"{location} requires a complete digest-bound approval",
+        )
+    return []
 
 
 def build_catalog_index(
@@ -220,6 +569,29 @@ def validate_inscn_edges(
         if not isinstance(metadata, dict):
             add_error(errors, "inscn_metadata", f"{location}.metadata must be an object")
             continue
+        edge_status = metadata.get("review_status")
+        if edge_status not in {"draft", "reviewed", "published"}:
+            add_error(
+                errors,
+                "inscn_review_status",
+                f"{location}.metadata.review_status is invalid",
+            )
+        if edge_status in {"reviewed", "published"}:
+            validate_review_refs(
+                metadata.get("review_records"),
+                location=f"{location}.metadata.review_records",
+                errors=errors,
+                required=True,
+            )
+            if (
+                metadata.get("publication_scope") != "development_only"
+                or metadata.get("human_release_allowed") is not False
+            ):
+                add_error(
+                    errors,
+                    "inscn_publication_scope",
+                    f"{location}.metadata must remain development-only",
+                )
         rule_id = metadata.get("rule_id")
         if not valid_ref(rule_id, "SCNR"):
             add_error(
@@ -293,7 +665,11 @@ def validate_inscn_edges(
 
 
 def validate_scenario_documents(
-    documents: Iterable[Any], catalog: Any
+    documents: Iterable[Any],
+    catalog: Any,
+    *,
+    source_registry: Any | None = None,
+    review_registry: Any | None = None,
 ) -> list[str]:
     """Return deterministic contract errors for complete scenario documents."""
 
@@ -305,6 +681,21 @@ def validate_scenario_documents(
     if not document_list:
         add_error(errors, "documents", "at least one scenario document is required")
         return errors
+
+    if source_registry is None:
+        try:
+            source_registry = load_json(DEFAULT_SOURCE_REGISTRY)
+        except (OSError, json.JSONDecodeError) as exc:
+            add_error(errors, "source_registry", f"cannot read source registry: {exc}")
+            source_registry = {}
+    if review_registry is None:
+        try:
+            review_registry = load_json(DEFAULT_REVIEW_REGISTRY)
+        except (OSError, json.JSONDecodeError) as exc:
+            add_error(errors, "review_registry", f"cannot read scenario review registry: {exc}")
+            review_registry = {}
+    sources = validate_source_registry(source_registry, errors)
+    reviews = validate_scenario_review_registry(review_registry, errors)
 
     (
         nodes_by_id,
@@ -363,6 +754,56 @@ def validate_scenario_documents(
         else:
             seen_scenario_ids.add(scenario_id)
 
+        scenario_status = scenario.get("review_status")
+        if scenario_status not in {"draft", "reviewed", "published"}:
+            add_error(
+                errors,
+                "review_status",
+                f"{scenario_location}.review_status is invalid",
+            )
+        scenario_review_refs = validate_review_refs(
+            scenario.get("review_records"),
+            location=f"{scenario_location}.review_records",
+            errors=errors,
+            required=scenario_status in {"reviewed", "published"},
+        )
+        if scenario_status == "published" and scenario.get("student_visible") is not True:
+            add_error(
+                errors,
+                "publication_visibility",
+                f"{scenario_location} published scenario must be student_visible",
+            )
+        if scenario_status != "published" and scenario.get("student_visible") is True:
+            add_error(
+                errors,
+                "publication_visibility",
+                f"{scenario_location} non-published scenario cannot be student_visible",
+            )
+        if scenario_status in {"reviewed", "published"} and (
+            scenario.get("publication_scope") != "development_only"
+            or scenario.get("human_release_allowed") is not False
+        ):
+            add_error(
+                errors,
+                "publication_scope",
+                f"{scenario_location} must remain development-only",
+            )
+        scenario_digest = scenario_content_digest(document)
+        scenario_approvals: list[dict[str, Any]] = []
+        if (
+            scenario_status in {"reviewed", "published"}
+            and isinstance(scenario_id, str)
+        ):
+            scenario_approvals = approved_scenario_reviews(
+                scenario_review_refs,
+                reviews=reviews,
+                scenario_id=scenario_id,
+                schema_version=document.get("schema_version", ""),
+                content_digest=scenario_digest,
+                errors=errors,
+                location=scenario_location,
+            )
+
         supported_types = validate_data_types(
             scenario.get("supported_data_types"),
             location=f"{scenario_location}.supported_data_types",
@@ -370,13 +811,20 @@ def validate_scenario_documents(
             code="supported_data_types",
         )
         supported_type_set = set(supported_types)
-        validate_ref_list(
+        scenario_source_refs = validate_ref_list(
             scenario.get("source_refs"),
             prefix="SRC",
             location=f"{scenario_location}.source_refs",
             errors=errors,
             code="source_refs",
         )
+        if scenario_status in {"reviewed", "published"}:
+            validate_policy_sources(
+                scenario_source_refs,
+                sources=sources,
+                location=scenario_location,
+                errors=errors,
+            )
         capability_refs = validate_ref_list(
             scenario.get("applicable_capability_refs"),
             prefix="CAP",
@@ -398,6 +846,25 @@ def validate_scenario_documents(
                 "scenario_graph_types",
                 f"{scenario_location} supported_data_types must exactly match the graph SCN node",
             )
+        elif scenario_status in {"reviewed", "published"}:
+            if graph_scenario.get("status") != scenario_status:
+                add_error(
+                    errors,
+                    "scenario_graph_lifecycle",
+                    f"{scenario_location} graph status must match the scenario document",
+                )
+            for field in (
+                "student_visible",
+                "review_records",
+                "publication_scope",
+                "human_release_allowed",
+            ):
+                if graph_scenario.get(field) != scenario.get(field):
+                    add_error(
+                        errors,
+                        "scenario_graph_lifecycle",
+                        f"{scenario_location} graph {field} must match the scenario document",
+                    )
 
         covered_capability_types: set[str] = set()
         for capability_ref in capability_refs:
@@ -440,6 +907,28 @@ def validate_scenario_documents(
             if not isinstance(override, dict):
                 add_error(errors, "override_schema", f"{override_location} must be an object")
                 continue
+            override_status = override.get("review_status")
+            if override_status not in {"draft", "reviewed", "published"}:
+                add_error(
+                    errors,
+                    "review_status",
+                    f"{override_location}.review_status is invalid",
+                )
+            override_review_refs = validate_review_refs(
+                override.get("review_records"),
+                location=f"{override_location}.review_records",
+                errors=errors,
+                required=override_status in {"reviewed", "published"},
+            )
+            if override_status in {"reviewed", "published"} and (
+                override.get("publication_scope") != "development_only"
+                or override.get("human_release_allowed") is not False
+            ):
+                add_error(
+                    errors,
+                    "publication_scope",
+                    f"{override_location} must remain development-only",
+                )
             rule_id = override.get("rule_id")
             if not valid_ref(rule_id, "SCNR"):
                 add_error(
@@ -500,13 +989,41 @@ def validate_scenario_documents(
                 )
             if not isinstance(override.get("content"), str) or not override["content"].strip():
                 add_error(errors, "override_content", f"{override_location}.content is required")
-            validate_ref_list(
+            override_source_refs = validate_ref_list(
                 override.get("source_refs"),
                 prefix="SRC",
                 location=f"{override_location}.source_refs",
                 errors=errors,
                 code="source_refs",
             )
+            if override_status in {"reviewed", "published"}:
+                validate_policy_sources(
+                    override_source_refs,
+                    sources=sources,
+                    location=override_location,
+                    errors=errors,
+                )
+                eligible_rule_reviews = []
+                for review_ref in override_review_refs:
+                    review = reviews.get(review_ref)
+                    if review is None:
+                        add_error(
+                            errors,
+                            "review_ref",
+                            f"{override_location} references unknown review {review_ref}",
+                        )
+                        continue
+                    scope = review.get("scope")
+                    if review in scenario_approvals and isinstance(scope, dict) and rule_id in scope.get(
+                        "rule_ids", []
+                    ):
+                        eligible_rule_reviews.append(review)
+                if not eligible_rule_reviews:
+                    add_error(
+                        errors,
+                        "review_approval",
+                        f"{override_location} requires a digest-bound rule approval",
+                    )
 
             if valid_ref(rule_id, "SCNR"):
                 matching_edges = []
@@ -528,6 +1045,20 @@ def validate_scenario_documents(
                         "inscn_match",
                         f"{override_location} must match exactly one INSCN edge; found {len(matching_edges)}",
                     )
+                elif override_status in {"reviewed", "published"}:
+                    metadata = matching_edges[0]["metadata"]
+                    for field in (
+                        "review_status",
+                        "review_records",
+                        "publication_scope",
+                        "human_release_allowed",
+                    ):
+                        if metadata.get(field) != override.get(field):
+                            add_error(
+                                errors,
+                                "inscn_lifecycle",
+                                f"{override_location} INSCN {field} must match the override",
+                            )
 
         if override_types != supported_type_set:
             add_error(
@@ -620,6 +1151,18 @@ def parse_args() -> argparse.Namespace:
         default=ROOT / "data" / "graph" / "graph-catalog.json",
         help="Graph catalog JSON (default: data/graph/graph-catalog.json)",
     )
+    parser.add_argument(
+        "--source-registry",
+        type=Path,
+        default=DEFAULT_SOURCE_REGISTRY,
+        help="Source registry JSON (default: data/sources/source-registry.json)",
+    )
+    parser.add_argument(
+        "--review-registry",
+        type=Path,
+        default=DEFAULT_REVIEW_REGISTRY,
+        help="Scenario review registry JSON (default: data/reviews/scenario-review-registry.json)",
+    )
     parser.add_argument("scenarios", type=Path, nargs="+", help="Scenario JSON files")
     return parser.parse_args()
 
@@ -637,6 +1180,25 @@ def main() -> int:
         )
         catalog = None
 
+    try:
+        source_registry = load_json(args.source_registry)
+    except (OSError, json.JSONDecodeError) as exc:
+        add_error(
+            read_errors,
+            "source_registry",
+            f"cannot read {args.source_registry}: {exc}",
+        )
+        source_registry = {}
+    try:
+        review_registry = load_json(args.review_registry)
+    except (OSError, json.JSONDecodeError) as exc:
+        add_error(
+            read_errors,
+            "review_registry",
+            f"cannot read {args.review_registry}: {exc}",
+        )
+        review_registry = {}
+
     documents: list[Any] = []
     for path in args.scenarios:
         try:
@@ -644,7 +1206,15 @@ def main() -> int:
         except (OSError, json.JSONDecodeError) as exc:
             add_error(read_errors, "scenario_read", f"cannot read {path}: {exc}")
 
-    errors = [*read_errors, *validate_scenario_documents(documents, catalog)]
+    errors = [
+        *read_errors,
+        *validate_scenario_documents(
+            documents,
+            catalog,
+            source_registry=source_registry,
+            review_registry=review_registry,
+        ),
+    ]
     if errors:
         print(f"Scenario validation failed with {len(errors)} error(s):")
         for error in errors:
@@ -660,6 +1230,8 @@ def main() -> int:
         "global scenario/rule/example identities",
         "CAP/KNG data-type compatibility",
         "unique INSCN override matches",
+        "eligible local policy sources",
+        "digest-bound development reviews",
     ):
         print(f"PASS {check}")
     print(

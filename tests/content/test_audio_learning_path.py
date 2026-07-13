@@ -223,7 +223,10 @@ def test_units_define_goals_examples_policy_overlay_and_two_exercise_types(
         policy = explanation["project_policy"]
         assert policy["source_ref"] == POLICY_SOURCE_ID
         assert policy["statement"]
-        assert policy["version"] == "1.0.0"
+        expected_policy_version = (
+            "1.1.0" if capability_key == "segmentation_alignment" else "1.0.0"
+        )
+        assert policy["version"] == expected_policy_version
 
         exercises = exercises_for(unit)
         assert len(exercises) >= 2
@@ -553,7 +556,14 @@ def test_central_index_and_graph_keep_candidates_hidden_and_exact_counts():
     video_ids = {unit["id"] for unit in video_units}
     linked_video = {link["unit_id"] for link in task_links if link["unit_id"] in video_ids}
     assert linked_video == video_ids
-    assert all(unit["review_status"] == "draft" for unit in video_units)
-    assert all(unit["student_visible"] is False for unit in video_units)
-    assert all(unit["review_records"] == [] for unit in video_units)
-    assert not (video_ids & set(central["student_visible_unit_ids"]))
+    assert all(unit["review_status"] == "published" for unit in video_units)
+    assert all(unit["student_visible"] is True for unit in video_units)
+    assert all(unit["review_records"] for unit in video_units)
+    assert video_ids <= set(central["student_visible_unit_ids"])
+    for link in task_links:
+        if link["unit_id"] not in video_ids:
+            continue
+        assert link["review_status"] == "published"
+        assert link["student_visible"] is True
+        assert link["in_student_visible_index"] is True
+        assert link["consumable"] is True

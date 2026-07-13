@@ -446,9 +446,15 @@
       "remediation": [
         "使用 RES-VID-EVENT-TIMELINE-001 标出动作执行者、项目触发点和半开区间后重新提交。"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": [
+        "REVIEW-TASK5-VIDEO-3A425AC-001",
+        "REVIEW-TASK5-VIDEO-ED484E7-002",
+        "REVIEW-TASK5-VIDEO-CF9696E-003"
+      ],
+      "review_status": "published",
+      "student_visible": true,
+      "publication_scope": "development_only",
+      "human_release_allowed": false
     },
     {
       "id": "TU-VIDEO-FRAME-ANNOTATION-001",
@@ -900,9 +906,15 @@
       "remediation": [
         "使用 RES-VID-EXPORT-QA-CHECKLIST-001 按目标、帧号、类别、坐标和排序逐项复核。"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": [
+        "REVIEW-TASK5-VIDEO-3A425AC-001",
+        "REVIEW-TASK5-VIDEO-ED484E7-002",
+        "REVIEW-TASK5-VIDEO-CF9696E-003"
+      ],
+      "review_status": "published",
+      "student_visible": true,
+      "publication_scope": "development_only",
+      "human_release_allowed": false
     },
     {
       "id": "TU-VIDEO-OBJECT-TRACKING-001",
@@ -1519,9 +1531,15 @@
       "remediation": [
         "使用 RES-VID-TRACK-LEDGER-001 按帧记录 identity_key、track_id 和遮挡状态，再核对首次出现顺序。"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": [
+        "REVIEW-TASK5-VIDEO-3A425AC-001",
+        "REVIEW-TASK5-VIDEO-ED484E7-002",
+        "REVIEW-TASK5-VIDEO-CF9696E-003"
+      ],
+      "review_status": "published",
+      "student_visible": true,
+      "publication_scope": "development_only",
+      "human_release_allowed": false
     }
   ]
 }

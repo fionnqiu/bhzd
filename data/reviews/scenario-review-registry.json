@@ -1,0 +1,107 @@
+{
+  "schema_version": "1.0.0",
+  "digest_contract": {
+    "algorithm": "sha256",
+    "canonicalization": "UTF-8 JSON with ensure_ascii=false, sort_keys=true, separators=(',', ':')",
+    "excluded_fields": [
+      "human_release_allowed",
+      "publication_scope",
+      "review_records",
+      "review_status",
+      "student_visible"
+    ]
+  },
+  "records": [
+    {
+      "review_id": "REVIEW-TASK5-SCENARIOS-C5A91CB-001",
+      "reviewer_id": "codex-task5-scenario-review",
+      "reviewer_type": "ai_agent",
+      "independent_of_implementation": true,
+      "reviewed_at": "2026-07-13",
+      "reviewed_commit": "c5a91cb7146316d479f7051b1e92a6edd693c892",
+      "scope": {
+        "publication_scope": "development_only",
+        "human_release_allowed": false,
+        "scenario_ids": [
+          "SCN-CUSTOMER-SERVICE-001",
+          "SCN-MEDICAL-001"
+        ],
+        "rule_ids": [
+          "SCNR-CS-AUD-SPEAKER-001",
+          "SCNR-CS-TXT-INTENT-001",
+          "SCNR-MED-AUD-TRANSCRIPT-001",
+          "SCNR-MED-IMG-MASK-001",
+          "SCNR-MED-TXT-ENTITY-001"
+        ]
+      },
+      "scenario_versions": [
+        {
+          "scenario_id": "SCN-CUSTOMER-SERVICE-001",
+          "schema_version": "1.0.0",
+          "content_digest": "d5e6a69cb8cb0e5d59fc1de09f294da30f3f75db911a4794181c84f8f3b6489d"
+        },
+        {
+          "scenario_id": "SCN-MEDICAL-001",
+          "schema_version": "1.0.0",
+          "content_digest": "4c86b98e27d8204c31967797062c988143a405d2deca4c8fbfa5b009b5449cd6"
+        }
+      ],
+      "decision": "approved",
+      "findings": [],
+      "finding_count": 0,
+      "remaining_risks": [
+        "Synthetic examples are intentionally narrow and do not establish broad domain coverage.",
+        "Each supported data type currently has the minimum one reviewed structured example.",
+        "Formal competition and real-student release still require human domain-expert confirmation."
+      ],
+      "publication_scope": "development_only",
+      "human_release_allowed": false,
+      "authorizes_publication": true
+    },
+    {
+      "review_id": "REVIEW-TASK5-SCENARIOS-09638A7-001",
+      "reviewer_id": "codex-task5-scenario-review",
+      "reviewer_type": "ai_agent",
+      "independent_of_implementation": true,
+      "reviewed_at": "2026-07-13",
+      "reviewed_commit": "09638a7efc899910f39a3268f7fa9d7781333423",
+      "scope": {
+        "publication_scope": "development_only",
+        "human_release_allowed": false,
+        "scenario_ids": [
+          "SCN-CONTENT-SAFETY-001",
+          "SCN-IN-VEHICLE-001"
+        ],
+        "rule_ids": [
+          "SCNR-CSAFE-AUD-EVENT-001",
+          "SCNR-CSAFE-TXT-CLASS-001",
+          "SCNR-CSAFE-VID-ACTION-001",
+          "SCNR-IV-AUD-COMMAND-001"
+        ]
+      },
+      "scenario_versions": [
+        {
+          "scenario_id": "SCN-CONTENT-SAFETY-001",
+          "schema_version": "1.0.0",
+          "content_digest": "ffd9596da8418fdb29bb5c432014d032c5dbd708a2b991a52bf30344c88fb357"
+        },
+        {
+          "scenario_id": "SCN-IN-VEHICLE-001",
+          "schema_version": "1.0.0",
+          "content_digest": "736cfb1c8e625f9d3c1af86af2c9c1ec17e9574efa9258b1dac88b8b61fcb4c8"
+        }
+      ],
+      "decision": "approved",
+      "findings": [],
+      "finding_count": 0,
+      "remaining_risks": [
+        "Synthetic examples are intentionally narrow and do not establish broad domain coverage.",
+        "Each supported data type currently has the minimum one reviewed structured example.",
+        "Formal competition and real-student release still require human domain-expert confirmation."
+      ],
+      "publication_scope": "development_only",
+      "human_release_allowed": false,
+      "authorizes_publication": true
+    }
+  ]
+}
