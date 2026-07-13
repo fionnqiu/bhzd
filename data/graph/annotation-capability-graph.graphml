@@ -522,7 +522,7 @@
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-IETF-RFC5646-001"]</data>
-      <data key="n6">{"claim_basis":"external_reference","claim_type":"language_tag_syntax","policy_overlays":[{"claim_type":"audio_language_dialect_label_policy","description":"本项目只允许题目声明的 BCP 47 标签集，并将无法可靠细分的口音归入声明的回退标签。","overlay_id":"POLICY-AUD-LANGUAGE-DIALECT-001","source_refs":["SRC-POLICY-AUDIO-TASK4-001"],"version":"1.0.0"}]}</data>
+      <data key="n6">{"claim_basis":"external_reference","claim_type":"language_tag_syntax","policy_overlays":[{"claim_type":"audio_language_dialect_label_policy","description":"本项目允许的 BCP 47 标签为 cmn、yue 和 und；mixed 是项目专用哨兵标签，不是 BCP 47 标签，仅用于题目声明的混码情形。","overlay_id":"POLICY-AUD-LANGUAGE-DIALECT-001","source_refs":["SRC-POLICY-AUDIO-TASK4-001"],"version":"1.1.0"}]}</data>
     </node>
     <node id="KNG-AUD-NOISE-OVERLAP-001">
       <data key="n0">KNG</data>
@@ -1040,7 +1040,7 @@
     <node id="RES-AUD-DIALECT-LABEL-CARD-001">
       <data key="n0">RES</data>
       <data key="n1">语种方言标签卡</data>
-      <data key="n2">对照题目配置的 BCP 47 标签与可听证据，区分 cmn、yue、mixed 和 und。</data>
+      <data key="n2">对照可听证据使用 BCP 47 标签 cmn、yue 与 und；mixed 是项目专用哨兵标签，不是 BCP 47 标签，仅表示题目声明的混码情形。</data>
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
@@ -1049,11 +1049,11 @@
     <node id="RES-AUD-EVENT-CATALOG-001">
       <data key="n0">RES</data>
       <data key="n1">副语言事件目录</data>
-      <data key="n2">分离整体 emotion_label 与笑声、叹气等副语言事件，核对事件枚举及 [start_ms,end_ms) 区间。</data>
+      <data key="n2">以本地 cue mapping 分离整体 emotion_label 与 laughter、sigh 副语言事件，提供 joy/neutral、sadness/neutral 允许答案、部分分人工复核及 [start_ms,end_ms) 区间双轨补强。</data>
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{}</data>
+      <data key="n6">{"content_path":"data/resources/audio/emotion-event-review.json"}</data>
     </node>
     <node id="RES-AUD-SPEAKER-TIMELINE-001">
       <data key="n0">RES</data>

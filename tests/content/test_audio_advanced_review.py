@@ -301,9 +301,13 @@ def test_remediation_uses_best_current_resources_and_exposes_graph_follow_ups(
     )["remediation_resource_refs"]
 
     catalog = load_json(GRAPH_CATALOG_PATH)
-    event_description = graph_node(catalog, "RES", EVENT_RESOURCE)["description"]
+    event_node = graph_node(catalog, "RES", EVENT_RESOURCE)
+    event_description = event_node["description"]
     config_description = graph_node(catalog, "RES", CONFIG_RESOURCE)["description"]
     assert "emotion_label" in event_description
+    assert event_node["content_path"] == (
+        "data/resources/audio/emotion-event-review.json"
+    )
     assert "命令意图" not in config_description
 
     follow_ups = {
@@ -317,8 +321,10 @@ def test_remediation_uses_best_current_resources_and_exposes_graph_follow_ups(
         "partial_score_and_manual_review",
         "dual_track_event_and_timestamp_remediation",
     ]
-    assert event_follow_up["status"] == "pending_shared_change"
-    assert "resolution_ref" not in event_follow_up
+    assert event_follow_up["status"] == "resolved"
+    assert event_follow_up["resolution_ref"] == (
+        "data/resources/audio/emotion-event-review.json"
+    )
     assert follow_ups[CONFIG_RESOURCE]["follow_up_type"] == (
         "resource_description_and_support_alignment"
     )
@@ -329,14 +335,16 @@ def test_remediation_uses_best_current_resources_and_exposes_graph_follow_ups(
     )
 
 
-def test_audio_policy_source_version_follow_up_remains_pending(advanced_document):
+def test_audio_policy_source_version_follow_up_resolves_to_verified_registry_entry(
+    advanced_document,
+):
     registry = load_json(SOURCE_REGISTRY_PATH)
     source = next(
         item
         for item in registry["sources"]
         if item["source_id"] == "SRC-POLICY-AUDIO-TASK4-001"
     )
-    assert source["version_or_publication_date"] == "Draft 1.0.0, 2026-07-12"
+    assert source["version_or_publication_date"] == "Draft 1.1.0, 2026-07-13"
 
     matches = [
         item
@@ -355,8 +363,10 @@ def test_audio_policy_source_version_follow_up_remains_pending(advanced_document
         "decimal_half_up_conversion",
         "half_open_interval_convention",
     ]
-    assert follow_up["status"] == "pending_shared_change"
-    assert "resolution_ref" not in follow_up
+    assert follow_up["status"] == "resolved"
+    assert follow_up["resolution_ref"] == (
+        "data/sources/source-registry.json#SRC-POLICY-AUDIO-TASK4-001"
+    )
 
 
 def test_segmentation_policy_and_data_versions_advance_without_evaluator_change(

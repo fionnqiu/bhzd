@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.0.0",
+  "resource_id": "RES-AUD-EVENT-CATALOG-001",
+  "title": "语音情感与副语言事件复核卡",
+  "data_type": "audio",
+  "publication_scope": "development_only",
+  "human_release_allowed": false,
+  "student_visible": false,
+  "source_refs": [
+    "SRC-POLICY-AUDIO-TASK4-001"
+  ],
+  "local_cue_mapping": {
+    "policy_basis": "local_project_policy_only",
+    "scope_note": "这些映射只服务于 Task 4 结构化练习，不代表外部情感识别标准。",
+    "rules": [
+      {
+        "observed_cues": [
+          "smiling_voice",
+          "rising_pitch",
+          "positive_completion_utterance"
+        ],
+        "canonical_label": "joy",
+        "plausible_ambiguous_labels": [
+          "neutral"
+        ],
+        "event_label": "laughter",
+        "reason": "组合线索优先支持 joy；laughter 仍作为独立副语言事件记录。"
+      },
+      {
+        "observed_cues": [
+          "low_pitch",
+          "slow_tempo",
+          "sigh",
+          "failure_utterance"
+        ],
+        "canonical_label": "sadness",
+        "plausible_ambiguous_labels": [
+          "neutral"
+        ],
+        "event_label": "sigh",
+        "reason": "组合线索优先支持 sadness；sigh 仍作为独立副语言事件记录。"
+      }
+    ]
+  },
+  "ambiguous_allowed_answers": [
+    {
+      "canonical_label": "joy",
+      "ambiguous_label": "neutral",
+      "event_label": "laughter",
+      "canonical_score": 1.0,
+      "partial_score": 0.5,
+      "manual_review_required": true,
+      "review_focus": "复核 smiling_voice、rising_pitch 与正向完成话语是否足以支持 joy。"
+    },
+    {
+      "canonical_label": "sadness",
+      "ambiguous_label": "neutral",
+      "event_label": "sigh",
+      "canonical_score": 1.0,
+      "partial_score": 0.5,
+      "manual_review_required": true,
+      "review_focus": "复核 low_pitch、slow_tempo、sigh 与失败话语是否足以支持 sadness。"
+    }
+  ],
+  "partial_score_and_manual_review": {
+    "full_score": 1.0,
+    "ambiguous_partial_score": 0.5,
+    "ambiguous_error_type": "emotion_cue_ambiguous",
+    "ambiguous_requires_manual_review": true,
+    "unmatched_score": 0.0,
+    "unmatched_error_type": "unclassified_submission",
+    "unmatched_requires_manual_review": true,
+    "rule": "只有显式允许答案可自动计分；部分分答案和未匹配答案均保留原提交并进入人工复核。"
+  },
+  "dual_track_event_and_timestamp_remediation": {
+    "tracks": [
+      "emotion_label",
+      "paralinguistic_events"
+    ],
+    "interval_convention": "[start_ms,end_ms)",
+    "rule_refs": [
+      "KNG-AUD-EMOTION-LABEL-001",
+      "KNG-AUD-PARALINGUISTIC-EVENT-001",
+      "KNG-AUD-SEGMENT-TIMESTAMP-001"
+    ],
+    "steps": [
+      "先忽略事件标签，仅依据声明的可听线索选择整体 emotion_label。",
+      "再从题目允许枚举中选择 laughter 或 sigh 等 paralinguistic event 标签。",
+      "按实际可听起止点记录整数毫秒左闭右开区间 [start_ms,end_ms)。",
+      "若整体情感只具有可辩护的 neutral 解释，保留事件轨、给予部分分并进入人工复核。"
+    ]
+  }
+}

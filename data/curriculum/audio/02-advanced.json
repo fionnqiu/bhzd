@@ -26,22 +26,24 @@
         "partial_score_and_manual_review",
         "dual_track_event_and_timestamp_remediation"
       ],
-      "reason": "The graph description now names emotion_label and event intervals, but no shared resource content yet teaches or exercises the reviewed ambiguity and remediation workflow.",
-      "status": "pending_shared_change"
+      "reason": "The graph description named emotion_label and event intervals, but shared resource content was required to teach and exercise the reviewed ambiguity and remediation workflow.",
+      "status": "resolved",
+      "resolution_ref": "data/resources/audio/emotion-event-review.json"
     },
     {
       "follow_up_id": "FOLLOWUP-AUDIO-POLICY-SOURCE-VERSION-001",
       "target_ref": "SRC-POLICY-AUDIO-TASK4-001",
       "follow_up_type": "source_policy_version_alignment",
-      "current_registry_version": "Draft 1.0.0, 2026-07-12",
+      "current_registry_version": "Draft 1.1.0, 2026-07-13",
       "required_registry_version": "Draft 1.1.0, 2026-07-13",
       "required_verification_scope": [
         "integer_ms_timebase",
         "decimal_half_up_conversion",
         "half_open_interval_convention"
       ],
-      "reason": "The shared source registry still identifies the audio policy as Draft 1.0.0 even though the reviewed timestamp policy overlay and unit-local policy are version 1.1.0.",
-      "status": "pending_shared_change"
+      "reason": "The shared source registry needed to identify the revised timestamp policy and its integer-millisecond verification scope as Draft 1.1.0.",
+      "status": "resolved",
+      "resolution_ref": "data/sources/source-registry.json#SRC-POLICY-AUDIO-TASK4-001"
     },
     {
       "follow_up_id": "FOLLOWUP-AUDIO-COMMAND-RESOURCE-001",

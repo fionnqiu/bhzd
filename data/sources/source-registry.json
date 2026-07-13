@@ -291,9 +291,9 @@
       ],
       "name": "标航智导 Task 4 语音练习本地判定策略",
       "author_or_organization": "标航智导项目",
-      "version_or_publication_date": "Draft 1.0.0, 2026-07-12",
+      "version_or_publication_date": "Draft 1.1.0, 2026-07-13",
       "original_url_or_local_archive": "data/curriculum/audio/",
-      "access_date": "2026-07-12",
+      "access_date": "2026-07-13",
       "license_or_authorization": {
         "license_id": "Project-internal-draft; no external publication grant",
         "license_url": "https://choosealicense.com/no-permission/",
@@ -311,17 +311,28 @@
       "citation_locations": [
         "Task 4 audio unit rule_explanation.project_policy",
         "Task 4 deterministic exercise diagnostic rules",
-        "Task 4 audio KNG policy_overlays"
+        "Task 4 audio KNG policy_overlays",
+        "Task 4 integer_ms_timebase, decimal_half_up_conversion, and half_open_interval_convention contract"
+      ],
+      "citation_notes": [
+        "integer_ms_timebase: Task 4 stores project timestamps as integer milliseconds.",
+        "decimal_half_up_conversion: external decimal seconds are converted with round_half_up(decimal_seconds * 1000).",
+        "half_open_interval_convention: project intervals use [start_ms,end_ms)."
       ],
       "verification": {
         "method": "local_project_file_and_owner_task_approval_check",
         "content_path_verified": true,
         "owner_development_scope_recorded": true,
         "independent_content_review_completed": false,
-        "verified_at": "2026-07-12"
+        "verified_policy_features": [
+          "integer_ms_timebase",
+          "decimal_half_up_conversion",
+          "half_open_interval_convention"
+        ],
+        "verified_at": "2026-07-13"
       },
-      "verified_by": "Codex local project path and approved Task 4 scope check",
-      "verified_at": "2026-07-12",
+      "verified_by": "Codex local project path, policy version, and approved Task 4 scope check",
+      "verified_at": "2026-07-13",
       "status": "verified"
     },
     {

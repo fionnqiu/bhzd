@@ -27,6 +27,9 @@ REVIEW_REGISTRY_PATH = ROOT / "data" / "reviews" / "content-review-registry.json
 GRAPH_CATALOG_PATH = ROOT / "data" / "graph" / "graph-catalog.json"
 GRAPH_PATH = ROOT / "data" / "graph" / "annotation-capability-graph.json"
 CENTRAL_PATH = ROOT / "data" / "curriculum" / "teaching-units.json"
+EVENT_RESOURCE_PATH = (
+    ROOT / "data" / "resources" / "audio" / "emotion-event-review.json"
+)
 
 FOUNDATION_REVIEW = {
     "review_id": "REVIEW-TASK4-AUDIO-FOUNDATIONS-BF69CD1-001",
@@ -96,11 +99,75 @@ EXPECTED_RESOLVED_FOLLOW_UPS = {
         "data/graph/graph-catalog.json#POLICY-AUD-SEGMENT-ALIGNMENT-001"
     ),
     "FOLLOWUP-AUDIO-EVENT-RESOURCE-001": (
-        "data/graph/graph-catalog.json#RES-AUD-EVENT-CATALOG-001"
+        "data/resources/audio/emotion-event-review.json"
+    ),
+    "FOLLOWUP-AUDIO-POLICY-SOURCE-VERSION-001": (
+        "data/sources/source-registry.json#SRC-POLICY-AUDIO-TASK4-001"
     ),
     "FOLLOWUP-AUDIO-COMMAND-RESOURCE-001": (
         "data/graph/graph-catalog.json#RES-AUD-CONFIG-CHECKLIST-001->CAP-AUD-WAKE-COMMAND-001"
     ),
+}
+
+SECOND_REVIEW_RECORDS = {
+    "REVIEW-TASK4-AUDIO-FOUNDATIONS-492B020-002": {
+        "reviewer_id": "codex-task4-foundations-review",
+        "reviewed_at": "2026-07-13T08:36:29+08:00",
+        "unit_versions": {
+            "TU-AUDIO-LANGUAGE-DIALECT-001": (
+                "1.1.0",
+                "1.1.0",
+                "bb4d43354c6541912eae11f22110128df9a861e73785d962c33a351a2bf37f61",
+            ),
+            "TU-AUDIO-SPEAKER-TURNS-001": (
+                "1.1.0",
+                "1.1.0",
+                "4d26dc113eb393a78451376163bce00079c3bcdb635c923d9429a2118942f78b",
+            ),
+            "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001": (
+                "1.1.0",
+                "1.1.0",
+                "88f20af6149de0a2de85b26a19239e1a7602ff9f77606fb560e78314aa08bb67",
+            ),
+        },
+        "findings": [
+            (
+                "AUD-FND-007",
+                "The project-only mixed sentinel was incorrectly described as part of a BCP 47 label set.",
+            )
+        ],
+    },
+    "REVIEW-TASK4-AUDIO-ADVANCED-492B020-002": {
+        "reviewer_id": "codex-task4-audio-advanced-review",
+        "reviewed_at": "2026-07-13",
+        "unit_versions": {
+            "TU-AUDIO-EMOTION-PARALINGUISTICS-001": (
+                "1.1.0",
+                "1.1.0",
+                "e2e3f0a52ce84c1f6975605c79d4f7b5d645b244b9d9529835deaecf5a6e2289",
+            ),
+            "TU-AUDIO-SEGMENTATION-ALIGNMENT-001": (
+                "1.1.0",
+                "1.1.0",
+                "636227f812a9f1c681d6eeb27b83ca49d6614383c5ca968d4a4cd8a117980a7b",
+            ),
+            "TU-AUDIO-WAKE-COMMAND-WORDS-001": (
+                "1.1.0",
+                "1.1.0",
+                "d3072a77eda8dc7de4bb5a78cf3630e3b9663be286a0856325a88b35b32483aa",
+            ),
+        },
+        "findings": [
+            (
+                "AUD-ADV-006",
+                "The resolved emotion-event resource follow-up did not provide the required cue mapping and ambiguity-review content.",
+            ),
+            (
+                "AUD-ADV-007",
+                "The unit, graph overlay, and project-policy source versions drifted for the revised seconds-to-milliseconds policy.",
+            ),
+        ],
+    },
 }
 
 
@@ -190,6 +257,25 @@ def test_segment_overlay_converts_external_seconds_with_half_up_integer_ms():
     assert "half-up" in overlay["description"]
 
 
+def test_graph_separates_bcp47_labels_from_the_project_only_mixed_sentinel():
+    catalog = load_json(GRAPH_CATALOG_PATH)
+    knowledge = {node["id"]: node for node in catalog["nodes"]["KNG"]}
+    resources = {node["id"]: node for node in catalog["nodes"]["RES"]}
+
+    overlay_description = knowledge["KNG-AUD-LANGUAGE-DIALECT-001"][
+        "policy_overlays"
+    ][0]["description"]
+    resource_description = resources["RES-AUD-DIALECT-LABEL-CARD-001"][
+        "description"
+    ]
+    for description in (overlay_description, resource_description):
+        assert all(label in description for label in ("cmn", "yue", "und"))
+        assert "BCP 47" in description
+        assert "mixed" in description
+        assert "项目专用" in description
+        assert "不是 BCP 47" in description
+
+
 def test_audio_resources_describe_the_concrete_remediation_operation():
     catalog = load_json(GRAPH_CATALOG_PATH)
     resources = {node["id"]: node for node in catalog["nodes"]["RES"]}
@@ -210,6 +296,67 @@ def test_audio_resources_describe_the_concrete_remediation_operation():
         term in config_description
         for term in ("command intent", "target", "unknown", "silence")
     )
+
+
+def test_emotion_event_resource_teaches_reviewed_ambiguity_and_remediation():
+    catalog = load_json(GRAPH_CATALOG_PATH)
+    resources = {node["id"]: node for node in catalog["nodes"]["RES"]}
+    graph_resource = resources["RES-AUD-EVENT-CATALOG-001"]
+
+    assert graph_resource["content_path"] == (
+        "data/resources/audio/emotion-event-review.json"
+    )
+    resource = load_json(EVENT_RESOURCE_PATH)
+    assert resource["resource_id"] == graph_resource["id"]
+    assert resource["publication_scope"] == "development_only"
+    assert resource["human_release_allowed"] is False
+
+    rules = resource["local_cue_mapping"]["rules"]
+    mappings = {
+        (rule["canonical_label"], tuple(rule["plausible_ambiguous_labels"]))
+        for rule in rules
+    }
+    assert mappings == {("joy", ("neutral",)), ("sadness", ("neutral",))}
+    assert {rule["event_label"] for rule in rules} == {"laughter", "sigh"}
+
+    allowed = resource["ambiguous_allowed_answers"]
+    assert {item["canonical_label"] for item in allowed} == {"joy", "sadness"}
+    assert all(item["ambiguous_label"] == "neutral" for item in allowed)
+    assert all(item["partial_score"] == 0.5 for item in allowed)
+    assert all(item["manual_review_required"] is True for item in allowed)
+
+    review_policy = resource["partial_score_and_manual_review"]
+    assert review_policy["full_score"] == 1.0
+    assert review_policy["ambiguous_partial_score"] == 0.5
+    assert review_policy["unmatched_requires_manual_review"] is True
+
+    remediation = resource["dual_track_event_and_timestamp_remediation"]
+    assert remediation["tracks"] == ["emotion_label", "paralinguistic_events"]
+    assert remediation["interval_convention"] == "[start_ms,end_ms)"
+    assert remediation["rule_refs"] == [
+        "KNG-AUD-EMOTION-LABEL-001",
+        "KNG-AUD-PARALINGUISTIC-EVENT-001",
+        "KNG-AUD-SEGMENT-TIMESTAMP-001",
+    ]
+    assert len(remediation["steps"]) >= 4
+
+
+def test_audio_policy_source_cites_the_reviewed_integer_ms_contract():
+    sources = {
+        source["source_id"]: source
+        for source in load_json(SOURCE_REGISTRY_PATH)["sources"]
+    }
+    source = sources["SRC-POLICY-AUDIO-TASK4-001"]
+
+    assert source["version_or_publication_date"] == "Draft 1.1.0, 2026-07-13"
+    expected_features = [
+        "integer_ms_timebase",
+        "decimal_half_up_conversion",
+        "half_open_interval_convention",
+    ]
+    assert source["verification"]["verified_policy_features"] == expected_features
+    citation_notes = " ".join(source["citation_notes"])
+    assert all(feature in citation_notes for feature in expected_features)
 
 
 def test_segment_rule_has_a_real_rel_edge_without_changing_graph_totals():
@@ -378,6 +525,48 @@ def test_failed_task4_ai_reviews_are_retained_exactly_for_audit():
         assert [finding["summary"] for finding in record["findings"]] == expected[
             "finding_summaries"
         ]
+        assert record["remaining_risks"] == EXPECTED_REMAINING_RISKS
+
+
+def test_second_task4_ai_review_blockers_are_retained_with_reviewed_digests():
+    records = {
+        record["review_id"]: record
+        for record in load_json(REVIEW_REGISTRY_PATH)["records"]
+    }
+
+    for review_id, expected in SECOND_REVIEW_RECORDS.items():
+        record = records[review_id]
+        assert record["reviewer_id"] == expected["reviewer_id"]
+        assert record["reviewer_type"] == "ai_agent"
+        assert record["independent_of_implementation"] is True
+        assert record["reviewed_at"] == expected["reviewed_at"]
+        assert record["reviewed_commit"] == (
+            "492b0205c614b57df8d5d81bbbf02888d857786f"
+        )
+        assert record["scope"]["data_type"] == "audio"
+        assert record["scope"]["publication_scope"] == "development_only"
+        assert record["scope"]["human_release_allowed"] is False
+        assert record["decision"] == "changes_required"
+        assert record["authorizes_publication"] is False
+        assert record["publication_scope"] == "development_only"
+        assert record["human_release_allowed"] is False
+
+        versions = {
+            item["unit_id"]: (
+                item["data_version"],
+                item["evaluation_version"],
+                item["content_digest"],
+            )
+            for item in record["unit_versions"]
+        }
+        assert versions == expected["unit_versions"]
+        assert set(record["scope"]["unit_ids"]) == set(versions)
+        findings = [
+            (finding["finding_id"], finding["summary"])
+            for finding in record["findings"]
+        ]
+        assert findings == expected["findings"]
+        assert record["finding_count"] == len(findings)
         assert record["remaining_risks"] == EXPECTED_REMAINING_RISKS
 
 

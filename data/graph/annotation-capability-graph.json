@@ -7,7 +7,7 @@
   "publication_state": "development",
   "generated_from": "data/graph/graph-catalog.json",
   "generated_by": "scripts/build_graph.py",
-  "catalog_sha256": "24faac0a27e6c9af21b24920b0afdcf8e1b9916c9a3dd06c2fc2e965651002f6",
+  "catalog_sha256": "f124ab5845144b1c4045bd232c24125f301933082e52cd9ec726887163b01379",
   "source_registry": "data/sources/source-registry.json",
   "teaching_units": "data/curriculum/teaching-units.json",
   "node_type_counts": {
@@ -736,8 +736,8 @@
           "source_refs": [
             "SRC-POLICY-AUDIO-TASK4-001"
           ],
-          "description": "本项目只允许题目声明的 BCP 47 标签集，并将无法可靠细分的口音归入声明的回退标签。",
-          "version": "1.0.0"
+          "description": "本项目允许的 BCP 47 标签为 cmn、yue 和 und；mixed 是项目专用哨兵标签，不是 BCP 47 标签，仅用于题目声明的混码情形。",
+          "version": "1.1.0"
         }
       ],
       "type": "KNG",
@@ -1797,7 +1797,7 @@
     {
       "id": "RES-AUD-DIALECT-LABEL-CARD-001",
       "label": "语种方言标签卡",
-      "description": "对照题目配置的 BCP 47 标签与可听证据，区分 cmn、yue、mixed 和 und。",
+      "description": "对照可听证据使用 BCP 47 标签 cmn、yue 与 und；mixed 是项目专用哨兵标签，不是 BCP 47 标签，仅表示题目声明的混码情形。",
       "data_types": [
         "audio"
       ],
@@ -1808,10 +1808,11 @@
     {
       "id": "RES-AUD-EVENT-CATALOG-001",
       "label": "副语言事件目录",
-      "description": "分离整体 emotion_label 与笑声、叹气等副语言事件，核对事件枚举及 [start_ms,end_ms) 区间。",
+      "description": "以本地 cue mapping 分离整体 emotion_label 与 laughter、sigh 副语言事件，提供 joy/neutral、sadness/neutral 允许答案、部分分人工复核及 [start_ms,end_ms) 区间双轨补强。",
       "data_types": [
         "audio"
       ],
+      "content_path": "data/resources/audio/emotion-event-review.json",
       "type": "RES",
       "status": "draft",
       "source_refs": []

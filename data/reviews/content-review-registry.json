@@ -341,6 +341,77 @@
       "publication_scope": "development_only",
       "human_release_allowed": false,
       "authorizes_publication": true
+    },
+    {
+      "review_id": "REVIEW-TASK4-AUDIO-FOUNDATIONS-492B020-002",
+      "reviewer_id": "codex-task4-foundations-review",
+      "reviewer_type": "ai_agent",
+      "independent_of_implementation": true,
+      "reviewed_at": "2026-07-13T08:36:29+08:00",
+      "reviewed_commit": "492b0205c614b57df8d5d81bbbf02888d857786f",
+      "scope": {
+        "data_type": "audio",
+        "publication_scope": "development_only",
+        "human_release_allowed": false,
+        "unit_ids": [
+          "TU-AUDIO-LANGUAGE-DIALECT-001",
+          "TU-AUDIO-SPEAKER-TURNS-001",
+          "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001"
+        ]
+      },
+      "unit_versions": [
+        {"unit_id": "TU-AUDIO-LANGUAGE-DIALECT-001", "data_version": "1.1.0", "evaluation_version": "1.1.0", "content_digest": "bb4d43354c6541912eae11f22110128df9a861e73785d962c33a351a2bf37f61"},
+        {"unit_id": "TU-AUDIO-SPEAKER-TURNS-001", "data_version": "1.1.0", "evaluation_version": "1.1.0", "content_digest": "4d26dc113eb393a78451376163bce00079c3bcdb635c923d9429a2118942f78b"},
+        {"unit_id": "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001", "data_version": "1.1.0", "evaluation_version": "1.1.0", "content_digest": "88f20af6149de0a2de85b26a19239e1a7602ff9f77606fb560e78314aa08bb67"}
+      ],
+      "decision": "changes_required",
+      "findings": [
+        {"finding_id": "AUD-FND-007", "severity": "high", "summary": "The project-only mixed sentinel was incorrectly described as part of a BCP 47 label set."}
+      ],
+      "finding_count": 1,
+      "remaining_risks": [
+        "A corrected candidate requires independent AI re-review before development publication.",
+        "Formal competition and real-student release still require human domain-expert review."
+      ],
+      "publication_scope": "development_only",
+      "human_release_allowed": false,
+      "authorizes_publication": false
+    },
+    {
+      "review_id": "REVIEW-TASK4-AUDIO-ADVANCED-492B020-002",
+      "reviewer_id": "codex-task4-audio-advanced-review",
+      "reviewer_type": "ai_agent",
+      "independent_of_implementation": true,
+      "reviewed_at": "2026-07-13",
+      "reviewed_commit": "492b0205c614b57df8d5d81bbbf02888d857786f",
+      "scope": {
+        "data_type": "audio",
+        "publication_scope": "development_only",
+        "human_release_allowed": false,
+        "unit_ids": [
+          "TU-AUDIO-EMOTION-PARALINGUISTICS-001",
+          "TU-AUDIO-SEGMENTATION-ALIGNMENT-001",
+          "TU-AUDIO-WAKE-COMMAND-WORDS-001"
+        ]
+      },
+      "unit_versions": [
+        {"unit_id": "TU-AUDIO-EMOTION-PARALINGUISTICS-001", "data_version": "1.1.0", "evaluation_version": "1.1.0", "content_digest": "e2e3f0a52ce84c1f6975605c79d4f7b5d645b244b9d9529835deaecf5a6e2289"},
+        {"unit_id": "TU-AUDIO-SEGMENTATION-ALIGNMENT-001", "data_version": "1.1.0", "evaluation_version": "1.1.0", "content_digest": "636227f812a9f1c681d6eeb27b83ca49d6614383c5ca968d4a4cd8a117980a7b"},
+        {"unit_id": "TU-AUDIO-WAKE-COMMAND-WORDS-001", "data_version": "1.1.0", "evaluation_version": "1.1.0", "content_digest": "d3072a77eda8dc7de4bb5a78cf3630e3b9663be286a0856325a88b35b32483aa"}
+      ],
+      "decision": "changes_required",
+      "findings": [
+        {"finding_id": "AUD-ADV-006", "severity": "high", "summary": "The resolved emotion-event resource follow-up did not provide the required cue mapping and ambiguity-review content."},
+        {"finding_id": "AUD-ADV-007", "severity": "medium", "summary": "The unit, graph overlay, and project-policy source versions drifted for the revised seconds-to-milliseconds policy."}
+      ],
+      "finding_count": 2,
+      "remaining_risks": [
+        "A corrected candidate requires independent AI re-review before development publication.",
+        "Formal competition and real-student release still require human domain-expert review."
+      ],
+      "publication_scope": "development_only",
+      "human_release_allowed": false,
+      "authorizes_publication": false
     }
   ]
 }

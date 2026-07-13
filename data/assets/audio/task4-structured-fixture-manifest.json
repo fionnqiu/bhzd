@@ -87,7 +87,7 @@
       "is_media": false,
       "media_type": "application/json",
       "storage": "inline_input",
-      "inline_input_sha256": "44ff790260779e699155381011bd7e435c92586012e22791648de3831ace7fa0",
+      "inline_input_sha256": "7d1fe49f9f79e84921b96fba41be9bc9cb761401917b4185e3f532029b1ff80d",
       "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
     },
     {
@@ -98,7 +98,7 @@
       "is_media": false,
       "media_type": "application/json",
       "storage": "inline_input",
-      "inline_input_sha256": "95af13c4630a65db5e076e17d2868e4587e852a575a4bfa72dd6fd78b8a04375",
+      "inline_input_sha256": "77c92ca7c8e357118644624e14abdc60a0548c16c41e0d0df80244537352d3e0",
       "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
     },
     {
@@ -109,7 +109,7 @@
       "is_media": false,
       "media_type": "application/json",
       "storage": "inline_input",
-      "inline_input_sha256": "f333ffc3c1ceebdf2064baa0a9f3b9368a3d21b471306cb10924dc7f648bf830",
+      "inline_input_sha256": "2042a9f7ce90f3216812268051c311f51acd06fddbaba798a707df8a5dfd1582",
       "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
     },
     {
@@ -120,7 +120,7 @@
       "is_media": false,
       "media_type": "application/json",
       "storage": "inline_input",
-      "inline_input_sha256": "069931d2c2e521f5a535547f5f87fa7faba9f484737fa6d106262366f3ff0f8f",
+      "inline_input_sha256": "1d2a0272fc1ab645c81f7ae8f412838b8ef980c7aa4862b36b9acbfd931837ea",
       "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
     },
     {
