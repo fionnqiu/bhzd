@@ -130,6 +130,21 @@ def _unique_index(records: Any, key: str, label: str) -> dict[str, dict[str, Any
     return index
 
 
+def _is_development_only(record: dict[str, Any]) -> bool:
+    return (
+        record.get("publication_scope") == "development_only"
+        and record.get("human_release_allowed") is False
+    )
+
+
+def _is_local_project_policy(source: dict[str, Any]) -> bool:
+    return (
+        source.get("source_kind") == "project_policy"
+        and source.get("authority_scope") == "local_project_policy_only"
+        and _is_development_only(source)
+    )
+
+
 def _validate_review_registry(review_registry: dict[str, Any]) -> dict[str, dict[str, Any]]:
     if review_registry.get("schema_version") != "1.0.0":
         raise ValueError("review registry schema_version must be 1.0.0")
@@ -244,10 +259,17 @@ def _review_version_binding(
         raise ValueError(
             f"review {review['review_id']} scope.data_type does not match {unit['id']}"
         )
-    if review["reviewer_type"] == "ai_agent" and review.get(
-        "independent_of_implementation"
-    ) is not True:
-        return None
+    if review["reviewer_type"] == "ai_agent":
+        if review.get("independent_of_implementation") is not True:
+            return None
+        if unit.get("review_status") == "published" and (
+            not _is_development_only(review)
+            or not _is_development_only(review["scope"])
+        ):
+            raise ValueError(
+                f"review {review['review_id']} AI publication review must be "
+                "development-only"
+            )
     return next(
         (
             version
@@ -317,6 +339,7 @@ def validate_publication_contract(
             raise ValueError(f"{unit_id} source_refs must be a non-empty string list")
         if any(count > 1 for count in Counter(source_refs).values()):
             raise ValueError(f"{unit_id} source_refs must be unique")
+        resolved_sources = []
         for source_ref in source_refs:
             source = sources.get(source_ref)
             authorization = source.get("license_or_authorization", {}) if source else {}
@@ -330,10 +353,32 @@ def validate_publication_contract(
                 raise ValueError(
                     f"{unit_id} source eligibility failed for {source_ref}"
                 )
-        if any(
-            _review_approves_unit(reviews[review_ref], unit)
+            resolved_sources.append(source)
+        approving_reviews = [
+            reviews[review_ref]
             for review_ref in review_refs
-        ):
+            if _review_approves_unit(reviews[review_ref], unit)
+        ]
+        if approving_reviews:
+            if status == "published" and any(
+                review["reviewer_type"] == "ai_agent"
+                for review in approving_reviews
+            ):
+                project_policies = [
+                    source
+                    for source in resolved_sources
+                    if source.get("source_kind") == "project_policy"
+                ]
+                if (
+                    not project_policies
+                    or any(
+                        not _is_local_project_policy(source)
+                        for source in project_policies
+                    )
+                ):
+                    raise ValueError(
+                        f"{unit_id} requires a qualified local project policy source"
+                    )
             continue
         if any(
             _review_version_binding(reviews[review_ref], unit) is not None

@@ -559,3 +559,65 @@ def test_review_scope_rejects_duplicate_or_mismatched_unit_versions(mutation):
 
     with pytest.raises(ValueError, match=expected):
         builder._validate_review_registry(reviews)
+
+
+@pytest.mark.parametrize(
+    ("location", "field", "value"),
+    (
+        ("review", "publication_scope", "external_release"),
+        ("review", "human_release_allowed", True),
+        ("scope", "publication_scope", "external_release"),
+        ("scope", "human_release_allowed", True),
+    ),
+)
+def test_ai_publication_review_requires_development_only_boundaries(
+    location, field, value
+):
+    builder = load_module(BUILD_CURRICULUM_PATH, f"task5_review_{location}_{field}")
+    reviews = copy.deepcopy(load_json(CONTENT_REVIEW_PATH))
+    approved = next(
+        record
+        for record in reviews["records"]
+        if record["review_id"] == VIDEO_REVIEW_HISTORY[-1]
+    )
+    target = approved if location == "review" else approved["scope"]
+    target[field] = value
+
+    with pytest.raises(
+        ValueError,
+        match="AI publication review must be development-only",
+    ):
+        builder.validate_publication_contract(
+            load_json(CENTRAL_PATH),
+            load_json(SOURCE_REGISTRY_PATH),
+            reviews,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("source_kind", "external_reference"),
+        ("authority_scope", "external_authority"),
+        ("publication_scope", "external_release"),
+        ("human_release_allowed", True),
+    ),
+)
+def test_published_ai_reviewed_unit_requires_local_project_policy_source(
+    field, value
+):
+    builder = load_module(BUILD_CURRICULUM_PATH, f"task5_policy_{field}")
+    sources = copy.deepcopy(load_json(SOURCE_REGISTRY_PATH))
+    video_policy = next(
+        source
+        for source in sources["sources"]
+        if source["source_id"] == "SRC-POLICY-VIDEO-TASK5-001"
+    )
+    video_policy[field] = value
+
+    with pytest.raises(ValueError, match="local project policy"):
+        builder.validate_publication_contract(
+            load_json(CENTRAL_PATH),
+            sources,
+            load_json(CONTENT_REVIEW_PATH),
+        )
