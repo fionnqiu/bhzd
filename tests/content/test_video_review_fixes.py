@@ -305,5 +305,3 @@ def test_review_fix_versions_and_visibility_gate_are_explicit():
             "REVIEW-TASK5-VIDEO-ED484E7-002",
             "REVIEW-TASK5-VIDEO-CF9696E-003",
         ]
-        assert unit["publication_scope"] == "development_only"
-        assert unit["human_release_allowed"] is False

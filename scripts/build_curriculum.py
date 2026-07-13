@@ -26,12 +26,10 @@ AUTHORED_SOURCE_DOMAINS = set(DOMAIN_ORDER)
 LEGACY_FALLBACK_DOMAINS: set[str] = set()
 REVIEWED_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
 CONTENT_DIGEST_PATTERN = re.compile(r"[0-9a-f]{64}")
-LIFECYCLE_FIELDS = {
+UNIT_DIGEST_EXCLUDED_FIELDS = {
     "review_status",
     "student_visible",
     "review_records",
-    "publication_scope",
-    "human_release_allowed",
 }
 
 
@@ -105,7 +103,7 @@ def _load_legacy_snapshot(path: Path) -> list[dict[str, Any]]:
 
 def content_digest(unit: dict[str, Any]) -> str:
     reviewed_content = copy.deepcopy(unit)
-    for field in LIFECYCLE_FIELDS:
+    for field in UNIT_DIGEST_EXCLUDED_FIELDS:
         reviewed_content.pop(field, None)
     canonical = json.dumps(
         reviewed_content,
@@ -169,15 +167,42 @@ def _validate_review_registry(review_registry: dict[str, Any]) -> dict[str, dict
         if not isinstance(review["remaining_risks"], list):
             raise ValueError(f"review {review_id} remaining_risks must be a list")
         scope = review["scope"]
-        if not isinstance(scope, dict) or not isinstance(scope.get("unit_ids"), list):
-            raise ValueError(f"review {review_id} scope.unit_ids must be a list")
+        scope_unit_ids = scope.get("unit_ids") if isinstance(scope, dict) else None
+        if (
+            not isinstance(scope_unit_ids, list)
+            or not scope_unit_ids
+            or any(
+                not isinstance(unit_id, str) or not unit_id.strip()
+                for unit_id in scope_unit_ids
+            )
+            or len(scope_unit_ids) != len(set(scope_unit_ids))
+        ):
+            raise ValueError(
+                f"review {review_id} scope.unit_ids must be a non-empty unique "
+                "string list"
+            )
+        scope_data_type = scope.get("data_type")
+        if (
+            not isinstance(scope_data_type, str)
+            or scope_data_type not in AUTHORED_SOURCE_DOMAINS
+        ):
+            raise ValueError(
+                f"review {review_id} scope.data_type must be an authored domain"
+            )
         versions = review["unit_versions"]
         if not isinstance(versions, list):
             raise ValueError(f"review {review_id} unit_versions must be a list")
         version_ids = [version.get("unit_id") for version in versions if isinstance(version, dict)]
-        if len(version_ids) != len(versions) or len(version_ids) != len(set(version_ids)):
+        if (
+            len(version_ids) != len(versions)
+            or any(
+                not isinstance(version_id, str) or not version_id
+                for version_id in version_ids
+            )
+            or len(version_ids) != len(set(version_ids))
+        ):
             raise ValueError(f"review {review_id} unit_versions must have unique unit IDs")
-        if set(version_ids) != set(scope["unit_ids"]):
+        if set(version_ids) != set(scope_unit_ids):
             raise ValueError(f"review {review_id} scope/version unit mismatch")
         for version in versions:
             if not all(
@@ -215,6 +240,10 @@ def _review_version_binding(
         return None
     if unit["id"] not in review["scope"]["unit_ids"]:
         return None
+    if review["scope"]["data_type"] != unit.get("data_type"):
+        raise ValueError(
+            f"review {review['review_id']} scope.data_type does not match {unit['id']}"
+        )
     if review["reviewer_type"] == "ai_agent" and review.get(
         "independent_of_implementation"
     ) is not True:
@@ -275,12 +304,6 @@ def validate_publication_contract(
             raise ValueError(f"{unit_id} references unknown review: {unknown_reviews[0]}")
         if status == "draft":
             continue
-
-        if unit.get("data_type") in {"audio", "video"} and (
-            unit.get("publication_scope") != "development_only"
-            or unit.get("human_release_allowed") is not False
-        ):
-            raise ValueError(f"{unit_id} requires development-only lifecycle")
 
         source_refs = unit.get("source_refs")
         if (

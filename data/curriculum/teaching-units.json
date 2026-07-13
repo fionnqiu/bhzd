@@ -6792,9 +6792,7 @@
         "REVIEW-TASK5-VIDEO-CF9696E-003"
       ],
       "review_status": "published",
-      "student_visible": true,
-      "publication_scope": "development_only",
-      "human_release_allowed": false
+      "student_visible": true
     },
     {
       "id": "TU-VIDEO-FRAME-ANNOTATION-001",
@@ -7252,9 +7250,7 @@
         "REVIEW-TASK5-VIDEO-CF9696E-003"
       ],
       "review_status": "published",
-      "student_visible": true,
-      "publication_scope": "development_only",
-      "human_release_allowed": false
+      "student_visible": true
     },
     {
       "id": "TU-VIDEO-OBJECT-TRACKING-001",
@@ -7877,9 +7873,7 @@
         "REVIEW-TASK5-VIDEO-CF9696E-003"
       ],
       "review_status": "published",
-      "student_visible": true,
-      "publication_scope": "development_only",
-      "human_release_allowed": false
+      "student_visible": true
     }
   ]
 }

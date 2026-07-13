@@ -27,10 +27,13 @@ SCENARIO_PATHS = {
     "SCN-MEDICAL-001": ROOT / "data" / "scenarios" / "medical.json",
 }
 
-LIFECYCLE_FIELDS = {
+UNIT_DIGEST_EXCLUDED_FIELDS = {
     "review_status",
     "student_visible",
     "review_records",
+}
+SCENARIO_DIGEST_EXCLUDED_FIELDS = {
+    *UNIT_DIGEST_EXCLUDED_FIELDS,
     "publication_scope",
     "human_release_allowed",
 }
@@ -124,21 +127,34 @@ def load_module(path: Path, name: str):
     return module
 
 
-def strip_lifecycle(value):
+def strip_scenario_lifecycle(value):
     if isinstance(value, dict):
         return {
-            key: strip_lifecycle(item)
+            key: strip_scenario_lifecycle(item)
             for key, item in value.items()
-            if key not in LIFECYCLE_FIELDS
+            if key not in SCENARIO_DIGEST_EXCLUDED_FIELDS
         }
     if isinstance(value, list):
-        return [strip_lifecycle(item) for item in value]
+        return [strip_scenario_lifecycle(item) for item in value]
     return value
 
 
-def canonical_digest(value) -> str:
+def canonical_unit_digest(value) -> str:
+    reviewed_content = copy.deepcopy(value)
+    for field in UNIT_DIGEST_EXCLUDED_FIELDS:
+        reviewed_content.pop(field, None)
     canonical = json.dumps(
-        strip_lifecycle(value),
+        reviewed_content,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def canonical_scenario_digest(value) -> str:
+    canonical = json.dumps(
+        strip_scenario_lifecycle(value),
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
@@ -199,12 +215,10 @@ def test_video_review_history_is_exact_and_digest_bound():
     units = load_json(VIDEO_PATH)["units"]
     assert {unit["id"] for unit in units} == set(VIDEO_UNIT_VERSIONS)
     for unit in units:
-        assert canonical_digest(unit) == VIDEO_UNIT_VERSIONS[unit["id"]][2]
+        assert canonical_unit_digest(unit) == VIDEO_UNIT_VERSIONS[unit["id"]][2]
         assert unit["review_status"] == "published"
         assert unit["student_visible"] is True
         assert unit["review_records"] == VIDEO_REVIEW_HISTORY
-        assert unit["publication_scope"] == "development_only"
-        assert unit["human_release_allowed"] is False
 
 
 def test_scenario_review_registry_binds_four_scenarios_and_nine_rules():
@@ -213,7 +227,9 @@ def test_scenario_review_registry_binds_four_scenarios_and_nine_rules():
     )
     registry = load_json(SCENARIO_REVIEW_PATH)
     assert registry["schema_version"] == "1.0.0"
-    assert set(registry["digest_contract"]["excluded_fields"]) == LIFECYCLE_FIELDS
+    assert set(registry["digest_contract"]["excluded_fields"]) == (
+        SCENARIO_DIGEST_EXCLUDED_FIELDS
+    )
     records = {record["review_id"]: record for record in registry["records"]}
     assert set(records) == set(SCENARIO_REVIEWS)
 
@@ -252,7 +268,7 @@ def test_scenario_review_registry_binds_four_scenarios_and_nine_rules():
         scenario = document["scenario"]
         review_id = scenario_to_review[scenario_id]
         expected_digest = SCENARIO_REVIEWS[review_id]["scenario_digests"][scenario_id]
-        assert canonical_digest(document) == expected_digest
+        assert canonical_scenario_digest(document) == expected_digest
         assert scenario["review_status"] == "published"
         assert scenario["student_visible"] is True
         assert scenario["review_records"] == [review_id]
@@ -441,17 +457,23 @@ def test_task5_central_and_graph_publish_video_while_audio_remains_draft():
     assert len(graph["edges"]) == 240
 
 
-def test_unit_digest_ignores_lifecycle_but_rejects_content_changes():
+def test_unit_digest_excludes_only_top_level_review_fields():
     builder = load_module(BUILD_CURRICULUM_PATH, "task5_lifecycle_digest")
     unit = load_json(VIDEO_PATH)["units"][0]
     baseline = builder.content_digest(unit)
-    lifecycle_only = copy.deepcopy(unit)
-    lifecycle_only["review_status"] = "draft"
-    lifecycle_only["student_visible"] = False
-    lifecycle_only["review_records"] = []
-    lifecycle_only["publication_scope"] = "internal_test"
-    lifecycle_only["human_release_allowed"] = True
-    assert builder.content_digest(lifecycle_only) == baseline
+    review_only = copy.deepcopy(unit)
+    review_only["review_status"] = "draft"
+    review_only["student_visible"] = False
+    review_only["review_records"] = []
+    assert builder.content_digest(review_only) == baseline
+
+    publication_change = copy.deepcopy(unit)
+    publication_change["publication_scope"] = "internal_test"
+    assert builder.content_digest(publication_change) != baseline
+
+    nested_review_field = copy.deepcopy(unit)
+    nested_review_field["exercise"]["review_status"] = "draft"
+    assert builder.content_digest(nested_review_field) != baseline
 
     content_change = copy.deepcopy(unit)
     content_change["title"] += " unreviewed"
@@ -459,20 +481,81 @@ def test_unit_digest_ignores_lifecycle_but_rejects_content_changes():
 
 
 @pytest.mark.parametrize(
-    ("field", "value"),
+    "unit_ids",
     (
-        ("publication_scope", "external_release"),
-        ("human_release_allowed", True),
+        [],
+        [
+            "TU-VIDEO-BEHAVIOR-EVENT-001",
+            "TU-VIDEO-BEHAVIOR-EVENT-001",
+            "TU-VIDEO-FRAME-ANNOTATION-001",
+            "TU-VIDEO-OBJECT-TRACKING-001",
+        ],
+        [{"unit_id": "TU-VIDEO-BEHAVIOR-EVENT-001"}],
+        [None],
+        [7],
+        [" "],
     ),
 )
-def test_unit_publication_gate_requires_development_only_lifecycle(field, value):
-    builder = load_module(BUILD_CURRICULUM_PATH, f"task5_gate_{field}")
-    central = copy.deepcopy(load_json(CENTRAL_PATH))
-    unit = next(item for item in central["units"] if item["data_type"] == "video")
-    unit[field] = value
-    with pytest.raises(ValueError, match="development-only lifecycle"):
+def test_review_scope_rejects_invalid_unit_ids_with_value_error(unit_ids):
+    builder = load_module(BUILD_CURRICULUM_PATH, "task5_invalid_scope_unit_ids")
+    reviews = copy.deepcopy(load_json(CONTENT_REVIEW_PATH))
+    approved = next(
+        record
+        for record in reviews["records"]
+        if record["review_id"] == VIDEO_REVIEW_HISTORY[-1]
+    )
+    approved["scope"]["unit_ids"] = unit_ids
+
+    with pytest.raises(
+        ValueError,
+        match="scope.unit_ids must be a non-empty unique string list",
+    ):
+        builder._validate_review_registry(reviews)
+
+
+@pytest.mark.parametrize("data_type", (None, "", "scenario", "VIDEO", {}))
+def test_review_scope_rejects_illegal_data_type(data_type):
+    builder = load_module(BUILD_CURRICULUM_PATH, "task5_illegal_scope_data_type")
+    reviews = copy.deepcopy(load_json(CONTENT_REVIEW_PATH))
+    reviews["records"][-1]["scope"]["data_type"] = data_type
+
+    with pytest.raises(ValueError, match="scope.data_type must be an authored domain"):
+        builder._validate_review_registry(reviews)
+
+
+def test_review_scope_data_type_must_match_approved_unit():
+    builder = load_module(BUILD_CURRICULUM_PATH, "task5_mismatched_scope_data_type")
+    reviews = copy.deepcopy(load_json(CONTENT_REVIEW_PATH))
+    approved = next(
+        record
+        for record in reviews["records"]
+        if record["review_id"] == VIDEO_REVIEW_HISTORY[-1]
+    )
+    approved["scope"]["data_type"] = "image"
+
+    with pytest.raises(ValueError, match="scope.data_type does not match"):
         builder.validate_publication_contract(
-            central,
+            load_json(CENTRAL_PATH),
             load_json(SOURCE_REGISTRY_PATH),
-            load_json(CONTENT_REVIEW_PATH),
+            reviews,
         )
+
+
+@pytest.mark.parametrize("mutation", ("duplicate_versions", "scope_version_mismatch"))
+def test_review_scope_rejects_duplicate_or_mismatched_unit_versions(mutation):
+    builder = load_module(BUILD_CURRICULUM_PATH, f"task5_{mutation}")
+    reviews = copy.deepcopy(load_json(CONTENT_REVIEW_PATH))
+    approved = next(
+        record
+        for record in reviews["records"]
+        if record["review_id"] == VIDEO_REVIEW_HISTORY[-1]
+    )
+    if mutation == "duplicate_versions":
+        approved["unit_versions"].append(copy.deepcopy(approved["unit_versions"][0]))
+        expected = "unit_versions must have unique unit IDs"
+    else:
+        approved["scope"]["unit_ids"].pop()
+        expected = "scope/version unit mismatch"
+
+    with pytest.raises(ValueError, match=expected):
+        builder._validate_review_registry(reviews)

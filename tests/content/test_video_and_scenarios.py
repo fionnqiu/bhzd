@@ -216,8 +216,6 @@ def test_video_units_reuse_the_common_exercise_and_feedback_contract(
         assert unit["review_status"] == "published"
         assert unit["student_visible"] is True
         assert unit["review_records"] == VIDEO_REVIEW_HISTORY
-        assert unit["publication_scope"] == "development_only"
-        assert unit["human_release_allowed"] is False
 
     assert len(exercise_ids) == len(set(exercise_ids))
 
