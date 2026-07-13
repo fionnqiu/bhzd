@@ -429,7 +429,7 @@ def test_curriculum_requires_all_authored_domains_without_legacy_fallback(tmp_pa
     assert legacy["units"]
 
 
-def test_task5_central_and_graph_publish_video_while_audio_remains_draft():
+def test_task5_central_and_graph_publish_audio_and_video():
     central = load_json(CENTRAL_PATH)
     graph = load_json(GRAPH_PATH)
     by_domain = {
@@ -437,11 +437,11 @@ def test_task5_central_and_graph_publish_video_while_audio_remains_draft():
         for domain in ("text", "image", "audio", "video")
     }
     assert len(central["units"]) == 19
-    assert len(central["student_visible_unit_ids"]) == 13
+    assert len(central["student_visible_unit_ids"]) == 19
     assert all(unit["review_status"] == "published" for unit in by_domain["text"])
     assert all(unit["review_status"] == "published" for unit in by_domain["image"])
-    assert all(unit["review_status"] == "draft" for unit in by_domain["audio"])
-    assert all(unit["student_visible"] is False for unit in by_domain["audio"])
+    assert all(unit["review_status"] == "published" for unit in by_domain["audio"])
+    assert all(unit["student_visible"] is True for unit in by_domain["audio"])
     assert all(unit["review_status"] == "published" for unit in by_domain["video"])
     assert all(unit["student_visible"] is True for unit in by_domain["video"])
 
@@ -452,7 +452,7 @@ def test_task5_central_and_graph_publish_video_while_audio_remains_draft():
         for link in node["teaching_unit_links"]
     }
     assert all(task_links[unit["id"]]["consumable"] for unit in by_domain["video"])
-    assert all(not task_links[unit["id"]]["consumable"] for unit in by_domain["audio"])
+    assert all(task_links[unit["id"]]["consumable"] for unit in by_domain["audio"])
     assert len(graph["nodes"]) == 166
     assert len(graph["edges"]) == 240
 

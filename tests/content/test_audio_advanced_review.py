@@ -385,8 +385,15 @@ def test_segmentation_policy_and_data_versions_advance_without_evaluator_change(
             assert exercise["evaluation"]["version"] == "1.1.0"
 
 
-def test_review_fix_versions_and_lifecycle_remain_candidate_only(units_by_key):
+def test_review_fix_versions_and_lifecycle_are_published_with_full_history(
+    units_by_key,
+):
+    expected_history = [
+        "REVIEW-TASK4-AUDIO-ADVANCED-7D6416B-001",
+        "REVIEW-TASK4-AUDIO-ADVANCED-492B020-002",
+        "REVIEW-TASK4-AUDIO-ADVANCED-665155B-003",
+    ]
     for unit in units_by_key.values():
-        assert unit["review_status"] == "draft"
-        assert unit["student_visible"] is False
-        assert unit["review_records"] == []
+        assert unit["review_status"] == "published"
+        assert unit["student_visible"] is True
+        assert unit["review_records"] == expected_history

@@ -708,9 +708,13 @@
           }
         ]
       },
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": [
+        "REVIEW-TASK4-AUDIO-ADVANCED-7D6416B-001",
+        "REVIEW-TASK4-AUDIO-ADVANCED-492B020-002",
+        "REVIEW-TASK4-AUDIO-ADVANCED-665155B-003"
+      ],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-AUDIO-SEGMENTATION-ALIGNMENT-001",
@@ -1371,9 +1375,13 @@
           }
         ]
       },
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": [
+        "REVIEW-TASK4-AUDIO-ADVANCED-7D6416B-001",
+        "REVIEW-TASK4-AUDIO-ADVANCED-492B020-002",
+        "REVIEW-TASK4-AUDIO-ADVANCED-665155B-003"
+      ],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-AUDIO-WAKE-COMMAND-WORDS-001",
@@ -2001,9 +2009,13 @@
           }
         ]
       },
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": [
+        "REVIEW-TASK4-AUDIO-ADVANCED-7D6416B-001",
+        "REVIEW-TASK4-AUDIO-ADVANCED-492B020-002",
+        "REVIEW-TASK4-AUDIO-ADVANCED-665155B-003"
+      ],
+      "review_status": "published",
+      "student_visible": true
     }
   ]
 }

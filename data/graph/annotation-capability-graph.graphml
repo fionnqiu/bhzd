@@ -1332,7 +1332,7 @@
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-AUD-WAKE-COMMAND-001","primary_knowledge_ref":"KNG-AUD-COMMAND-INTENT-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-AUDIO-WAKE-COMMAND-WORDS-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-AUD-WAKE-COMMAND-001","primary_knowledge_ref":"KNG-AUD-COMMAND-INTENT-001","student_visible":false,"teaching_unit_links":[{"consumable":true,"in_student_visible_index":true,"review_status":"published","student_visible":true,"unit_id":"TU-AUDIO-WAKE-COMMAND-WORDS-001"}]}</data>
     </node>
     <node id="TSK-AUD-CONFIG-AUDIT-001">
       <data key="n0">TSK</data>
@@ -1350,7 +1350,7 @@
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-AUD-EMOTION-PARALING-001","primary_knowledge_ref":"KNG-AUD-EMOTION-LABEL-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-AUDIO-EMOTION-PARALINGUISTICS-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-AUD-EMOTION-PARALING-001","primary_knowledge_ref":"KNG-AUD-EMOTION-LABEL-001","student_visible":false,"teaching_unit_links":[{"consumable":true,"in_student_visible_index":true,"review_status":"published","student_visible":true,"unit_id":"TU-AUDIO-EMOTION-PARALINGUISTICS-001"}]}</data>
     </node>
     <node id="TSK-AUD-SPEAKER-DIARIZE-001">
       <data key="n0">TSK</data>
@@ -1359,7 +1359,7 @@
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-AUD-SPEAKER-001","primary_knowledge_ref":"KNG-AUD-SPEAKER-TURN-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-AUDIO-SPEAKER-TURNS-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-AUD-SPEAKER-001","primary_knowledge_ref":"KNG-AUD-SPEAKER-TURN-001","student_visible":false,"teaching_unit_links":[{"consumable":true,"in_student_visible_index":true,"review_status":"published","student_visible":true,"unit_id":"TU-AUDIO-SPEAKER-TURNS-001"}]}</data>
     </node>
     <node id="TSK-AUD-TRANSCRIPT-ALIGN-001">
       <data key="n0">TSK</data>
@@ -1368,7 +1368,7 @@
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-AUD-TRANSCRIBE-PUNCT-001","primary_knowledge_ref":"KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-AUDIO-LANGUAGE-DIALECT-001"},{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-AUDIO-SEGMENTATION-ALIGNMENT-001"},{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-AUD-TRANSCRIBE-PUNCT-001","primary_knowledge_ref":"KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001","student_visible":false,"teaching_unit_links":[{"consumable":true,"in_student_visible_index":true,"review_status":"published","student_visible":true,"unit_id":"TU-AUDIO-LANGUAGE-DIALECT-001"},{"consumable":true,"in_student_visible_index":true,"review_status":"published","student_visible":true,"unit_id":"TU-AUDIO-SEGMENTATION-ALIGNMENT-001"},{"consumable":true,"in_student_visible_index":true,"review_status":"published","student_visible":true,"unit_id":"TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001"}]}</data>
     </node>
     <node id="TSK-IMG-KEYPOINT-MARK-001">
       <data key="n0">TSK</data>

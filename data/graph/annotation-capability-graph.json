@@ -2227,10 +2227,10 @@
       "teaching_unit_links": [
         {
           "unit_id": "TU-AUDIO-WAKE-COMMAND-WORDS-001",
-          "review_status": "draft",
-          "student_visible": false,
-          "in_student_visible_index": false,
-          "consumable": false
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
         }
       ]
     },
@@ -2265,10 +2265,10 @@
       "teaching_unit_links": [
         {
           "unit_id": "TU-AUDIO-EMOTION-PARALINGUISTICS-001",
-          "review_status": "draft",
-          "student_visible": false,
-          "in_student_visible_index": false,
-          "consumable": false
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
         }
       ]
     },
@@ -2288,10 +2288,10 @@
       "teaching_unit_links": [
         {
           "unit_id": "TU-AUDIO-SPEAKER-TURNS-001",
-          "review_status": "draft",
-          "student_visible": false,
-          "in_student_visible_index": false,
-          "consumable": false
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
         }
       ]
     },
@@ -2311,24 +2311,24 @@
       "teaching_unit_links": [
         {
           "unit_id": "TU-AUDIO-LANGUAGE-DIALECT-001",
-          "review_status": "draft",
-          "student_visible": false,
-          "in_student_visible_index": false,
-          "consumable": false
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
         },
         {
           "unit_id": "TU-AUDIO-SEGMENTATION-ALIGNMENT-001",
-          "review_status": "draft",
-          "student_visible": false,
-          "in_student_visible_index": false,
-          "consumable": false
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
         },
         {
           "unit_id": "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001",
-          "review_status": "draft",
-          "student_visible": false,
-          "in_student_visible_index": false,
-          "consumable": false
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
         }
       ]
     },

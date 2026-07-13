@@ -102,6 +102,16 @@ RESULT_FIELDS = {
     "data_version",
     "evaluation_version",
 }
+FOUNDATION_REVIEW_HISTORY = [
+    "REVIEW-TASK4-AUDIO-FOUNDATIONS-BF69CD1-001",
+    "REVIEW-TASK4-AUDIO-FOUNDATIONS-492B020-002",
+    "REVIEW-TASK4-AUDIO-FOUNDATIONS-E745A34-003",
+]
+ADVANCED_REVIEW_HISTORY = [
+    "REVIEW-TASK4-AUDIO-ADVANCED-7D6416B-001",
+    "REVIEW-TASK4-AUDIO-ADVANCED-492B020-002",
+    "REVIEW-TASK4-AUDIO-ADVANCED-665155B-003",
+]
 
 
 def load_json(path: Path) -> dict:
@@ -244,9 +254,19 @@ def test_units_define_goals_examples_policy_overlay_and_two_exercise_types(
             assert exercise["evaluation"]["incorrect_feedback"]["remediation"]
             assert set(exercise["error_types"]) <= reachable_errors(exercise)
 
-        assert unit["review_status"] == "draft"
-        assert unit["student_visible"] is False
-        assert unit["review_records"] == []
+        expected_history = (
+            FOUNDATION_REVIEW_HISTORY
+            if unit["id"]
+            in {
+                "TU-AUDIO-LANGUAGE-DIALECT-001",
+                "TU-AUDIO-SPEAKER-TURNS-001",
+                "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001",
+            }
+            else ADVANCED_REVIEW_HISTORY
+        )
+        assert unit["review_status"] == "published"
+        assert unit["student_visible"] is True
+        assert unit["review_records"] == expected_history
 
     assert len(exercise_ids) == len(set(exercise_ids))
 
@@ -521,16 +541,19 @@ def test_curriculum_build_overrides_legacy_audio_and_video_domains():
     }
 
 
-def test_central_index_and_graph_keep_candidates_hidden_and_exact_counts():
+def test_central_index_and_graph_publish_all_audio_units_with_exact_counts():
     central = load_json(CENTRAL_UNITS_PATH)
     graph = load_json(GRAPH_PATH)
     audio_units = [unit for unit in central["units"] if unit["data_type"] == "audio"]
     assert len(central["units"]) == 19
     assert len(audio_units) == 6
-    assert all(unit["review_status"] == "draft" for unit in audio_units)
-    assert all(unit["student_visible"] is False for unit in audio_units)
-    assert all(unit["review_records"] == [] for unit in audio_units)
-    assert not ({unit["id"] for unit in audio_units} & set(central["student_visible_unit_ids"]))
+    assert len(central["student_visible_unit_ids"]) == 19
+    assert all(unit["review_status"] == "published" for unit in audio_units)
+    assert all(unit["student_visible"] is True for unit in audio_units)
+    assert all(len(unit["review_records"]) == 3 for unit in audio_units)
+    assert {unit["id"] for unit in audio_units} <= set(
+        central["student_visible_unit_ids"]
+    )
 
     assert len(graph["nodes"]) == 166
     assert len(graph["edges"]) == 240
@@ -546,10 +569,10 @@ def test_central_index_and_graph_keep_candidates_hidden_and_exact_counts():
     for link in task_links:
         if link["unit_id"] not in audio_ids:
             continue
-        assert link["review_status"] == "draft"
-        assert link["student_visible"] is False
-        assert link["in_student_visible_index"] is False
-        assert link["consumable"] is False
+        assert link["review_status"] == "published"
+        assert link["student_visible"] is True
+        assert link["in_student_visible_index"] is True
+        assert link["consumable"] is True
 
     video_units = [unit for unit in central["units"] if unit["data_type"] == "video"]
     assert len(video_units) == 3

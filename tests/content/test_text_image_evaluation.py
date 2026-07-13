@@ -543,7 +543,7 @@ def test_approved_ai_reviews_bind_clean_commit_versions_and_development_scope():
             )
 
 
-def test_task3_development_publication_remains_visible_after_task5_video_release():
+def test_task3_development_publication_remains_visible_after_later_releases():
     text = load_json(TEXT_UNITS_PATH)
     image = load_json(IMAGE_UNITS_PATH)
     central = load_json(CENTRAL_UNITS_PATH)
@@ -568,6 +568,12 @@ def test_task3_development_publication_remains_visible_after_task5_video_release
     visible_ids = set(central["student_visible_unit_ids"])
     assert expected_visible <= visible_ids
     assert visible_ids - expected_visible == {
+        "TU-AUDIO-EMOTION-PARALINGUISTICS-001",
+        "TU-AUDIO-LANGUAGE-DIALECT-001",
+        "TU-AUDIO-SEGMENTATION-ALIGNMENT-001",
+        "TU-AUDIO-SPEAKER-TURNS-001",
+        "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001",
+        "TU-AUDIO-WAKE-COMMAND-WORDS-001",
         "TU-VIDEO-BEHAVIOR-EVENT-001",
         "TU-VIDEO-FRAME-ANNOTATION-001",
         "TU-VIDEO-OBJECT-TRACKING-001",
@@ -576,10 +582,7 @@ def test_task3_development_publication_remains_visible_after_task5_video_release
     for unit in text["units"] + image["units"]:
         assert central_units[unit["id"]] == unit
     for unit in central["units"]:
-        if unit["data_type"] == "audio":
-            assert unit["review_status"] == "draft"
-            assert unit["student_visible"] is False
-        elif unit["data_type"] == "video":
+        if unit["data_type"] in {"audio", "video"}:
             assert unit["review_status"] == "published"
             assert unit["student_visible"] is True
             assert unit["id"] in central["student_visible_unit_ids"]
@@ -650,6 +653,9 @@ def test_curriculum_domain_sources_override_legacy_by_domain(tmp_path):
     audio_document = load_json(audio_path)
     audio_unit = audio_document["units"][0]
     audio_unit["title"] = "显式音频域事实源"
+    audio_unit["review_status"] = "draft"
+    audio_unit["student_visible"] = False
+    audio_unit["review_records"] = []
     audio_path.write_text(
         json.dumps(audio_document, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",

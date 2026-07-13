@@ -1,6 +1,12 @@
 {
   "schema_version": "1.1.0",
   "student_visible_unit_ids": [
+    "TU-AUDIO-EMOTION-PARALINGUISTICS-001",
+    "TU-AUDIO-LANGUAGE-DIALECT-001",
+    "TU-AUDIO-SEGMENTATION-ALIGNMENT-001",
+    "TU-AUDIO-SPEAKER-TURNS-001",
+    "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001",
+    "TU-AUDIO-WAKE-COMMAND-WORDS-001",
     "TU-IMAGE-KEYPOINT-VISIBILITY-001",
     "TU-IMAGE-MASK-INSTANCE-001",
     "TU-IMAGE-OCCLUSION-TRUNCATION-001",
@@ -668,9 +674,13 @@
           }
         ]
       },
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": [
+        "REVIEW-TASK4-AUDIO-ADVANCED-7D6416B-001",
+        "REVIEW-TASK4-AUDIO-ADVANCED-492B020-002",
+        "REVIEW-TASK4-AUDIO-ADVANCED-665155B-003"
+      ],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-AUDIO-LANGUAGE-DIALECT-001",
@@ -1191,9 +1201,13 @@
       "remediation": [
         "使用 RES-AUD-DIALECT-LABEL-CARD-001 先核对配置集合，再按可听证据、混码和不确定性顺序完成同规则练习。"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": [
+        "REVIEW-TASK4-AUDIO-FOUNDATIONS-BF69CD1-001",
+        "REVIEW-TASK4-AUDIO-FOUNDATIONS-492B020-002",
+        "REVIEW-TASK4-AUDIO-FOUNDATIONS-E745A34-003"
+      ],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-AUDIO-SEGMENTATION-ALIGNMENT-001",
@@ -1854,9 +1868,13 @@
           }
         ]
       },
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": [
+        "REVIEW-TASK4-AUDIO-ADVANCED-7D6416B-001",
+        "REVIEW-TASK4-AUDIO-ADVANCED-492B020-002",
+        "REVIEW-TASK4-AUDIO-ADVANCED-665155B-003"
+      ],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-AUDIO-SPEAKER-TURNS-001",
@@ -2430,9 +2448,13 @@
       "remediation": [
         "使用 RES-AUD-SPEAKER-TIMELINE-001 从首轮开始建立 voice_key 到 speaker_id 的稳定映射，再核对顺序和边界。"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": [
+        "REVIEW-TASK4-AUDIO-FOUNDATIONS-BF69CD1-001",
+        "REVIEW-TASK4-AUDIO-FOUNDATIONS-492B020-002",
+        "REVIEW-TASK4-AUDIO-FOUNDATIONS-E745A34-003"
+      ],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001",
@@ -2805,9 +2827,13 @@
       "remediation": [
         "使用 RES-AUD-TRANSCRIPT-STYLE-SHEET-001 按内容完整性、正字法、标点的顺序完成同规则转写和错误诊断。"
       ],
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": [
+        "REVIEW-TASK4-AUDIO-FOUNDATIONS-BF69CD1-001",
+        "REVIEW-TASK4-AUDIO-FOUNDATIONS-492B020-002",
+        "REVIEW-TASK4-AUDIO-FOUNDATIONS-E745A34-003"
+      ],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-AUDIO-WAKE-COMMAND-WORDS-001",
@@ -3435,9 +3461,13 @@
           }
         ]
       },
-      "review_records": [],
-      "review_status": "draft",
-      "student_visible": false
+      "review_records": [
+        "REVIEW-TASK4-AUDIO-ADVANCED-7D6416B-001",
+        "REVIEW-TASK4-AUDIO-ADVANCED-492B020-002",
+        "REVIEW-TASK4-AUDIO-ADVANCED-665155B-003"
+      ],
+      "review_status": "published",
+      "student_visible": true
     },
     {
       "id": "TU-IMAGE-KEYPOINT-VISIBILITY-001",

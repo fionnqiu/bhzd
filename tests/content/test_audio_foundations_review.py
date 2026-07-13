@@ -230,11 +230,16 @@ def test_non_media_assets_are_declared_structured_fixtures():
             )
 
 
-def test_review_fix_bumps_exercise_versions_and_preserves_hidden_draft_lifecycle():
+def test_review_fix_bumps_versions_and_publishes_with_full_history():
+    expected_history = [
+        "REVIEW-TASK4-AUDIO-FOUNDATIONS-BF69CD1-001",
+        "REVIEW-TASK4-AUDIO-FOUNDATIONS-492B020-002",
+        "REVIEW-TASK4-AUDIO-FOUNDATIONS-E745A34-003",
+    ]
     for unit in foundations_units():
-        assert unit["review_records"] == []
-        assert unit["review_status"] == "draft"
-        assert unit["student_visible"] is False
+        assert unit["review_records"] == expected_history
+        assert unit["review_status"] == "published"
+        assert unit["student_visible"] is True
         expected_data_version = (
             "1.1.1" if unit["capability_key"] == "language_dialect" else "1.1.0"
         )

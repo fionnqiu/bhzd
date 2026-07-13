@@ -620,7 +620,7 @@ def test_central_index_and_graph_publish_reviewed_task5_video_with_exact_counts(
     assert all(unit["review_status"] == "published" for unit in video_units)
     assert all(unit["student_visible"] is True for unit in video_units)
     assert {unit["id"] for unit in video_units} <= set(central["student_visible_unit_ids"])
-    assert len(central["student_visible_unit_ids"]) == 13
+    assert len(central["student_visible_unit_ids"]) == 19
     assert len(graph["nodes"]) == 166
     assert len(graph["edges"]) == 240
 

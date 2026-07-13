@@ -412,6 +412,73 @@
       "publication_scope": "development_only",
       "human_release_allowed": false,
       "authorizes_publication": false
+    },
+    {
+      "review_id": "REVIEW-TASK4-AUDIO-FOUNDATIONS-E745A34-003",
+      "reviewer_id": "codex-task4-foundations-review",
+      "reviewer_type": "ai_agent",
+      "independent_of_implementation": true,
+      "reviewed_at": "2026-07-13T09:39:18+08:00",
+      "reviewed_commit": "e745a34de9e314260ce1001e349500ed99372f94",
+      "scope": {
+        "data_type": "audio",
+        "publication_scope": "development_only",
+        "human_release_allowed": false,
+        "unit_ids": [
+          "TU-AUDIO-LANGUAGE-DIALECT-001",
+          "TU-AUDIO-SPEAKER-TURNS-001",
+          "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001"
+        ]
+      },
+      "unit_versions": [
+        {"unit_id": "TU-AUDIO-LANGUAGE-DIALECT-001", "data_version": "1.1.1", "evaluation_version": "1.1.0", "content_digest": "10b4fae8a44f508ea77da058255de7e29f5db3e3b3dbaf43abb38407040b5a1a"},
+        {"unit_id": "TU-AUDIO-SPEAKER-TURNS-001", "data_version": "1.1.0", "evaluation_version": "1.1.0", "content_digest": "4d26dc113eb393a78451376163bce00079c3bcdb635c923d9429a2118942f78b"},
+        {"unit_id": "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001", "data_version": "1.1.0", "evaluation_version": "1.1.0", "content_digest": "88f20af6149de0a2de85b26a19239e1a7602ff9f77606fb560e78314aa08bb67"}
+      ],
+      "decision": "approved",
+      "findings": [],
+      "finding_count": 0,
+      "remaining_risks": [
+        "This AI review authorizes development-only publication and does not constitute human or domain-expert endorsement.",
+        "Formal competition and real-student release still require human domain-expert review."
+      ],
+      "publication_scope": "development_only",
+      "human_release_allowed": false,
+      "authorizes_publication": true
+    },
+    {
+      "review_id": "REVIEW-TASK4-AUDIO-ADVANCED-665155B-003",
+      "reviewer_id": "codex-task4-audio-advanced-review",
+      "reviewer_type": "ai_agent",
+      "independent_of_implementation": true,
+      "reviewed_at": "2026-07-13T09:29:19+08:00",
+      "reviewed_commit": "665155ba2da071b31d46a2cc3e3cb7fdc540f7f5",
+      "scope": {
+        "data_type": "audio",
+        "publication_scope": "development_only",
+        "human_release_allowed": false,
+        "unit_ids": [
+          "TU-AUDIO-EMOTION-PARALINGUISTICS-001",
+          "TU-AUDIO-SEGMENTATION-ALIGNMENT-001",
+          "TU-AUDIO-WAKE-COMMAND-WORDS-001"
+        ]
+      },
+      "unit_versions": [
+        {"unit_id": "TU-AUDIO-EMOTION-PARALINGUISTICS-001", "data_version": "1.1.0", "evaluation_version": "1.1.0", "content_digest": "e2e3f0a52ce84c1f6975605c79d4f7b5d645b244b9d9529835deaecf5a6e2289"},
+        {"unit_id": "TU-AUDIO-SEGMENTATION-ALIGNMENT-001", "data_version": "1.1.1", "evaluation_version": "1.1.0", "content_digest": "12c05bbc5a911242904eaf8c5019ee7e9eb591f74198c818b74b57e139b3792c"},
+        {"unit_id": "TU-AUDIO-WAKE-COMMAND-WORDS-001", "data_version": "1.1.0", "evaluation_version": "1.1.0", "content_digest": "d3072a77eda8dc7de4bb5a78cf3630e3b9663be286a0856325a88b35b32483aa"}
+      ],
+      "decision": "approved",
+      "findings": [],
+      "finding_count": 0,
+      "remaining_risks": [
+        "Approval is limited to development publication by an independent AI reviewer.",
+        "Synthetic structured fixtures do not establish real-world speech annotation performance.",
+        "Formal competition and real-student release still require human domain-expert confirmation."
+      ],
+      "publication_scope": "development_only",
+      "human_release_allowed": false,
+      "authorizes_publication": true
     }
   ]
 }

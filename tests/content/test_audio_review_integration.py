@@ -170,6 +170,72 @@ SECOND_REVIEW_RECORDS = {
     },
 }
 
+APPROVED_REVIEW_RECORDS = {
+    "REVIEW-TASK4-AUDIO-FOUNDATIONS-E745A34-003": {
+        "reviewer_id": "codex-task4-foundations-review",
+        "reviewed_at": "2026-07-13T09:39:18+08:00",
+        "reviewed_commit": "e745a34de9e314260ce1001e349500ed99372f94",
+        "unit_versions": {
+            "TU-AUDIO-LANGUAGE-DIALECT-001": (
+                "1.1.1",
+                "1.1.0",
+                "10b4fae8a44f508ea77da058255de7e29f5db3e3b3dbaf43abb38407040b5a1a",
+            ),
+            "TU-AUDIO-SPEAKER-TURNS-001": (
+                "1.1.0",
+                "1.1.0",
+                "4d26dc113eb393a78451376163bce00079c3bcdb635c923d9429a2118942f78b",
+            ),
+            "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001": (
+                "1.1.0",
+                "1.1.0",
+                "88f20af6149de0a2de85b26a19239e1a7602ff9f77606fb560e78314aa08bb67",
+            ),
+        },
+        "remaining_risks": [
+            "This AI review authorizes development-only publication and does not constitute human or domain-expert endorsement.",
+            "Formal competition and real-student release still require human domain-expert review.",
+        ],
+        "history": [
+            "REVIEW-TASK4-AUDIO-FOUNDATIONS-BF69CD1-001",
+            "REVIEW-TASK4-AUDIO-FOUNDATIONS-492B020-002",
+            "REVIEW-TASK4-AUDIO-FOUNDATIONS-E745A34-003",
+        ],
+    },
+    "REVIEW-TASK4-AUDIO-ADVANCED-665155B-003": {
+        "reviewer_id": "codex-task4-audio-advanced-review",
+        "reviewed_at": "2026-07-13T09:29:19+08:00",
+        "reviewed_commit": "665155ba2da071b31d46a2cc3e3cb7fdc540f7f5",
+        "unit_versions": {
+            "TU-AUDIO-EMOTION-PARALINGUISTICS-001": (
+                "1.1.0",
+                "1.1.0",
+                "e2e3f0a52ce84c1f6975605c79d4f7b5d645b244b9d9529835deaecf5a6e2289",
+            ),
+            "TU-AUDIO-SEGMENTATION-ALIGNMENT-001": (
+                "1.1.1",
+                "1.1.0",
+                "12c05bbc5a911242904eaf8c5019ee7e9eb591f74198c818b74b57e139b3792c",
+            ),
+            "TU-AUDIO-WAKE-COMMAND-WORDS-001": (
+                "1.1.0",
+                "1.1.0",
+                "d3072a77eda8dc7de4bb5a78cf3630e3b9663be286a0856325a88b35b32483aa",
+            ),
+        },
+        "remaining_risks": [
+            "Approval is limited to development publication by an independent AI reviewer.",
+            "Synthetic structured fixtures do not establish real-world speech annotation performance.",
+            "Formal competition and real-student release still require human domain-expert confirmation.",
+        ],
+        "history": [
+            "REVIEW-TASK4-AUDIO-ADVANCED-7D6416B-001",
+            "REVIEW-TASK4-AUDIO-ADVANCED-492B020-002",
+            "REVIEW-TASK4-AUDIO-ADVANCED-665155B-003",
+        ],
+    },
+}
+
 
 def load_json(path: Path) -> dict:
     with path.open(encoding="utf-8") as handle:
@@ -184,6 +250,16 @@ def canonical_digest(value: object) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def canonical_unit_digest(unit: dict) -> str:
+    return canonical_digest(
+        {
+            key: value
+            for key, value in unit.items()
+            if key not in {"review_status", "student_visible", "review_records"}
+        }
+    )
 
 
 def audio_asset_items() -> list[tuple[dict, dict]]:
@@ -570,6 +646,53 @@ def test_second_task4_ai_review_blockers_are_retained_with_reviewed_digests():
         assert record["remaining_risks"] == EXPECTED_REMAINING_RISKS
 
 
+def test_third_task4_ai_reviews_approve_exact_content_and_publish_full_history():
+    records = {
+        record["review_id"]: record
+        for record in load_json(REVIEW_REGISTRY_PATH)["records"]
+    }
+    units = {
+        unit["id"]: unit
+        for path in AUDIO_FILES
+        for unit in load_json(path)["units"]
+    }
+
+    for review_id, expected in APPROVED_REVIEW_RECORDS.items():
+        record = records[review_id]
+        assert record["reviewer_id"] == expected["reviewer_id"]
+        assert record["reviewer_type"] == "ai_agent"
+        assert record["independent_of_implementation"] is True
+        assert record["reviewed_at"] == expected["reviewed_at"]
+        assert record["reviewed_commit"] == expected["reviewed_commit"]
+        assert record["scope"]["data_type"] == "audio"
+        assert record["scope"]["publication_scope"] == "development_only"
+        assert record["scope"]["human_release_allowed"] is False
+        assert record["decision"] == "approved"
+        assert record["findings"] == []
+        assert record["finding_count"] == 0
+        assert record["remaining_risks"] == expected["remaining_risks"]
+        assert record["publication_scope"] == "development_only"
+        assert record["human_release_allowed"] is False
+        assert record["authorizes_publication"] is True
+
+        versions = {
+            item["unit_id"]: (
+                item["data_version"],
+                item["evaluation_version"],
+                item["content_digest"],
+            )
+            for item in record["unit_versions"]
+        }
+        assert versions == expected["unit_versions"]
+        assert set(record["scope"]["unit_ids"]) == set(versions)
+        for unit_id, (_, _, digest) in versions.items():
+            unit = units[unit_id]
+            assert canonical_unit_digest(unit) == digest
+            assert unit["review_status"] == "published"
+            assert unit["student_visible"] is True
+            assert unit["review_records"] == expected["history"]
+
+
 def test_central_build_has_19_units_and_domain_appropriate_lifecycle_links():
     central = load_json(CENTRAL_PATH)
     graph = load_json(GRAPH_PATH)
@@ -582,9 +705,10 @@ def test_central_build_has_19_units_and_domain_appropriate_lifecycle_links():
     assert len(central["units"]) == 19
     assert len(audio_units) == 6
     assert len(video_units) == 3
-    assert all(unit["review_status"] == "draft" for unit in audio_units)
-    assert all(unit["student_visible"] is False for unit in audio_units)
-    assert {unit["id"] for unit in audio_units}.isdisjoint(
+    assert len(central["student_visible_unit_ids"]) == 19
+    assert all(unit["review_status"] == "published" for unit in audio_units)
+    assert all(unit["student_visible"] is True for unit in audio_units)
+    assert {unit["id"] for unit in audio_units} <= set(
         central["student_visible_unit_ids"]
     )
     assert all(unit["review_status"] == "published" for unit in video_units)
@@ -600,6 +724,14 @@ def test_central_build_has_19_units_and_domain_appropriate_lifecycle_links():
         if link["unit_id"].startswith("TU-AUDIO-")
     }
     assert linked_audio == {unit["id"] for unit in audio_units}
+    for node in task_nodes.values():
+        for link in node["teaching_unit_links"]:
+            if link["unit_id"] not in linked_audio:
+                continue
+            assert link["review_status"] == "published"
+            assert link["student_visible"] is True
+            assert link["in_student_visible_index"] is True
+            assert link["consumable"] is True
     for task_id, unit_ids in EXPECTED_VIDEO_TASK_LINKS.items():
         links = task_nodes[task_id]["teaching_unit_links"]
         assert [link["unit_id"] for link in links] == unit_ids
