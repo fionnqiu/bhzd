@@ -7,7 +7,7 @@
   "publication_state": "development",
   "generated_from": "data/graph/graph-catalog.json",
   "generated_by": "scripts/build_graph.py",
-  "catalog_sha256": "e34c714ecbb320011cc39bd0efa9cc9ff9fbcd09cb5cacc3480d572df68f78d3",
+  "catalog_sha256": "f5156cfd9e70c170c54e2a35c23306e2a4abb4a583935ea508efc33c3db2c450",
   "source_registry": "data/sources/source-registry.json",
   "teaching_units": "data/curriculum/teaching-units.json",
   "node_type_counts": {
@@ -21,8 +21,8 @@
   "edge_type_counts": {
     "PRE": 40,
     "ISA": 40,
-    "SUP": 76,
-    "REL": 20,
+    "SUP": 77,
+    "REL": 19,
     "INSCN": 24,
     "MAPCERT": 40
   },
@@ -848,8 +848,13 @@
           "source_refs": [
             "SRC-POLICY-AUDIO-TASK4-001"
           ],
-          "description": "本项目以秒为单位、保留三位小数，并要求区间有序、非重叠且对齐题目给出的音调边界。",
-          "version": "1.0.0"
+          "description": "外部 Kaldi 与 TextGrid 格式以秒为单位；本项目把十进制秒值按 decimal half-up 换算为整数毫秒，并使用左闭右开区间 [start_ms,end_ms)，要求区间有序、非重叠且对齐题目锚点。",
+          "version": "1.1.0",
+          "external_timebase": "decimal_seconds",
+          "project_timebase": "integer_ms",
+          "conversion": "milliseconds = round_half_up(decimal_seconds * 1000)",
+          "rounding": "decimal_half_up_to_nearest_integer_ms",
+          "interval_convention": "[start_ms,end_ms)"
         }
       ],
       "type": "KNG",
@@ -858,7 +863,7 @@
     {
       "id": "KNG-AUD-SPEAKER-TURN-001",
       "label": "说话人轮次",
-      "description": "STM 片段记录说话人、开始时间、时长和转写文本。",
+      "description": "STM 片段记录说话人、开始时间、结束时间和转写文本。",
       "data_types": [
         "audio"
       ],
@@ -874,8 +879,8 @@
           "source_refs": [
             "SRC-POLICY-AUDIO-TASK4-001"
           ],
-          "description": "本项目使用匿名 SPEAKER_01 等标签并在同一录音内保持身份一致。",
-          "version": "1.0.0"
+          "description": "本项目按可听轮次首次出现顺序分配匿名 spk_01、spk_02 等标签，并在同一录音内保持身份一致。",
+          "version": "1.1.0"
         }
       ],
       "type": "KNG",
@@ -1541,6 +1546,17 @@
       "claim_type": "video_action_taxonomy",
       "claim_basis": "curriculum_draft",
       "source_refs": [],
+      "policy_overlays": [
+        {
+          "overlay_id": "POLICY-VID-ACTION-TAXONOMY-001",
+          "claim_type": "video_action_taxonomy_policy",
+          "source_refs": [
+            "SRC-POLICY-VIDEO-TASK5-001"
+          ],
+          "description": "本项目使用 door_entry、door_exit、idle 闭合行为词表，并以可观察区域转移、参与轨迹和排除条件判定类别。",
+          "version": "1.1.0"
+        }
+      ],
       "type": "KNG",
       "status": "draft"
     },
@@ -1555,6 +1571,17 @@
       "claim_basis": "external_reference",
       "source_refs": [
         "SRC-W3C-WEBVTT-001"
+      ],
+      "policy_overlays": [
+        {
+          "overlay_id": "POLICY-VID-EVENT-BOUNDARY-001",
+          "claim_type": "video_event_boundary_policy",
+          "source_refs": [
+            "SRC-POLICY-VIDEO-TASK5-001"
+          ],
+          "description": "本项目用 [start_ms,end_ms) 半开区间表达事件：start_ms 是首个纳入时刻，end_ms 是首个不再纳入时刻。",
+          "version": "1.1.0"
+        }
       ],
       "type": "KNG",
       "status": "draft"
@@ -1585,6 +1612,17 @@
       "claim_basis": "external_reference",
       "source_refs": [
         "SRC-CVAT-ANNOTATION-FORMAT-251"
+      ],
+      "policy_overlays": [
+        {
+          "overlay_id": "POLICY-VID-FRAME-ANNOTATION-001",
+          "claim_type": "video_frame_annotation_policy",
+          "source_refs": [
+            "SRC-POLICY-VIDEO-TASK5-001"
+          ],
+          "description": "本项目练习只使用题目声明的 sampled_frames、frame_index 和矩形坐标约束；这些抽帧与判定语义不是 CVAT 外部格式事实。",
+          "version": "1.1.0"
+        }
       ],
       "type": "KNG",
       "status": "draft"
@@ -1640,6 +1678,17 @@
       "claim_type": "video_reidentification_policy",
       "claim_basis": "curriculum_draft",
       "source_refs": [],
+      "policy_overlays": [
+        {
+          "overlay_id": "POLICY-VID-OCCLUSION-REID-001",
+          "claim_type": "video_occlusion_reid_policy",
+          "source_refs": [
+            "SRC-POLICY-VIDEO-TASK5-001"
+          ],
+          "description": "本项目只在题目给出的 identity_key、位置、外观和运动证据支持时延续轨迹；不根据未声明线索推断身份。",
+          "version": "1.1.0"
+        }
+      ],
       "type": "KNG",
       "status": "draft"
     },
@@ -1694,6 +1743,17 @@
       "source_refs": [
         "SRC-CVAT-VIDEO-TRACK-001"
       ],
+      "policy_overlays": [
+        {
+          "overlay_id": "POLICY-VID-TRACK-CONTINUITY-001",
+          "claim_type": "video_track_continuity_policy",
+          "source_refs": [
+            "SRC-POLICY-VIDEO-TASK5-001"
+          ],
+          "description": "本项目按 identity_key、首次出现顺序和可观察运动连续性分配 trk_XX，并显式记录短时遮挡帧。",
+          "version": "1.1.0"
+        }
+      ],
       "type": "KNG",
       "status": "draft"
     },
@@ -1715,7 +1775,7 @@
     {
       "id": "RES-AUD-ALIGNMENT-WORKSHEET-001",
       "label": "音频对齐练习表",
-      "description": "练习切割、时间戳和文本对齐。",
+      "description": "把外部秒值按 decimal half-up 换算为整数毫秒，核对 [start_ms,end_ms) 区间的排序、重叠和转写对齐。",
       "data_types": [
         "audio"
       ],
@@ -1726,7 +1786,7 @@
     {
       "id": "RES-AUD-CONFIG-CHECKLIST-001",
       "label": "音频配置检查表",
-      "description": "核对数据字段、标签名和音频引用。",
+      "description": "逐项核对任务数据字段、允许标签集合、音频引用与授权记录，并检查唤醒命令的 command intent、target、unknown、silence 配置。",
       "data_types": [
         "audio"
       ],
@@ -1737,7 +1797,7 @@
     {
       "id": "RES-AUD-DIALECT-LABEL-CARD-001",
       "label": "语种方言标签卡",
-      "description": "对照语种、方言和混码标签。",
+      "description": "对照题目配置的 BCP 47 标签与可听证据，区分 cmn、yue、mixed 和 und。",
       "data_types": [
         "audio"
       ],
@@ -1748,7 +1808,7 @@
     {
       "id": "RES-AUD-EVENT-CATALOG-001",
       "label": "副语言事件目录",
-      "description": "区分笑声、叹气、咳嗽和噪声。",
+      "description": "分离整体 emotion_label 与笑声、叹气等副语言事件，核对事件枚举及 [start_ms,end_ms) 区间。",
       "data_types": [
         "audio"
       ],
@@ -1759,7 +1819,7 @@
     {
       "id": "RES-AUD-SPEAKER-TIMELINE-001",
       "label": "说话人时间线",
-      "description": "练习轮次边界与身份一致性。",
+      "description": "从首个可听轮次分配 spk_01，核对首次出现顺序、身份复用和轮次边界时间。",
       "data_types": [
         "audio"
       ],
@@ -1770,7 +1830,7 @@
     {
       "id": "RES-AUD-TRANSCRIPT-STYLE-SHEET-001",
       "label": "转写风格表",
-      "description": "汇总正字法、标点和不可听片段写法。",
+      "description": "按本地策略核对数字写法、全角标点、口语保留和不可听片段标记，修正转写正字法。",
       "data_types": [
         "audio"
       ],
@@ -2490,7 +2550,15 @@
       "type": "TSK",
       "status": "draft",
       "source_refs": [],
-      "teaching_unit_links": []
+      "teaching_unit_links": [
+        {
+          "unit_id": "TU-VIDEO-BEHAVIOR-EVENT-001",
+          "review_status": "draft",
+          "student_visible": false,
+          "in_student_visible_index": false,
+          "consumable": false
+        }
+      ]
     },
     {
       "id": "TSK-VID-FRAME-LABEL-001",
@@ -2505,7 +2573,15 @@
       "type": "TSK",
       "status": "draft",
       "source_refs": [],
-      "teaching_unit_links": []
+      "teaching_unit_links": [
+        {
+          "unit_id": "TU-VIDEO-FRAME-ANNOTATION-001",
+          "review_status": "draft",
+          "student_visible": false,
+          "in_student_visible_index": false,
+          "consumable": false
+        }
+      ]
     },
     {
       "id": "TSK-VID-OBJECT-TRACK-001",
@@ -2520,7 +2596,15 @@
       "type": "TSK",
       "status": "draft",
       "source_refs": [],
-      "teaching_unit_links": []
+      "teaching_unit_links": [
+        {
+          "unit_id": "TU-VIDEO-OBJECT-TRACKING-001",
+          "review_status": "draft",
+          "student_visible": false,
+          "in_student_visible_index": false,
+          "consumable": false
+        }
+      ]
     },
     {
       "id": "TSK-VID-TRACK-ID-AUDIT-001",
@@ -2535,15 +2619,7 @@
       "type": "TSK",
       "status": "draft",
       "source_refs": [],
-      "teaching_unit_links": [
-        {
-          "unit_id": "TU-VIDEO-TRACK-ID-001",
-          "review_status": "draft",
-          "student_visible": false,
-          "in_student_visible_index": false,
-          "consumable": false
-        }
-      ]
+      "teaching_unit_links": []
     },
     {
       "id": "TSK-VID-TRACK-QA-001",
@@ -3588,6 +3664,17 @@
     },
     {
       "id": "EDGE-0129",
+      "source": "RES-AUD-CONFIG-CHECKLIST-001",
+      "target": "CAP-AUD-WAKE-COMMAND-001",
+      "metadata": {
+        "purpose": "direct_remediation_support",
+        "replaces_relation": "weak_cross_domain_analogy"
+      },
+      "relation": "SUP",
+      "label": "支持"
+    },
+    {
+      "id": "EDGE-0130",
       "source": "RES-AUD-DIALECT-LABEL-CARD-001",
       "target": "CAP-AUD-LANGUAGE-DIALECT-001",
       "relation": "SUP",
@@ -3595,7 +3682,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0130",
+      "id": "EDGE-0131",
       "source": "RES-AUD-EVENT-CATALOG-001",
       "target": "CAP-AUD-EMOTION-PARALING-001",
       "relation": "SUP",
@@ -3603,7 +3690,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0131",
+      "id": "EDGE-0132",
       "source": "RES-AUD-SPEAKER-TIMELINE-001",
       "target": "CAP-AUD-SPEAKER-001",
       "relation": "SUP",
@@ -3611,7 +3698,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0132",
+      "id": "EDGE-0133",
       "source": "RES-AUD-TRANSCRIPT-STYLE-SHEET-001",
       "target": "CAP-AUD-TRANSCRIBE-PUNCT-001",
       "relation": "SUP",
@@ -3619,7 +3706,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0133",
+      "id": "EDGE-0134",
       "source": "RES-CORE-ADJUDICATION-RECORD-001",
       "target": "CAP-CORE-LABEL-SCHEMA-001",
       "relation": "SUP",
@@ -3627,7 +3714,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0134",
+      "id": "EDGE-0135",
       "source": "RES-CORE-ASSET-AUTH-CHECKLIST-001",
       "target": "CAP-CORE-ASSET-QUALITY-001",
       "relation": "SUP",
@@ -3635,7 +3722,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0135",
+      "id": "EDGE-0136",
       "source": "RES-CORE-ERROR-REVIEW-FORM-001",
       "target": "CAP-CORE-EXPORT-QA-001",
       "relation": "SUP",
@@ -3643,7 +3730,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0136",
+      "id": "EDGE-0137",
       "source": "RES-CORE-EXPORT-MANIFEST-TEMPLATE-001",
       "target": "CAP-CORE-EXPORT-QA-001",
       "relation": "SUP",
@@ -3651,7 +3738,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0137",
+      "id": "EDGE-0138",
       "source": "RES-CORE-LABEL-SCHEMA-CHECKLIST-001",
       "target": "CAP-CORE-LABEL-SCHEMA-001",
       "relation": "SUP",
@@ -3659,7 +3746,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0138",
+      "id": "EDGE-0139",
       "source": "RES-CORE-TASK-BRIEF-TEMPLATE-001",
       "target": "CAP-CORE-TASK-SCOPE-001",
       "relation": "SUP",
@@ -3667,7 +3754,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0139",
+      "id": "EDGE-0140",
       "source": "RES-IMG-BOX-QUALITY-CHECKLIST-001",
       "target": "CAP-IMG-BOX-ANNOTATE-001",
       "relation": "SUP",
@@ -3675,7 +3762,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0140",
+      "id": "EDGE-0141",
       "source": "RES-IMG-COORDINATE-WORKSHEET-001",
       "target": "CAP-IMG-RECT-VALIDATE-001",
       "relation": "SUP",
@@ -3683,7 +3770,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0141",
+      "id": "EDGE-0142",
       "source": "RES-IMG-KEYPOINT-SKELETON-001",
       "target": "CAP-IMG-KEYPOINT-001",
       "relation": "SUP",
@@ -3691,7 +3778,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0142",
+      "id": "EDGE-0143",
       "source": "RES-IMG-MASK-QA-CHECKLIST-001",
       "target": "CAP-IMG-INSTANCE-SEGMENT-001",
       "relation": "SUP",
@@ -3699,7 +3786,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0143",
+      "id": "EDGE-0144",
       "source": "RES-IMG-OCCLUSION-DECISION-TREE-001",
       "target": "CAP-IMG-OCCLUSION-001",
       "relation": "SUP",
@@ -3707,7 +3794,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0144",
+      "id": "EDGE-0145",
       "source": "RES-IMG-POLYGON-PRACTICE-001",
       "target": "CAP-IMG-POLYGON-001",
       "relation": "SUP",
@@ -3715,7 +3802,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0145",
+      "id": "EDGE-0146",
       "source": "RES-TXT-AMBIGUITY-PRACTICE-001",
       "target": "CAP-TXT-AMBIGUITY-001",
       "relation": "SUP",
@@ -3723,7 +3810,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0146",
+      "id": "EDGE-0147",
       "source": "RES-TXT-CLASSIFICATION-DECISION-TREE-001",
       "target": "CAP-TXT-CLASSIFY-001",
       "relation": "SUP",
@@ -3731,7 +3818,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0147",
+      "id": "EDGE-0148",
       "source": "RES-TXT-LABEL-VOCAB-WORKSHEET-001",
       "target": "CAP-TXT-LABEL-VALIDATE-001",
       "relation": "SUP",
@@ -3739,7 +3826,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0148",
+      "id": "EDGE-0149",
       "source": "RES-TXT-NER-BOUNDARY-CHECKLIST-001",
       "target": "CAP-TXT-ENTITY-TYPE-001",
       "relation": "SUP",
@@ -3747,7 +3834,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0149",
+      "id": "EDGE-0150",
       "source": "RES-TXT-OFFSET-INSPECTOR-001",
       "target": "CAP-TXT-ENTITY-BOUNDARY-001",
       "relation": "SUP",
@@ -3755,7 +3842,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0150",
+      "id": "EDGE-0151",
       "source": "RES-TXT-RELATION-MATRIX-001",
       "target": "CAP-TXT-RELATION-001",
       "relation": "SUP",
@@ -3763,7 +3850,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0151",
+      "id": "EDGE-0152",
       "source": "RES-VID-EVENT-TIMELINE-001",
       "target": "CAP-VID-EVENT-BOUNDARY-001",
       "relation": "SUP",
@@ -3771,7 +3858,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0152",
+      "id": "EDGE-0153",
       "source": "RES-VID-EXPORT-QA-CHECKLIST-001",
       "target": "CAP-VID-EXPORT-QA-001",
       "relation": "SUP",
@@ -3779,7 +3866,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0153",
+      "id": "EDGE-0154",
       "source": "RES-VID-FRAME-SAMPLING-WORKSHEET-001",
       "target": "CAP-VID-FRAME-SAMPLE-001",
       "relation": "SUP",
@@ -3787,7 +3874,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0154",
+      "id": "EDGE-0155",
       "source": "RES-VID-INTERPOLATION-CHECKLIST-001",
       "target": "CAP-VID-TRACK-INTERPOLATE-001",
       "relation": "SUP",
@@ -3795,7 +3882,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0155",
+      "id": "EDGE-0156",
       "source": "RES-VID-OCCLUSION-REID-CARD-001",
       "target": "CAP-VID-OCCLUSION-REID-001",
       "relation": "SUP",
@@ -3803,7 +3890,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0156",
+      "id": "EDGE-0157",
       "source": "RES-VID-TRACK-LEDGER-001",
       "target": "CAP-VID-OBJECT-TRACK-001",
       "relation": "SUP",
@@ -3811,7 +3898,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0157",
+      "id": "EDGE-0158",
       "source": "CAP-AUD-EMOTION-PARALING-001",
       "target": "CAP-VID-ACTION-EVENT-001",
       "relation": "REL",
@@ -3819,7 +3906,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0158",
+      "id": "EDGE-0159",
       "source": "CAP-IMG-BOX-ANNOTATE-001",
       "target": "CAP-VID-FRAME-ANNOTATE-001",
       "relation": "REL",
@@ -3827,7 +3914,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0159",
+      "id": "EDGE-0160",
       "source": "CAP-IMG-OCCLUSION-001",
       "target": "CAP-VID-OCCLUSION-REID-001",
       "relation": "REL",
@@ -3835,20 +3922,15 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0160",
-      "source": "CAP-TXT-ENTITY-BOUNDARY-001",
-      "target": "CAP-AUD-SEGMENT-ALIGN-001",
-      "relation": "REL",
-      "label": "关联",
-      "metadata": {}
-    },
-    {
       "id": "EDGE-0161",
-      "source": "CAP-TXT-INTENT-001",
-      "target": "CAP-AUD-WAKE-COMMAND-001",
+      "source": "KNG-AUD-SEGMENT-TIMESTAMP-001",
+      "target": "CAP-AUD-SEGMENT-ALIGN-001",
+      "metadata": {
+        "purpose": "direct_rule_trace",
+        "replaces": "weak_cross_domain_analogy"
+      },
       "relation": "REL",
-      "label": "关联",
-      "metadata": {}
+      "label": "关联"
     },
     {
       "id": "EDGE-0162",

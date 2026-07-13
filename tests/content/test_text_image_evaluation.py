@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TEXT_UNITS_PATH = ROOT / "data" / "curriculum" / "text" / "teaching-units.json"
 IMAGE_UNITS_PATH = ROOT / "data" / "curriculum" / "image" / "teaching-units.json"
 AUDIO_UNITS_ROOT = ROOT / "data" / "curriculum" / "audio"
+VIDEO_UNITS_ROOT = ROOT / "data" / "curriculum" / "video"
 CENTRAL_UNITS_PATH = ROOT / "data" / "curriculum" / "teaching-units.json"
 LEGACY_UNITS_PATH = (
     ROOT / "data" / "curriculum" / "legacy" / "teaching-units.json"
@@ -109,6 +110,7 @@ def copy_curriculum_sources(destination: Path) -> Path:
     shutil.copytree(TEXT_UNITS_PATH.parent, curriculum_root / "text")
     shutil.copytree(IMAGE_UNITS_PATH.parent, curriculum_root / "image")
     shutil.copytree(AUDIO_UNITS_ROOT, curriculum_root / "audio")
+    shutil.copytree(VIDEO_UNITS_ROOT, curriculum_root / "video")
     shutil.copytree(LEGACY_UNITS_PATH.parent, curriculum_root / "legacy")
     return curriculum_root
 

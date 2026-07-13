@@ -153,6 +153,85 @@
       "publication_scope": "development_only",
       "human_release_allowed": false,
       "authorizes_publication": true
+    },
+    {
+      "review_id": "REVIEW-TASK4-AUDIO-FOUNDATIONS-BF69CD1-001",
+      "reviewer_id": "codex-task4-foundations-review",
+      "reviewer_type": "ai_agent",
+      "independent_of_implementation": true,
+      "reviewed_at": "2026-07-12T23:35:40+08:00",
+      "reviewed_commit": "bf69cd101e5bea97a5a63934d88a236c9097f03a",
+      "scope": {
+        "data_type": "audio",
+        "publication_scope": "development_only",
+        "human_release_allowed": false,
+        "unit_ids": [
+          "TU-AUDIO-LANGUAGE-DIALECT-001",
+          "TU-AUDIO-SPEAKER-TURNS-001",
+          "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001"
+        ]
+      },
+      "unit_versions": [
+        {"unit_id": "TU-AUDIO-LANGUAGE-DIALECT-001", "data_version": "1.0.0", "evaluation_version": "1.0.0"},
+        {"unit_id": "TU-AUDIO-SPEAKER-TURNS-001", "data_version": "1.0.0", "evaluation_version": "1.0.0"},
+        {"unit_id": "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001", "data_version": "1.0.0", "evaluation_version": "1.0.0"}
+      ],
+      "decision": "changes_required",
+      "findings": [
+        {"finding_id": "AUD-FND-001", "severity": "high", "summary": "Exact diagnostic samples did not enforce declared precedence, and unmatched or multi-error submissions received misleading specific errors."},
+        {"finding_id": "AUD-FND-002", "severity": "high", "summary": "speaker_first_appearance_mismatch was absent."},
+        {"finding_id": "AUD-FND-003", "severity": "high", "summary": "Mandarin was incorrectly mapped to the region tag zh-CN instead of cmn."},
+        {"finding_id": "AUD-FND-004", "severity": "high", "summary": "The STM format fact incorrectly described begin time plus duration rather than begin time plus end time."},
+        {"finding_id": "AUD-FND-005", "severity": "high", "summary": "The spk_01 policy and turn/boundary KNG/resource mappings were inconsistent."},
+        {"finding_id": "AUD-FND-006", "severity": "medium", "summary": "Twelve foundation ASSET references lacked a resolvable manifest and media/fixture distinction."}
+      ],
+      "finding_count": 6,
+      "remaining_risks": [
+        "A corrected candidate requires independent AI re-review before development publication.",
+        "Formal competition and real-student release still require human domain-expert review."
+      ],
+      "publication_scope": "development_only",
+      "human_release_allowed": false,
+      "authorizes_publication": false
+    },
+    {
+      "review_id": "REVIEW-TASK4-AUDIO-ADVANCED-7D6416B-001",
+      "reviewer_id": "codex-task4-audio-advanced-review",
+      "reviewer_type": "ai_agent",
+      "independent_of_implementation": true,
+      "reviewed_at": "2026-07-12",
+      "reviewed_commit": "7d6416be724da40bf48d774495e726e62377d5f6",
+      "scope": {
+        "data_type": "audio",
+        "publication_scope": "development_only",
+        "human_release_allowed": false,
+        "unit_ids": [
+          "TU-AUDIO-EMOTION-PARALINGUISTICS-001",
+          "TU-AUDIO-SEGMENTATION-ALIGNMENT-001",
+          "TU-AUDIO-WAKE-COMMAND-WORDS-001"
+        ]
+      },
+      "unit_versions": [
+        {"unit_id": "TU-AUDIO-EMOTION-PARALINGUISTICS-001", "data_version": "1.0.0", "evaluation_version": "1.0.0"},
+        {"unit_id": "TU-AUDIO-SEGMENTATION-ALIGNMENT-001", "data_version": "1.0.0", "evaluation_version": "1.0.0"},
+        {"unit_id": "TU-AUDIO-WAKE-COMMAND-WORDS-001", "data_version": "1.0.0", "evaluation_version": "1.0.0"}
+      ],
+      "decision": "changes_required",
+      "findings": [
+        {"finding_id": "AUD-ADV-001", "severity": "high", "summary": "The curriculum integer-millisecond policy conflicted with the graph's seconds policy."},
+        {"finding_id": "AUD-ADV-002", "severity": "high", "summary": "Emotion answers lacked a deterministic local cue mapping and ambiguity handling."},
+        {"finding_id": "AUD-ADV-003", "severity": "high", "summary": "Unmatched submissions received misleading specific diagnoses."},
+        {"finding_id": "AUD-ADV-004", "severity": "high", "summary": "Boundary errors lacked a semantically matching timestamp KNG and graph trace."},
+        {"finding_id": "AUD-ADV-005", "severity": "medium", "summary": "Asset and remediation-resource identities were not closed."}
+      ],
+      "finding_count": 5,
+      "remaining_risks": [
+        "A corrected candidate requires independent AI re-review before development publication.",
+        "Formal competition and real-student release still require human domain-expert review."
+      ],
+      "publication_scope": "development_only",
+      "human_release_allowed": false,
+      "authorizes_publication": false
     }
   ]
 }

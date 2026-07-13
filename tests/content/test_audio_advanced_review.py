@@ -134,7 +134,10 @@ def test_timebase_policy_converts_external_seconds_to_integer_ms_and_tracks_grap
     assert follow_up["current_graph_version"] == overlay["version"]
     assert follow_up["required_state"]["project_timebase"] == "integer_ms"
     assert follow_up["required_state"]["interval_convention"] == "[start_ms,end_ms)"
-    assert follow_up["status"] == "pending_shared_change"
+    assert follow_up["status"] == "resolved"
+    assert follow_up["resolution_ref"] == (
+        "data/graph/graph-catalog.json#POLICY-AUD-SEGMENT-ALIGNMENT-001"
+    )
 
 
 def test_emotion_exercises_use_allowed_answers_and_manual_review_for_plausible_cues(
@@ -263,7 +266,7 @@ def test_asset_bindings_distinguish_authorized_audio_from_structured_fixtures(
     assert non_media
     for record in non_media:
         assert record["representation"] == "structured_fixture"
-        assert record["manifest_resolution"] == "pending"
+        assert record["manifest_resolution"] == "resolved"
 
 
 def test_remediation_uses_best_current_resources_and_exposes_graph_follow_ups(
@@ -313,9 +316,13 @@ def test_remediation_uses_best_current_resources_and_exposes_graph_follow_ups(
         "resource_description_and_support_alignment"
     )
     assert "命令意图" in follow_ups[CONFIG_RESOURCE]["required_description_scope"]
-    assert all(
-        follow_ups[target]["status"] == "pending_shared_change"
-        for target in (EVENT_RESOURCE, CONFIG_RESOURCE)
+    assert follow_ups[EVENT_RESOURCE]["status"] == "resolved"
+    assert follow_ups[EVENT_RESOURCE]["resolution_ref"] == (
+        "data/graph/graph-catalog.json#RES-AUD-EVENT-CATALOG-001"
+    )
+    assert follow_ups[CONFIG_RESOURCE]["status"] == "resolved"
+    assert follow_ups[CONFIG_RESOURCE]["resolution_ref"] == (
+        "data/graph/graph-catalog.json#RES-AUD-CONFIG-CHECKLIST-001->CAP-AUD-WAKE-COMMAND-001"
     )
 
 

@@ -6,14 +6,15 @@
       "follow_up_id": "FOLLOWUP-AUDIO-TIMESTAMP-OVERLAY-001",
       "target_ref": "KNG-AUD-SEGMENT-TIMESTAMP-001",
       "follow_up_type": "policy_overlay_alignment",
-      "current_graph_version": "1.0.0",
+      "current_graph_version": "1.1.0",
       "required_state": {
         "project_timebase": "integer_ms",
         "conversion": "milliseconds = round_half_up(decimal_seconds * 1000)",
         "interval_convention": "[start_ms,end_ms)"
       },
       "reason": "The current graph overlay still declares seconds with three decimals, while the reviewed Task 4 curriculum uses deterministic integer milliseconds.",
-      "status": "pending_shared_change"
+      "status": "resolved",
+      "resolution_ref": "data/graph/graph-catalog.json#POLICY-AUD-SEGMENT-ALIGNMENT-001"
     },
     {
       "follow_up_id": "FOLLOWUP-AUDIO-EVENT-RESOURCE-001",
@@ -21,7 +22,8 @@
       "follow_up_type": "resource_description_and_support_alignment",
       "required_description_scope": "副语言事件与本地情感标签的分轨判定及歧义复核",
       "reason": "The current description covers event categories but not emotion-label cue review, although this is the closest stable audio remediation resource.",
-      "status": "pending_shared_change"
+      "status": "resolved",
+      "resolution_ref": "data/graph/graph-catalog.json#RES-AUD-EVENT-CATALOG-001"
     },
     {
       "follow_up_id": "FOLLOWUP-AUDIO-COMMAND-RESOURCE-001",
@@ -29,7 +31,8 @@
       "follow_up_type": "resource_description_and_support_alignment",
       "required_description_scope": "命令意图、target、unknown 与 silence 配置标签核对",
       "reason": "The current description covers configured label names but does not explicitly cover wake-command classification or its capability support edge.",
-      "status": "pending_shared_change"
+      "status": "resolved",
+      "resolution_ref": "data/graph/graph-catalog.json#RES-AUD-CONFIG-CHECKLIST-001->CAP-AUD-WAKE-COMMAND-001"
     }
   ],
   "units": [
@@ -87,7 +90,7 @@
           "id": "EX-AUDIO-EMOTION-PARALINGUISTICS-POS-001",
           "asset_ref": "ASSET-SELF-AUDIO-EMOTION-PARALINGUISTICS-001",
           "representation": "structured_fixture",
-          "manifest_resolution": "pending",
+          "manifest_resolution": "resolved",
           "input": {
             "clip_id": "emo-example-001",
             "duration_ms": 3600,
@@ -139,7 +142,7 @@
           "id": "EX-AUDIO-EMOTION-PARALINGUISTICS-NEG-001",
           "asset_ref": "ASSET-SELF-AUDIO-EMOTION-PARALINGUISTICS-002",
           "representation": "structured_fixture",
-          "manifest_resolution": "pending",
+          "manifest_resolution": "resolved",
           "input": {
             "clip_id": "emo-example-001",
             "submitted": {
@@ -164,7 +167,7 @@
         "exercise_type": "dual_track_annotation",
         "asset_ref": "ASSET-SELF-AUDIO-EMOTION-EXERCISE-001",
         "representation": "structured_fixture",
-        "manifest_resolution": "pending",
+        "manifest_resolution": "resolved",
         "input": {
           "clip_id": "emo-practice-001",
           "duration_ms": 4200,
@@ -378,7 +381,7 @@
           "exercise_type": "annotation_review",
           "asset_ref": "ASSET-SELF-AUDIO-EMOTION-PRACTICE-001",
           "representation": "structured_fixture",
-          "manifest_resolution": "pending",
+          "manifest_resolution": "resolved",
           "input": {
             "clip_id": "emo-review-001",
             "duration_ms": 2600,
@@ -760,7 +763,7 @@
           "id": "EX-AUDIO-SEGMENTATION-ALIGNMENT-POS-001",
           "asset_ref": "ASSET-SELF-AUDIO-SEGMENTATION-ALIGNMENT-001",
           "representation": "structured_fixture",
-          "manifest_resolution": "pending",
+          "manifest_resolution": "resolved",
           "input": {
             "recording_id": "rec-align-example-001",
             "speech_anchors": [
@@ -807,7 +810,7 @@
           "id": "EX-AUDIO-SEGMENTATION-ALIGNMENT-NEG-001",
           "asset_ref": "ASSET-SELF-AUDIO-SEGMENTATION-ALIGNMENT-002",
           "representation": "structured_fixture",
-          "manifest_resolution": "pending",
+          "manifest_resolution": "resolved",
           "input": {
             "recording_id": "rec-align-example-001",
             "submitted_segments": [
@@ -1081,7 +1084,7 @@
           "exercise_type": "alignment_audit",
           "asset_ref": "ASSET-SELF-AUDIO-SEGMENTATION-PRACTICE-001",
           "representation": "structured_fixture",
-          "manifest_resolution": "pending",
+          "manifest_resolution": "resolved",
           "input": {
             "recording_id": "rec-align-audit-001",
             "speech_anchor": {
@@ -1406,7 +1409,7 @@
           "id": "EX-AUDIO-WAKE-COMMAND-WORDS-POS-001",
           "asset_ref": "ASSET-SELF-AUDIO-WAKE-COMMAND-WORDS-001",
           "representation": "structured_fixture",
-          "manifest_resolution": "pending",
+          "manifest_resolution": "resolved",
           "input": {
             "clip_id": "wake-example-001",
             "transcript": "星航，打开空调。",
@@ -1455,7 +1458,7 @@
           "id": "EX-AUDIO-WAKE-COMMAND-WORDS-NEG-001",
           "asset_ref": "ASSET-SELF-AUDIO-WAKE-COMMAND-WORDS-002",
           "representation": "structured_fixture",
-          "manifest_resolution": "pending",
+          "manifest_resolution": "resolved",
           "input": {
             "clip_id": "wake-example-001",
             "submitted": {
@@ -1485,7 +1488,7 @@
         "exercise_type": "wake_command_segmentation",
         "asset_ref": "ASSET-SELF-AUDIO-WAKE-COMMAND-EXERCISE-001",
         "representation": "structured_fixture",
-        "manifest_resolution": "pending",
+        "manifest_resolution": "resolved",
         "input": {
           "clip_id": "wake-practice-001",
           "duration_ms": 3200,
@@ -1685,7 +1688,7 @@
           "exercise_type": "limited_vocabulary_classification",
           "asset_ref": "ASSET-SELF-AUDIO-COMMAND-PRACTICE-001",
           "representation": "structured_fixture",
-          "manifest_resolution": "pending",
+          "manifest_resolution": "resolved",
           "input": {
             "configured_target_classes": [
               "volume_up",

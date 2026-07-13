@@ -339,7 +339,7 @@
         "license_url": "https://github.com/usnistgov/SCTK/blob/master/LICENSE.md",
         "student_use_allowed": true,
         "publishable": true,
-        "review_note": "The audit received HTTP 206 and confirmed STM/CTM transcript, speaker, begin-time, and duration fields; cite/link only."
+        "review_note": "The audit received HTTP 206 and confirmed that STM records begin and end times, while CTM records begin time and duration; cite/link only."
       },
       "usage_rights": {"citation_allowed": true, "asset_redistribution_allowed": false, "note": "Technical claims may cite the page; no corpus redistribution right is inferred."},
       "citation_locations": ["STM format fields", "CTM format fields"],
@@ -464,6 +464,98 @@
       "citation_locations": ["WebVTT cue timings and start/end timestamps"],
       "verified_by": "Codex source audit HTTP 200 scope check",
       "verified_at": "2026-07-12",
+      "status": "verified"
+    },
+    {
+      "source_id": "SRC-POLICY-VIDEO-TASK5-001",
+      "data_type": "video",
+      "source_kind": "project_policy",
+      "authority_scope": "local_project_policy_only",
+      "supported_claim_types": [
+        "video_frame_annotation_policy",
+        "video_track_continuity_policy",
+        "video_occlusion_reid_policy",
+        "video_action_taxonomy_policy",
+        "video_event_boundary_policy"
+      ],
+      "name": "标航智导 Task 5 视频练习本地判定策略",
+      "author_or_organization": "标航智导项目",
+      "version_or_publication_date": "Draft 1.1.0, 2026-07-13",
+      "original_url_or_local_archive": "data/curriculum/video/teaching-units.json",
+      "access_date": "2026-07-13",
+      "license_or_authorization": {
+        "license_id": "Project-internal-draft; no external publication grant",
+        "license_url": "https://choosealicense.com/no-permission/",
+        "student_use_allowed": true,
+        "publishable": true,
+        "review_note": "AI-agent review scope only; this local policy record does not claim human, teacher, or domain-expert approval and does not authorize formal competition or real-student release."
+      },
+      "publication_scope": "development_only",
+      "human_release_allowed": false,
+      "usage_rights": {
+        "citation_allowed": true,
+        "asset_redistribution_allowed": false,
+        "note": "Internal traceability is allowed; external authority, third-party media redistribution, and human release are not claimed."
+      },
+      "citation_locations": [
+        "Task 5 video unit rule_explanation.project_policy",
+        "Task 5 deterministic video exercise rules",
+        "Task 5 video KNG policy_overlays"
+      ],
+      "verification": {
+        "method": "local_project_file_and_owner_task_approval_check",
+        "content_path_verified": true,
+        "owner_development_scope_recorded": true,
+        "human_domain_expert_review_completed": false,
+        "verified_at": "2026-07-13"
+      },
+      "verified_by": "Codex local project path and approved Task 5 scope check",
+      "verified_at": "2026-07-13",
+      "status": "verified"
+    },
+    {
+      "source_id": "SRC-POLICY-SCENARIOS-TASK5-001",
+      "data_type": "text",
+      "supported_data_types": ["text", "image", "audio", "video"],
+      "source_kind": "project_policy",
+      "authority_scope": "local_project_policy_only",
+      "supported_claim_types": [
+        "scenario_rule_overlay_policy",
+        "scenario_structured_example_policy"
+      ],
+      "name": "标航智导 Task 5 行业场景覆盖与结构化案例策略",
+      "author_or_organization": "标航智导项目",
+      "version_or_publication_date": "Draft 1.0.0, 2026-07-13",
+      "original_url_or_local_archive": "data/scenarios/",
+      "access_date": "2026-07-13",
+      "license_or_authorization": {
+        "license_id": "Project-internal-draft; no external publication grant",
+        "license_url": "https://choosealicense.com/no-permission/",
+        "student_use_allowed": true,
+        "publishable": true,
+        "review_note": "AI-agent review scope only; these local scenario overlays and synthetic structured examples do not claim human, teacher, clinical, safety, or other domain-expert approval."
+      },
+      "publication_scope": "development_only",
+      "human_release_allowed": false,
+      "usage_rights": {
+        "citation_allowed": true,
+        "asset_redistribution_allowed": false,
+        "note": "Internal traceability is allowed; no third-party media redistribution, external authority, or real-student release is granted."
+      },
+      "citation_locations": [
+        "Task 5 scenario source_refs",
+        "Task 5 rule_overrides",
+        "Task 5 self-authored structured examples"
+      ],
+      "verification": {
+        "method": "local_project_file_and_owner_task_approval_check",
+        "content_path_verified": true,
+        "owner_development_scope_recorded": true,
+        "human_domain_expert_review_completed": false,
+        "verified_at": "2026-07-13"
+      },
+      "verified_by": "Codex local project path and approved Task 5 scope check",
+      "verified_at": "2026-07-13",
       "status": "verified"
     }
   ]

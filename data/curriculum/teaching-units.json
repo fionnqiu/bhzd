@@ -31,10 +31,13 @@
       ],
       "rule_refs": [
         "KNG-AUD-EMOTION-LABEL-001",
-        "KNG-AUD-PARALINGUISTIC-EVENT-001"
+        "KNG-AUD-PARALINGUISTIC-EVENT-001",
+        "KNG-AUD-SEGMENT-TIMESTAMP-001"
       ],
       "source_refs": [
         "SRC-W3C-EMOTIONML-001",
+        "SRC-KALDI-DATA-PREP-001",
+        "SRC-PRAAT-TEXTGRID-001",
         "SRC-POLICY-AUDIO-TASK4-001"
       ],
       "rule_explanation": {
@@ -43,6 +46,13 @@
             "statement": "EmotionML 支持用类别或维度结构表示情感，但不替本练习规定具体情感枚举，也不规定副语言事件标签或时间边界。",
             "source_refs": [
               "SRC-W3C-EMOTIONML-001"
+            ]
+          },
+          {
+            "statement": "Kaldi segments 和 Praat TextGrid 区间可以承载开始与结束时间；其外部时间表达不替本项目决定副语言事件的标签或本地毫秒端点约定。",
+            "source_refs": [
+              "SRC-KALDI-DATA-PREP-001",
+              "SRC-PRAAT-TEXTGRID-001"
             ]
           }
         ],
@@ -56,6 +66,8 @@
         {
           "id": "EX-AUDIO-EMOTION-PARALINGUISTICS-POS-001",
           "asset_ref": "ASSET-SELF-AUDIO-EMOTION-PARALINGUISTICS-001",
+          "representation": "structured_fixture",
+          "manifest_resolution": "resolved",
           "input": {
             "clip_id": "emo-example-001",
             "duration_ms": 3600,
@@ -106,6 +118,8 @@
         {
           "id": "EX-AUDIO-EMOTION-PARALINGUISTICS-NEG-001",
           "asset_ref": "ASSET-SELF-AUDIO-EMOTION-PARALINGUISTICS-002",
+          "representation": "structured_fixture",
+          "manifest_resolution": "resolved",
           "input": {
             "clip_id": "emo-example-001",
             "submitted": {
@@ -129,6 +143,8 @@
         "exercise_id": "EX-AUDIO-EMOTION-DUAL-TRACK-001",
         "exercise_type": "dual_track_annotation",
         "asset_ref": "ASSET-SELF-AUDIO-EMOTION-EXERCISE-001",
+        "representation": "structured_fixture",
+        "manifest_resolution": "resolved",
         "input": {
           "clip_id": "emo-practice-001",
           "duration_ms": 4200,
@@ -169,11 +185,38 @@
             }
           ]
         },
+        "response_space": {
+          "type": "finite_closed",
+          "declared_by": [
+            "evaluation.allowed_answers",
+            "evaluation.diagnostic_rules"
+          ],
+          "unmatched_error_type": "unclassified_submission"
+        },
         "evaluation": {
-          "method": "ordered_exact_match",
-          "version": "1.0.0",
-          "normalization": "JSON 对象键顺序忽略；事件数组顺序、标签和值必须完全一致；不做标签同义词替换或时间容差处理",
-          "diagnostic_precedence": "array_order_first_exact_match",
+          "method": "allowed_answers",
+          "version": "1.1.0",
+          "normalization": "JSON 对象键顺序忽略；事件数组顺序、标签和值必须完全一致；只命中显式 allowed_answers 时获得固定分数，不做标签同义词替换或时间容差处理",
+          "pass_score": 1.0,
+          "manual_review_on_unmatched": true,
+          "local_cue_mapping": {
+            "policy_basis": "local_project_policy_only",
+            "rules": [
+              {
+                "observed_cues": [
+                  "smiling_voice",
+                  "rising_pitch",
+                  "positive_completion_utterance"
+                ],
+                "canonical_label": "joy",
+                "plausible_ambiguous_labels": [
+                  "neutral"
+                ],
+                "reason": "三项线索共同支持 joy；若结构化音频线索的情感强度被判为不足，neutral 只能作为需人工复核的部分分答案。"
+              }
+            ]
+          },
+          "diagnostic_precedence": "diagnostic_rules 按数组顺序先做严格 JSON 匹配；未命中时再按 allowed_answers 顺序匹配；仍未命中时返回 unclassified_submission 并进入人工复核。",
           "error_precedence": [
             "emotion_event_conflation",
             "emotion_label_mismatch",
@@ -194,7 +237,7 @@
             },
             {
               "submission": {
-                "emotion_label": "neutral",
+                "emotion_label": "sadness",
                 "paralinguistic_events": [
                   {
                     "label": "laughter",
@@ -204,7 +247,7 @@
                 ]
               },
               "error_type": "emotion_label_mismatch",
-              "feedback": "事件轨正确，但整体情感没有匹配题目给出的喜悦语调证据。",
+              "feedback": "事件轨正确，但 sadness 与题目给出的正向完成话语和喜悦语调证据冲突。",
               "remediation": [
                 "先忽略事件标签，只依据 transcript、smiling_voice 与 rising_pitch 在允许枚举中重判整体情感。"
               ]
@@ -232,22 +275,66 @@
                 ]
               },
               "error_type": "paralinguistic_boundary_mismatch",
+              "rule_refs": [
+                "KNG-AUD-PARALINGUISTIC-EVENT-001",
+                "KNG-AUD-SEGMENT-TIMESTAMP-001"
+              ],
               "feedback": "事件类别正确，但区间扩入了事件前后的非笑声部分。",
               "remediation": [
                 "在对齐练习表中按实际可听起止点收紧区间到 [2800,3400)。"
               ]
             }
           ],
+          "allowed_answers": [
+            {
+              "answer": {
+                "emotion_label": "joy",
+                "paralinguistic_events": [
+                  {
+                    "label": "laughter",
+                    "start_ms": 2800,
+                    "end_ms": 3400
+                  }
+                ]
+              },
+              "score": 1.0,
+              "manual_review_required": false,
+              "error_type": null,
+              "feedback": "情感与副语言事件已按本地线索映射和双轨规则正确提交。",
+              "remediation": [
+                "无需补强；继续按显式线索映射区分整体情感和可定位事件。"
+              ]
+            },
+            {
+              "answer": {
+                "emotion_label": "neutral",
+                "paralinguistic_events": [
+                  {
+                    "label": "laughter",
+                    "start_ms": 2800,
+                    "end_ms": 3400
+                  }
+                ]
+              },
+              "score": 0.5,
+              "manual_review_required": true,
+              "error_type": "emotion_cue_ambiguous",
+              "feedback": "事件轨正确且 neutral 在情感强度不足的解释下具有可辩护性，但与本地首选线索映射不一致，需人工复核。",
+              "remediation": [
+                "对照副语言事件目录与本地 cue mapping，复核 smiling_voice、rising_pitch 和正向话语是否足以支持 joy。"
+              ]
+            }
+          ],
           "correct_feedback": "情感与副语言事件已按双轨规则正确提交。",
           "incorrect_feedback": {
-            "error_type": "paralinguistic_boundary_mismatch",
-            "feedback": "提交未与本题的情感标签、事件标签和确定性时间边界完全一致。",
+            "error_type": "unclassified_submission",
+            "feedback": "提交未命中本题声明的诊断规则或有限允许答案，不能自动归因到某个具体错误。",
             "remediation": [
-              "依次核对情感枚举、事件是否遗漏以及左闭右开时间区间。"
+              "保留原提交并进入人工复核，再依次核对情感枚举、事件完整性和左闭右开时间区间。"
             ]
           }
         },
-        "data_version": "1.0.0",
+        "data_version": "1.1.0",
         "pass_condition": "score == 1.0",
         "capability_refs": [
           "CAP-AUD-EMOTION-PARALING-001"
@@ -256,7 +343,9 @@
           "emotion_event_conflation",
           "emotion_label_mismatch",
           "paralinguistic_event_omitted",
-          "paralinguistic_boundary_mismatch"
+          "paralinguistic_boundary_mismatch",
+          "emotion_cue_ambiguous",
+          "unclassified_submission"
         ],
         "asset_authorization": {
           "type": "self-authored",
@@ -268,6 +357,8 @@
           "exercise_id": "EX-AUDIO-EMOTION-REVIEW-001",
           "exercise_type": "annotation_review",
           "asset_ref": "ASSET-SELF-AUDIO-EMOTION-PRACTICE-001",
+          "representation": "structured_fixture",
+          "manifest_resolution": "resolved",
           "input": {
             "clip_id": "emo-review-001",
             "duration_ms": 2600,
@@ -309,11 +400,39 @@
               ]
             }
           },
+          "response_space": {
+            "type": "finite_closed",
+            "declared_by": [
+              "evaluation.allowed_answers",
+              "evaluation.diagnostic_rules"
+            ],
+            "unmatched_error_type": "unclassified_submission"
+          },
           "evaluation": {
-            "method": "ordered_exact_match",
-            "version": "1.0.0",
-            "normalization": "JSON 对象键顺序忽略；诊断错误码、标签、事件顺序和时间值必须完全一致",
-            "diagnostic_precedence": "array_order_first_exact_match",
+            "method": "allowed_answers",
+            "version": "1.1.0",
+            "normalization": "JSON 对象键顺序忽略；只命中显式 allowed_answers 时获得固定分数；诊断错误码、标签、事件顺序和时间值必须完全一致",
+            "pass_score": 1.0,
+            "manual_review_on_unmatched": true,
+            "local_cue_mapping": {
+              "policy_basis": "local_project_policy_only",
+              "rules": [
+                {
+                  "observed_cues": [
+                    "low_pitch",
+                    "slow_tempo",
+                    "sigh",
+                    "failure_utterance"
+                  ],
+                  "canonical_label": "sadness",
+                  "plausible_ambiguous_labels": [
+                    "neutral"
+                  ],
+                  "reason": "组合线索优先映射 sadness；若认为 sigh 和韵律不足以可靠推断情感，neutral 只能作为需人工复核的部分分答案。"
+                }
+              ]
+            },
+            "diagnostic_precedence": "diagnostic_rules 按数组顺序先做严格 JSON 匹配；未命中时再按 allowed_answers 顺序匹配；仍未命中时返回 unclassified_submission 并进入人工复核。",
             "error_precedence": [
               "diagnosis_mismatch",
               "review_correction_mismatch"
@@ -354,23 +473,71 @@
                 ]
               }
             ],
+            "allowed_answers": [
+              {
+                "answer": {
+                  "diagnosed_error": "emotion_event_conflation",
+                  "corrected_annotation": {
+                    "emotion_label": "sadness",
+                    "paralinguistic_events": [
+                      {
+                        "label": "sigh",
+                        "start_ms": 0,
+                        "end_ms": 450
+                      }
+                    ]
+                  }
+                },
+                "score": 1.0,
+                "manual_review_required": false,
+                "error_type": null,
+                "feedback": "已正确诊断双轨混淆，并按本地组合线索修正为 sadness 与独立 sigh 事件。",
+                "remediation": [
+                  "无需补强；继续先诊断轨道错误，再按显式 cue mapping 修正情感。"
+                ]
+              },
+              {
+                "answer": {
+                  "diagnosed_error": "emotion_event_conflation",
+                  "corrected_annotation": {
+                    "emotion_label": "neutral",
+                    "paralinguistic_events": [
+                      {
+                        "label": "sigh",
+                        "start_ms": 0,
+                        "end_ms": 450
+                      }
+                    ]
+                  }
+                },
+                "score": 0.5,
+                "manual_review_required": true,
+                "error_type": "emotion_cue_ambiguous",
+                "feedback": "双轨修正正确，但 neutral 只在情感线索不足的解释下可辩护，因此保留部分分并进入人工复核。",
+                "remediation": [
+                  "使用副语言事件目录分离 sigh 后，再复核 low_pitch、slow_tempo 与失败话语的组合证据。"
+                ]
+              }
+            ],
             "correct_feedback": "已正确诊断双轨混淆并恢复情感与事件标注。",
             "incorrect_feedback": {
-              "error_type": "review_correction_mismatch",
-              "feedback": "诊断或修正结果与本题确定性答案不一致。",
+              "error_type": "unclassified_submission",
+              "feedback": "提交未命中本题声明的诊断规则或有限允许答案，不能自动指定诊断或修正错误。",
               "remediation": [
-                "先确定主要错误，再分别重建 emotion_label 与 paralinguistic_events。"
+                "保留原提交并进入人工复核；先确定主要错误，再分别重建 emotion_label 与 paralinguistic_events。"
               ]
             }
           },
-          "data_version": "1.0.0",
+          "data_version": "1.1.0",
           "pass_condition": "score == 1.0",
           "capability_refs": [
             "CAP-AUD-EMOTION-PARALING-001"
           ],
           "error_types": [
             "diagnosis_mismatch",
-            "review_correction_mismatch"
+            "review_correction_mismatch",
+            "emotion_cue_ambiguous",
+            "unclassified_submission"
           ],
           "asset_authorization": {
             "type": "self-authored",
@@ -429,7 +596,8 @@
           {
             "error_type": "paralinguistic_boundary_mismatch",
             "rule_refs": [
-              "KNG-AUD-PARALINGUISTIC-EVENT-001"
+              "KNG-AUD-PARALINGUISTIC-EVENT-001",
+              "KNG-AUD-SEGMENT-TIMESTAMP-001"
             ],
             "capability_refs": [
               "CAP-AUD-EMOTION-PARALING-001"
@@ -437,6 +605,19 @@
             "remediation_resource_refs": [
               "RES-AUD-EVENT-CATALOG-001",
               "RES-AUD-ALIGNMENT-WORKSHEET-001"
+            ]
+          },
+          {
+            "error_type": "emotion_cue_ambiguous",
+            "rule_refs": [
+              "KNG-AUD-EMOTION-LABEL-001",
+              "KNG-AUD-PARALINGUISTIC-EVENT-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-EMOTION-PARALING-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-EVENT-CATALOG-001"
             ]
           },
           {
@@ -458,6 +639,21 @@
             "rule_refs": [
               "KNG-AUD-EMOTION-LABEL-001",
               "KNG-AUD-PARALINGUISTIC-EVENT-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-EMOTION-PARALING-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-EVENT-CATALOG-001",
+              "RES-AUD-ALIGNMENT-WORKSHEET-001"
+            ]
+          },
+          {
+            "error_type": "unclassified_submission",
+            "rule_refs": [
+              "KNG-AUD-EMOTION-LABEL-001",
+              "KNG-AUD-PARALINGUISTIC-EVENT-001",
+              "KNG-AUD-SEGMENT-TIMESTAMP-001"
             ],
             "capability_refs": [
               "CAP-AUD-EMOTION-PARALING-001"
@@ -507,7 +703,7 @@
             ]
           },
           {
-            "statement": "IANA Language Subtag Registry 提供已登记子标签的查询事实，但不提供基于声音判断方言或混码的项目判定规则。",
+            "statement": "IANA Language Subtag Registry 提供已登记子标签的查询事实，例如普通话语言子标签 cmn，但不提供基于声音判断方言或混码的项目判定规则。",
             "source_refs": [
               "SRC-IANA-LANGUAGE-SUBTAG-001"
             ]
@@ -534,7 +730,7 @@
               "mixed",
               "und",
               "yue",
-              "zh-CN"
+              "cmn"
             ]
           },
           "expected": {
@@ -544,6 +740,7 @@
           "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
           "asset_authorization": {
             "type": "self-authored",
+            "representation": "structured_fixture",
             "student_use_allowed": true
           }
         }
@@ -563,10 +760,10 @@
               "mixed",
               "und",
               "yue",
-              "zh-CN"
+              "cmn"
             ],
             "submitted": {
-              "language_tag": "zh-CN"
+              "language_tag": "cmn"
             }
           },
           "expected": {
@@ -577,6 +774,7 @@
           "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
           "asset_authorization": {
             "type": "self-authored",
+            "representation": "structured_fixture",
             "student_use_allowed": true
           }
         }
@@ -591,7 +789,7 @@
             "mixed",
             "und",
             "yue",
-            "zh-CN"
+            "cmn"
           ],
           "policy_version": "1.0.0",
           "segments": [
@@ -623,7 +821,7 @@
           "labels": [
             {
               "segment_id": "LANG-01",
-              "language_tag": "zh-CN"
+              "language_tag": "cmn"
             },
             {
               "segment_id": "LANG-02",
@@ -637,9 +835,18 @@
         },
         "evaluation": {
           "method": "ordered_exact_match",
-          "version": "1.0.0",
+          "version": "1.1.0",
+          "response_space": {
+            "type": "finite_closed_set",
+            "recognized_submissions": [
+              "standard_answer",
+              "diagnostic_rules"
+            ],
+            "unmatched_behavior": "manual_review"
+          },
           "normalization": "JSON 对象键顺序忽略；labels 数组顺序、segment_id 和 language_tag 必须完全一致；标签区分大小写且不自动 trim。",
           "diagnostic_precedence": "diagnostic_rules 按数组顺序严格匹配，依次优先处理未配置标签、可听证据不符、混码折叠、证据不足时过度分类；首个命中规则生效，之后才匹配标准答案，最后使用 incorrect_feedback。",
+          "manual_review_on_unmatched": true,
           "diagnostic_rules": [
             {
               "submission": {
@@ -661,7 +868,7 @@
               "error_type": "language_tag_not_configured",
               "feedback": "zh-Hans-CN 即使可作为语言标签形式，也不在本题 configured_labels 中。",
               "remediation": [
-                "先使用语种方言标签卡核对 configured_labels，再原样选择 zh-CN。"
+                "先使用语种方言标签卡核对 configured_labels，再原样选择 cmn。"
               ]
             },
             {
@@ -684,7 +891,7 @@
               "error_type": "language_evidence_mismatch",
               "feedback": "LANG-01 的可听证据是普通话，不支持 yue。",
               "remediation": [
-                "只依据 audible_cues 重新选择 zh-CN，不使用说话人背景信息推断。"
+                "只依据 audible_cues 重新选择 cmn，不使用说话人背景信息推断。"
               ]
             },
             {
@@ -692,11 +899,11 @@
                 "labels": [
                   {
                     "segment_id": "LANG-01",
-                    "language_tag": "zh-CN"
+                    "language_tag": "cmn"
                   },
                   {
                     "segment_id": "LANG-02",
-                    "language_tag": "zh-CN"
+                    "language_tag": "cmn"
                   },
                   {
                     "segment_id": "LANG-03",
@@ -705,7 +912,7 @@
                 ]
               },
               "error_type": "code_switch_collapsed",
-              "feedback": "LANG-02 同时包含可辨识英语和普通话，不能折叠为单一 zh-CN。",
+              "feedback": "LANG-02 同时包含可辨识英语和普通话，不能折叠为单一 cmn。",
               "remediation": [
                 "在语种方言标签卡中复核 mixed 规则，并将 LANG-02 改为 mixed。"
               ]
@@ -715,7 +922,7 @@
                 "labels": [
                   {
                     "segment_id": "LANG-01",
-                    "language_tag": "zh-CN"
+                    "language_tag": "cmn"
                   },
                   {
                     "segment_id": "LANG-02",
@@ -736,14 +943,14 @@
           ],
           "correct_feedback": "三段语音均按可听证据、混码规则和不确定性规则完成标注。",
           "incorrect_feedback": {
-            "error_type": "language_evidence_mismatch",
-            "feedback": "至少一个语段的标签未同时满足配置集合和可听证据规则。",
+            "error_type": "unclassified_submission",
+            "feedback": "提交未命中标准答案或任何已声明诊断规则，无法安全归入某个具体错误。",
             "remediation": [
-              "依次检查标签是否配置、声音证据是否匹配、是否混码以及证据是否充分。"
+              "按有限响应集合重新提交；若多个错误同时存在，保留证据并请求人工复核。"
             ]
           }
         },
-        "data_version": "1.0.0",
+        "data_version": "1.1.0",
         "pass_condition": "score == 1.0",
         "capability_refs": [
           "CAP-AUD-LANGUAGE-DIALECT-001"
@@ -752,10 +959,12 @@
           "language_tag_not_configured",
           "language_evidence_mismatch",
           "code_switch_collapsed",
-          "uncertain_audio_overclassified"
+          "uncertain_audio_overclassified",
+          "unclassified_submission"
         ],
         "asset_authorization": {
           "type": "self-authored",
+          "representation": "structured_fixture",
           "student_use_allowed": true
         }
       },
@@ -770,7 +979,7 @@
               "mixed",
               "und",
               "yue",
-              "zh-CN"
+              "cmn"
             ],
             "audible_cues": [
               "完整可辨识普通话句子"
@@ -788,18 +997,27 @@
           "student_action": "提交 first_error_type 和 corrected_language_tag；必须先诊断优先级最高的错误。",
           "answer": {
             "first_error_type": "language_tag_not_configured",
-            "corrected_language_tag": "zh-CN"
+            "corrected_language_tag": "cmn"
           },
           "evaluation": {
             "method": "exact_match",
-            "version": "1.0.0",
+            "version": "1.1.0",
+            "response_space": {
+              "type": "finite_closed_set",
+              "recognized_submissions": [
+                "standard_answer",
+                "diagnostic_rules"
+              ],
+              "unmatched_behavior": "manual_review"
+            },
             "normalization": "JSON 对象键顺序忽略；两个字符串值必须完全一致。",
             "diagnostic_precedence": "先检查 first_error_type 是否遵守 input 中的 ordered_error_precedence，再检查 corrected_language_tag；首个严格匹配诊断生效。",
+            "manual_review_on_unmatched": true,
             "diagnostic_rules": [
               {
                 "submission": {
                   "first_error_type": "language_evidence_mismatch",
-                  "corrected_language_tag": "zh-CN"
+                  "corrected_language_tag": "cmn"
                 },
                 "error_type": "language_error_precedence_misapplied",
                 "feedback": "提交跳过了更早发生的 configured_labels 成员资格错误。",
@@ -810,23 +1028,25 @@
             ],
             "correct_feedback": "已按优先级先识别未配置标签，并给出配置内修正值。",
             "incorrect_feedback": {
-              "error_type": "language_error_precedence_misapplied",
-              "feedback": "错误类型或修正标签与既定诊断顺序不一致。",
+              "error_type": "unclassified_submission",
+              "feedback": "提交未命中标准答案或任何已声明诊断规则，无法安全归入某个具体错误。",
               "remediation": [
-                "使用语种方言标签卡按成员资格、证据、混码、不确定性的顺序重新诊断。"
+                "按有限响应集合重新提交；若多个错误同时存在，保留证据并请求人工复核。"
               ]
             }
           },
-          "data_version": "1.0.0",
+          "data_version": "1.1.0",
           "pass_condition": "score == 1.0",
           "capability_refs": [
             "CAP-AUD-LANGUAGE-DIALECT-001"
           ],
           "error_types": [
-            "language_error_precedence_misapplied"
+            "language_error_precedence_misapplied",
+            "unclassified_submission"
           ],
           "asset_authorization": {
             "type": "self-authored",
+            "representation": "structured_fixture",
             "student_use_allowed": true
           }
         }
@@ -892,6 +1112,18 @@
             "remediation_resource_refs": [
               "RES-AUD-DIALECT-LABEL-CARD-001"
             ]
+          },
+          {
+            "error_type": "unclassified_submission",
+            "rule_refs": [
+              "KNG-AUD-LANGUAGE-DIALECT-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-LANGUAGE-DIALECT-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-DIALECT-LABEL-CARD-001"
+            ]
           }
         ]
       },
@@ -936,13 +1168,13 @@
       "rule_explanation": {
         "external_format_facts": [
           {
-            "statement": "Kaldi 数据准备说明中的 segments 记录话语 ID、录音 ID、开始时间和结束时间；该格式事实不规定本练习采用毫秒还是秒，也不规定边界容差。",
+            "statement": "Kaldi 数据准备说明中的 segments 记录话语 ID、录音 ID，以及相对录音起点、以秒表达的开始和结束时间；该外部格式不规定本项目的整数毫秒换算或端点约定。",
             "source_refs": [
               "SRC-KALDI-DATA-PREP-001"
             ]
           },
           {
-            "statement": "Praat TextGrid 可以用 interval tier 保存连续时间区间；该外部事实不规定本练习的区间端点约定、片段排序或转写规范。",
+            "statement": "Praat TextGrid 的 interval tier 使用以秒表达的 xmin 与 xmax 保存连续时间区间；该外部格式不规定本项目的整数毫秒舍入、片段排序或转写规范。",
             "source_refs": [
               "SRC-PRAAT-TEXTGRID-001"
             ]
@@ -950,14 +1182,36 @@
         ],
         "project_policy": {
           "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
-          "statement": "本项目练习统一使用整数毫秒和左闭右开区间 [start_ms,end_ms)，segments 必须按 start_ms 升序、同一层不得重叠，并与题目给定 speech_anchors 和规范转写逐项完全一致；不应用隐式时间容差。该规则只是本地 project_policy overlay。",
+          "statement": "本项目练习把外部秒值按 milliseconds = round_half_up(decimal_seconds * 1000) 转成整数毫秒，并统一使用左闭右开区间 [start_ms,end_ms)；segments 必须按 start_ms 升序、同一层不得重叠，并与题目给定 time anchors 和规范转写逐项完全一致。该规则只是本地 project_policy overlay。",
           "version": "1.0.0"
         }
+      },
+      "timebase_policy": {
+        "external_timebases": {
+          "kaldi_segments": "seconds",
+          "praat_textgrid_intervals": "seconds"
+        },
+        "project_timebase": "integer_ms",
+        "conversion": "milliseconds = round_half_up(decimal_seconds * 1000)",
+        "rounding": "decimal_half_up_to_nearest_integer_ms",
+        "interval_convention": "[start_ms,end_ms)",
+        "conversion_examples": [
+          {
+            "seconds": "0.400",
+            "milliseconds": 400
+          },
+          {
+            "seconds": "1.550",
+            "milliseconds": 1550
+          }
+        ]
       },
       "positive_examples": [
         {
           "id": "EX-AUDIO-SEGMENTATION-ALIGNMENT-POS-001",
           "asset_ref": "ASSET-SELF-AUDIO-SEGMENTATION-ALIGNMENT-001",
+          "representation": "structured_fixture",
+          "manifest_resolution": "resolved",
           "input": {
             "recording_id": "rec-align-example-001",
             "speech_anchors": [
@@ -1003,6 +1257,8 @@
         {
           "id": "EX-AUDIO-SEGMENTATION-ALIGNMENT-NEG-001",
           "asset_ref": "ASSET-SELF-AUDIO-SEGMENTATION-ALIGNMENT-002",
+          "representation": "structured_fixture",
+          "manifest_resolution": "resolved",
           "input": {
             "recording_id": "rec-align-example-001",
             "submitted_segments": [
@@ -1030,10 +1286,14 @@
       "exercise": {
         "exercise_id": "EX-AUDIO-SEGMENTATION-ALIGNMENT-001",
         "exercise_type": "interval_alignment",
-        "asset_ref": "ASSET-SELF-AUDIO-SEGMENTATION-EXERCISE-001",
+        "asset_ref": "ASSET-AUDIO-TASK4-TONE-SILENCE-TONE-001",
+        "representation": "authorized_audio",
+        "manifest_resolution": "resolved",
         "input": {
           "recording_id": "rec-align-practice-001",
           "duration_ms": 3900,
+          "media_role": "deterministic_time_anchor_surrogate",
+          "contains_recorded_speech": false,
           "speech_anchors": [
             {
               "start_ms": 400,
@@ -1071,10 +1331,19 @@
             }
           ]
         },
+        "response_space": {
+          "type": "finite_closed",
+          "declared_by": [
+            "exercise.answer",
+            "evaluation.diagnostic_rules"
+          ],
+          "unmatched_error_type": "unclassified_submission"
+        },
         "evaluation": {
           "method": "ordered_exact_match",
-          "version": "1.0.0",
+          "version": "1.1.0",
           "normalization": "JSON 对象键顺序忽略；segments 数组顺序、字符串、整数毫秒和标点必须完全一致；不应用时间容差",
+          "manual_review_on_unmatched": true,
           "diagnostic_precedence": "array_order_first_exact_match",
           "error_precedence": [
             "recording_reference_mismatch",
@@ -1231,14 +1500,14 @@
           ],
           "correct_feedback": "录音引用、片段顺序、时间边界与转写均已正确对齐。",
           "incorrect_feedback": {
-            "error_type": "transcript_alignment_mismatch",
-            "feedback": "提交未与本题的有序片段标准答案完全一致。",
+            "error_type": "unclassified_submission",
+            "feedback": "提交未命中本题声明的诊断规则或封闭标准答案，不能自动归因到某个具体对齐错误。",
             "remediation": [
-              "按错误优先级依次检查录音引用、数量、顺序、重叠、边界和转写。"
+              "保留原提交并进入人工复核，再按错误优先级检查录音引用、数量、顺序、重叠、边界和转写。"
             ]
           }
         },
-        "data_version": "1.0.0",
+        "data_version": "1.1.0",
         "pass_condition": "score == 1.0",
         "capability_refs": [
           "CAP-AUD-SEGMENT-ALIGN-001"
@@ -1249,7 +1518,8 @@
           "segment_order_mismatch",
           "segment_overlap",
           "boundary_alignment_mismatch",
-          "transcript_alignment_mismatch"
+          "transcript_alignment_mismatch",
+          "unclassified_submission"
         ],
         "asset_authorization": {
           "type": "self-authored",
@@ -1261,6 +1531,8 @@
           "exercise_id": "EX-AUDIO-SEGMENTATION-AUDIT-001",
           "exercise_type": "alignment_audit",
           "asset_ref": "ASSET-SELF-AUDIO-SEGMENTATION-PRACTICE-001",
+          "representation": "structured_fixture",
+          "manifest_resolution": "resolved",
           "input": {
             "recording_id": "rec-align-audit-001",
             "speech_anchor": {
@@ -1288,10 +1560,19 @@
               "transcript": "今天下雨。"
             }
           },
+          "response_space": {
+            "type": "finite_closed",
+            "declared_by": [
+              "exercise.answer",
+              "evaluation.diagnostic_rules"
+            ],
+            "unmatched_error_type": "unclassified_submission"
+          },
           "evaluation": {
             "method": "ordered_exact_match",
-            "version": "1.0.0",
+            "version": "1.1.0",
             "normalization": "JSON 对象键顺序忽略；错误码、整数毫秒、字符串与标点必须完全一致",
+            "manual_review_on_unmatched": true,
             "diagnostic_precedence": "array_order_first_exact_match",
             "error_precedence": [
               "alignment_issue_misdiagnosed",
@@ -1353,14 +1634,14 @@
             ],
             "correct_feedback": "已正确诊断并修复候选片段的结束边界。",
             "incorrect_feedback": {
-              "error_type": "audit_correction_mismatch",
-              "feedback": "错误诊断或 corrected_segment 与确定性答案不一致。",
+              "error_type": "unclassified_submission",
+              "feedback": "提交未命中本题声明的诊断规则或封闭标准答案，不能自动指定审计错误。",
               "remediation": [
-                "逐字段比较 candidate_segment 与 speech_anchor，只保留完全匹配的修正结果。"
+                "保留原提交并进入人工复核；逐字段比较 candidate_segment 与 speech_anchor。"
               ]
             }
           },
-          "data_version": "1.0.0",
+          "data_version": "1.1.0",
           "pass_condition": "score == 1.0",
           "capability_refs": [
             "CAP-AUD-SEGMENT-ALIGN-001"
@@ -1368,7 +1649,8 @@
           "error_types": [
             "alignment_issue_misdiagnosed",
             "interval_endpoint_convention_mismatch",
-            "audit_correction_mismatch"
+            "audit_correction_mismatch",
+            "unclassified_submission"
           ],
           "asset_authorization": {
             "type": "self-authored",
@@ -1500,6 +1782,20 @@
               "RES-AUD-ALIGNMENT-WORKSHEET-001",
               "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
             ]
+          },
+          {
+            "error_type": "unclassified_submission",
+            "rule_refs": [
+              "KNG-AUD-SEGMENT-TIMESTAMP-001",
+              "KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-SEGMENT-ALIGN-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-ALIGNMENT-WORKSHEET-001",
+              "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
+            ]
           }
         ]
       },
@@ -1535,7 +1831,7 @@
       "rule_explanation": {
         "external_format_facts": [
           {
-            "statement": "NIST SCTK 的 STM 格式包含说话人、开始时间、时长和转写文本等字段，可用于表达说话人片段；该格式不规定本练习的说话人编号方式或错误优先级。",
+            "statement": "NIST SCTK 的 STM 格式包含说话人、begin/end 时间和转写文本等字段，可用于表达说话人片段；该格式不规定本练习的说话人编号方式或错误优先级。",
             "source_refs": [
               "SRC-NIST-SCTK-FORMATS-001"
             ]
@@ -1573,6 +1869,7 @@
           "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
           "asset_authorization": {
             "type": "self-authored",
+            "representation": "structured_fixture",
             "student_use_allowed": true
           }
         }
@@ -1601,6 +1898,7 @@
           "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
           "asset_authorization": {
             "type": "self-authored",
+            "representation": "structured_fixture",
             "student_use_allowed": true
           }
         }
@@ -1667,9 +1965,18 @@
         },
         "evaluation": {
           "method": "ordered_exact_match",
-          "version": "1.0.0",
+          "version": "1.1.0",
+          "response_space": {
+            "type": "finite_closed_set",
+            "recognized_submissions": [
+              "standard_answer",
+              "diagnostic_rules"
+            ],
+            "unmatched_behavior": "manual_review"
+          },
           "normalization": "JSON 对象键顺序忽略；turns 数组顺序、turn_id、speaker_id、毫秒时间和值必须完全一致。",
           "diagnostic_precedence": "diagnostic_rules 按数组顺序严格匹配，优先级为轮次数量、时间顺序、首次出现编号、身份一致性、轮次边界；首个命中规则生效，之后才匹配标准答案，最后使用 incorrect_feedback。",
+          "manual_review_on_unmatched": true,
           "diagnostic_rules": [
             {
               "submission": {
@@ -1726,6 +2033,38 @@
               "feedback": "turns 未按 start_ms 升序提交。",
               "remediation": [
                 "按 0、1200、2500 毫秒的开始时间重新排列轮次。"
+              ]
+            },
+            {
+              "submission": {
+                "turns": [
+                  {
+                    "turn_id": "TURN-01",
+                    "speaker_id": "spk_02",
+                    "start_ms": 0,
+                    "end_ms": 1200,
+                    "text": "您好。"
+                  },
+                  {
+                    "turn_id": "TURN-02",
+                    "speaker_id": "spk_01",
+                    "start_ms": 1200,
+                    "end_ms": 2500,
+                    "text": "您好，请问怎么查询订单？"
+                  },
+                  {
+                    "turn_id": "TURN-03",
+                    "speaker_id": "spk_02",
+                    "start_ms": 2500,
+                    "end_ms": 3400,
+                    "text": "我帮您查询。"
+                  }
+                ]
+              },
+              "error_type": "speaker_first_appearance_mismatch",
+              "feedback": "首个出现的 voice_alpha 必须分配 spk_01，后续 voice_beta 才分配 spk_02。",
+              "remediation": [
+                "从时间线第一轮开始编号，并将同一 voice_key 的后续轮次映射回首次分配的 speaker_id。"
               ]
             },
             {
@@ -1795,14 +2134,14 @@
           ],
           "correct_feedback": "轮次顺序、首次出现编号、身份复用和边界均符合项目策略。",
           "incorrect_feedback": {
-            "error_type": "speaker_identity_inconsistent",
-            "feedback": "提交的轮次结构未同时满足数量、顺序、身份和边界要求。",
+            "error_type": "unclassified_submission",
+            "feedback": "提交未命中标准答案或任何已声明诊断规则，无法安全归入某个具体错误。",
             "remediation": [
-              "依次核对轮次数量、start_ms 顺序、首次出现编号、同一声音复用和 handoff_ms。"
+              "按有限响应集合重新提交；若多个错误同时存在，保留证据并请求人工复核。"
             ]
           }
         },
-        "data_version": "1.0.0",
+        "data_version": "1.1.0",
         "pass_condition": "score == 1.0",
         "capability_refs": [
           "CAP-AUD-SPEAKER-001"
@@ -1810,11 +2149,14 @@
         "error_types": [
           "turn_count_mismatch",
           "turn_order_invalid",
+          "speaker_first_appearance_mismatch",
           "speaker_identity_inconsistent",
-          "turn_boundary_mismatch"
+          "turn_boundary_mismatch",
+          "unclassified_submission"
         ],
         "asset_authorization": {
           "type": "self-authored",
+          "representation": "structured_fixture",
           "student_use_allowed": true
         }
       },
@@ -1828,17 +2170,17 @@
               {
                 "turn_id": "REPAIR-01",
                 "voice_key": "voice_alpha",
-                "submitted_speaker_id": "agent_a"
+                "submitted_speaker_id": "spk_01"
               },
               {
                 "turn_id": "REPAIR-02",
                 "voice_key": "voice_beta",
-                "submitted_speaker_id": "customer_b"
+                "submitted_speaker_id": "spk_02"
               },
               {
                 "turn_id": "REPAIR-03",
                 "voice_key": "voice_alpha",
-                "submitted_speaker_id": "agent_c"
+                "submitted_speaker_id": "spk_03"
               }
             ],
             "required_label_pattern": "spk_XX by first audible appearance"
@@ -1862,9 +2204,18 @@
           },
           "evaluation": {
             "method": "ordered_exact_match",
-            "version": "1.0.0",
+            "version": "1.1.0",
+            "response_space": {
+              "type": "finite_closed_set",
+              "recognized_submissions": [
+                "standard_answer",
+                "diagnostic_rules"
+              ],
+              "unmatched_behavior": "manual_review"
+            },
             "normalization": "JSON 对象键顺序忽略；repaired_speaker_ids 数组顺序、turn_id 和 speaker_id 必须完全一致。",
             "diagnostic_precedence": "先检查首次出现编号，再检查同一 voice_key 的身份复用；diagnostic_rules 按数组顺序首个严格匹配生效。",
+            "manual_review_on_unmatched": true,
             "diagnostic_rules": [
               {
                 "submission": {
@@ -1915,24 +2266,26 @@
             ],
             "correct_feedback": "首次出现编号和同一声音身份复用均正确。",
             "incorrect_feedback": {
-              "error_type": "speaker_identity_inconsistent",
-              "feedback": "修复结果未按首次出现顺序稳定映射 voice_key。",
+              "error_type": "unclassified_submission",
+              "feedback": "提交未命中标准答案或任何已声明诊断规则，无法安全归入某个具体错误。",
               "remediation": [
-                "在说话人时间线上建立 voice_key 到 speaker_id 的唯一映射后重新提交。"
+                "按有限响应集合重新提交；若多个错误同时存在，保留证据并请求人工复核。"
               ]
             }
           },
-          "data_version": "1.0.0",
+          "data_version": "1.1.0",
           "pass_condition": "score == 1.0",
           "capability_refs": [
             "CAP-AUD-SPEAKER-001"
           ],
           "error_types": [
             "speaker_first_appearance_mismatch",
-            "speaker_identity_inconsistent"
+            "speaker_identity_inconsistent",
+            "unclassified_submission"
           ],
           "asset_authorization": {
             "type": "self-authored",
+            "representation": "structured_fixture",
             "student_use_allowed": true
           }
         }
@@ -1954,8 +2307,7 @@
           {
             "error_type": "turn_order_invalid",
             "rule_refs": [
-              "KNG-AUD-SPEAKER-TURN-001",
-              "KNG-AUD-EXPORT-FORMAT-001"
+              "KNG-AUD-SPEAKER-TURN-001"
             ],
             "capability_refs": [
               "CAP-AUD-SPEAKER-001"
@@ -1991,8 +2343,19 @@
           {
             "error_type": "turn_boundary_mismatch",
             "rule_refs": [
-              "KNG-AUD-SPEAKER-TURN-001",
-              "KNG-AUD-EXPORT-FORMAT-001"
+              "KNG-AUD-SPEAKER-TURN-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-SPEAKER-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-SPEAKER-TIMELINE-001"
+            ]
+          },
+          {
+            "error_type": "unclassified_submission",
+            "rule_refs": [
+              "KNG-AUD-SPEAKER-TURN-001"
             ],
             "capability_refs": [
               "CAP-AUD-SPEAKER-001"
@@ -2077,6 +2440,7 @@
           "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
           "asset_authorization": {
             "type": "self-authored",
+            "representation": "structured_fixture",
             "student_use_allowed": true
           }
         }
@@ -2106,6 +2470,7 @@
           "source_ref": "SRC-POLICY-AUDIO-TASK4-001",
           "asset_authorization": {
             "type": "self-authored",
+            "representation": "structured_fixture",
             "student_use_allowed": true
           }
         }
@@ -2135,9 +2500,18 @@
         },
         "evaluation": {
           "method": "exact_match",
-          "version": "1.0.0",
+          "version": "1.1.0",
+          "response_space": {
+            "type": "finite_closed_set",
+            "recognized_submissions": [
+              "standard_answer",
+              "diagnostic_rules"
+            ],
+            "unmatched_behavior": "manual_review"
+          },
           "normalization": "JSON 对象键顺序忽略；transcript 字符串逐字符匹配，不自动转换数字、标点或空白。",
           "diagnostic_precedence": "diagnostic_rules 按数组顺序严格匹配，优先级为内容完整性、正字法、标点缺失、标点过度切分；首个命中规则生效，之后才匹配标准答案，最后使用 incorrect_feedback。",
+          "manual_review_on_unmatched": true,
           "diagnostic_rules": [
             {
               "submission": {
@@ -2182,14 +2556,14 @@
           ],
           "correct_feedback": "可听内容、中文数字词形和确认问句标点均正确。",
           "incorrect_feedback": {
-            "error_type": "orthography_policy_mismatch",
-            "feedback": "转写未同时满足内容完整性、项目正字法和语义标点规则。",
+            "error_type": "unclassified_submission",
+            "feedback": "提交未命中标准答案或任何已声明诊断规则，无法安全归入某个具体错误。",
             "remediation": [
-              "按内容、正字法、标点的顺序使用转写风格表逐项复核。"
+              "按有限响应集合重新提交；若多个错误同时存在，保留证据并请求人工复核。"
             ]
           }
         },
-        "data_version": "1.0.0",
+        "data_version": "1.1.0",
         "pass_condition": "score == 1.0",
         "capability_refs": [
           "CAP-AUD-TRANSCRIBE-PUNCT-001"
@@ -2198,10 +2572,12 @@
           "transcript_content_omitted",
           "orthography_policy_mismatch",
           "punctuation_missing",
-          "punctuation_oversegmented"
+          "punctuation_oversegmented",
+          "unclassified_submission"
         ],
         "asset_authorization": {
           "type": "self-authored",
+          "representation": "structured_fixture",
           "student_use_allowed": true
         }
       },
@@ -2236,9 +2612,18 @@
           },
           "evaluation": {
             "method": "exact_match",
-            "version": "1.0.0",
+            "version": "1.1.0",
+            "response_space": {
+              "type": "finite_closed_set",
+              "recognized_submissions": [
+                "standard_answer",
+                "diagnostic_rules"
+              ],
+              "unmatched_behavior": "manual_review"
+            },
             "normalization": "JSON 对象键顺序忽略；first_error_type 和 corrected_transcript 字符串必须完全一致。",
             "diagnostic_precedence": "先检查 first_error_type 是否遵守 input 中的 ordered_error_precedence，再检查 corrected_transcript；diagnostic_rules 按数组顺序首个严格匹配生效。",
+            "manual_review_on_unmatched": true,
             "diagnostic_rules": [
               {
                 "submission": {
@@ -2254,23 +2639,25 @@
             ],
             "correct_feedback": "已先诊断正字法错误，并给出同时修复词形和标点的标准转写。",
             "incorrect_feedback": {
-              "error_type": "transcription_error_precedence_misapplied",
-              "feedback": "错误类型或修正文本未遵守项目诊断顺序。",
+              "error_type": "unclassified_submission",
+              "feedback": "提交未命中标准答案或任何已声明诊断规则，无法安全归入某个具体错误。",
               "remediation": [
-                "使用转写风格表先检查内容，再检查词形，最后检查标点。"
+                "按有限响应集合重新提交；若多个错误同时存在，保留证据并请求人工复核。"
               ]
             }
           },
-          "data_version": "1.0.0",
+          "data_version": "1.1.0",
           "pass_condition": "score == 1.0",
           "capability_refs": [
             "CAP-AUD-TRANSCRIBE-PUNCT-001"
           ],
           "error_types": [
-            "transcription_error_precedence_misapplied"
+            "transcription_error_precedence_misapplied",
+            "unclassified_submission"
           ],
           "asset_authorization": {
             "type": "self-authored",
+            "representation": "structured_fixture",
             "student_use_allowed": true
           }
         }
@@ -2337,6 +2724,19 @@
             "remediation_resource_refs": [
               "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
             ]
+          },
+          {
+            "error_type": "unclassified_submission",
+            "rule_refs": [
+              "KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001",
+              "KNG-AUD-PUNCTUATION-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-TRANSCRIBE-PUNCT-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
+            ]
           }
         ]
       },
@@ -2372,10 +2772,13 @@
       ],
       "rule_refs": [
         "KNG-AUD-WAKEWORD-BOUNDARY-001",
-        "KNG-AUD-COMMAND-INTENT-001"
+        "KNG-AUD-COMMAND-INTENT-001",
+        "KNG-AUD-SEGMENT-TIMESTAMP-001"
       ],
       "source_refs": [
         "SRC-SPEECH-COMMANDS-PAPER-001",
+        "SRC-KALDI-DATA-PREP-001",
+        "SRC-PRAAT-TEXTGRID-001",
         "SRC-POLICY-AUDIO-TASK4-001"
       ],
       "rule_explanation": {
@@ -2384,6 +2787,13 @@
             "statement": "Speech Commands 论文描述有限词汇目标类别，并区分 unknown、silence 和背景噪声；它不规定本练习的中文唤醒词、命令意图本体或连续语音边界。",
             "source_refs": [
               "SRC-SPEECH-COMMANDS-PAPER-001"
+            ]
+          },
+          {
+            "statement": "Kaldi segments 和 Praat TextGrid 区间可以承载开始与结束时间；其外部格式不替本项目决定唤醒词或命令的语义角色和本地毫秒端点。",
+            "source_refs": [
+              "SRC-KALDI-DATA-PREP-001",
+              "SRC-PRAAT-TEXTGRID-001"
             ]
           }
         ],
@@ -2397,6 +2807,8 @@
         {
           "id": "EX-AUDIO-WAKE-COMMAND-WORDS-POS-001",
           "asset_ref": "ASSET-SELF-AUDIO-WAKE-COMMAND-WORDS-001",
+          "representation": "structured_fixture",
+          "manifest_resolution": "resolved",
           "input": {
             "clip_id": "wake-example-001",
             "transcript": "星航，打开空调。",
@@ -2444,6 +2856,8 @@
         {
           "id": "EX-AUDIO-WAKE-COMMAND-WORDS-NEG-001",
           "asset_ref": "ASSET-SELF-AUDIO-WAKE-COMMAND-WORDS-002",
+          "representation": "structured_fixture",
+          "manifest_resolution": "resolved",
           "input": {
             "clip_id": "wake-example-001",
             "submitted": {
@@ -2472,6 +2886,8 @@
         "exercise_id": "EX-AUDIO-WAKE-COMMAND-SEGMENT-001",
         "exercise_type": "wake_command_segmentation",
         "asset_ref": "ASSET-SELF-AUDIO-WAKE-COMMAND-EXERCISE-001",
+        "representation": "structured_fixture",
+        "manifest_resolution": "resolved",
         "input": {
           "clip_id": "wake-practice-001",
           "duration_ms": 3200,
@@ -2511,10 +2927,19 @@
           },
           "command_intent": "climate_on"
         },
+        "response_space": {
+          "type": "finite_closed",
+          "declared_by": [
+            "exercise.answer",
+            "evaluation.diagnostic_rules"
+          ],
+          "unmatched_error_type": "unclassified_submission"
+        },
         "evaluation": {
           "method": "ordered_exact_match",
-          "version": "1.0.0",
+          "version": "1.1.0",
           "normalization": "JSON 对象键顺序忽略；文本、整数毫秒和命令意图区分大小写并完全匹配；不包含标点或静音余量",
+          "manual_review_on_unmatched": true,
           "diagnostic_precedence": "array_order_first_exact_match",
           "error_precedence": [
             "wake_command_role_conflation",
@@ -2575,6 +3000,10 @@
                 "command_intent": "climate_on"
               },
               "error_type": "wake_boundary_mismatch",
+              "rule_refs": [
+                "KNG-AUD-WAKEWORD-BOUNDARY-001",
+                "KNG-AUD-SEGMENT-TIMESTAMP-001"
+              ],
               "feedback": "唤醒词文本正确，但区间包含了前后静音。",
               "remediation": [
                 "使用 token_timeline 中星航的实际发音区间 [500,1100)。"
@@ -2595,6 +3024,10 @@
                 "command_intent": "climate_on"
               },
               "error_type": "command_boundary_mismatch",
+              "rule_refs": [
+                "KNG-AUD-WAKEWORD-BOUNDARY-001",
+                "KNG-AUD-SEGMENT-TIMESTAMP-001"
+              ],
               "feedback": "命令文本和意图正确，但区间扩入了命令前后的非语音部分。",
               "remediation": [
                 "在对齐练习表中将 command_segment 收紧到 [1320,2400)。"
@@ -2623,14 +3056,14 @@
           ],
           "correct_feedback": "唤醒词、命令边界和命令意图均已正确提交。",
           "incorrect_feedback": {
-            "error_type": "command_intent_mismatch",
-            "feedback": "提交未同时满足角色拆分、精确边界和配置内意图映射。",
+            "error_type": "unclassified_submission",
+            "feedback": "提交未命中本题声明的诊断规则或封闭标准答案，不能自动归因到某个具体唤醒或命令错误。",
             "remediation": [
-              "先拆分 wake 与 command，再核对各自边界，最后映射命令意图。"
+              "保留原提交并进入人工复核；先拆分 wake 与 command，再核对各自边界和配置内命令意图。"
             ]
           }
         },
-        "data_version": "1.0.0",
+        "data_version": "1.1.0",
         "pass_condition": "score == 1.0",
         "capability_refs": [
           "CAP-AUD-WAKE-COMMAND-001"
@@ -2640,7 +3073,8 @@
           "wake_word_mismatch",
           "wake_boundary_mismatch",
           "command_boundary_mismatch",
-          "command_intent_mismatch"
+          "command_intent_mismatch",
+          "unclassified_submission"
         ],
         "asset_authorization": {
           "type": "self-authored",
@@ -2652,6 +3086,8 @@
           "exercise_id": "EX-AUDIO-COMMAND-CLASSIFICATION-001",
           "exercise_type": "limited_vocabulary_classification",
           "asset_ref": "ASSET-SELF-AUDIO-COMMAND-PRACTICE-001",
+          "representation": "structured_fixture",
+          "manifest_resolution": "resolved",
           "input": {
             "configured_target_classes": [
               "volume_up",
@@ -2699,10 +3135,19 @@
               }
             ]
           },
+          "response_space": {
+            "type": "finite_closed",
+            "declared_by": [
+              "exercise.answer",
+              "evaluation.diagnostic_rules"
+            ],
+            "unmatched_error_type": "unclassified_submission"
+          },
           "evaluation": {
             "method": "ordered_exact_match",
-            "version": "1.0.0",
+            "version": "1.1.0",
             "normalization": "JSON 对象键顺序忽略；classifications 数组顺序和标签字符串必须完全一致",
+            "manual_review_on_unmatched": true,
             "diagnostic_precedence": "array_order_first_exact_match",
             "error_precedence": [
               "target_command_class_mismatch",
@@ -2782,14 +3227,14 @@
             ],
             "correct_feedback": "目标命令、unknown 与 silence 已按本地规则正确区分。",
             "incorrect_feedback": {
-              "error_type": "target_command_class_mismatch",
-              "feedback": "分类序列未与配置映射和非目标类别规则完全一致。",
+              "error_type": "unclassified_submission",
+              "feedback": "提交未命中本题声明的诊断规则或封闭标准答案，不能自动指定某个命令分类错误。",
               "remediation": [
-                "依次判定是否有语音、是否存在配置映射，再选择 target、unknown 或 silence。"
+                "保留原提交并进入人工复核；依次判定是否有语音、是否存在配置映射，再选择 target、unknown 或 silence。"
               ]
             }
           },
-          "data_version": "1.0.0",
+          "data_version": "1.1.0",
           "pass_condition": "score == 1.0",
           "capability_refs": [
             "CAP-AUD-WAKE-COMMAND-001"
@@ -2797,7 +3242,8 @@
           "error_types": [
             "target_command_class_mismatch",
             "unknown_class_mismatch",
-            "silence_class_mismatch"
+            "silence_class_mismatch",
+            "unclassified_submission"
           ],
           "asset_authorization": {
             "type": "self-authored",
@@ -2812,7 +3258,7 @@
       ],
       "remediation": [
         "使用 RES-AUD-ALIGNMENT-WORKSHEET-001 分别复核 wake 与 command 的区间",
-        "使用 RES-AUD-TRANSCRIPT-STYLE-SHEET-001 核对 target、unknown、silence 和本地 intent 标签写法"
+        "使用 RES-AUD-CONFIG-CHECKLIST-001 核对 target、unknown、silence 和本地 intent 配置标签"
       ],
       "learning_path": {
         "error_mappings": [
@@ -2820,14 +3266,15 @@
             "error_type": "wake_command_role_conflation",
             "rule_refs": [
               "KNG-AUD-WAKEWORD-BOUNDARY-001",
-              "KNG-AUD-COMMAND-INTENT-001"
+              "KNG-AUD-COMMAND-INTENT-001",
+              "KNG-AUD-SEGMENT-TIMESTAMP-001"
             ],
             "capability_refs": [
               "CAP-AUD-WAKE-COMMAND-001"
             ],
             "remediation_resource_refs": [
               "RES-AUD-ALIGNMENT-WORKSHEET-001",
-              "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
+              "RES-AUD-CONFIG-CHECKLIST-001"
             ]
           },
           {
@@ -2845,7 +3292,8 @@
           {
             "error_type": "wake_boundary_mismatch",
             "rule_refs": [
-              "KNG-AUD-WAKEWORD-BOUNDARY-001"
+              "KNG-AUD-WAKEWORD-BOUNDARY-001",
+              "KNG-AUD-SEGMENT-TIMESTAMP-001"
             ],
             "capability_refs": [
               "CAP-AUD-WAKE-COMMAND-001"
@@ -2857,7 +3305,8 @@
           {
             "error_type": "command_boundary_mismatch",
             "rule_refs": [
-              "KNG-AUD-WAKEWORD-BOUNDARY-001"
+              "KNG-AUD-WAKEWORD-BOUNDARY-001",
+              "KNG-AUD-SEGMENT-TIMESTAMP-001"
             ],
             "capability_refs": [
               "CAP-AUD-WAKE-COMMAND-001"
@@ -2875,7 +3324,7 @@
               "CAP-AUD-WAKE-COMMAND-001"
             ],
             "remediation_resource_refs": [
-              "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
+              "RES-AUD-CONFIG-CHECKLIST-001"
             ]
           },
           {
@@ -2887,7 +3336,7 @@
               "CAP-AUD-WAKE-COMMAND-001"
             ],
             "remediation_resource_refs": [
-              "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
+              "RES-AUD-CONFIG-CHECKLIST-001"
             ]
           },
           {
@@ -2899,7 +3348,7 @@
               "CAP-AUD-WAKE-COMMAND-001"
             ],
             "remediation_resource_refs": [
-              "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
+              "RES-AUD-CONFIG-CHECKLIST-001"
             ]
           },
           {
@@ -2911,7 +3360,22 @@
               "CAP-AUD-WAKE-COMMAND-001"
             ],
             "remediation_resource_refs": [
-              "RES-AUD-TRANSCRIPT-STYLE-SHEET-001"
+              "RES-AUD-CONFIG-CHECKLIST-001"
+            ]
+          },
+          {
+            "error_type": "unclassified_submission",
+            "rule_refs": [
+              "KNG-AUD-WAKEWORD-BOUNDARY-001",
+              "KNG-AUD-COMMAND-INTENT-001",
+              "KNG-AUD-SEGMENT-TIMESTAMP-001"
+            ],
+            "capability_refs": [
+              "CAP-AUD-WAKE-COMMAND-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-AUD-ALIGNMENT-WORKSHEET-001",
+              "RES-AUD-CONFIG-CHECKLIST-001"
             ]
           }
         ]
@@ -5824,140 +6288,1523 @@
       "student_visible": true
     },
     {
-      "id": "TU-VIDEO-TRACK-ID-001",
+      "id": "TU-VIDEO-BEHAVIOR-EVENT-001",
       "data_type": "video",
-      "title": "校验跨帧目标轨迹 ID",
-      "learning_objectives": [
-        "识别同一目标跨帧轨迹 ID 是否保持一致",
-        "发现轨迹中的意外 ID 切换"
+      "title": "按行为本体标注视频事件区间",
+      "capability_key": "behavior_event",
+      "goals": [
+        "从结构化视频时间线中选择项目允许的行为事件类别",
+        "按项目边界策略提交事件参与轨迹和起止时间"
       ],
-      "prerequisites": [],
+      "learning_objectives": [
+        "区分 WebVTT 时间提示格式事实与本项目行为本体语义",
+        "只从闭合事件词表中选择事件类别并绑定参与轨迹",
+        "按项目规定的开始触发点和结束触发点提交半开时间区间"
+      ],
+      "prerequisites": [
+        "CAP-VID-FRAME-ANNOTATE-001"
+      ],
       "rule_refs": [
-        "KNG-VID-TRACK-ID-001"
+        "KNG-VID-ACTION-TAXONOMY-001",
+        "KNG-VID-EVENT-START-END-001"
       ],
       "source_refs": [
-        "SRC-CVAT-VIDEO-TRACK-001"
+        "SRC-W3C-WEBVTT-001",
+        "SRC-POLICY-VIDEO-TASK5-001"
       ],
+      "rule_explanation": {
+        "external_format_facts": [
+          {
+            "statement": "WebVTT cue timing uses a start timestamp and an end timestamp to locate a timed cue. This format fact does not define an action taxonomy, participant semantics, or the event boundary policy used by this exercise.",
+            "source_refs": [
+              "SRC-W3C-WEBVTT-001"
+            ]
+          }
+        ],
+        "project_policy": {
+          "source_ref": "SRC-POLICY-VIDEO-TASK5-001",
+          "statement": "本项目开发策略把事件类型限制为 door_entry、door_exit、idle，并用可观察的门内、门槛、门外空间状态区分方向。事件区间统一使用 [start_ms, end_ms) 半开语义：start_ms 对应纳入事件的首个触发时刻，end_ms 对应不再纳入事件的首个时刻。该词表、方向、触发条件和边界语义均不是 WebVTT 外部标准。",
+          "event_definitions": {
+            "door_entry": {
+              "ordered_region_transition": [
+                "outside",
+                "threshold",
+                "inside"
+              ],
+              "inclusion_criteria": [
+                "同一参与轨迹按 outside、threshold、inside 的顺序移动",
+                "存在 door_open_start 和 crossing_complete 可观察触发点"
+              ],
+              "exclusion_criteria": [
+                "inside 到 outside 的反向移动",
+                "未跨越 threshold 或最终仍在 outside"
+              ],
+              "start_boundary": "纳入 door_open_start 时刻；该时刻参与者仍在 outside",
+              "end_boundary": "排除 crossing_complete 时刻及以后；该时刻首次确认参与者已在 inside"
+            },
+            "door_exit": {
+              "ordered_region_transition": [
+                "inside",
+                "threshold",
+                "outside"
+              ],
+              "inclusion_criteria": [
+                "同一参与轨迹按 inside、threshold、outside 的顺序移动",
+                "存在 door_open_start 和 crossing_complete 可观察触发点"
+              ],
+              "exclusion_criteria": [
+                "outside 到 inside 的正向进入",
+                "未跨越 threshold 或最终仍在 inside"
+              ],
+              "start_boundary": "纳入 door_open_start 时刻；该时刻参与者仍在 inside",
+              "end_boundary": "排除 crossing_complete 时刻及以后；该时刻首次确认参与者已在 outside"
+            },
+            "idle": {
+              "ordered_region_transition": [
+                "same_region",
+                "same_region"
+              ],
+              "inclusion_criteria": [
+                "参与者在题目声明的观察窗口内保持同一 observable_region",
+                "窗口内没有 threshold 状态和 crossing_complete 触发点"
+              ],
+              "exclusion_criteria": [
+                "出现 outside、threshold、inside 或其反向的完整跨门序列",
+                "观察窗口不足以确认位置保持"
+              ],
+              "start_boundary": "纳入观察窗口的首个合格同区域时刻",
+              "end_boundary": "排除观察窗口结束时刻及以后"
+            }
+          },
+          "version": "1.0.0"
+        }
+      },
       "positive_examples": [
         {
-          "id": "EX-VIDEO-POS-001",
-          "asset_ref": "ASSET-SELF-VIDEO-TRACK-001",
+          "id": "EX-VIDEO-BEHAVIOR-EVENT-POS-001",
+          "asset_ref": "ASSET-SELF-VIDEO-BEHAVIOR-EVENT-001",
           "input": {
-            "same_physical_object": true,
-            "observations": [
+            "timeline_observations": [
               {
-                "frame": 1,
-                "track_id": "car-7"
+                "timestamp_ms": 1000,
+                "participant_track_id": "person-01",
+                "observable_region": "outside",
+                "observation": "person-01 approaches the doorway from outside"
               },
               {
-                "frame": 2,
-                "track_id": "car-7"
+                "timestamp_ms": 2000,
+                "participant_track_id": "person-01",
+                "observable_region": "outside",
+                "observation": "door_open_start by person-01 while outside"
               },
               {
-                "frame": 3,
-                "track_id": "car-7"
+                "timestamp_ms": 5000,
+                "participant_track_id": "person-01",
+                "observable_region": "threshold",
+                "observation": "person-01 crosses the threshold from outside toward inside"
+              },
+              {
+                "timestamp_ms": 6500,
+                "participant_track_id": "person-01",
+                "observable_region": "inside",
+                "observation": "crossing_complete by person-01; first confirmed inside state"
               }
             ]
           },
           "expected": {
-            "valid": true
+            "event_type": "door_entry",
+            "participant_track_ids": [
+              "person-01"
+            ],
+            "start_ms": 2000,
+            "end_ms": 6500
           },
-          "explanation": "同一目标在所有已给帧中使用同一 track_id。",
-          "source_ref": "SRC-CVAT-VIDEO-TRACK-001",
+          "explanation": "事件类别来自闭合词表，参与轨迹完成穿门动作，区间从开门开始到穿越完成。",
+          "source_ref": "SRC-POLICY-VIDEO-TASK5-001",
           "asset_authorization": {
             "type": "self-authored",
+            "representation": "structured_fixture",
+            "contains_personal_data": false,
             "student_use_allowed": true
           }
         }
       ],
       "negative_examples": [
         {
-          "id": "EX-VIDEO-NEG-001",
-          "asset_ref": "ASSET-SELF-VIDEO-TRACK-002",
+          "id": "EX-VIDEO-BEHAVIOR-EVENT-NEG-001",
+          "asset_ref": "ASSET-SELF-VIDEO-BEHAVIOR-EVENT-002",
           "input": {
-            "same_physical_object": true,
-            "observations": [
-              {
-                "frame": 1,
-                "track_id": "car-7"
-              },
-              {
-                "frame": 2,
-                "track_id": "car-9"
-              }
-            ]
-          },
-          "expected": {
-            "valid": false,
-            "error": "track_id_switch",
-            "details": {
-              "first_error_frame": 2,
-              "previous_track_id": "car-7",
-              "observed_track_id": "car-9"
+            "exercise_id": "EXERCISE-VIDEO-BEHAVIOR-EVENT-001",
+            "submission": {
+              "events": [
+                {
+                  "event_type": "door_crossing",
+                  "participant_track_ids": [
+                    "person-01"
+                  ],
+                  "start_ms": 2000,
+                  "end_ms": 6500
+                }
+              ]
             }
           },
-          "explanation": "同一目标在第 2 帧由 car-7 切换为 car-9。",
-          "source_ref": "SRC-CVAT-VIDEO-TRACK-001",
+          "expected": {
+            "passed": false,
+            "error_type": "action_taxonomy_mismatch"
+          },
+          "fault_model": {
+            "type": "single_fault",
+            "field": "events[0].event_type"
+          },
+          "explanation": "参与轨迹和边界均正确，唯一错误是 door_crossing 不在项目闭合词表中。",
+          "source_ref": "SRC-POLICY-VIDEO-TASK5-001",
           "asset_authorization": {
             "type": "self-authored",
+            "representation": "structured_fixture",
+            "contains_personal_data": false,
             "student_use_allowed": true
           }
         }
       ],
       "exercise": {
-        "asset_ref": "ASSET-SELF-VIDEO-EXERCISE-001",
+        "exercise_id": "EXERCISE-VIDEO-BEHAVIOR-EVENT-001",
+        "exercise_type": "structured_event_annotation",
+        "asset_ref": "ASSET-SELF-VIDEO-BEHAVIOR-EVENT-EXERCISE-001",
         "input": {
-          "same_physical_object": true,
-          "observations": [
+          "fixture_notice": "This is a structured timeline fixture; no video media is included or implied.",
+          "event_vocabulary": [
+            "door_entry",
+            "door_exit",
+            "idle"
+          ],
+          "participant_track_ids": [
+            "person-01",
+            "person-02"
+          ],
+          "timeline_observations": [
             {
-              "frame": 10,
-              "track_id": "person-3"
+              "timestamp_ms": 1000,
+              "participant_track_id": "person-01",
+              "observable_region": "outside",
+              "observation": "person-01 approaches the doorway from outside"
             },
             {
-              "frame": 11,
-              "track_id": "person-3"
+              "timestamp_ms": 2000,
+              "participant_track_id": "person-01",
+              "observable_region": "outside",
+              "observation": "door_open_start by person-01 while outside"
             },
             {
-              "frame": 12,
-              "track_id": "person-8"
+              "timestamp_ms": 5000,
+              "participant_track_id": "person-01",
+              "observable_region": "threshold",
+              "observation": "person-01 crosses the threshold from outside toward inside"
+            },
+            {
+              "timestamp_ms": 6500,
+              "participant_track_id": "person-01",
+              "observable_region": "inside",
+              "observation": "crossing_complete by person-01; first confirmed inside state"
+            },
+            {
+              "timestamp_ms": 7000,
+              "participant_track_id": "person-01",
+              "observable_region": "inside",
+              "observation": "door closes after person-01 remains inside"
+            }
+          ],
+          "interval_convention": "start_inclusive_end_exclusive",
+          "policy_version": "1.0.0"
+        },
+        "response_space": {
+          "type": "closed_structured_response",
+          "allowed_event_types": [
+            "door_entry",
+            "door_exit",
+            "idle"
+          ],
+          "allowed_participant_track_ids": [
+            "person-01",
+            "person-02"
+          ],
+          "unmatched_submission_handling": "manual_review"
+        },
+        "student_action": "提交 JSON：events 数组中只给出事件类型、参与轨迹、start_ms 和 end_ms。",
+        "answer": {
+          "events": [
+            {
+              "event_type": "door_entry",
+              "participant_track_ids": [
+                "person-01"
+              ],
+              "start_ms": 2000,
+              "end_ms": 6500
             }
           ]
         },
-        "student_action": "提交 JSON：判断轨迹 ID 是否一致，并在切换时报告首个错误帧。",
-        "answer": {
-          "valid": false,
-          "error": "track_id_switch",
-          "details": {
-            "first_error_frame": 12,
-            "previous_track_id": "person-3",
-            "observed_track_id": "person-8"
-          }
-        },
         "evaluation": {
           "method": "exact_match",
-          "version": "1.0.0",
-          "normalization": "JSON 对象键顺序忽略，其余值完全一致"
+          "version": "1.1.0",
+          "normalization": "JSON 对象键顺序忽略；events 数组顺序、事件类型、参与轨迹顺序和毫秒时间值必须完全一致。",
+          "diagnostic_precedence": "diagnostic_rules 按数组顺序严格匹配，优先级为事件词表、参与轨迹、开始边界、结束边界；首个命中规则生效，未命中标准答案或诊断样例的提交进入人工复核。",
+          "diagnostic_rules": [
+            {
+              "submission": {
+                "events": [
+                  {
+                    "event_type": "door_crossing",
+                    "participant_track_ids": [
+                      "person-01"
+                    ],
+                    "start_ms": 2000,
+                    "end_ms": 6500
+                  }
+                ]
+              },
+              "error_type": "action_taxonomy_mismatch",
+              "feedback": "door_crossing 不在本项目闭合事件词表中。",
+              "remediation": [
+                "使用事件时间线卡核对允许类别，并将事件类型改为 door_entry。"
+              ]
+            },
+            {
+              "submission": {
+                "events": [
+                  {
+                    "event_type": "door_entry",
+                    "participant_track_ids": [
+                      "person-02"
+                    ],
+                    "start_ms": 2000,
+                    "end_ms": 6500
+                  }
+                ]
+              },
+              "error_type": "event_participant_mismatch",
+              "feedback": "person-02 未出现在该动作链中，完成穿门动作的是 person-01。",
+              "remediation": [
+                "沿时间线核对动作执行者，并绑定 person-01。"
+              ]
+            },
+            {
+              "submission": {
+                "events": [
+                  {
+                    "event_type": "door_entry",
+                    "participant_track_ids": [
+                      "person-01"
+                    ],
+                    "start_ms": 1000,
+                    "end_ms": 6500
+                  }
+                ]
+              },
+              "error_type": "event_start_boundary_mismatch",
+              "feedback": "1000 ms 是接近门口的时刻；项目策略要求从 door_open_start 的 2000 ms 开始。",
+              "remediation": [
+                "在事件时间线上定位 door_open_start，并将 start_ms 改为 2000。"
+              ]
+            },
+            {
+              "submission": {
+                "events": [
+                  {
+                    "event_type": "door_entry",
+                    "participant_track_ids": [
+                      "person-01"
+                    ],
+                    "start_ms": 2000,
+                    "end_ms": 7000
+                  }
+                ]
+              },
+              "error_type": "event_end_boundary_mismatch",
+              "feedback": "7000 ms 是关门时刻；项目策略要求在 crossing_complete 的 6500 ms 结束。",
+              "remediation": [
+                "在事件时间线上定位 crossing_complete，并将 end_ms 改为 6500。"
+              ]
+            }
+          ],
+          "correct_feedback": "事件类型、参与轨迹和半开时间区间均符合项目策略。",
+          "manual_review_on_unmatched": true,
+          "incorrect_feedback": {
+            "error_type": "behavior_event_submission_requires_manual_review",
+            "feedback": "提交未命中标准答案或已声明诊断样例，不能可靠归入某个具体错误。",
+            "remediation": [
+              "使用事件时间线卡逐项核对事件词表、参与轨迹和起止触发点，并交由审阅者确认。"
+            ]
+          }
         },
-        "data_version": "1.0.0",
+        "data_version": "1.1.0",
         "pass_condition": "score == 1.0",
         "capability_refs": [
-          "CAP-VID-TRACK-VALIDATE-001"
+          "CAP-VID-ACTION-EVENT-001"
         ],
         "error_types": [
-          "track_id_switch"
+          "action_taxonomy_mismatch",
+          "event_participant_mismatch",
+          "event_start_boundary_mismatch",
+          "event_end_boundary_mismatch",
+          "behavior_event_submission_requires_manual_review"
         ],
         "asset_authorization": {
           "type": "self-authored",
+          "representation": "structured_fixture",
+          "contains_personal_data": false,
           "student_use_allowed": true
         }
       },
+      "learning_path": {
+        "error_mappings": [
+          {
+            "error_type": "action_taxonomy_mismatch",
+            "rule_refs": [
+              "KNG-VID-ACTION-TAXONOMY-001"
+            ],
+            "capability_refs": [
+              "CAP-VID-ACTION-EVENT-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-VID-EVENT-TIMELINE-001"
+            ]
+          },
+          {
+            "error_type": "event_participant_mismatch",
+            "rule_refs": [
+              "KNG-VID-ACTION-TAXONOMY-001"
+            ],
+            "capability_refs": [
+              "CAP-VID-ACTION-EVENT-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-VID-EVENT-TIMELINE-001"
+            ]
+          },
+          {
+            "error_type": "event_start_boundary_mismatch",
+            "rule_refs": [
+              "KNG-VID-EVENT-START-END-001"
+            ],
+            "capability_refs": [
+              "CAP-VID-ACTION-EVENT-001",
+              "CAP-VID-EVENT-BOUNDARY-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-VID-EVENT-TIMELINE-001"
+            ]
+          },
+          {
+            "error_type": "event_end_boundary_mismatch",
+            "rule_refs": [
+              "KNG-VID-EVENT-START-END-001"
+            ],
+            "capability_refs": [
+              "CAP-VID-ACTION-EVENT-001",
+              "CAP-VID-EVENT-BOUNDARY-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-VID-EVENT-TIMELINE-001"
+            ]
+          },
+          {
+            "error_type": "behavior_event_submission_requires_manual_review",
+            "rule_refs": [
+              "KNG-VID-ACTION-TAXONOMY-001",
+              "KNG-VID-EVENT-START-END-001"
+            ],
+            "capability_refs": [
+              "CAP-VID-ACTION-EVENT-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-VID-EVENT-TIMELINE-001",
+              "RES-VID-EXPORT-QA-CHECKLIST-001"
+            ]
+          }
+        ]
+      },
       "common_errors": [
-        "把类别 ID 当作轨迹 ID",
-        "目标短暂遮挡后无依据地创建新轨迹 ID"
+        "把 WebVTT 时间格式误当成事件类别或边界语义来源",
+        "提交闭合事件词表之外的近义类别",
+        "绑定未执行动作的轨迹",
+        "把接近或关门时刻误作事件边界"
       ],
       "remediation": [
-        "按帧序列定位第一个 ID 变化点后重做同规则练习"
+        "使用 RES-VID-EVENT-TIMELINE-001 标出动作执行者、项目触发点和半开区间后重新提交。"
       ],
+      "review_records": [],
+      "review_status": "draft",
+      "student_visible": false
+    },
+    {
+      "id": "TU-VIDEO-FRAME-ANNOTATION-001",
+      "data_type": "video",
+      "title": "在指定视频帧上提交类别与几何标注",
+      "capability_key": "frame_annotation",
+      "goals": [
+        "在指定视频帧上完整提交目标类别和矩形几何",
+        "按项目坐标与排序策略生成可确定复核的结构化答案"
+      ],
+      "learning_objectives": [
+        "区分 CVAT 可保存的视频帧标注格式事实与本项目答案策略",
+        "只标注题目指定帧并使用闭合类别词表",
+        "按项目的零基、右下端不包含坐标约定提交矩形"
+      ],
+      "prerequisites": [
+        "CAP-VID-FRAME-SAMPLE-001"
+      ],
+      "related_primitives": [
+        {
+          "capability_ref": "CAP-IMG-BOX-ANNOTATE-001",
+          "relation_type": "REL",
+          "purpose": "复用矩形几何原语，不构成视频课程前置能力"
+        }
+      ],
+      "rule_refs": [
+        "KNG-VID-FRAME-ANNOTATION-001"
+      ],
+      "source_refs": [
+        "SRC-CVAT-ANNOTATION-FORMAT-251",
+        "SRC-POLICY-VIDEO-TASK5-001"
+      ],
+      "rule_explanation": {
+        "external_format_facts": [
+          {
+            "statement": "CVAT annotation formats can represent labeled geometric shapes on image frames and track shapes in video annotation exports. The format documentation does not prescribe this exercise's selected frame, label vocabulary, coordinate convention, or annotation ordering.",
+            "source_refs": [
+              "SRC-CVAT-ANNOTATION-FORMAT-251"
+            ]
+          }
+        ],
+        "project_policy": {
+          "source_ref": "SRC-POLICY-VIDEO-TASK5-001",
+          "statement": "本项目开发策略只评估 frame_index=12；类别词表为 person、vehicle；矩形使用 [x_min, y_min, x_max, y_max] 的零基像素坐标且右下端不包含；每个可见目标恰好提交一次，并按 object_ref 升序排列。以上范围、词表、坐标和排序要求均为本地策略。",
+          "version": "1.0.0"
+        }
+      },
+      "positive_examples": [
+        {
+          "id": "EX-VIDEO-FRAME-ANNOTATION-POS-001",
+          "asset_ref": "ASSET-SELF-VIDEO-FRAME-ANNOTATION-001",
+          "input": {
+            "frame_index": 12,
+            "object_ref": "obj-person-01",
+            "class_evidence": "person",
+            "visible_extent_xyxy": [
+              410,
+              90,
+              470,
+              310
+            ]
+          },
+          "expected": {
+            "frame_index": 12,
+            "object_ref": "obj-person-01",
+            "label": "person",
+            "bbox_xyxy": [
+              410,
+              90,
+              470,
+              310
+            ]
+          },
+          "explanation": "目标位于指定帧，类别来自闭合词表，矩形逐项复制结构化可见范围。",
+          "source_ref": "SRC-POLICY-VIDEO-TASK5-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "representation": "structured_fixture",
+            "contains_personal_data": false,
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-VIDEO-FRAME-ANNOTATION-NEG-001",
+          "asset_ref": "ASSET-SELF-VIDEO-FRAME-ANNOTATION-002",
+          "input": {
+            "exercise_id": "EXERCISE-VIDEO-FRAME-ANNOTATION-001",
+            "submission": {
+              "annotations": [
+                {
+                  "frame_index": 12,
+                  "object_ref": "obj-person-01",
+                  "label": "vehicle",
+                  "bbox_xyxy": [
+                    410,
+                    90,
+                    470,
+                    310
+                  ]
+                },
+                {
+                  "frame_index": 12,
+                  "object_ref": "obj-vehicle-01",
+                  "label": "vehicle",
+                  "bbox_xyxy": [
+                    120,
+                    80,
+                    300,
+                    240
+                  ]
+                }
+              ]
+            }
+          },
+          "expected": {
+            "passed": false,
+            "error_type": "frame_label_mismatch"
+          },
+          "fault_model": {
+            "type": "single_fault",
+            "field": "annotations[0].label"
+          },
+          "explanation": "目标、帧号、排序和几何均正确，唯一错误是 obj-person-01 被标为 vehicle。",
+          "source_ref": "SRC-POLICY-VIDEO-TASK5-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "representation": "structured_fixture",
+            "contains_personal_data": false,
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "exercise_id": "EXERCISE-VIDEO-FRAME-ANNOTATION-001",
+        "exercise_type": "structured_frame_annotation",
+        "asset_ref": "ASSET-SELF-VIDEO-FRAME-ANNOTATION-EXERCISE-001",
+        "input": {
+          "fixture_notice": "This is a structured frame fixture; no video frame image or video media is included or implied.",
+          "selected_frame_indices": [
+            12
+          ],
+          "frame": {
+            "frame_index": 12,
+            "width_px": 640,
+            "height_px": 360,
+            "observations": [
+              {
+                "object_ref": "obj-vehicle-01",
+                "class_evidence": "vehicle",
+                "visible_extent_xyxy": [
+                  120,
+                  80,
+                  300,
+                  240
+                ]
+              },
+              {
+                "object_ref": "obj-person-01",
+                "class_evidence": "person",
+                "visible_extent_xyxy": [
+                  410,
+                  90,
+                  470,
+                  310
+                ]
+              }
+            ]
+          },
+          "label_vocabulary": [
+            "person",
+            "vehicle"
+          ],
+          "coordinate_convention": "zero_based_xyxy_end_exclusive",
+          "annotation_order": "object_ref_ascending",
+          "policy_version": "1.0.0"
+        },
+        "response_space": {
+          "type": "closed_structured_response",
+          "allowed_frame_indices": [
+            12
+          ],
+          "allowed_labels": [
+            "person",
+            "vehicle"
+          ],
+          "allowed_object_refs": [
+            "obj-person-01",
+            "obj-vehicle-01"
+          ],
+          "unmatched_submission_handling": "manual_review"
+        },
+        "student_action": "提交 JSON：annotations 数组中为每个观察目标给出 frame_index、object_ref、label 和 bbox_xyxy。",
+        "answer": {
+          "annotations": [
+            {
+              "frame_index": 12,
+              "object_ref": "obj-person-01",
+              "label": "person",
+              "bbox_xyxy": [
+                410,
+                90,
+                470,
+                310
+              ]
+            },
+            {
+              "frame_index": 12,
+              "object_ref": "obj-vehicle-01",
+              "label": "vehicle",
+              "bbox_xyxy": [
+                120,
+                80,
+                300,
+                240
+              ]
+            }
+          ]
+        },
+        "evaluation": {
+          "method": "exact_match",
+          "version": "1.1.0",
+          "normalization": "JSON 对象键顺序忽略；annotations 数组顺序、frame_index、object_ref、label 和 bbox_xyxy 数值必须完全一致。",
+          "diagnostic_precedence": "diagnostic_rules 按数组顺序严格匹配，优先级为目标完整性、帧范围、类别、几何；首个命中规则生效，未命中标准答案或诊断样例的提交进入人工复核。",
+          "diagnostic_rules": [
+            {
+              "submission": {
+                "annotations": [
+                  {
+                    "frame_index": 12,
+                    "object_ref": "obj-vehicle-01",
+                    "label": "vehicle",
+                    "bbox_xyxy": [
+                      120,
+                      80,
+                      300,
+                      240
+                    ]
+                  }
+                ]
+              },
+              "error_type": "frame_object_omitted",
+              "feedback": "提交遗漏了指定帧中的 obj-person-01。",
+              "remediation": [
+                "使用导出检查表逐个核对 frame.observations，并补交 obj-person-01。"
+              ]
+            },
+            {
+              "submission": {
+                "annotations": [
+                  {
+                    "frame_index": 13,
+                    "object_ref": "obj-person-01",
+                    "label": "person",
+                    "bbox_xyxy": [
+                      410,
+                      90,
+                      470,
+                      310
+                    ]
+                  },
+                  {
+                    "frame_index": 13,
+                    "object_ref": "obj-vehicle-01",
+                    "label": "vehicle",
+                    "bbox_xyxy": [
+                      120,
+                      80,
+                      300,
+                      240
+                    ]
+                  }
+                ]
+              },
+              "error_type": "frame_scope_mismatch",
+              "feedback": "本题只允许提交 frame_index=12，frame_index=13 不在选定范围内。",
+              "remediation": [
+                "对照 selected_frame_indices，将两个标注的 frame_index 改为 12。"
+              ]
+            },
+            {
+              "submission": {
+                "annotations": [
+                  {
+                    "frame_index": 12,
+                    "object_ref": "obj-person-01",
+                    "label": "vehicle",
+                    "bbox_xyxy": [
+                      410,
+                      90,
+                      470,
+                      310
+                    ]
+                  },
+                  {
+                    "frame_index": 12,
+                    "object_ref": "obj-vehicle-01",
+                    "label": "vehicle",
+                    "bbox_xyxy": [
+                      120,
+                      80,
+                      300,
+                      240
+                    ]
+                  }
+                ]
+              },
+              "error_type": "frame_label_mismatch",
+              "feedback": "obj-person-01 的结构化类别证据是 person，不应标为 vehicle。",
+              "remediation": [
+                "对照 label_vocabulary 和 class_evidence，将 obj-person-01 的 label 改为 person。"
+              ]
+            },
+            {
+              "submission": {
+                "annotations": [
+                  {
+                    "frame_index": 12,
+                    "object_ref": "obj-person-01",
+                    "label": "person",
+                    "bbox_xyxy": [
+                      410,
+                      90,
+                      469,
+                      310
+                    ]
+                  },
+                  {
+                    "frame_index": 12,
+                    "object_ref": "obj-vehicle-01",
+                    "label": "vehicle",
+                    "bbox_xyxy": [
+                      120,
+                      80,
+                      300,
+                      240
+                    ]
+                  }
+                ]
+              },
+              "error_type": "frame_geometry_mismatch",
+              "feedback": "obj-person-01 的 x_max 应为右端不包含值 470，而不是 469。",
+              "remediation": [
+                "按 zero_based_xyxy_end_exclusive 约定把 obj-person-01 的 x_max 改为 470。"
+              ]
+            }
+          ],
+          "correct_feedback": "指定帧中的目标、类别、排序和矩形几何均正确。",
+          "manual_review_on_unmatched": true,
+          "incorrect_feedback": {
+            "error_type": "frame_annotation_submission_requires_manual_review",
+            "feedback": "提交未命中标准答案或已声明诊断样例，不能可靠归入某个具体帧标注错误。",
+            "remediation": [
+              "使用视频导出检查表核对目标完整性、帧范围、类别和坐标，并交由审阅者确认。"
+            ]
+          }
+        },
+        "data_version": "1.1.0",
+        "pass_condition": "score == 1.0",
+        "capability_refs": [
+          "CAP-VID-FRAME-ANNOTATE-001"
+        ],
+        "error_types": [
+          "frame_object_omitted",
+          "frame_scope_mismatch",
+          "frame_label_mismatch",
+          "frame_geometry_mismatch",
+          "frame_annotation_submission_requires_manual_review"
+        ],
+        "asset_authorization": {
+          "type": "self-authored",
+          "representation": "structured_fixture",
+          "contains_personal_data": false,
+          "student_use_allowed": true
+        }
+      },
+      "learning_path": {
+        "error_mappings": [
+          {
+            "error_type": "frame_object_omitted",
+            "rule_refs": [
+              "KNG-VID-FRAME-ANNOTATION-001"
+            ],
+            "capability_refs": [
+              "CAP-VID-FRAME-ANNOTATE-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-VID-EXPORT-QA-CHECKLIST-001"
+            ]
+          },
+          {
+            "error_type": "frame_scope_mismatch",
+            "rule_refs": [
+              "KNG-VID-FRAME-ANNOTATION-001"
+            ],
+            "capability_refs": [
+              "CAP-VID-FRAME-ANNOTATE-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-VID-FRAME-SAMPLING-WORKSHEET-001"
+            ]
+          },
+          {
+            "error_type": "frame_label_mismatch",
+            "rule_refs": [
+              "KNG-VID-FRAME-ANNOTATION-001"
+            ],
+            "capability_refs": [
+              "CAP-VID-FRAME-ANNOTATE-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-VID-EXPORT-QA-CHECKLIST-001"
+            ]
+          },
+          {
+            "error_type": "frame_geometry_mismatch",
+            "rule_refs": [
+              "KNG-VID-FRAME-ANNOTATION-001"
+            ],
+            "capability_refs": [
+              "CAP-VID-FRAME-ANNOTATE-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-VID-EXPORT-QA-CHECKLIST-001"
+            ]
+          },
+          {
+            "error_type": "frame_annotation_submission_requires_manual_review",
+            "rule_refs": [
+              "KNG-VID-FRAME-ANNOTATION-001"
+            ],
+            "capability_refs": [
+              "CAP-VID-FRAME-ANNOTATE-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-VID-FRAME-SAMPLING-WORKSHEET-001",
+              "RES-VID-EXPORT-QA-CHECKLIST-001"
+            ]
+          }
+        ]
+      },
+      "common_errors": [
+        "遗漏指定帧中的一个目标",
+        "在未选定帧上复制标注",
+        "使用闭合词表之外的近义标签",
+        "把右下端不包含坐标减一"
+      ],
+      "remediation": [
+        "使用 RES-VID-EXPORT-QA-CHECKLIST-001 按目标、帧号、类别、坐标和排序逐项复核。"
+      ],
+      "review_records": [],
+      "review_status": "draft",
+      "student_visible": false
+    },
+    {
+      "id": "TU-VIDEO-OBJECT-TRACKING-001",
+      "data_type": "video",
+      "title": "用稳定轨迹 ID 连接跨帧目标观察",
+      "capability_key": "object_tracking",
+      "goals": [
+        "依据结构化身份和运动证据连接同一目标的跨帧观察",
+        "按项目命名和短时遮挡策略维护唯一轨迹"
+      ],
+      "learning_objectives": [
+        "区分 CVAT 轨迹与关键帧操作事实和本项目身份策略",
+        "按首次出现顺序分配稳定轨迹 ID",
+        "在项目允许的短时遮挡范围内保持轨迹连续并显式记录遮挡帧"
+      ],
+      "prerequisites": [
+        "CAP-VID-FRAME-ANNOTATE-001"
+      ],
+      "rule_refs": [
+        "KNG-VID-TRACK-CONTINUITY-001",
+        "KNG-VID-OCCLUSION-REID-001"
+      ],
+      "source_refs": [
+        "SRC-CVAT-VIDEO-TRACK-001",
+        "SRC-POLICY-VIDEO-TASK5-001"
+      ],
+      "rule_explanation": {
+        "external_format_facts": [
+          {
+            "statement": "CVAT Track Mode documents creating tracks, setting shapes at keyframes, and using interpolation between keyframes. It does not define this exercise's track ID naming, two-frame occlusion threshold, or identity evidence rule.",
+            "source_refs": [
+              "SRC-CVAT-VIDEO-TRACK-001"
+            ]
+          }
+        ],
+        "project_policy": {
+          "source_ref": "SRC-POLICY-VIDEO-TASK5-001",
+          "statement": "本项目开发策略按目标首次出现顺序使用 trk_XX 命名；缺帧本身绝不构成遮挡证据。只有每个缺失帧都有可观察遮挡物证据，且遮挡前后外观、运动方向和空间位置连续时，才可在不超过 2 帧的间隔内复用原 track_id，并把已证实的遮挡帧列入 occluded_frame_indices；观察和遮挡帧都按升序提交。这些阈值、命名和重识别规则均为本地策略。",
+          "reidentification_requirements": [
+            "appearance_signature_match",
+            "motion_direction_consistent",
+            "spatial_continuity"
+          ],
+          "version": "1.0.0"
+        }
+      },
+      "positive_examples": [
+        {
+          "id": "EX-VIDEO-OBJECT-TRACKING-POS-001",
+          "asset_ref": "ASSET-SELF-VIDEO-OBJECT-TRACKING-001",
+          "input": {
+            "observations": [
+              {
+                "observation_id": "obs-20-a",
+                "frame_index": 20,
+                "identity_key": "vehicle-a",
+                "motion_direction": "right"
+              },
+              {
+                "observation_id": "obs-21-a",
+                "frame_index": 21,
+                "identity_key": "vehicle-a",
+                "motion_direction": "right"
+              },
+              {
+                "observation_id": "obs-24-a",
+                "frame_index": 24,
+                "identity_key": "vehicle-a",
+                "motion_direction": "right"
+              }
+            ],
+            "occluded_frame_indices": [
+              22,
+              23
+            ],
+            "missing_identity_key": "vehicle-a",
+            "visibility_evidence": [
+              {
+                "frame_index": 22,
+                "identity_key": "vehicle-a",
+                "visibility_state": "occluded",
+                "occluder_ref": "truck-static-01",
+                "observable_evidence": "truck-static-01 overlaps vehicle-a's predicted path"
+              },
+              {
+                "frame_index": 23,
+                "identity_key": "vehicle-a",
+                "visibility_state": "occluded",
+                "occluder_ref": "truck-static-01",
+                "observable_evidence": "the overlap persists while vehicle-a remains behind the truck"
+              }
+            ],
+            "reidentification_evidence": {
+              "identity_key": "vehicle-a",
+              "pre_occlusion_observation_id": "obs-21-a",
+              "post_occlusion_observation_id": "obs-24-a",
+              "appearance_signature_match": true,
+              "motion_direction_consistent": true,
+              "spatial_continuity": true
+            }
+          },
+          "expected": {
+            "track_id": "trk_01",
+            "observation_ids": [
+              "obs-20-a",
+              "obs-21-a",
+              "obs-24-a"
+            ],
+            "occluded_frame_indices": [
+              22,
+              23
+            ]
+          },
+          "explanation_evidence_refs": [
+            "input.visibility_evidence",
+            "input.reidentification_evidence.appearance_signature_match",
+            "input.reidentification_evidence.motion_direction_consistent",
+            "input.reidentification_evidence.spatial_continuity"
+          ],
+          "explanation": "两个缺失帧均有 visibility_evidence；reidentification_evidence 明确给出 appearance_signature_match=true、motion_direction_consistent=true、spatial_continuity=true，因此按项目策略复用 trk_01。",
+          "source_ref": "SRC-POLICY-VIDEO-TASK5-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "representation": "structured_fixture",
+            "contains_personal_data": false,
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "negative_examples": [
+        {
+          "id": "EX-VIDEO-OBJECT-TRACKING-NEG-001",
+          "asset_ref": "ASSET-SELF-VIDEO-OBJECT-TRACKING-002",
+          "input": {
+            "exercise_id": "EXERCISE-VIDEO-OBJECT-TRACKING-001",
+            "submission": {
+              "tracks": [
+                {
+                  "track_id": "trk_02",
+                  "observation_ids": [
+                    "obs-20-a",
+                    "obs-21-a",
+                    "obs-24-a"
+                  ],
+                  "occluded_frame_indices": [
+                    22,
+                    23
+                  ]
+                },
+                {
+                  "track_id": "trk_01",
+                  "observation_ids": [
+                    "obs-21-b",
+                    "obs-22-b",
+                    "obs-23-b",
+                    "obs-24-b"
+                  ],
+                  "occluded_frame_indices": []
+                }
+              ]
+            }
+          },
+          "expected": {
+            "passed": false,
+            "error_type": "track_first_appearance_id_swap"
+          },
+          "fault_model": {
+            "type": "single_fault",
+            "field": "tracks[*].track_id_assignment"
+          },
+          "explanation": "两个目标的观察归组、顺序和遮挡记录均正确，唯一错误是把首次和第二次出现目标的 trk_01、trk_02 对调。",
+          "source_ref": "SRC-POLICY-VIDEO-TASK5-001",
+          "asset_authorization": {
+            "type": "self-authored",
+            "representation": "structured_fixture",
+            "contains_personal_data": false,
+            "student_use_allowed": true
+          }
+        }
+      ],
+      "exercise": {
+        "exercise_id": "EXERCISE-VIDEO-OBJECT-TRACKING-001",
+        "exercise_type": "structured_track_linking",
+        "asset_ref": "ASSET-SELF-VIDEO-OBJECT-TRACKING-EXERCISE-001",
+        "input": {
+          "fixture_notice": "This is a structured observation fixture; no video frames or video media are included or implied.",
+          "observations": [
+            {
+              "observation_id": "obs-20-a",
+              "frame_index": 20,
+              "identity_key": "vehicle-a",
+              "motion_direction": "right"
+            },
+            {
+              "observation_id": "obs-21-a",
+              "frame_index": 21,
+              "identity_key": "vehicle-a",
+              "motion_direction": "right"
+            },
+            {
+              "observation_id": "obs-21-b",
+              "frame_index": 21,
+              "identity_key": "person-b",
+              "motion_direction": "left"
+            },
+            {
+              "observation_id": "obs-22-b",
+              "frame_index": 22,
+              "identity_key": "person-b",
+              "motion_direction": "left"
+            },
+            {
+              "observation_id": "obs-23-b",
+              "frame_index": 23,
+              "identity_key": "person-b",
+              "motion_direction": "left"
+            },
+            {
+              "observation_id": "obs-24-a",
+              "frame_index": 24,
+              "identity_key": "vehicle-a",
+              "motion_direction": "right"
+            },
+            {
+              "observation_id": "obs-24-b",
+              "frame_index": 24,
+              "identity_key": "person-b",
+              "motion_direction": "left"
+            }
+          ],
+          "missing_frame_indices": [
+            22,
+            23
+          ],
+          "missing_identity_key": "vehicle-a",
+          "visibility_evidence": [
+            {
+              "frame_index": 22,
+              "identity_key": "vehicle-a",
+              "visibility_state": "occluded",
+              "occluder_ref": "truck-static-01",
+              "observable_evidence": "truck-static-01 overlaps the projected vehicle-a path and fully blocks its last visible extent"
+            },
+            {
+              "frame_index": 23,
+              "identity_key": "vehicle-a",
+              "visibility_state": "occluded",
+              "occluder_ref": "truck-static-01",
+              "observable_evidence": "the opaque overlap persists along the same projected path"
+            }
+          ],
+          "reidentification_evidence": {
+            "identity_key": "vehicle-a",
+            "pre_occlusion_observation_id": "obs-21-a",
+            "post_occlusion_observation_id": "obs-24-a",
+            "appearance_signature_match": true,
+            "motion_direction_consistent": true,
+            "spatial_continuity": true
+          },
+          "occlusion_decision_policy": {
+            "missing_frames_alone_sufficient": false,
+            "required_evidence_fields": [
+              "visibility_state",
+              "occluder_ref",
+              "observable_evidence"
+            ]
+          },
+          "track_id_pattern": "trk_XX by first appearance",
+          "maximum_continuous_occlusion_frames": 2,
+          "policy_version": "1.0.0"
+        },
+        "response_space": {
+          "type": "closed_structured_response",
+          "allowed_observation_ids": [
+            "obs-20-a",
+            "obs-21-a",
+            "obs-21-b",
+            "obs-22-b",
+            "obs-23-b",
+            "obs-24-a",
+            "obs-24-b"
+          ],
+          "allowed_track_ids": [
+            "trk_01",
+            "trk_02"
+          ],
+          "allowed_occluded_frame_indices": [
+            22,
+            23
+          ],
+          "unmatched_submission_handling": "manual_review"
+        },
+        "student_action": "提交 JSON：tracks 数组中按首次出现建立轨迹，并给出有序 observation_ids 与 occluded_frame_indices。",
+        "answer": {
+          "tracks": [
+            {
+              "track_id": "trk_01",
+              "observation_ids": [
+                "obs-20-a",
+                "obs-21-a",
+                "obs-24-a"
+              ],
+              "occluded_frame_indices": [
+                22,
+                23
+              ]
+            },
+            {
+              "track_id": "trk_02",
+              "observation_ids": [
+                "obs-21-b",
+                "obs-22-b",
+                "obs-23-b",
+                "obs-24-b"
+              ],
+              "occluded_frame_indices": []
+            }
+          ]
+        },
+        "evaluation": {
+          "method": "ordered_exact_match",
+          "version": "1.1.0",
+          "normalization": "JSON 对象键顺序忽略；tracks、observation_ids 和 occluded_frame_indices 数组顺序以及字符串、整数值必须完全一致。",
+          "diagnostic_precedence": "diagnostic_rules 按数组顺序严格匹配，优先级为身份连续性、遮挡记录、首次出现编号、轨迹命名、观察顺序；首个命中规则生效，未命中标准答案或诊断样例的提交进入人工复核。",
+          "diagnostic_rules": [
+            {
+              "submission": {
+                "tracks": [
+                  {
+                    "track_id": "trk_01",
+                    "observation_ids": [
+                      "obs-20-a",
+                      "obs-21-a"
+                    ],
+                    "occluded_frame_indices": [
+                      22,
+                      23
+                    ]
+                  },
+                  {
+                    "track_id": "trk_02",
+                    "observation_ids": [
+                      "obs-21-b",
+                      "obs-22-b",
+                      "obs-23-b",
+                      "obs-24-b"
+                    ],
+                    "occluded_frame_indices": []
+                  },
+                  {
+                    "track_id": "trk_03",
+                    "observation_ids": [
+                      "obs-24-a"
+                    ],
+                    "occluded_frame_indices": []
+                  }
+                ]
+              },
+              "error_type": "track_identity_fragmented",
+              "feedback": "obs-24-a 与前两次 vehicle-a 观察之间有显式遮挡和重识别证据，不应新建 trk_03。",
+              "remediation": [
+                "使用轨迹 ID 台账把 obs-24-a 合并回 trk_01。"
+              ]
+            },
+            {
+              "submission": {
+                "tracks": [
+                  {
+                    "track_id": "trk_01",
+                    "observation_ids": [
+                      "obs-20-a",
+                      "obs-21-a",
+                      "obs-24-a"
+                    ],
+                    "occluded_frame_indices": []
+                  },
+                  {
+                    "track_id": "trk_02",
+                    "observation_ids": [
+                      "obs-21-b",
+                      "obs-22-b",
+                      "obs-23-b",
+                      "obs-24-b"
+                    ],
+                    "occluded_frame_indices": []
+                  }
+                ]
+              },
+              "error_type": "track_occlusion_gap_omitted",
+              "feedback": "vehicle-a 轨迹已正确合并，但未记录有显式遮挡证据的第 22、23 帧。",
+              "remediation": [
+                "核对 visibility_evidence 后，将已证实遮挡的第 22、23 帧按升序写入 occluded_frame_indices。"
+              ]
+            },
+            {
+              "submission": {
+                "tracks": [
+                  {
+                    "track_id": "trk_02",
+                    "observation_ids": [
+                      "obs-20-a",
+                      "obs-21-a",
+                      "obs-24-a"
+                    ],
+                    "occluded_frame_indices": [
+                      22,
+                      23
+                    ]
+                  },
+                  {
+                    "track_id": "trk_01",
+                    "observation_ids": [
+                      "obs-21-b",
+                      "obs-22-b",
+                      "obs-23-b",
+                      "obs-24-b"
+                    ],
+                    "occluded_frame_indices": []
+                  }
+                ]
+              },
+              "error_type": "track_first_appearance_id_swap",
+              "feedback": "vehicle-a 在第 20 帧先出现，应使用 trk_01；person-b 在第 21 帧后出现，应使用 trk_02。",
+              "remediation": [
+                "按每个 identity_key 的首次 frame_index 排序，再依次分配 trk_01、trk_02。"
+              ]
+            },
+            {
+              "submission": {
+                "tracks": [
+                  {
+                    "track_id": "vehicle-a",
+                    "observation_ids": [
+                      "obs-20-a",
+                      "obs-21-a",
+                      "obs-24-a"
+                    ],
+                    "occluded_frame_indices": [
+                      22,
+                      23
+                    ]
+                  },
+                  {
+                    "track_id": "trk_02",
+                    "observation_ids": [
+                      "obs-21-b",
+                      "obs-22-b",
+                      "obs-23-b",
+                      "obs-24-b"
+                    ],
+                    "occluded_frame_indices": []
+                  }
+                ]
+              },
+              "error_type": "track_id_naming_mismatch",
+              "feedback": "identity_key 不能直接作为提交 ID；首次出现的目标应命名为 trk_01。",
+              "remediation": [
+                "按 track_id_pattern 将 vehicle-a 映射为 trk_01。"
+              ]
+            },
+            {
+              "submission": {
+                "tracks": [
+                  {
+                    "track_id": "trk_01",
+                    "observation_ids": [
+                      "obs-24-a",
+                      "obs-21-a",
+                      "obs-20-a"
+                    ],
+                    "occluded_frame_indices": [
+                      22,
+                      23
+                    ]
+                  },
+                  {
+                    "track_id": "trk_02",
+                    "observation_ids": [
+                      "obs-21-b",
+                      "obs-22-b",
+                      "obs-23-b",
+                      "obs-24-b"
+                    ],
+                    "occluded_frame_indices": []
+                  }
+                ]
+              },
+              "error_type": "track_observation_order_mismatch",
+              "feedback": "observation_ids 未按 frame_index 升序提交。",
+              "remediation": [
+                "按帧号将观察排序为 obs-20-a、obs-21-a、obs-24-a。"
+              ]
+            }
+          ],
+          "correct_feedback": "轨迹身份、命名、观察顺序和短时遮挡记录均正确。",
+          "manual_review_on_unmatched": true,
+          "incorrect_feedback": {
+            "error_type": "object_tracking_submission_requires_manual_review",
+            "feedback": "提交未命中标准答案或已声明诊断样例，不能可靠归入某个具体轨迹错误。",
+            "remediation": [
+              "使用轨迹 ID 台账核对身份键、首次出现顺序和遮挡帧，并交由审阅者确认。"
+            ]
+          }
+        },
+        "data_version": "1.1.1",
+        "pass_condition": "score == 1.0",
+        "capability_refs": [
+          "CAP-VID-OBJECT-TRACK-001"
+        ],
+        "error_types": [
+          "track_identity_fragmented",
+          "track_occlusion_gap_omitted",
+          "track_first_appearance_id_swap",
+          "track_id_naming_mismatch",
+          "track_observation_order_mismatch",
+          "object_tracking_submission_requires_manual_review"
+        ],
+        "asset_authorization": {
+          "type": "self-authored",
+          "representation": "structured_fixture",
+          "contains_personal_data": false,
+          "student_use_allowed": true
+        }
+      },
+      "learning_path": {
+        "error_mappings": [
+          {
+            "error_type": "track_identity_fragmented",
+            "rule_refs": [
+              "KNG-VID-TRACK-CONTINUITY-001",
+              "KNG-VID-OCCLUSION-REID-001"
+            ],
+            "capability_refs": [
+              "CAP-VID-OBJECT-TRACK-001",
+              "CAP-VID-OCCLUSION-REID-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-VID-TRACK-LEDGER-001",
+              "RES-VID-OCCLUSION-REID-CARD-001"
+            ]
+          },
+          {
+            "error_type": "track_occlusion_gap_omitted",
+            "rule_refs": [
+              "KNG-VID-TRACK-CONTINUITY-001",
+              "KNG-VID-OCCLUSION-REID-001"
+            ],
+            "capability_refs": [
+              "CAP-VID-OBJECT-TRACK-001",
+              "CAP-VID-OCCLUSION-REID-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-VID-TRACK-LEDGER-001",
+              "RES-VID-OCCLUSION-REID-CARD-001"
+            ]
+          },
+          {
+            "error_type": "track_first_appearance_id_swap",
+            "rule_refs": [
+              "KNG-VID-TRACK-CONTINUITY-001"
+            ],
+            "capability_refs": [
+              "CAP-VID-OBJECT-TRACK-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-VID-TRACK-LEDGER-001"
+            ]
+          },
+          {
+            "error_type": "track_id_naming_mismatch",
+            "rule_refs": [
+              "KNG-VID-TRACK-CONTINUITY-001"
+            ],
+            "capability_refs": [
+              "CAP-VID-OBJECT-TRACK-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-VID-TRACK-LEDGER-001"
+            ]
+          },
+          {
+            "error_type": "track_observation_order_mismatch",
+            "rule_refs": [
+              "KNG-VID-TRACK-CONTINUITY-001"
+            ],
+            "capability_refs": [
+              "CAP-VID-OBJECT-TRACK-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-VID-TRACK-LEDGER-001"
+            ]
+          },
+          {
+            "error_type": "object_tracking_submission_requires_manual_review",
+            "rule_refs": [
+              "KNG-VID-TRACK-CONTINUITY-001"
+            ],
+            "capability_refs": [
+              "CAP-VID-OBJECT-TRACK-001"
+            ],
+            "remediation_resource_refs": [
+              "RES-VID-TRACK-LEDGER-001",
+              "RES-VID-EXPORT-QA-CHECKLIST-001"
+            ]
+          }
+        ]
+      },
+      "common_errors": [
+        "把同一目标在短时遮挡后拆成新轨迹",
+        "省略轨迹中的遮挡帧记录",
+        "把 identity_key 直接用作项目轨迹 ID",
+        "不按帧序排列观察"
+      ],
+      "remediation": [
+        "使用 RES-VID-TRACK-LEDGER-001 按帧记录 identity_key、track_id 和遮挡状态，再核对首次出现顺序。"
+      ],
+      "review_records": [],
       "review_status": "draft",
       "student_visible": false
     }

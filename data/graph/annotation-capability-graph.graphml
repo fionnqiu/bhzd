@@ -567,16 +567,16 @@
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-KALDI-DATA-PREP-001","SRC-PRAAT-TEXTGRID-001"]</data>
-      <data key="n6">{"claim_basis":"external_reference","claim_type":"audio_segment_timing","policy_overlays":[{"claim_type":"audio_segment_alignment_policy","description":"本项目以秒为单位、保留三位小数，并要求区间有序、非重叠且对齐题目给出的音调边界。","overlay_id":"POLICY-AUD-SEGMENT-ALIGNMENT-001","source_refs":["SRC-POLICY-AUDIO-TASK4-001"],"version":"1.0.0"}]}</data>
+      <data key="n6">{"claim_basis":"external_reference","claim_type":"audio_segment_timing","policy_overlays":[{"claim_type":"audio_segment_alignment_policy","conversion":"milliseconds = round_half_up(decimal_seconds * 1000)","description":"外部 Kaldi 与 TextGrid 格式以秒为单位；本项目把十进制秒值按 decimal half-up 换算为整数毫秒，并使用左闭右开区间 [start_ms,end_ms)，要求区间有序、非重叠且对齐题目锚点。","external_timebase":"decimal_seconds","interval_convention":"[start_ms,end_ms)","overlay_id":"POLICY-AUD-SEGMENT-ALIGNMENT-001","project_timebase":"integer_ms","rounding":"decimal_half_up_to_nearest_integer_ms","source_refs":["SRC-POLICY-AUDIO-TASK4-001"],"version":"1.1.0"}]}</data>
     </node>
     <node id="KNG-AUD-SPEAKER-TURN-001">
       <data key="n0">KNG</data>
       <data key="n1">说话人轮次</data>
-      <data key="n2">STM 片段记录说话人、开始时间、时长和转写文本。</data>
+      <data key="n2">STM 片段记录说话人、开始时间、结束时间和转写文本。</data>
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-NIST-SCTK-FORMATS-001"]</data>
-      <data key="n6">{"claim_basis":"external_reference","claim_type":"audio_speaker_segments","policy_overlays":[{"claim_type":"audio_speaker_turn_policy","description":"本项目使用匿名 SPEAKER_01 等标签并在同一录音内保持身份一致。","overlay_id":"POLICY-AUD-SPEAKER-TURN-001","source_refs":["SRC-POLICY-AUDIO-TASK4-001"],"version":"1.0.0"}]}</data>
+      <data key="n6">{"claim_basis":"external_reference","claim_type":"audio_speaker_segments","policy_overlays":[{"claim_type":"audio_speaker_turn_policy","description":"本项目按可听轮次首次出现顺序分配匿名 spk_01、spk_02 等标签，并在同一录音内保持身份一致。","overlay_id":"POLICY-AUD-SPEAKER-TURN-001","source_refs":["SRC-POLICY-AUDIO-TASK4-001"],"version":"1.1.0"}]}</data>
     </node>
     <node id="KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001">
       <data key="n0">KNG</data>
@@ -909,7 +909,7 @@
       <data key="n3">["video"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"claim_basis":"curriculum_draft","claim_type":"video_action_taxonomy"}</data>
+      <data key="n6">{"claim_basis":"curriculum_draft","claim_type":"video_action_taxonomy","policy_overlays":[{"claim_type":"video_action_taxonomy_policy","description":"本项目使用 door_entry、door_exit、idle 闭合行为词表，并以可观察区域转移、参与轨迹和排除条件判定类别。","overlay_id":"POLICY-VID-ACTION-TAXONOMY-001","source_refs":["SRC-POLICY-VIDEO-TASK5-001"],"version":"1.1.0"}]}</data>
     </node>
     <node id="KNG-VID-EVENT-START-END-001">
       <data key="n0">KNG</data>
@@ -918,7 +918,7 @@
       <data key="n3">["video"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-W3C-WEBVTT-001"]</data>
-      <data key="n6">{"claim_basis":"external_reference","claim_type":"video_temporal_cues"}</data>
+      <data key="n6">{"claim_basis":"external_reference","claim_type":"video_temporal_cues","policy_overlays":[{"claim_type":"video_event_boundary_policy","description":"本项目用 [start_ms,end_ms) 半开区间表达事件：start_ms 是首个纳入时刻，end_ms 是首个不再纳入时刻。","overlay_id":"POLICY-VID-EVENT-BOUNDARY-001","source_refs":["SRC-POLICY-VIDEO-TASK5-001"],"version":"1.1.0"}]}</data>
     </node>
     <node id="KNG-VID-EXPORT-FORMAT-001">
       <data key="n0">KNG</data>
@@ -936,7 +936,7 @@
       <data key="n3">["video"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-CVAT-ANNOTATION-FORMAT-251"]</data>
-      <data key="n6">{"claim_basis":"external_reference","claim_type":"video_frame_annotation"}</data>
+      <data key="n6">{"claim_basis":"external_reference","claim_type":"video_frame_annotation","policy_overlays":[{"claim_type":"video_frame_annotation_policy","description":"本项目练习只使用题目声明的 sampled_frames、frame_index 和矩形坐标约束；这些抽帧与判定语义不是 CVAT 外部格式事实。","overlay_id":"POLICY-VID-FRAME-ANNOTATION-001","source_refs":["SRC-POLICY-VIDEO-TASK5-001"],"version":"1.1.0"}]}</data>
     </node>
     <node id="KNG-VID-FRAME-RATE-001">
       <data key="n0">KNG</data>
@@ -972,7 +972,7 @@
       <data key="n3">["video"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"claim_basis":"curriculum_draft","claim_type":"video_reidentification_policy"}</data>
+      <data key="n6">{"claim_basis":"curriculum_draft","claim_type":"video_reidentification_policy","policy_overlays":[{"claim_type":"video_occlusion_reid_policy","description":"本项目只在题目给出的 identity_key、位置、外观和运动证据支持时延续轨迹；不根据未声明线索推断身份。","overlay_id":"POLICY-VID-OCCLUSION-REID-001","source_refs":["SRC-POLICY-VIDEO-TASK5-001"],"version":"1.1.0"}]}</data>
     </node>
     <node id="KNG-VID-QUALITY-METRICS-001">
       <data key="n0">KNG</data>
@@ -1008,7 +1008,7 @@
       <data key="n3">["video"]</data>
       <data key="n4">draft</data>
       <data key="n5">["SRC-CVAT-VIDEO-TRACK-001"]</data>
-      <data key="n6">{"claim_basis":"external_reference","claim_type":"video_track_operations"}</data>
+      <data key="n6">{"claim_basis":"external_reference","claim_type":"video_track_operations","policy_overlays":[{"claim_type":"video_track_continuity_policy","description":"本项目按 identity_key、首次出现顺序和可观察运动连续性分配 trk_XX，并显式记录短时遮挡帧。","overlay_id":"POLICY-VID-TRACK-CONTINUITY-001","source_refs":["SRC-POLICY-VIDEO-TASK5-001"],"version":"1.1.0"}]}</data>
     </node>
     <node id="KNG-VID-TRACK-ID-001">
       <data key="n0">KNG</data>
@@ -1022,7 +1022,7 @@
     <node id="RES-AUD-ALIGNMENT-WORKSHEET-001">
       <data key="n0">RES</data>
       <data key="n1">音频对齐练习表</data>
-      <data key="n2">练习切割、时间戳和文本对齐。</data>
+      <data key="n2">把外部秒值按 decimal half-up 换算为整数毫秒，核对 [start_ms,end_ms) 区间的排序、重叠和转写对齐。</data>
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
@@ -1031,7 +1031,7 @@
     <node id="RES-AUD-CONFIG-CHECKLIST-001">
       <data key="n0">RES</data>
       <data key="n1">音频配置检查表</data>
-      <data key="n2">核对数据字段、标签名和音频引用。</data>
+      <data key="n2">逐项核对任务数据字段、允许标签集合、音频引用与授权记录，并检查唤醒命令的 command intent、target、unknown、silence 配置。</data>
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
@@ -1040,7 +1040,7 @@
     <node id="RES-AUD-DIALECT-LABEL-CARD-001">
       <data key="n0">RES</data>
       <data key="n1">语种方言标签卡</data>
-      <data key="n2">对照语种、方言和混码标签。</data>
+      <data key="n2">对照题目配置的 BCP 47 标签与可听证据，区分 cmn、yue、mixed 和 und。</data>
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
@@ -1049,7 +1049,7 @@
     <node id="RES-AUD-EVENT-CATALOG-001">
       <data key="n0">RES</data>
       <data key="n1">副语言事件目录</data>
-      <data key="n2">区分笑声、叹气、咳嗽和噪声。</data>
+      <data key="n2">分离整体 emotion_label 与笑声、叹气等副语言事件，核对事件枚举及 [start_ms,end_ms) 区间。</data>
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
@@ -1058,7 +1058,7 @@
     <node id="RES-AUD-SPEAKER-TIMELINE-001">
       <data key="n0">RES</data>
       <data key="n1">说话人时间线</data>
-      <data key="n2">练习轮次边界与身份一致性。</data>
+      <data key="n2">从首个可听轮次分配 spk_01，核对首次出现顺序、身份复用和轮次边界时间。</data>
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
@@ -1067,7 +1067,7 @@
     <node id="RES-AUD-TRANSCRIPT-STYLE-SHEET-001">
       <data key="n0">RES</data>
       <data key="n1">转写风格表</data>
-      <data key="n2">汇总正字法、标点和不可听片段写法。</data>
+      <data key="n2">按本地策略核对数字写法、全角标点、口语保留和不可听片段标记，修正转写正字法。</data>
       <data key="n3">["audio"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
@@ -1467,7 +1467,7 @@
       <data key="n3">["video"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-VID-ACTION-EVENT-001","primary_knowledge_ref":"KNG-VID-EVENT-START-END-001","student_visible":false,"teaching_unit_links":[]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-VID-ACTION-EVENT-001","primary_knowledge_ref":"KNG-VID-EVENT-START-END-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-VIDEO-BEHAVIOR-EVENT-001"}]}</data>
     </node>
     <node id="TSK-VID-FRAME-LABEL-001">
       <data key="n0">TSK</data>
@@ -1476,7 +1476,7 @@
       <data key="n3">["video"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-VID-FRAME-ANNOTATE-001","primary_knowledge_ref":"KNG-VID-FRAME-ANNOTATION-001","student_visible":false,"teaching_unit_links":[]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-VID-FRAME-ANNOTATE-001","primary_knowledge_ref":"KNG-VID-FRAME-ANNOTATION-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-VIDEO-FRAME-ANNOTATION-001"}]}</data>
     </node>
     <node id="TSK-VID-OBJECT-TRACK-001">
       <data key="n0">TSK</data>
@@ -1485,7 +1485,7 @@
       <data key="n3">["video"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-VID-OBJECT-TRACK-001","primary_knowledge_ref":"KNG-VID-TRACK-CONTINUITY-001","student_visible":false,"teaching_unit_links":[]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-VID-OBJECT-TRACK-001","primary_knowledge_ref":"KNG-VID-TRACK-CONTINUITY-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-VIDEO-OBJECT-TRACKING-001"}]}</data>
     </node>
     <node id="TSK-VID-TRACK-ID-AUDIT-001">
       <data key="n0">TSK</data>
@@ -1494,7 +1494,7 @@
       <data key="n3">["video"]</data>
       <data key="n4">draft</data>
       <data key="n5">[]</data>
-      <data key="n6">{"primary_capability_ref":"CAP-VID-TRACK-VALIDATE-001","primary_knowledge_ref":"KNG-VID-TRACK-ID-001","student_visible":false,"teaching_unit_links":[{"consumable":false,"in_student_visible_index":false,"review_status":"draft","student_visible":false,"unit_id":"TU-VIDEO-TRACK-ID-001"}]}</data>
+      <data key="n6">{"primary_capability_ref":"CAP-VID-TRACK-VALIDATE-001","primary_knowledge_ref":"KNG-VID-TRACK-ID-001","student_visible":false,"teaching_unit_links":[]}</data>
     </node>
     <node id="TSK-VID-TRACK-QA-001">
       <data key="n0">TSK</data>
@@ -2145,170 +2145,170 @@
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0129" source="RES-AUD-DIALECT-LABEL-CARD-001" target="CAP-AUD-LANGUAGE-DIALECT-001">
+    <edge id="EDGE-0129" source="RES-AUD-CONFIG-CHECKLIST-001" target="CAP-AUD-WAKE-COMMAND-001">
+      <data key="e0">SUP</data>
+      <data key="e1">支持</data>
+      <data key="e2">{"purpose":"direct_remediation_support","replaces_relation":"weak_cross_domain_analogy"}</data>
+    </edge>
+    <edge id="EDGE-0130" source="RES-AUD-DIALECT-LABEL-CARD-001" target="CAP-AUD-LANGUAGE-DIALECT-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0130" source="RES-AUD-EVENT-CATALOG-001" target="CAP-AUD-EMOTION-PARALING-001">
+    <edge id="EDGE-0131" source="RES-AUD-EVENT-CATALOG-001" target="CAP-AUD-EMOTION-PARALING-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0131" source="RES-AUD-SPEAKER-TIMELINE-001" target="CAP-AUD-SPEAKER-001">
+    <edge id="EDGE-0132" source="RES-AUD-SPEAKER-TIMELINE-001" target="CAP-AUD-SPEAKER-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0132" source="RES-AUD-TRANSCRIPT-STYLE-SHEET-001" target="CAP-AUD-TRANSCRIBE-PUNCT-001">
+    <edge id="EDGE-0133" source="RES-AUD-TRANSCRIPT-STYLE-SHEET-001" target="CAP-AUD-TRANSCRIBE-PUNCT-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0133" source="RES-CORE-ADJUDICATION-RECORD-001" target="CAP-CORE-LABEL-SCHEMA-001">
+    <edge id="EDGE-0134" source="RES-CORE-ADJUDICATION-RECORD-001" target="CAP-CORE-LABEL-SCHEMA-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0134" source="RES-CORE-ASSET-AUTH-CHECKLIST-001" target="CAP-CORE-ASSET-QUALITY-001">
+    <edge id="EDGE-0135" source="RES-CORE-ASSET-AUTH-CHECKLIST-001" target="CAP-CORE-ASSET-QUALITY-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0135" source="RES-CORE-ERROR-REVIEW-FORM-001" target="CAP-CORE-EXPORT-QA-001">
+    <edge id="EDGE-0136" source="RES-CORE-ERROR-REVIEW-FORM-001" target="CAP-CORE-EXPORT-QA-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0136" source="RES-CORE-EXPORT-MANIFEST-TEMPLATE-001" target="CAP-CORE-EXPORT-QA-001">
+    <edge id="EDGE-0137" source="RES-CORE-EXPORT-MANIFEST-TEMPLATE-001" target="CAP-CORE-EXPORT-QA-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0137" source="RES-CORE-LABEL-SCHEMA-CHECKLIST-001" target="CAP-CORE-LABEL-SCHEMA-001">
+    <edge id="EDGE-0138" source="RES-CORE-LABEL-SCHEMA-CHECKLIST-001" target="CAP-CORE-LABEL-SCHEMA-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0138" source="RES-CORE-TASK-BRIEF-TEMPLATE-001" target="CAP-CORE-TASK-SCOPE-001">
+    <edge id="EDGE-0139" source="RES-CORE-TASK-BRIEF-TEMPLATE-001" target="CAP-CORE-TASK-SCOPE-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0139" source="RES-IMG-BOX-QUALITY-CHECKLIST-001" target="CAP-IMG-BOX-ANNOTATE-001">
+    <edge id="EDGE-0140" source="RES-IMG-BOX-QUALITY-CHECKLIST-001" target="CAP-IMG-BOX-ANNOTATE-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0140" source="RES-IMG-COORDINATE-WORKSHEET-001" target="CAP-IMG-RECT-VALIDATE-001">
+    <edge id="EDGE-0141" source="RES-IMG-COORDINATE-WORKSHEET-001" target="CAP-IMG-RECT-VALIDATE-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0141" source="RES-IMG-KEYPOINT-SKELETON-001" target="CAP-IMG-KEYPOINT-001">
+    <edge id="EDGE-0142" source="RES-IMG-KEYPOINT-SKELETON-001" target="CAP-IMG-KEYPOINT-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0142" source="RES-IMG-MASK-QA-CHECKLIST-001" target="CAP-IMG-INSTANCE-SEGMENT-001">
+    <edge id="EDGE-0143" source="RES-IMG-MASK-QA-CHECKLIST-001" target="CAP-IMG-INSTANCE-SEGMENT-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0143" source="RES-IMG-OCCLUSION-DECISION-TREE-001" target="CAP-IMG-OCCLUSION-001">
+    <edge id="EDGE-0144" source="RES-IMG-OCCLUSION-DECISION-TREE-001" target="CAP-IMG-OCCLUSION-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0144" source="RES-IMG-POLYGON-PRACTICE-001" target="CAP-IMG-POLYGON-001">
+    <edge id="EDGE-0145" source="RES-IMG-POLYGON-PRACTICE-001" target="CAP-IMG-POLYGON-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0145" source="RES-TXT-AMBIGUITY-PRACTICE-001" target="CAP-TXT-AMBIGUITY-001">
+    <edge id="EDGE-0146" source="RES-TXT-AMBIGUITY-PRACTICE-001" target="CAP-TXT-AMBIGUITY-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0146" source="RES-TXT-CLASSIFICATION-DECISION-TREE-001" target="CAP-TXT-CLASSIFY-001">
+    <edge id="EDGE-0147" source="RES-TXT-CLASSIFICATION-DECISION-TREE-001" target="CAP-TXT-CLASSIFY-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0147" source="RES-TXT-LABEL-VOCAB-WORKSHEET-001" target="CAP-TXT-LABEL-VALIDATE-001">
+    <edge id="EDGE-0148" source="RES-TXT-LABEL-VOCAB-WORKSHEET-001" target="CAP-TXT-LABEL-VALIDATE-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0148" source="RES-TXT-NER-BOUNDARY-CHECKLIST-001" target="CAP-TXT-ENTITY-TYPE-001">
+    <edge id="EDGE-0149" source="RES-TXT-NER-BOUNDARY-CHECKLIST-001" target="CAP-TXT-ENTITY-TYPE-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0149" source="RES-TXT-OFFSET-INSPECTOR-001" target="CAP-TXT-ENTITY-BOUNDARY-001">
+    <edge id="EDGE-0150" source="RES-TXT-OFFSET-INSPECTOR-001" target="CAP-TXT-ENTITY-BOUNDARY-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0150" source="RES-TXT-RELATION-MATRIX-001" target="CAP-TXT-RELATION-001">
+    <edge id="EDGE-0151" source="RES-TXT-RELATION-MATRIX-001" target="CAP-TXT-RELATION-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0151" source="RES-VID-EVENT-TIMELINE-001" target="CAP-VID-EVENT-BOUNDARY-001">
+    <edge id="EDGE-0152" source="RES-VID-EVENT-TIMELINE-001" target="CAP-VID-EVENT-BOUNDARY-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0152" source="RES-VID-EXPORT-QA-CHECKLIST-001" target="CAP-VID-EXPORT-QA-001">
+    <edge id="EDGE-0153" source="RES-VID-EXPORT-QA-CHECKLIST-001" target="CAP-VID-EXPORT-QA-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0153" source="RES-VID-FRAME-SAMPLING-WORKSHEET-001" target="CAP-VID-FRAME-SAMPLE-001">
+    <edge id="EDGE-0154" source="RES-VID-FRAME-SAMPLING-WORKSHEET-001" target="CAP-VID-FRAME-SAMPLE-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0154" source="RES-VID-INTERPOLATION-CHECKLIST-001" target="CAP-VID-TRACK-INTERPOLATE-001">
+    <edge id="EDGE-0155" source="RES-VID-INTERPOLATION-CHECKLIST-001" target="CAP-VID-TRACK-INTERPOLATE-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0155" source="RES-VID-OCCLUSION-REID-CARD-001" target="CAP-VID-OCCLUSION-REID-001">
+    <edge id="EDGE-0156" source="RES-VID-OCCLUSION-REID-CARD-001" target="CAP-VID-OCCLUSION-REID-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0156" source="RES-VID-TRACK-LEDGER-001" target="CAP-VID-OBJECT-TRACK-001">
+    <edge id="EDGE-0157" source="RES-VID-TRACK-LEDGER-001" target="CAP-VID-OBJECT-TRACK-001">
       <data key="e0">SUP</data>
       <data key="e1">支持</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0157" source="CAP-AUD-EMOTION-PARALING-001" target="CAP-VID-ACTION-EVENT-001">
+    <edge id="EDGE-0158" source="CAP-AUD-EMOTION-PARALING-001" target="CAP-VID-ACTION-EVENT-001">
       <data key="e0">REL</data>
       <data key="e1">关联</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0158" source="CAP-IMG-BOX-ANNOTATE-001" target="CAP-VID-FRAME-ANNOTATE-001">
+    <edge id="EDGE-0159" source="CAP-IMG-BOX-ANNOTATE-001" target="CAP-VID-FRAME-ANNOTATE-001">
       <data key="e0">REL</data>
       <data key="e1">关联</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0159" source="CAP-IMG-OCCLUSION-001" target="CAP-VID-OCCLUSION-REID-001">
+    <edge id="EDGE-0160" source="CAP-IMG-OCCLUSION-001" target="CAP-VID-OCCLUSION-REID-001">
       <data key="e0">REL</data>
       <data key="e1">关联</data>
       <data key="e2">{}</data>
     </edge>
-    <edge id="EDGE-0160" source="CAP-TXT-ENTITY-BOUNDARY-001" target="CAP-AUD-SEGMENT-ALIGN-001">
+    <edge id="EDGE-0161" source="KNG-AUD-SEGMENT-TIMESTAMP-001" target="CAP-AUD-SEGMENT-ALIGN-001">
       <data key="e0">REL</data>
       <data key="e1">关联</data>
-      <data key="e2">{}</data>
-    </edge>
-    <edge id="EDGE-0161" source="CAP-TXT-INTENT-001" target="CAP-AUD-WAKE-COMMAND-001">
-      <data key="e0">REL</data>
-      <data key="e1">关联</data>
-      <data key="e2">{}</data>
+      <data key="e2">{"purpose":"direct_rule_trace","replaces":"weak_cross_domain_analogy"}</data>
     </edge>
     <edge id="EDGE-0162" source="KNG-CORE-ERROR-TAXONOMY-001" target="KNG-AUD-NOISE-OVERLAP-001">
       <data key="e0">REL</data>

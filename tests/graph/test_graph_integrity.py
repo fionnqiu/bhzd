@@ -78,6 +78,43 @@ STABLE_KNG_IDENTITIES = {
         "source_refs": ["SRC-POLICY-IMAGE-TASK3-001"],
     },
 }
+STABLE_VIDEO_KNG_IDENTITIES = {
+    "KNG-VID-FRAME-ANNOTATION-001": {
+        "label": "视频帧标注格式",
+        "description": "CVAT 注释格式可在视频帧上保存标签和几何标注。",
+        "claim_type": "video_frame_annotation",
+        "claim_basis": "external_reference",
+        "source_refs": ["SRC-CVAT-ANNOTATION-FORMAT-251"],
+    },
+    "KNG-VID-TRACK-CONTINUITY-001": {
+        "label": "轨迹连续性",
+        "description": "CVAT 轨迹模式通过关键帧和插值维护跨帧轨迹。",
+        "claim_type": "video_track_operations",
+        "claim_basis": "external_reference",
+        "source_refs": ["SRC-CVAT-VIDEO-TRACK-001"],
+    },
+    "KNG-VID-OCCLUSION-REID-001": {
+        "label": "遮挡后目标重识别",
+        "description": "用位置、外观和运动证据判断轨迹是否延续。",
+        "claim_type": "video_reidentification_policy",
+        "claim_basis": "curriculum_draft",
+        "source_refs": [],
+    },
+    "KNG-VID-ACTION-TAXONOMY-001": {
+        "label": "行为事件本体",
+        "description": "事件类别需声明参与者、动作和排除条件。",
+        "claim_type": "video_action_taxonomy",
+        "claim_basis": "curriculum_draft",
+        "source_refs": [],
+    },
+    "KNG-VID-EVENT-START-END-001": {
+        "label": "事件时间区间",
+        "description": "WebVTT cue 用开始和结束时间戳表达视频时间区间；事件本体由任务另行定义。",
+        "claim_type": "video_temporal_cues",
+        "claim_basis": "external_reference",
+        "source_refs": ["SRC-W3C-WEBVTT-001"],
+    },
+}
 EXPECTED_POLICY_OVERLAYS = {
     "KNG-TXT-LABEL-VOCAB-001": "text_label_normalization_policy",
     "KNG-TXT-ENTITY-BOUNDARY-001": "text_entity_boundary_policy",
@@ -97,6 +134,20 @@ EXPECTED_POLICY_OVERLAYS = {
     "KNG-AUD-WAKEWORD-BOUNDARY-001": "audio_wakeword_detection_policy",
     "KNG-AUD-COMMAND-INTENT-001": "audio_command_intent_policy",
     "KNG-AUD-SEGMENT-TIMESTAMP-001": "audio_segment_alignment_policy",
+    "KNG-VID-FRAME-ANNOTATION-001": "video_frame_annotation_policy",
+    "KNG-VID-TRACK-CONTINUITY-001": "video_track_continuity_policy",
+    "KNG-VID-OCCLUSION-REID-001": "video_occlusion_reid_policy",
+    "KNG-VID-ACTION-TAXONOMY-001": "video_action_taxonomy_policy",
+    "KNG-VID-EVENT-START-END-001": "video_event_boundary_policy",
+}
+POLICY_OVERLAY_VERSION_OVERRIDES = {
+    "KNG-AUD-SPEAKER-TURN-001": "1.1.0",
+    "KNG-AUD-SEGMENT-TIMESTAMP-001": "1.1.0",
+    "KNG-VID-FRAME-ANNOTATION-001": "1.1.0",
+    "KNG-VID-TRACK-CONTINUITY-001": "1.1.0",
+    "KNG-VID-OCCLUSION-REID-001": "1.1.0",
+    "KNG-VID-ACTION-TAXONOMY-001": "1.1.0",
+    "KNG-VID-EVENT-START-END-001": "1.1.0",
 }
 REQUIRED_PATHS = (
     CATALOG_PATH,
@@ -332,6 +383,9 @@ def test_stable_kng_identities_and_additive_policy_overlays(graph):
         assert {field: knowledge[node_id][field] for field in expected} == expected
         assert "policy_overlays" not in knowledge[node_id]
 
+    for node_id, expected in STABLE_VIDEO_KNG_IDENTITIES.items():
+        assert {field: knowledge[node_id][field] for field in expected} == expected
+
     for node_id, claim_type in EXPECTED_POLICY_OVERLAYS.items():
         overlays = knowledge[node_id]["policy_overlays"]
         assert len(overlays) == 1
@@ -345,11 +399,54 @@ def test_stable_kng_identities_and_additive_policy_overlays(graph):
         } <= overlay.keys()
         assert overlay["claim_type"] == claim_type
         assert overlay["description"]
-        assert overlay["version"] == "1.0.0"
+        assert overlay["version"] == POLICY_OVERLAY_VERSION_OVERRIDES.get(
+            node_id, "1.0.0"
+        )
         assert len(overlay["source_refs"]) == 1
         source = sources[overlay["source_refs"][0]]
         assert source["source_kind"] == "project_policy"
         assert claim_type in source["supported_claim_types"]
+
+
+def test_task5_local_policy_sources_have_development_only_authority(graph):
+    sources = {
+        source["source_id"]: source
+        for source in load_json(SOURCE_REGISTRY_PATH)["sources"]
+    }
+    video = sources["SRC-POLICY-VIDEO-TASK5-001"]
+    scenarios = sources["SRC-POLICY-SCENARIOS-TASK5-001"]
+
+    for source in (video, scenarios):
+        assert source["source_kind"] == "project_policy"
+        assert source["authority_scope"] == "local_project_policy_only"
+        assert source["status"] == "verified"
+        assert source["publication_scope"] == "development_only"
+        assert source["human_release_allowed"] is False
+        assert source["license_or_authorization"]["publishable"] is True
+        assert source["usage_rights"]["citation_allowed"] is True
+        assert source["usage_rights"]["asset_redistribution_allowed"] is False
+        assert "AI-agent review scope only" in source["license_or_authorization"][
+            "review_note"
+        ]
+
+    assert video["data_type"] == "video"
+    assert set(video["supported_claim_types"]) >= {
+        "video_frame_annotation_policy",
+        "video_track_continuity_policy",
+        "video_occlusion_reid_policy",
+        "video_action_taxonomy_policy",
+        "video_event_boundary_policy",
+    }
+    assert scenarios["supported_data_types"] == [
+        "text",
+        "image",
+        "audio",
+        "video",
+    ]
+    assert set(scenarios["supported_claim_types"]) >= {
+        "scenario_rule_overlay_policy",
+        "scenario_structured_example_policy",
+    }
 
 
 def test_teaching_unit_links_respect_publication_gate(graph):
@@ -383,8 +480,11 @@ def test_teaching_unit_links_respect_publication_gate(graph):
         "TU-AUDIO-EMOTION-PARALINGUISTICS-001",
         "TU-AUDIO-WAKE-COMMAND-WORDS-001",
         "TU-AUDIO-SEGMENTATION-ALIGNMENT-001",
-        "TU-VIDEO-TRACK-ID-001",
+        "TU-VIDEO-FRAME-ANNOTATION-001",
+        "TU-VIDEO-OBJECT-TRACKING-001",
+        "TU-VIDEO-BEHAVIOR-EVENT-001",
     } <= linked_units
+    assert "TU-VIDEO-TRACK-ID-001" not in linked_units
     consumable_units = {
         link["unit_id"]
         for task in graph["nodes"]

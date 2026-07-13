@@ -1,0 +1,281 @@
+{
+  "schema_version": "1.0.0",
+  "manifest_id": "AUDIO-ASSET-MANIFEST-TASK4-001",
+  "description": "Resolves every Task 4 audio asset reference without treating inline structured fixtures as audio media.",
+  "canonicalization": {
+    "algorithm": "SHA-256 over UTF-8 canonical JSON",
+    "json_options": "ensure_ascii=false, sort_keys=true, separators=(',', ':')",
+    "digest_field": "inline_input_sha256"
+  },
+  "asset_count": 24,
+  "structured_fixture_count": 23,
+  "authorized_audio_count": 1,
+  "assets": [
+    {
+      "asset_id": "ASSET-AUDIO-TASK4-TONE-SILENCE-TONE-001",
+      "unit_id": "TU-AUDIO-SEGMENTATION-ALIGNMENT-001",
+      "source_item_id": "EX-AUDIO-SEGMENTATION-ALIGNMENT-001",
+      "representation": "authorized_audio",
+      "is_media": true,
+      "media_type": "audio/wav",
+      "file": "task4-segmentation-alignment.wav",
+      "sha256": "26b3cadaf7677da6ead19899d8513b4acd37c0b42aad64400885237ddb1b6752",
+      "authorization_file": "task4-segmentation-alignment.authorization.json",
+      "authorization_asset_id": "ASSET-AUDIO-TASK4-TONE-SILENCE-TONE-001",
+      "exercise_input_sha256": "1f71ba28a3b502678652081f14e21eaf0dc7faed9ffd294ad4128a1bda133ae9"
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-COMMAND-PRACTICE-001",
+      "unit_id": "TU-AUDIO-WAKE-COMMAND-WORDS-001",
+      "source_item_id": "EX-AUDIO-COMMAND-CLASSIFICATION-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "07e167c4e2acdc4adbdfec7af599ad63bce52c9ead693c621395bdcca958cdb8",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-EMOTION-EXERCISE-001",
+      "unit_id": "TU-AUDIO-EMOTION-PARALINGUISTICS-001",
+      "source_item_id": "EX-AUDIO-EMOTION-DUAL-TRACK-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "e1b71704ab073ca1bb35ea1ee20942c84e6c6bf00042b9d6df049d384ec16978",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-EMOTION-PARALINGUISTICS-001",
+      "unit_id": "TU-AUDIO-EMOTION-PARALINGUISTICS-001",
+      "source_item_id": "EX-AUDIO-EMOTION-PARALINGUISTICS-POS-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "5ca7de7e4fea05a49b2a49249d3cb076535c3367b901e037dd7a5fa0f7293218",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-EMOTION-PARALINGUISTICS-002",
+      "unit_id": "TU-AUDIO-EMOTION-PARALINGUISTICS-001",
+      "source_item_id": "EX-AUDIO-EMOTION-PARALINGUISTICS-NEG-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "714662473ae541f2d9beb43f09a96d06597f531a251d960f1cadb4f785199de3",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-EMOTION-PRACTICE-001",
+      "unit_id": "TU-AUDIO-EMOTION-PARALINGUISTICS-001",
+      "source_item_id": "EX-AUDIO-EMOTION-REVIEW-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "530ee57837fa944821f01ff235a937feea35953c363bdd7296cd7e58b01ac803",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-LANGUAGE-001",
+      "unit_id": "TU-AUDIO-LANGUAGE-DIALECT-001",
+      "source_item_id": "EX-AUDIO-LANGUAGE-POS-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "44ff790260779e699155381011bd7e435c92586012e22791648de3831ace7fa0",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-LANGUAGE-002",
+      "unit_id": "TU-AUDIO-LANGUAGE-DIALECT-001",
+      "source_item_id": "EX-AUDIO-LANGUAGE-NEG-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "95af13c4630a65db5e076e17d2868e4587e852a575a4bfa72dd6fd78b8a04375",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-LANGUAGE-EXERCISE-001",
+      "unit_id": "TU-AUDIO-LANGUAGE-DIALECT-001",
+      "source_item_id": "EXERCISE-AUDIO-LANGUAGE-DIALECT-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "f333ffc3c1ceebdf2064baa0a9f3b9368a3d21b471306cb10924dc7f648bf830",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-LANGUAGE-PRACTICE-001",
+      "unit_id": "TU-AUDIO-LANGUAGE-DIALECT-001",
+      "source_item_id": "EXERCISE-AUDIO-LANGUAGE-DIALECT-PRACTICE-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "069931d2c2e521f5a535547f5f87fa7faba9f484737fa6d106262366f3ff0f8f",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-SEGMENTATION-ALIGNMENT-001",
+      "unit_id": "TU-AUDIO-SEGMENTATION-ALIGNMENT-001",
+      "source_item_id": "EX-AUDIO-SEGMENTATION-ALIGNMENT-POS-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "e68fddb0103f23d56a4de03a0a6a86ac487c2152687318dbefac6287dabf189e",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-SEGMENTATION-ALIGNMENT-002",
+      "unit_id": "TU-AUDIO-SEGMENTATION-ALIGNMENT-001",
+      "source_item_id": "EX-AUDIO-SEGMENTATION-ALIGNMENT-NEG-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "1909369d05bd3f8fc8e4849732fc2c1fbb95126ad9c0315603d778180dcfa84f",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-SEGMENTATION-PRACTICE-001",
+      "unit_id": "TU-AUDIO-SEGMENTATION-ALIGNMENT-001",
+      "source_item_id": "EX-AUDIO-SEGMENTATION-AUDIT-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "3f64c63afbd6db05d178bf84e4b2724ef647fa06ac9fec2e9b99fb0a13df167d",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-SPEAKER-001",
+      "unit_id": "TU-AUDIO-SPEAKER-TURNS-001",
+      "source_item_id": "EX-AUDIO-SPEAKER-POS-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "858e74f065a450d2287f9422e210a43e253c38a7807171a6a3f95c709ec6790f",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-SPEAKER-002",
+      "unit_id": "TU-AUDIO-SPEAKER-TURNS-001",
+      "source_item_id": "EX-AUDIO-SPEAKER-NEG-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "95e89c31f926ea80eb45733a9e2e8d0699d0328a82e0c5ba9ca77dba7ae3808a",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-SPEAKER-EXERCISE-001",
+      "unit_id": "TU-AUDIO-SPEAKER-TURNS-001",
+      "source_item_id": "EXERCISE-AUDIO-SPEAKER-TURNS-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "8313a5490d86ed39fca69e615f1abcd2d369fc8a2f6ef8fdea4b5334c3eddf10",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-SPEAKER-PRACTICE-001",
+      "unit_id": "TU-AUDIO-SPEAKER-TURNS-001",
+      "source_item_id": "EXERCISE-AUDIO-SPEAKER-TURNS-PRACTICE-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "c0e817ee8add433ddb441823abcebd224920db6dc728b0a5d81db48859f1e958",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-TRANSCRIPTION-001",
+      "unit_id": "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001",
+      "source_item_id": "EX-AUDIO-TRANSCRIPTION-POS-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "4c7563da5060831274fd53e3d42aacaafe624fd8ab8ac6f113f90cce71326ac6",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-TRANSCRIPTION-002",
+      "unit_id": "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001",
+      "source_item_id": "EX-AUDIO-TRANSCRIPTION-NEG-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "b17c197dd763062400cd1e212321616b9775cd7868e40bc02791902f45684626",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-TRANSCRIPTION-EXERCISE-001",
+      "unit_id": "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001",
+      "source_item_id": "EXERCISE-AUDIO-TRANSCRIPTION-PUNCTUATION-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "87eba2f5fb2c717666fdf77dc4b527e59f224382b5e948d80f1a75741f12f506",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-TRANSCRIPTION-PRACTICE-001",
+      "unit_id": "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001",
+      "source_item_id": "EXERCISE-AUDIO-TRANSCRIPTION-PUNCTUATION-PRACTICE-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "257e8a8777ad2edc3d216447d8231729813af8fce03a51cca29c917206d8ca57",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-WAKE-COMMAND-EXERCISE-001",
+      "unit_id": "TU-AUDIO-WAKE-COMMAND-WORDS-001",
+      "source_item_id": "EX-AUDIO-WAKE-COMMAND-SEGMENT-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "973f15480e01e965edc9c33641394c1871d903e49b335f69a8a60b811de630f3",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-WAKE-COMMAND-WORDS-001",
+      "unit_id": "TU-AUDIO-WAKE-COMMAND-WORDS-001",
+      "source_item_id": "EX-AUDIO-WAKE-COMMAND-WORDS-POS-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "49ea7772464c27b49d4cce980e206ca32825ffd2cdaf4789dc6e282a63098694",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    },
+    {
+      "asset_id": "ASSET-SELF-AUDIO-WAKE-COMMAND-WORDS-002",
+      "unit_id": "TU-AUDIO-WAKE-COMMAND-WORDS-001",
+      "source_item_id": "EX-AUDIO-WAKE-COMMAND-WORDS-NEG-001",
+      "representation": "structured_fixture",
+      "is_media": false,
+      "media_type": "application/json",
+      "storage": "inline_input",
+      "inline_input_sha256": "2ebcd0c236165a3265928f67dbd3a8d82bfa0411518ead7d6126ddbb83037968",
+      "authorization": {"type": "self-authored", "contains_personal_data": false, "student_use_allowed": true}
+    }
+  ]
+}

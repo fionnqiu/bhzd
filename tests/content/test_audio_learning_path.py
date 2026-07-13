@@ -485,12 +485,12 @@ def test_recording_metadata_proves_wrong_feedback_remediation_and_correct_retry(
     assert metadata["viewport"]["height"] >= 700
 
 
-def test_curriculum_build_overrides_legacy_audio_but_keeps_legacy_video():
+def test_curriculum_build_overrides_legacy_audio_and_video_domains():
     builder = load_module(BUILD_CURRICULUM_PATH, "task4_curriculum_builder")
     first = builder.build_curriculum(ROOT / "data" / "curriculum", LEGACY_UNITS_PATH)
     second = builder.build_curriculum(ROOT / "data" / "curriculum", LEGACY_UNITS_PATH)
     assert first == second
-    assert len(first["units"]) == 17
+    assert len(first["units"]) == 19
     assert first["student_visible_unit_ids"] == sorted(
         first["student_visible_unit_ids"]
     )
@@ -501,21 +501,28 @@ def test_curriculum_build_overrides_legacy_audio_but_keeps_legacy_video():
     assert len(by_domain["text"]) == 5
     assert len(by_domain["image"]) == 5
     assert len(by_domain["audio"]) == 6
-    assert len(by_domain["video"]) == 1
+    assert len(by_domain["video"]) == 3
     assert {unit["id"] for unit in by_domain["audio"]} == {
         item["unit_id"] for item in EXPECTED_CAPABILITIES.values()
     }
     assert "TU-AUDIO-DATA-BINDING-001" not in {
         unit["id"] for unit in first["units"]
     }
-    assert by_domain["video"][0]["id"] == "TU-VIDEO-TRACK-ID-001"
+    assert {unit["id"] for unit in by_domain["video"]} == {
+        "TU-VIDEO-BEHAVIOR-EVENT-001",
+        "TU-VIDEO-FRAME-ANNOTATION-001",
+        "TU-VIDEO-OBJECT-TRACKING-001",
+    }
+    assert "TU-VIDEO-TRACK-ID-001" not in {
+        unit["id"] for unit in first["units"]
+    }
 
 
 def test_central_index_and_graph_keep_candidates_hidden_and_exact_counts():
     central = load_json(CENTRAL_UNITS_PATH)
     graph = load_json(GRAPH_PATH)
     audio_units = [unit for unit in central["units"] if unit["data_type"] == "audio"]
-    assert len(central["units"]) == 17
+    assert len(central["units"]) == 19
     assert len(audio_units) == 6
     assert all(unit["review_status"] == "draft" for unit in audio_units)
     assert all(unit["student_visible"] is False for unit in audio_units)
@@ -540,3 +547,13 @@ def test_central_index_and_graph_keep_candidates_hidden_and_exact_counts():
         assert link["student_visible"] is False
         assert link["in_student_visible_index"] is False
         assert link["consumable"] is False
+
+    video_units = [unit for unit in central["units"] if unit["data_type"] == "video"]
+    assert len(video_units) == 3
+    video_ids = {unit["id"] for unit in video_units}
+    linked_video = {link["unit_id"] for link in task_links if link["unit_id"] in video_ids}
+    assert linked_video == video_ids
+    assert all(unit["review_status"] == "draft" for unit in video_units)
+    assert all(unit["student_visible"] is False for unit in video_units)
+    assert all(unit["review_records"] == [] for unit in video_units)
+    assert not (video_ids & set(central["student_visible_unit_ids"]))
