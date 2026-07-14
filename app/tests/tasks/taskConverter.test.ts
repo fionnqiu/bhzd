@@ -10,6 +10,7 @@ import {
   teachingUnits,
 } from "../../src/data/rawData";
 import { createScenarioEngine } from "../../src/scenarios/scenarioEngine";
+import { APPROVED_PRODUCT_METADATA } from "../../src/tasks/productMetadata";
 import { createTaskConverter } from "../../src/tasks/taskConverter";
 
 const repositoryInput = { graph, scenarios, sourceRegistry, teachingUnits };
@@ -186,8 +187,13 @@ describe("task converter", () => {
         expect.objectContaining({
           name: expect.any(String),
           objectives: expect.any(Array),
-          role: "AI数据标注工程师",
+          role: APPROVED_PRODUCT_METADATA.role.value,
           scene: "车载语音标注",
+          provenance: {
+            roleSourceRef: APPROVED_PRODUCT_METADATA.role.sourceRef,
+            sceneSourceRef:
+              "data/scenarios/in-vehicle.json#scenario:SCN-IN-VEHICLE-001",
+          },
           capabilityPath: expect.any(Array),
           capabilityIds: expect.any(Array),
           knowledgeIds: expect.any(Array),
@@ -239,6 +245,38 @@ describe("task converter", () => {
     });
   });
 
+  it("uses approved metadata with provenance for the default scene", () => {
+    const result = requireCards("语音唤醒词与命令意图标注");
+
+    expect(
+      result.cards.every(
+        ({ role, scene, provenance }) =>
+          role === APPROVED_PRODUCT_METADATA.role.value &&
+          scene === APPROVED_PRODUCT_METADATA.defaultScene.value &&
+          provenance.roleSourceRef ===
+            APPROVED_PRODUCT_METADATA.role.sourceRef &&
+          provenance.sceneSourceRef ===
+            APPROVED_PRODUCT_METADATA.defaultScene.sourceRef,
+      ),
+    ).toBe(true);
+  });
+
+  it("uses the controlled default metadata for an unknown scenario", () => {
+    const result = requireCards(
+      "语音唤醒词与命令意图标注",
+      "SCN-UNKNOWN-001",
+    );
+
+    expect(result.cards).not.toHaveLength(0);
+    expect(
+      result.cards.every(({ scene, provenance }) =>
+        scene === APPROVED_PRODUCT_METADATA.defaultScene.value &&
+        provenance.sceneSourceRef ===
+          APPROVED_PRODUCT_METADATA.defaultScene.sourceRef,
+      ),
+    ).toBe(true);
+  });
+
   it("does not apply a scenario that does not declare the matched data type", () => {
     const result = requireCards(
       "文本实体边界标注",
@@ -271,6 +309,30 @@ describe("task converter", () => {
     converter.convert("医疗文本实体标注", "SCN-MEDICAL-001");
 
     expect(repositoryInput).toEqual(before);
+  });
+});
+
+describe("approved product metadata", () => {
+  it("is deeply frozen and carries stable semantic source anchors", () => {
+    expect(APPROVED_PRODUCT_METADATA).toEqual(
+      expect.objectContaining({
+        role: {
+          value: "AI数据标注工程师",
+          sourceRef: "docs/标航智导.md#4.1-岗位定义",
+        },
+        defaultScene: {
+          value: "通用标注规则",
+          sourceRef:
+            "docs/superpowers/specs/2026-07-14-task6-teaching-application-design.md#6.4-场景切换",
+        },
+      }),
+    );
+    expect(Object.isFrozen(APPROVED_PRODUCT_METADATA)).toBe(true);
+    expect(Object.isFrozen(APPROVED_PRODUCT_METADATA.role)).toBe(true);
+    expect(Object.isFrozen(APPROVED_PRODUCT_METADATA.defaultScene)).toBe(true);
+    expect(Object.isFrozen(APPROVED_PRODUCT_METADATA.scenarioDocuments)).toBe(
+      true,
+    );
   });
 });
 

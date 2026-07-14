@@ -8,6 +8,12 @@ import {
   type ScenarioEngine,
   type ScenarioRule,
 } from "../scenarios/scenarioEngine";
+import { APPROVED_PRODUCT_METADATA } from "./productMetadata";
+
+export interface TaskCardProvenance {
+  roleSourceRef: string;
+  sceneSourceRef: string;
+}
 
 export interface TaskCard {
   name: string;
@@ -26,6 +32,7 @@ export interface TaskCard {
   scenarioRuleIds: string[];
   scenarioRules: ScenarioRule[];
   contentKind: "lesson" | "structure";
+  provenance: TaskCardProvenance;
 }
 
 const unique = (values: readonly string[]): string[] => [...new Set(values)];
@@ -182,6 +189,12 @@ const buildTaskCard = (
     ({ origin }) => origin === "scenario",
   );
   const scenario = scenarioId === null ? undefined : repository.getScenario(scenarioId);
+  const scenarioSourceRef =
+    scenario === undefined
+      ? undefined
+      : APPROVED_PRODUCT_METADATA.scenarioDocuments[scenario.id];
+  const hasSourcedScenario =
+    scenario !== undefined && scenarioSourceRef !== undefined;
   const contentKind = units.length > 0 ? "lesson" : "structure";
   const objectives =
     contentKind === "lesson"
@@ -198,8 +211,10 @@ const buildTaskCard = (
   return {
     name: units[0]?.title ?? capability.label,
     objectives,
-    role: "AI数据标注工程师",
-    scene: scenario?.name ?? "通用规则",
+    role: APPROVED_PRODUCT_METADATA.role.value,
+    scene: hasSourcedScenario
+      ? scenario.name
+      : APPROVED_PRODUCT_METADATA.defaultScene.value,
     capabilityPath: [...capabilityPath],
     capabilityIds: [capabilityId],
     knowledgeIds,
@@ -220,6 +235,12 @@ const buildTaskCard = (
       sourceRefs: [...rule.sourceRefs],
     })),
     contentKind,
+    provenance: {
+      roleSourceRef: APPROVED_PRODUCT_METADATA.role.sourceRef,
+      sceneSourceRef: hasSourcedScenario
+        ? scenarioSourceRef
+        : APPROVED_PRODUCT_METADATA.defaultScene.sourceRef,
+    },
   };
 };
 
