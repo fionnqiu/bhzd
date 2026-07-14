@@ -424,3 +424,22 @@
 **Remaining verification:**
 - The written specification still requires the user's final review before the implementation plan is created.
 - Real teacher/student trials remain gated on human domain-expert release approval and coordinated participants.
+
+## [2026-07-14 20:00] Add the reviewed Task 6 implementation plan
+
+**Changed files:**
+- `docs/superpowers/plans/2026-07-14-task6-teaching-application.md`
+- `docs/superpowers/specs/2026-07-14-task6-teaching-application-design.md`
+- `docs/logs/document-changelog.md`
+
+**Reason:**
+- Convert the user-reviewed Task 6 design into TDD-sized implementation increments with exact files, commands, verification expectations, commit checkpoints, and an explicit real-human trial gate.
+
+**Verification:**
+- Mapped every design section to one or more implementation tasks covering canonical data, publication gates, graph planning, evaluator parity, learning state, scenarios, task conversion, four-format diagnostics, application UI, E2E coverage, accessibility, browser checks, and trial evidence.
+- Recorded the user's final written-spec approval in the Task 6 design status.
+- Checked that the plan never marks real trials complete without human domain release and genuine participant records.
+- Scanned the plan for unresolved placeholders and inconsistent public interfaces.
+
+**Remaining verification:**
+- Application code has not started; the execution approach must be selected before following the plan.
