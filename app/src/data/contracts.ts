@@ -3,8 +3,8 @@ export interface ExtensibleFields {
 }
 
 export interface Exercise extends ExtensibleFields {
-  exercise_id: string;
-  exercise_type: string;
+  exercise_id?: string;
+  exercise_type?: string;
   data_version: string;
   input: ExtensibleFields;
   student_action: string;
@@ -16,8 +16,8 @@ export interface TeachingUnit extends ExtensibleFields {
   id: string;
   data_type: string;
   title: string;
-  capability_key: string;
-  goals: string[];
+  capability_key?: string;
+  goals?: string[];
   learning_objectives: string[];
   prerequisites: string[];
   rule_refs: string[];
