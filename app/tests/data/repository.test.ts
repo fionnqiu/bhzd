@@ -134,6 +134,17 @@ const appendTwoCopies = <T>(items: T[], label: string): void => {
   items.push(structuredClone(original), structuredClone(original));
 };
 
+const unsupportedRepositoryValues: Array<{
+  label: string;
+  create: () => unknown;
+}> = [
+  { label: "Map", create: () => new Map([["key", "value"]]) },
+  { label: "Set", create: () => new Set(["value"]) },
+  { label: "Date", create: () => new Date("2026-07-14T00:00:00.000Z") },
+  { label: "Uint8Array", create: () => new Uint8Array([1]) },
+  { label: "function", create: () => () => "unsupported" },
+];
+
 describe("published teaching repository", () => {
   it("exposes exactly the indexed published student-visible units", () => {
     const visibleIds = new Set(teachingUnits.student_visible_unit_ids);
@@ -289,11 +300,29 @@ describe("published teaching repository", () => {
       source_refs: ["SRC-ANSWER-PAYLOAD-001"],
       rule_ref: "KNG-ANSWER-PAYLOAD-001",
     };
-    unit.exercise.submission = {
-      prerequisite: "CAP-SUBMISSION-PAYLOAD-001",
-    };
+    unit.exercise.evaluation.diagnostic_rules = [
+      {
+        submission: {
+          prerequisite: "CAP-SUBMISSION-PAYLOAD-001",
+        },
+      },
+    ];
 
     expect(createRepository(fixture).validate().errors).toEqual([]);
+  });
+
+  it("does not skip a real reference merely because metadata is named input", () => {
+    const fixture = makeFixture();
+    const unit = firstOrThrow(fixture.teachingUnits.units, "teaching unit");
+    unit.provenance_metadata = {
+      input: {
+        source_ref: "SRC-MISSING-METADATA-001",
+      },
+    };
+
+    expect(createRepository(fixture).validate().errors).toContain(
+      "teaching-unit TU-TEST-001: missing source ref SRC-MISSING-METADATA-001",
+    );
   });
 
   it("handles self-referential and mutually referential arrays", () => {
@@ -310,6 +339,31 @@ describe("published teaching repository", () => {
     const repository = createRepository(fixture);
 
     expect(repository.validate().errors).toEqual([]);
+  });
+
+  it.each(unsupportedRepositoryValues)(
+    "rejects unsupported $label values with a stable path and type",
+    ({ label, create }) => {
+      const fixture = makeFixture();
+      const unit = firstOrThrow(fixture.teachingUnits.units, "teaching unit");
+      unit.exercise.unsupported_value = create();
+
+      expect(() => createRepository(fixture)).toThrowError(
+        new TypeError(
+          `Unsupported repository input at $.teachingUnits.units[0].exercise.unsupported_value: ${label}`,
+        ),
+      );
+    },
+  );
+
+  it("wraps structured-clone failures in a stable repository TypeError", () => {
+    const fixture = makeFixture();
+    const unit = firstOrThrow(fixture.teachingUnits.units, "teaching unit");
+    unit.exercise.clone_failure = new Proxy({ safe: true }, {});
+
+    expect(() => createRepository(fixture)).toThrowError(
+      new TypeError("Failed to clone repository input after plain-data validation."),
+    );
   });
 
   it("reports missing graph teaching-unit references", () => {

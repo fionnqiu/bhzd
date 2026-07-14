@@ -70,16 +70,104 @@ const deepFreeze = <T>(value: T, seen = new WeakSet<object>()): T => {
   return value;
 };
 
-const learnerPayloadFields = new Set(["input", "answer", "submission"]);
+const appendPropertyPath = (path: string, propertyName: string): string =>
+  /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(propertyName)
+    ? `${path}.${propertyName}`
+    : `${path}[${JSON.stringify(propertyName)}]`;
 
-const isLearnerPayloadPath = (path: readonly string[]): boolean => {
+const unsupportedValueType = (value: unknown): string => {
+  if (typeof value !== "object" || value === null) {
+    return typeof value;
+  }
+
+  const tag = Object.prototype.toString.call(value);
+  return tag.slice(8, -1);
+};
+
+const assertPlainRepositoryInput = (root: unknown): void => {
+  const seen = new WeakSet<object>();
+
+  const visit = (value: unknown, path: string): void => {
+    if (
+      value === null ||
+      value === undefined ||
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      return;
+    }
+
+    if (typeof value !== "object") {
+      throw new TypeError(
+        `Unsupported repository input at ${path}: ${unsupportedValueType(value)}`,
+      );
+    }
+
+    if (seen.has(value)) {
+      return;
+    }
+    seen.add(value);
+
+    if (Array.isArray(value)) {
+      for (const [index, item] of value.entries()) {
+        visit(item, `${path}[${index}]`);
+      }
+      return;
+    }
+
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new TypeError(
+        `Unsupported repository input at ${path}: ${unsupportedValueType(value)}`,
+      );
+    }
+
+    for (const [propertyName, nested] of Object.entries(value)) {
+      visit(nested, appendPropertyPath(path, propertyName));
+    }
+  };
+
+  visit(root, "$");
+};
+
+const cloneRepositoryInput = (input: RepositoryInput): RepositoryInput => {
+  assertPlainRepositoryInput(input);
+
+  try {
+    return structuredClone(input);
+  } catch {
+    throw new TypeError(
+      "Failed to clone repository input after plain-data validation.",
+    );
+  }
+};
+
+type PathFilter = (path: readonly string[]) => boolean;
+
+const keepPath = (): boolean => false;
+
+const isTeachingUnitLearnerPayloadPath: PathFilter = (path) => {
   const field = path.at(-1);
-  return field !== undefined && learnerPayloadFields.has(field);
+  const parent = path.at(-2);
+
+  if ((field === "input" || field === "answer") && parent === "exercise") {
+    return true;
+  }
+
+  if (field !== "submission") {
+    return false;
+  }
+
+  const exerciseIndex = path.lastIndexOf("exercise");
+  const diagnosticRulesIndex = path.lastIndexOf("diagnostic_rules");
+  return exerciseIndex >= 0 && diagnosticRulesIndex > exerciseIndex;
 };
 
 const walkRecords = (
   root: unknown,
   visit: (record: Record<string, unknown>) => void,
+  shouldSkipPath: PathFilter = keepPath,
 ): void => {
   const seen = new WeakSet<object>();
 
@@ -105,7 +193,7 @@ const walkRecords = (
 
     for (const [propertyName, nested] of Object.entries(value)) {
       const nestedPath = [...path, propertyName];
-      if (!isLearnerPayloadPath(nestedPath)) {
+      if (!shouldSkipPath(nestedPath)) {
         walk(nested, nestedPath);
       }
     }
@@ -117,35 +205,44 @@ const walkRecords = (
 const collectStringPropertyValues = (
   root: unknown,
   propertyName: string,
+  shouldSkipPath: PathFilter = keepPath,
 ): string[] => {
   const values: string[] = [];
 
-  walkRecords(root, (record) => {
-    const candidate = record[propertyName];
+  walkRecords(
+    root,
+    (record) => {
+      const candidate = record[propertyName];
 
-    if (typeof candidate === "string") {
-      values.push(candidate);
-      return;
-    }
+      if (typeof candidate === "string") {
+        values.push(candidate);
+        return;
+      }
 
-    if (Array.isArray(candidate)) {
-      for (const item of candidate) {
-        if (typeof item === "string") {
-          values.push(item);
+      if (Array.isArray(candidate)) {
+        for (const item of candidate) {
+          if (typeof item === "string") {
+            values.push(item);
+          }
         }
       }
-    }
-  });
+    },
+    shouldSkipPath,
+  );
 
   return values;
 };
 
 const unique = (values: string[]): string[] => [...new Set(values)];
 
-const collectReferences = (root: unknown, propertyNames: string[]): string[] =>
+const collectReferences = (
+  root: unknown,
+  propertyNames: string[],
+  shouldSkipPath: PathFilter = keepPath,
+): string[] =>
   unique(
     propertyNames.flatMap((propertyName) =>
-      collectStringPropertyValues(root, propertyName),
+      collectStringPropertyValues(root, propertyName, shouldSkipPath),
     ),
   );
 
@@ -225,7 +322,7 @@ const addEdge = (
 
 export const createRepository = (input: RepositoryInput): TeachingRepository => {
   const { graph, scenarios, sourceRegistry, teachingUnits } = deepFreeze(
-    structuredClone(input),
+    cloneRepositoryInput(input),
   );
   const unitIndex = createIndex(teachingUnits.units, (unit) => unit.id, "teaching-unit");
   const nodeIndex = createIndex(graph.nodes, (node) => node.id, "graph-node");
@@ -297,7 +394,11 @@ export const createRepository = (input: RepositoryInput): TeachingRepository => 
       );
     }
 
-    for (const sourceRef of collectReferences(unit, ["source_ref", "source_refs"])) {
+    for (const sourceRef of collectReferences(
+      unit,
+      ["source_ref", "source_refs"],
+      isTeachingUnitLearnerPayloadPath,
+    )) {
       if (!sourceIndex.byId.has(sourceRef)) {
         validationErrors.push(
           `teaching-unit ${unit.id}: missing source ref ${sourceRef}`,
@@ -305,16 +406,21 @@ export const createRepository = (input: RepositoryInput): TeachingRepository => 
       }
     }
 
-    for (const ruleRef of collectReferences(unit, ["rule_ref", "rule_refs"])) {
+    for (const ruleRef of collectReferences(
+      unit,
+      ["rule_ref", "rule_refs"],
+      isTeachingUnitLearnerPayloadPath,
+    )) {
       if (!nodeIndex.byId.has(ruleRef)) {
         validationErrors.push(`teaching-unit ${unit.id}: missing rule ref ${ruleRef}`);
       }
     }
 
-    for (const prerequisite of collectReferences(unit, [
-      "prerequisite",
-      "prerequisites",
-    ])) {
+    for (const prerequisite of collectReferences(
+      unit,
+      ["prerequisite", "prerequisites"],
+      isTeachingUnitLearnerPayloadPath,
+    )) {
       if (!nodeIndex.byId.has(prerequisite)) {
         validationErrors.push(
           `teaching-unit ${unit.id}: missing prerequisite node ${prerequisite}`,
