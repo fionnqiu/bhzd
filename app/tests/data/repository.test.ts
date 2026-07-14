@@ -311,17 +311,31 @@ describe("published teaching repository", () => {
     expect(createRepository(fixture).validate().errors).toEqual([]);
   });
 
-  it("does not skip a real reference merely because metadata is named input", () => {
+  it("does not skip learner-like paths nested below provenance metadata", () => {
     const fixture = makeFixture();
     const unit = firstOrThrow(fixture.teachingUnits.units, "teaching unit");
     unit.provenance_metadata = {
-      input: {
-        source_ref: "SRC-MISSING-METADATA-001",
+      exercise: {
+        input: {
+          source_ref: "SRC-MISSING-METADATA-INPUT-001",
+        },
+        evaluation: {
+          diagnostic_rules: [
+            {
+              submission: {
+                source_ref: "SRC-MISSING-METADATA-SUBMISSION-001",
+              },
+            },
+          ],
+        },
       },
     };
 
-    expect(createRepository(fixture).validate().errors).toContain(
-      "teaching-unit TU-TEST-001: missing source ref SRC-MISSING-METADATA-001",
+    expect(createRepository(fixture).validate().errors).toEqual(
+      expect.arrayContaining([
+        "teaching-unit TU-TEST-001: missing source ref SRC-MISSING-METADATA-INPUT-001",
+        "teaching-unit TU-TEST-001: missing source ref SRC-MISSING-METADATA-SUBMISSION-001",
+      ]),
     );
   });
 
@@ -355,6 +369,117 @@ describe("published teaching repository", () => {
       );
     },
   );
+
+  it("rejects an unsupported value stored in an enumerable array property", () => {
+    const fixture = makeFixture();
+    const unit = firstOrThrow(fixture.teachingUnits.units, "teaching unit");
+    const metadata: unknown[] = [];
+    Object.defineProperty(metadata, "extra", {
+      configurable: true,
+      enumerable: true,
+      value: new Map([["key", "value"]]),
+      writable: true,
+    });
+    unit.exercise.array_metadata = metadata;
+
+    expect(() => createRepository(fixture)).toThrowError(
+      new TypeError(
+        "Unsupported repository input at $.teachingUnits.units[0].exercise.array_metadata.extra: Map",
+      ),
+    );
+  });
+
+  it("rejects enumerable plain-object accessors without evaluating them", () => {
+    const fixture = makeFixture();
+    const unit = firstOrThrow(fixture.teachingUnits.units, "teaching unit");
+    const metadata: Record<string, unknown> = {};
+    let getterCalls = 0;
+    Object.defineProperty(metadata, "secret", {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        getterCalls += 1;
+        return new Map([["key", "value"]]);
+      },
+    });
+    unit.exercise.object_accessor = metadata;
+
+    expect(() => createRepository(fixture)).toThrowError(
+      new TypeError(
+        "Unsupported repository input at $.teachingUnits.units[0].exercise.object_accessor.secret: accessor",
+      ),
+    );
+    expect(getterCalls).toBe(0);
+  });
+
+  it("rejects enumerable array accessors without evaluating them", () => {
+    const fixture = makeFixture();
+    const unit = firstOrThrow(fixture.teachingUnits.units, "teaching unit");
+    const metadata: unknown[] = [];
+    let getterCalls = 0;
+    Object.defineProperty(metadata, "extra", {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        getterCalls += 1;
+        return "secret";
+      },
+    });
+    unit.exercise.array_accessor = metadata;
+
+    expect(() => createRepository(fixture)).toThrowError(
+      new TypeError(
+        "Unsupported repository input at $.teachingUnits.units[0].exercise.array_accessor.extra: accessor",
+      ),
+    );
+    expect(getterCalls).toBe(0);
+  });
+
+  it.each([
+    {
+      label: "throwing ownKeys trap",
+      create: () =>
+        new Proxy(
+          {},
+          {
+            ownKeys: () => {
+              throw new Error("proxy trap leaked");
+            },
+          },
+        ),
+    },
+    {
+      label: "revoked proxy",
+      create: () => {
+        const revocable = Proxy.revocable({}, {});
+        revocable.revoke();
+        return revocable.proxy;
+      },
+    },
+  ])("wraps a $label inspection failure with its repository path", ({ create }) => {
+    const fixture = makeFixture();
+    const unit = firstOrThrow(fixture.teachingUnits.units, "teaching unit");
+    unit.exercise.proxy_failure = create();
+
+    expect(() => createRepository(fixture)).toThrowError(
+      new TypeError(
+        "Failed to inspect repository input at $.teachingUnits.units[0].exercise.proxy_failure.",
+      ),
+    );
+  });
+
+  it("documents that structuredClone drops enumerable symbol-keyed properties", () => {
+    const fixture = makeFixture();
+    const unit = firstOrThrow(fixture.teachingUnits.units, "teaching unit");
+    const metadata: Record<string, unknown> = {};
+    Object.defineProperty(metadata, Symbol("ignored"), {
+      enumerable: true,
+      value: new Map([["key", "value"]]),
+    });
+    unit.exercise.symbol_metadata = metadata;
+
+    expect(createRepository(fixture).validate().errors).toEqual([]);
+  });
 
   it("wraps structured-clone failures in a stable repository TypeError", () => {
     const fixture = makeFixture();

@@ -75,6 +75,17 @@ const appendPropertyPath = (path: string, propertyName: string): string =>
     ? `${path}.${propertyName}`
     : `${path}[${JSON.stringify(propertyName)}]`;
 
+const isArrayIndex = (propertyName: string): boolean =>
+  /^(0|[1-9][0-9]*)$/.test(propertyName);
+
+const stableRepositoryInputErrors = new WeakSet<Error>();
+
+const repositoryInputTypeError = (message: string): TypeError => {
+  const error = new TypeError(message);
+  stableRepositoryInputErrors.add(error);
+  return error;
+};
+
 const unsupportedValueType = (value: unknown): string => {
   if (typeof value !== "object" || value === null) {
     return typeof value;
@@ -87,7 +98,7 @@ const unsupportedValueType = (value: unknown): string => {
 const assertPlainRepositoryInput = (root: unknown): void => {
   const seen = new WeakSet<object>();
 
-  const visit = (value: unknown, path: string): void => {
+  const inspect = (value: unknown, path: string): void => {
     if (
       value === null ||
       value === undefined ||
@@ -99,7 +110,7 @@ const assertPlainRepositoryInput = (root: unknown): void => {
     }
 
     if (typeof value !== "object") {
-      throw new TypeError(
+      throw repositoryInputTypeError(
         `Unsupported repository input at ${path}: ${unsupportedValueType(value)}`,
       );
     }
@@ -109,22 +120,52 @@ const assertPlainRepositoryInput = (root: unknown): void => {
     }
     seen.add(value);
 
-    if (Array.isArray(value)) {
-      for (const [index, item] of value.entries()) {
-        visit(item, `${path}[${index}]`);
+    const array = Array.isArray(value);
+
+    if (!array) {
+      const prototype = Object.getPrototypeOf(value);
+      if (prototype !== Object.prototype && prototype !== null) {
+        throw repositoryInputTypeError(
+          `Unsupported repository input at ${path}: ${unsupportedValueType(value)}`,
+        );
       }
-      return;
     }
 
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) {
-      throw new TypeError(
-        `Unsupported repository input at ${path}: ${unsupportedValueType(value)}`,
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    for (const [propertyName, descriptor] of Object.entries(descriptors)) {
+      if (
+        !descriptor.enumerable ||
+        (array && propertyName === "length")
+      ) {
+        continue;
+      }
+
+      const propertyPath =
+        array && isArrayIndex(propertyName)
+          ? `${path}[${propertyName}]`
+          : appendPropertyPath(path, propertyName);
+
+      if (!("value" in descriptor)) {
+        throw repositoryInputTypeError(
+          `Unsupported repository input at ${propertyPath}: accessor`,
+        );
+      }
+
+      visit(descriptor.value, propertyPath);
+    }
+  };
+
+  const visit = (value: unknown, path: string): void => {
+    try {
+      inspect(value, path);
+    } catch (error) {
+      if (error instanceof Error && stableRepositoryInputErrors.has(error)) {
+        throw error;
+      }
+
+      throw repositoryInputTypeError(
+        `Failed to inspect repository input at ${path}.`,
       );
-    }
-
-    for (const [propertyName, nested] of Object.entries(value)) {
-      visit(nested, appendPropertyPath(path, propertyName));
     }
   };
 
@@ -148,20 +189,23 @@ type PathFilter = (path: readonly string[]) => boolean;
 const keepPath = (): boolean => false;
 
 const isTeachingUnitLearnerPayloadPath: PathFilter = (path) => {
-  const field = path.at(-1);
-  const parent = path.at(-2);
-
-  if ((field === "input" || field === "answer") && parent === "exercise") {
+  if (
+    path.length === 2 &&
+    path[0] === "exercise" &&
+    (path[1] === "input" || path[1] === "answer")
+  ) {
     return true;
   }
 
-  if (field !== "submission") {
-    return false;
-  }
-
-  const exerciseIndex = path.lastIndexOf("exercise");
-  const diagnosticRulesIndex = path.lastIndexOf("diagnostic_rules");
-  return exerciseIndex >= 0 && diagnosticRulesIndex > exerciseIndex;
+  return (
+    path.length === 5 &&
+    path[0] === "exercise" &&
+    path[1] === "evaluation" &&
+    path[2] === "diagnostic_rules" &&
+    path[3] !== undefined &&
+    isArrayIndex(path[3]) &&
+    path[4] === "submission"
+  );
 };
 
 const walkRecords = (
