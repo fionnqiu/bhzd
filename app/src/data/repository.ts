@@ -17,19 +17,28 @@ export interface RepositoryInput {
   teachingUnits: TeachingUnitDocument;
 }
 
+export type DeepReadonly<T> =
+  T extends (...arguments_: never[]) => unknown
+    ? T
+    : T extends readonly (infer Item)[]
+      ? readonly DeepReadonly<Item>[]
+      : T extends object
+        ? { readonly [Key in keyof T]: DeepReadonly<T[Key]> }
+        : T;
+
 export interface RepositoryValidationResult {
-  errors: string[];
+  readonly errors: readonly string[];
 }
 
 export interface TeachingRepository {
-  listConsumableUnits(): TeachingUnit[];
-  getNode(id: string): GraphNode | undefined;
-  getUnit(id: string): TeachingUnit | undefined;
-  getSource(id: string): SourceRegistry | undefined;
-  getScenario(id: string): Scenario | undefined;
-  getIncomingEdges(id: string): GraphEdge[];
-  getOutgoingEdges(id: string): GraphEdge[];
-  getConsumableUnitsForNode(id: string): TeachingUnit[];
+  listConsumableUnits(): DeepReadonly<TeachingUnit[]>;
+  getNode(id: string): DeepReadonly<GraphNode> | undefined;
+  getUnit(id: string): DeepReadonly<TeachingUnit> | undefined;
+  getSource(id: string): DeepReadonly<SourceRegistry> | undefined;
+  getScenario(id: string): DeepReadonly<Scenario> | undefined;
+  getIncomingEdges(id: string): DeepReadonly<GraphEdge[]>;
+  getOutgoingEdges(id: string): DeepReadonly<GraphEdge[]>;
+  getConsumableUnitsForNode(id: string): DeepReadonly<TeachingUnit[]>;
   validate(): RepositoryValidationResult;
 }
 
@@ -41,33 +50,68 @@ interface IndexResult<T> {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+const deepFreeze = <T>(value: T, seen = new WeakSet<object>()): T => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    seen.has(value) ||
+    Object.isFrozen(value)
+  ) {
+    return value;
+  }
+
+  seen.add(value);
+
+  for (const nested of Object.values(value)) {
+    deepFreeze(nested, seen);
+  }
+
+  Object.freeze(value);
+  return value;
+};
+
+const learnerPayloadFields = new Set(["input", "answer", "submission"]);
+
+const isLearnerPayloadPath = (path: readonly string[]): boolean => {
+  const field = path.at(-1);
+  return field !== undefined && learnerPayloadFields.has(field);
+};
+
 const walkRecords = (
   root: unknown,
   visit: (record: Record<string, unknown>) => void,
 ): void => {
   const seen = new WeakSet<object>();
 
-  const walk = (value: unknown): void => {
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        walk(item);
-      }
-      return;
-    }
-
-    if (!isRecord(value) || seen.has(value)) {
+  const walk = (value: unknown, path: readonly string[]): void => {
+    if (typeof value !== "object" || value === null || seen.has(value)) {
       return;
     }
 
     seen.add(value);
+
+    if (Array.isArray(value)) {
+      for (const [index, item] of value.entries()) {
+        walk(item, [...path, String(index)]);
+      }
+      return;
+    }
+
+    if (!isRecord(value)) {
+      return;
+    }
+
     visit(value);
 
-    for (const nested of Object.values(value)) {
-      walk(nested);
+    for (const [propertyName, nested] of Object.entries(value)) {
+      const nestedPath = [...path, propertyName];
+      if (!isLearnerPayloadPath(nestedPath)) {
+        walk(nested, nestedPath);
+      }
     }
   };
 
-  walk(root);
+  walk(root, []);
 };
 
 const collectStringPropertyValues = (
@@ -121,18 +165,24 @@ const getTeachingUnitRefs = (node: GraphNode): string[] => {
 };
 
 const createIndex = <T>(
-  items: T[],
+  items: readonly T[],
   getId: (item: T) => string,
   entityType: string,
 ): IndexResult<T> => {
   const byId = new Map<string, T>();
   const duplicateErrors: string[] = [];
+  const reportedDuplicates = new Set<string>();
 
   for (const item of items) {
     const id = getId(item);
 
-    if (byId.has(id)) {
+    if (byId.has(id) && !reportedDuplicates.has(id)) {
       duplicateErrors.push(`duplicate ${entityType} ID ${id}`);
+      reportedDuplicates.add(id);
+      continue;
+    }
+
+    if (byId.has(id)) {
       continue;
     }
 
@@ -173,12 +223,10 @@ const addEdge = (
   existing.push(edge);
 };
 
-export const createRepository = ({
-  graph,
-  scenarios,
-  sourceRegistry,
-  teachingUnits,
-}: RepositoryInput): TeachingRepository => {
+export const createRepository = (input: RepositoryInput): TeachingRepository => {
+  const { graph, scenarios, sourceRegistry, teachingUnits } = deepFreeze(
+    structuredClone(input),
+  );
   const unitIndex = createIndex(teachingUnits.units, (unit) => unit.id, "teaching-unit");
   const nodeIndex = createIndex(graph.nodes, (node) => node.id, "graph-node");
   const sourceIndex = createIndex(
@@ -360,18 +408,29 @@ export const createRepository = ({
     }
   }
 
+  const validationResult = deepFreeze({ errors: [...validationErrors] });
+
   return Object.freeze({
-    listConsumableUnits: (): TeachingUnit[] => [...consumableUnits],
-    getNode: (id: string): GraphNode | undefined => nodeIndex.byId.get(id),
-    getUnit: (id: string): TeachingUnit | undefined => unitIndex.byId.get(id),
-    getSource: (id: string): SourceRegistry | undefined => sourceIndex.byId.get(id),
-    getScenario: (id: string): Scenario | undefined => scenarioIndex.byId.get(id),
-    getIncomingEdges: (id: string): GraphEdge[] => [...(incomingEdges.get(id) ?? [])],
-    getOutgoingEdges: (id: string): GraphEdge[] => [...(outgoingEdges.get(id) ?? [])],
-    getConsumableUnitsForNode: (id: string): TeachingUnit[] =>
-      (teachingUnitRefs.get(id) ?? [])
-        .map((unitId) => unitIndex.byId.get(unitId))
-        .filter((unit): unit is TeachingUnit => unit !== undefined && isConsumable(unit)),
-    validate: (): RepositoryValidationResult => ({ errors: [...validationErrors] }),
+    listConsumableUnits: (): DeepReadonly<TeachingUnit[]> =>
+      deepFreeze([...consumableUnits]),
+    getNode: (id: string): DeepReadonly<GraphNode> | undefined =>
+      nodeIndex.byId.get(id),
+    getUnit: (id: string): DeepReadonly<TeachingUnit> | undefined =>
+      unitIndex.byId.get(id),
+    getSource: (id: string): DeepReadonly<SourceRegistry> | undefined =>
+      sourceIndex.byId.get(id),
+    getScenario: (id: string): DeepReadonly<Scenario> | undefined =>
+      scenarioIndex.byId.get(id),
+    getIncomingEdges: (id: string): DeepReadonly<GraphEdge[]> =>
+      deepFreeze([...(incomingEdges.get(id) ?? [])]),
+    getOutgoingEdges: (id: string): DeepReadonly<GraphEdge[]> =>
+      deepFreeze([...(outgoingEdges.get(id) ?? [])]),
+    getConsumableUnitsForNode: (id: string): DeepReadonly<TeachingUnit[]> =>
+      deepFreeze(
+        (teachingUnitRefs.get(id) ?? [])
+          .map((unitId) => unitIndex.byId.get(unitId))
+          .filter((unit): unit is TeachingUnit => unit !== undefined && isConsumable(unit)),
+      ),
+    validate: (): RepositoryValidationResult => validationResult,
   });
 };

@@ -119,7 +119,7 @@ const minimalFixture: RepositoryInput = {
 
 const makeFixture = (): RepositoryInput => structuredClone(minimalFixture);
 
-const firstOrThrow = <T>(items: T[], label: string): T => {
+const firstOrThrow = <T>(items: readonly T[], label: string): T => {
   const item = items[0];
 
   if (item === undefined) {
@@ -127,6 +127,11 @@ const firstOrThrow = <T>(items: T[], label: string): T => {
   }
 
   return item;
+};
+
+const appendTwoCopies = <T>(items: T[], label: string): void => {
+  const original = firstOrThrow(items, label);
+  items.push(structuredClone(original), structuredClone(original));
 };
 
 describe("published teaching repository", () => {
@@ -144,7 +149,8 @@ describe("published teaching repository", () => {
       ),
     ).toBe(true);
 
-    consumableUnits.pop();
+    expect(Object.isFrozen(consumableUnits)).toBe(true);
+    expect(Reflect.set(consumableUnits, "length", 0)).toBe(false);
     expect(canonicalRepository.listConsumableUnits()).toHaveLength(19);
   });
 
@@ -200,31 +206,29 @@ describe("published teaching repository", () => {
 
   it("reports duplicate unit, node, source, scenario, and edge IDs", () => {
     const fixture = makeFixture();
-    fixture.teachingUnits.units.push(
-      structuredClone(firstOrThrow(fixture.teachingUnits.units, "teaching unit")),
-    );
-    fixture.graph.nodes.push(
-      structuredClone(firstOrThrow(fixture.graph.nodes, "graph node")),
-    );
-    fixture.sourceRegistry.sources.push(
-      structuredClone(firstOrThrow(fixture.sourceRegistry.sources, "source")),
-    );
-    fixture.scenarios.push(
-      structuredClone(firstOrThrow(fixture.scenarios, "scenario")),
-    );
-    fixture.graph.edges.push(
-      structuredClone(firstOrThrow(fixture.graph.edges, "graph edge")),
+    appendTwoCopies(fixture.teachingUnits.units, "teaching unit");
+    appendTwoCopies(fixture.graph.nodes, "graph node");
+    appendTwoCopies(fixture.sourceRegistry.sources, "source");
+    appendTwoCopies(fixture.scenarios, "scenario");
+    appendTwoCopies(fixture.graph.edges, "graph edge");
+    fixture.teachingUnits.student_visible_unit_ids.push(
+      "TU-TEST-001",
+      "TU-TEST-001",
     );
 
-    expect(createRepository(fixture).validate().errors).toEqual(
-      expect.arrayContaining([
-        "duplicate teaching-unit ID TU-TEST-001",
-        "duplicate graph-node ID CAP-TEST-001",
-        "duplicate source ID SRC-TEST-001",
-        "duplicate scenario ID SCN-TEST-001",
-        "duplicate graph-edge ID EDGE-TEST-001",
-      ]),
-    );
+    const errors = createRepository(fixture).validate().errors;
+    const expectedErrors = [
+      "duplicate teaching-unit ID TU-TEST-001",
+      "duplicate graph-node ID CAP-TEST-001",
+      "duplicate source ID SRC-TEST-001",
+      "duplicate scenario ID SCN-TEST-001",
+      "duplicate graph-edge ID EDGE-TEST-001",
+      "duplicate visible-index teaching-unit ID TU-TEST-001",
+    ];
+
+    for (const expectedError of expectedErrors) {
+      expect(errors.filter((error) => error === expectedError)).toHaveLength(1);
+    }
   });
 
   it("reports missing edge endpoints", () => {
@@ -260,7 +264,7 @@ describe("published teaching repository", () => {
   it("reports missing source and rule references in extended unit fields", () => {
     const fixture = makeFixture();
     const unit = firstOrThrow(fixture.teachingUnits.units, "teaching unit");
-    unit.exercise.reference_audit = {
+    unit.exercise.asset_authorization = {
       source_ref: "SRC-MISSING-NESTED-001",
       rule_refs: ["KNG-MISSING-NESTED-001"],
     };
@@ -271,6 +275,41 @@ describe("published teaching repository", () => {
         "teaching-unit TU-TEST-001: missing rule ref KNG-MISSING-NESTED-001",
       ]),
     );
+  });
+
+  it("ignores repository-like names inside learner payloads", () => {
+    const fixture = makeFixture();
+    const unit = firstOrThrow(fixture.teachingUnits.units, "teaching unit");
+    unit.exercise.input = {
+      source_ref: "SRC-LEARNER-PAYLOAD-001",
+      rule_refs: ["KNG-LEARNER-PAYLOAD-001"],
+      prerequisites: ["CAP-LEARNER-PAYLOAD-001"],
+    };
+    unit.exercise.answer = {
+      source_refs: ["SRC-ANSWER-PAYLOAD-001"],
+      rule_ref: "KNG-ANSWER-PAYLOAD-001",
+    };
+    unit.exercise.submission = {
+      prerequisite: "CAP-SUBMISSION-PAYLOAD-001",
+    };
+
+    expect(createRepository(fixture).validate().errors).toEqual([]);
+  });
+
+  it("handles self-referential and mutually referential arrays", () => {
+    const fixture = makeFixture();
+    const unit = firstOrThrow(fixture.teachingUnits.units, "teaching unit");
+    const selfReferential: unknown[] = [];
+    const left: unknown[] = [];
+    const right: unknown[] = [];
+    selfReferential.push(selfReferential);
+    left.push(right);
+    right.push(left);
+    unit.exercise.cyclic_metadata = [selfReferential, left, right];
+
+    const repository = createRepository(fixture);
+
+    expect(repository.validate().errors).toEqual([]);
   });
 
   it("reports missing graph teaching-unit references", () => {
@@ -307,7 +346,68 @@ describe("published teaching repository", () => {
     );
   });
 
-  it("returns lookup results while keeping edge arrays isolated from callers", () => {
+  it("snapshots input before building indexes and validation", () => {
+    const fixture = makeFixture();
+    const repository = createRepository(fixture);
+    const capability = firstOrThrow(fixture.graph.nodes, "graph node");
+    const unit = firstOrThrow(fixture.teachingUnits.units, "teaching unit");
+    const source = firstOrThrow(fixture.sourceRegistry.sources, "source");
+    const scenario = firstOrThrow(fixture.scenarios, "scenario").scenario;
+    const edge = firstOrThrow(fixture.graph.edges, "graph edge");
+    capability.id = "CAP-MUTATED-001";
+    unit.id = "TU-MUTATED-001";
+    unit.review_status = "draft";
+    source.source_id = "SRC-MUTATED-001";
+    scenario.id = "SCN-MUTATED-001";
+    edge.target = "CAP-MUTATED-001";
+    fixture.teachingUnits.student_visible_unit_ids.length = 0;
+
+    expect(repository.getNode("CAP-TEST-001")?.id).toBe("CAP-TEST-001");
+    expect(repository.getUnit("TU-TEST-001")?.id).toBe("TU-TEST-001");
+    expect(repository.getSource("SRC-TEST-001")?.source_id).toBe("SRC-TEST-001");
+    expect(repository.getScenario("SCN-TEST-001")?.id).toBe("SCN-TEST-001");
+    expect(repository.getOutgoingEdges("CAP-TEST-001")[0]?.target).toBe(
+      "KNG-TEST-001",
+    );
+    expect(repository.listConsumableUnits().map(({ id }) => id)).toEqual([
+      "TU-TEST-001",
+    ]);
+    expect(repository.getConsumableUnitsForNode("KNG-TEST-001")).toHaveLength(1);
+    expect(repository.validate().errors).toEqual([]);
+  });
+
+  it("deep-freezes objects returned by direct getters", () => {
+    const repository = createRepository(makeFixture());
+    const node = repository.getNode("CAP-TEST-001");
+    const unit = repository.getUnit("TU-TEST-001");
+    const source = repository.getSource("SRC-TEST-001");
+    const scenario = repository.getScenario("SCN-TEST-001");
+
+    if (
+      node === undefined ||
+      unit === undefined ||
+      source === undefined ||
+      scenario === undefined
+    ) {
+      throw new Error("Missing immutable getter fixture.");
+    }
+
+    expect(Object.isFrozen(node)).toBe(true);
+    expect(Object.isFrozen(node.source_refs)).toBe(true);
+    expect(Object.isFrozen(unit)).toBe(true);
+    expect(Object.isFrozen(unit.exercise)).toBe(true);
+    expect(Object.isFrozen(unit.exercise.input)).toBe(true);
+    expect(Object.isFrozen(source)).toBe(true);
+    expect(Object.isFrozen(source.supported_claim_types)).toBe(true);
+    expect(Object.isFrozen(scenario)).toBe(true);
+    expect(Object.isFrozen(scenario.source_refs)).toBe(true);
+    expect(Reflect.set(node, "id", "CAP-MUTATED-001")).toBe(false);
+    expect(Reflect.set(unit, "review_status", "draft")).toBe(false);
+    expect(Reflect.set(source, "source_id", "SRC-MUTATED-001")).toBe(false);
+    expect(Reflect.set(scenario, "id", "SCN-MUTATED-001")).toBe(false);
+  });
+
+  it("deep-freezes collection containers and their edge and unit elements", () => {
     const repository = createRepository(makeFixture());
 
     expect(repository.getUnit("TU-TEST-001")?.title).toBe("Test unit");
@@ -316,12 +416,28 @@ describe("published teaching repository", () => {
 
     const outgoing = repository.getOutgoingEdges("CAP-TEST-001");
     const incoming = repository.getIncomingEdges("KNG-TEST-001");
+    const units = repository.listConsumableUnits();
+    const linkedUnits = repository.getConsumableUnitsForNode("KNG-TEST-001");
     expect(outgoing).toHaveLength(1);
     expect(incoming).toHaveLength(1);
+    expect(Object.isFrozen(outgoing)).toBe(true);
+    expect(Object.isFrozen(incoming)).toBe(true);
+    expect(Object.isFrozen(units)).toBe(true);
+    expect(Object.isFrozen(linkedUnits)).toBe(true);
 
-    outgoing.pop();
-    incoming.pop();
+    const edge = firstOrThrow(outgoing, "outgoing edge");
+    const unit = firstOrThrow(units, "consumable unit");
+    expect(Object.isFrozen(edge)).toBe(true);
+    expect(Object.isFrozen(edge.metadata)).toBe(true);
+    expect(Object.isFrozen(unit)).toBe(true);
+    expect(Reflect.set(edge, "target", "CAP-MUTATED-001")).toBe(false);
+    expect(Reflect.set(unit, "review_status", "draft")).toBe(false);
+    expect(Reflect.set(outgoing, "length", 0)).toBe(false);
+    expect(Reflect.set(units, "length", 0)).toBe(false);
     expect(repository.getOutgoingEdges("CAP-TEST-001")).toHaveLength(1);
     expect(repository.getIncomingEdges("KNG-TEST-001")).toHaveLength(1);
+    expect(repository.listConsumableUnits()).toHaveLength(1);
+    expect(repository.getConsumableUnitsForNode("KNG-TEST-001")).toHaveLength(1);
+    expect(repository.validate().errors).toEqual([]);
   });
 });
