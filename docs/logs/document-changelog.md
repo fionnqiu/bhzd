@@ -390,3 +390,37 @@
 - All approvals are from independent AI agents and authorize development use only. Formal competition submission and real-student release still require human domain-expert review.
 - The MP4/WebM evidence files contain video only. The evidence proves that the authorized WAV is loaded and used by the timeline exercise, but it does not prove audible playback within the recording.
 - Synthetic structured fixtures and one authorized sample do not establish real-world audio or video annotation performance.
+
+## [2026-07-14 19:29] Split Task 6 into system delivery and document submission
+
+**Changed files:**
+- `docs/superpowers/plans/2026-07-12-annotation-teaching-agent.md`
+- `docs/logs/document-changelog.md`
+
+**Reason:**
+- Separate implementation and verification of the teaching application from the later production of the operation manual and competition submission package, as requested by the user.
+
+**Verification:**
+- Checked the revised plan preserves all original Task 6 outcomes: application functionality, automated and end-to-end verification, user trials, operation manual, four-directory submission package, and clean-environment checks.
+- Confirmed Task 7 explicitly depends on completed Task 6 evidence and returns system defects to Task 6.
+
+**Remaining verification:**
+- Neither Task 6 nor Task 7 has been implemented; their respective verification gates remain pending.
+
+## [2026-07-14 19:55] Record the approved Task 6 application design
+
+**Changed files:**
+- `docs/superpowers/specs/2026-07-14-task6-teaching-application-design.md`
+- `docs/logs/document-changelog.md`
+
+**Reason:**
+- Persist the user-approved Task 6 brief as an implementation-grade design for the local Web teaching application, deterministic learning engine, file diagnostics, automated verification, and real-user trial gate.
+
+**Verification:**
+- Checked that the specification covers every Task 6 function and excludes the Task 7 manual and competition package.
+- Checked the design against the published-unit gate, 166-node/240-edge graph contract, deterministic exercise evaluator, PRE remediation algorithm, mastery formula, four diagnostic formats, screenshot restriction, and Windows browser acceptance requirements.
+- Scanned the specification for placeholders, contradictory technology choices, ambiguous completion claims, and unsupported human-trial assertions; none remain.
+
+**Remaining verification:**
+- The written specification still requires the user's final review before the implementation plan is created.
+- Real teacher/student trials remain gated on human domain-expert release approval and coordinated participants.

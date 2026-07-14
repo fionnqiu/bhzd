@@ -72,16 +72,27 @@
 - [x] **Step 2: 为首批行业案例创建场景覆盖规则，声明支持的数据类型，并通过 `base_rule_ref`、`override_type`、SCN 与 INSCN 关系挂载。**
 - [x] **Step 3: 运行 `python -m pytest tests/content/test_video_and_scenarios.py -q`；预期结果为场景改变规则或案例，不复制或破坏通用课程结构。**
 
-### Task 6: 交付教学应用、诊断和参赛包
+### Task 6: 完成教学应用与诊断系统
 
 **Files:**
 - Create: `app/`
-- Create: `docs/操作手册.md`
 - Create: `evidence/user-trials/`
-- Create: `submission/`
 - Test: `tests/e2e/`
 
 - [ ] **Step 1: 在经批准的 Web 技术方案中实现课程入口、图谱导航、内容展示、练习、自检、任务转化卡、结构化文件诊断与路径推荐；截图不改变分数或掌握度。**
 - [ ] **Step 2: 运行各模块单元测试和端到端测试；预期结果为文本、图像、语音、视频、场景切换和诊断路径均可完成。**
 - [ ] **Step 3: 组织 2-3 名师生试用，记录修订与复测结果。**
-- [ ] **Step 4: 按 `docs/功能验收与赛事提交清单.md` 制作四目录提交包，在干净环境启动作品并检查视频、PDF、大小、版权与文件唯一性。**
+
+### Task 7: 产出操作文档与赛事提交包
+
+**Prerequisite:**
+- Task 6 已完成，且系统验证与试用证据可供引用。
+
+**Files:**
+- Create: `docs/操作手册.md`
+- Create: `submission/`
+- Reference: `docs/功能验收与赛事提交清单.md`
+
+- [ ] **Step 1: 根据已验证的系统行为与试用证据编写操作手册，覆盖课程学习、图谱导航、练习、自检、文件诊断与学习路径推荐。**
+- [ ] **Step 2: 按 `docs/功能验收与赛事提交清单.md` 制作四目录提交包，确保所有文档、视频、PDF 与版权说明引用真实的已验证成果。**
+- [ ] **Step 3: 在干净环境启动作品并检查提交包的视频、PDF、大小、版权与文件唯一性；若发现系统缺陷，回退至 Task 6 修复后重新验证。**
