@@ -2,3 +2,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .worktrees/
+app/node_modules/
+app/dist/
+test-results/
+playwright-report/
