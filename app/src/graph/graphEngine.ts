@@ -39,6 +39,21 @@ const cloneEdge = (edge: DeepReadonly<GraphEdge>): GraphEdge => ({
   metadata: { ...edge.metadata },
 });
 
+const snapshotGraph = (
+  graph: DeepReadonly<GraphDocument>,
+): GraphDocument => {
+  try {
+    const snapshot = structuredClone(graph);
+    return {
+      ...snapshot,
+      nodes: snapshot.nodes.map(cloneNode),
+      edges: snapshot.edges.map(cloneEdge),
+    };
+  } catch {
+    throw new TypeError("Failed to snapshot graph engine input.");
+  }
+};
+
 const addEdge = (
   index: Map<string, GraphEdge[]>,
   nodeId: string,
@@ -56,8 +71,7 @@ const addEdge = (
 export const createGraphEngine = (
   graph: DeepReadonly<GraphDocument>,
 ): GraphEngine => {
-  const nodes = graph.nodes.map(cloneNode);
-  const edges = graph.edges.map(cloneEdge);
+  const { nodes, edges } = snapshotGraph(graph);
   const nodeIndex = new Map<string, GraphNode>();
   const nodeOrder = new Map<string, number>();
   const orderedNodeIds: string[] = [];
@@ -130,10 +144,14 @@ export const createGraphEngine = (
     const selectedEdges = edges.filter(
       (edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target),
     );
+    const output = structuredClone({
+      nodes: selectedNodes,
+      edges: selectedEdges,
+    });
 
     return {
-      nodes: selectedNodes.map(cloneNode),
-      edges: selectedEdges.map(cloneEdge),
+      nodes: output.nodes,
+      edges: output.edges,
       nodeIds,
     };
   };

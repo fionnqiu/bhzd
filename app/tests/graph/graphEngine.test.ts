@@ -45,6 +45,59 @@ const makeGraph = (
   edges,
 });
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const requireRecord = (
+  value: unknown,
+  fixtureName: string,
+): Record<string, unknown> => {
+  if (isRecord(value)) {
+    return value;
+  }
+
+  throw new Error(`Missing record fixture: ${fixtureName}`);
+};
+
+const requireArray = (value: unknown, fixtureName: string): unknown[] => {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  throw new Error(`Missing array fixture: ${fixtureName}`);
+};
+
+const makeIsolationGraph = () => {
+  const nodeExtension = {
+    teaching_unit_links: [
+      {
+        unit_id: "TU-TEST-001",
+        details: { label: "original link" },
+      },
+    ],
+    custom_payload: {
+      nested: [{ value: "original payload" }],
+    },
+  };
+  const edgeMetadata = {
+    audit: { verdict: "original edge" },
+  };
+  const input = makeGraph(
+    [
+      { ...makeNode("CAP-PRE-001"), ...nodeExtension },
+      makeNode("CAP-TARGET-001"),
+    ],
+    [
+      {
+        ...makeEdge("EDGE-PRE-001", "CAP-PRE-001", "CAP-TARGET-001"),
+        metadata: edgeMetadata,
+      },
+    ],
+  );
+
+  return { edgeMetadata, input, nodeExtension };
+};
+
 const canonicalEngine = createGraphEngine(graph);
 
 describe("graph engine neighborhoods", () => {
@@ -109,6 +162,40 @@ describe("graph engine neighborhoods", () => {
     );
   });
 
+  it("stops a linear neighborhood at the requested hop boundary", () => {
+    const engine = createGraphEngine(
+      makeGraph(
+        [
+          makeNode("CAP-LINEAR-A"),
+          makeNode("CAP-LINEAR-B"),
+          makeNode("CAP-LINEAR-C"),
+        ],
+        [
+          makeEdge("EDGE-LINEAR-AB", "CAP-LINEAR-A", "CAP-LINEAR-B", "REL"),
+          makeEdge("EDGE-LINEAR-BC", "CAP-LINEAR-B", "CAP-LINEAR-C", "REL"),
+        ],
+      ),
+    );
+
+    const depthOne = engine.neighborhood("CAP-LINEAR-A", 1);
+    const depthTwo = engine.neighborhood("CAP-LINEAR-A", 2);
+
+    expect(depthOne.nodes.map(({ id }) => id)).toEqual([
+      "CAP-LINEAR-A",
+      "CAP-LINEAR-B",
+    ]);
+    expect(depthOne.edges.map(({ id }) => id)).toEqual(["EDGE-LINEAR-AB"]);
+    expect(depthTwo.nodes.map(({ id }) => id)).toEqual([
+      "CAP-LINEAR-A",
+      "CAP-LINEAR-B",
+      "CAP-LINEAR-C",
+    ]);
+    expect(depthTwo.edges.map(({ id }) => id)).toEqual([
+      "EDGE-LINEAR-AB",
+      "EDGE-LINEAR-BC",
+    ]);
+  });
+
   it("reports an unknown neighborhood node with a stable error", () => {
     const readMissingNeighborhood = () =>
       canonicalEngine.neighborhood("CAP-MISSING-001", 1);
@@ -155,6 +242,79 @@ describe("graph engine neighborhoods", () => {
     expect(second.nodes).toHaveLength(expectedNodeCount);
     expect(second.edges).toHaveLength(expectedEdgeCount);
     expect(second.nodeIds).toHaveLength(expectedNodeCount);
+  });
+
+  it("snapshots nested graph extensions before callers mutate the input", () => {
+    const { edgeMetadata, input, nodeExtension } = makeIsolationGraph();
+    const engine = createGraphEngine(input);
+    const expectedView = structuredClone(
+      engine.neighborhood("CAP-TARGET-001", 1),
+    );
+    const expectedPlan = engine.remediationPlan("CAP-TARGET-001", () => 0);
+
+    nodeExtension.teaching_unit_links[0].details.label = "mutated input link";
+    nodeExtension.custom_payload.nested[0].value = "mutated input payload";
+    edgeMetadata.audit.verdict = "mutated input edge";
+
+    expect(engine.neighborhood("CAP-TARGET-001", 1)).toEqual(expectedView);
+    expect(engine.remediationPlan("CAP-TARGET-001", () => 0)).toEqual(
+      expectedPlan,
+    );
+  });
+
+  it("deep-clones returned node extensions and edge metadata per query", () => {
+    const { input } = makeIsolationGraph();
+    const engine = createGraphEngine(input);
+    const first = engine.neighborhood("CAP-TARGET-001", 1);
+    const expected = structuredClone(first);
+    const prerequisiteNode = first.nodes.find(
+      ({ id }) => id === "CAP-PRE-001",
+    );
+    const firstEdge = first.edges[0];
+    if (prerequisiteNode === undefined || firstEdge === undefined) {
+      throw new Error("Missing nested graph-isolation fixture.");
+    }
+
+    const links = requireArray(
+      prerequisiteNode.teaching_unit_links,
+      "teaching_unit_links",
+    );
+    const firstLink = requireRecord(links[0], "teaching_unit_links[0]");
+    const linkDetails = requireRecord(firstLink.details, "link details");
+    linkDetails.label = "mutated output link";
+
+    const customPayload = requireRecord(
+      prerequisiteNode.custom_payload,
+      "custom_payload",
+    );
+    const nestedPayload = requireArray(customPayload.nested, "nested payload");
+    requireRecord(nestedPayload[0], "nested payload[0]").value =
+      "mutated output payload";
+
+    requireRecord(firstEdge.metadata.audit, "edge audit").verdict =
+      "mutated output edge";
+
+    expect(engine.neighborhood("CAP-TARGET-001", 1)).toEqual(expected);
+  });
+
+  it("normalizes graph snapshot clone failures to a stable TypeError", () => {
+    const input = makeGraph(
+      [
+        {
+          ...makeNode("CAP-UNCLONEABLE-001"),
+          unsupported_extension: () => "not cloneable",
+        },
+      ],
+      [],
+    );
+    const createUncloneableEngine = () => createGraphEngine(input);
+
+    expect(createUncloneableEngine).toThrowError(
+      new TypeError("Failed to snapshot graph engine input."),
+    );
+    expect(createUncloneableEngine).toThrowError(
+      new TypeError("Failed to snapshot graph engine input."),
+    );
   });
 });
 
