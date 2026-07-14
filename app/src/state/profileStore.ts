@@ -5,6 +5,16 @@ import {
 } from "../evaluation/mastery";
 
 export const LEARNING_PROFILE_STORAGE_KEY = "bhzd.learning-profile.v1";
+export const MAX_ATTEMPTS = 500;
+
+const SCENARIO_KEY_SEPARATOR = "::";
+const NO_CONTEXT_VALUE = Symbol("no context value");
+const CONTEXT_FIELDS = new Set([
+  "lastMode",
+  "lastScenario",
+  "lastUnit",
+  "lastNode",
+]);
 
 export interface ProfileStorage {
   getItem(key: string): string | null;
@@ -156,10 +166,33 @@ const isDiagnosticSeverity = (
 ): value is DiagnosticSeverity =>
   value === "minor" || value === "moderate" || value === "severe";
 
+const createMasteryMap = (): Record<string, number> => {
+  const masteryMap: Record<string, number> = {};
+  Object.setPrototypeOf(masteryMap, null);
+  return masteryMap;
+};
+
+const cloneMasteryMap = (
+  masteryMap: Readonly<Record<string, number>>,
+): Record<string, number> => {
+  const clone = createMasteryMap();
+  for (const [key, mastery] of Object.entries(masteryMap)) {
+    clone[key] = mastery;
+  }
+  return clone;
+};
+
+const retainLatestAttempts = (
+  attempts: LearningAttempt[],
+): LearningAttempt[] =>
+  attempts.length <= MAX_ATTEMPTS
+    ? attempts
+    : attempts.slice(-MAX_ATTEMPTS);
+
 const createDefaultProfile = (): LearningProfileV1 => ({
   version: 1,
-  generalMastery: {},
-  scenarioMastery: {},
+  generalMastery: createMasteryMap(),
+  scenarioMastery: createMasteryMap(),
   attempts: [],
   lastMode: null,
   lastScenario: null,
@@ -200,8 +233,8 @@ const cloneAttempt = (attempt: LearningAttempt): LearningAttempt => {
 
 const cloneProfile = (profile: LearningProfileV1): LearningProfileV1 => ({
   version: 1,
-  generalMastery: { ...profile.generalMastery },
-  scenarioMastery: { ...profile.scenarioMastery },
+  generalMastery: cloneMasteryMap(profile.generalMastery),
+  scenarioMastery: cloneMasteryMap(profile.scenarioMastery),
   attempts: profile.attempts.map(cloneAttempt),
   lastMode: profile.lastMode,
   lastScenario: profile.lastScenario,
@@ -248,8 +281,12 @@ const freezeAttempt = (
 const freezeSnapshot = (
   profile: LearningProfileV1,
 ): LearningProfileSnapshot => {
-  const generalMastery = Object.freeze({ ...profile.generalMastery });
-  const scenarioMastery = Object.freeze({ ...profile.scenarioMastery });
+  const generalMastery = Object.freeze(
+    cloneMasteryMap(profile.generalMastery),
+  );
+  const scenarioMastery = Object.freeze(
+    cloneMasteryMap(profile.scenarioMastery),
+  );
   const attempts = Object.freeze(profile.attempts.map(freezeAttempt));
 
   return Object.freeze({
@@ -271,7 +308,7 @@ const normalizeMasteryMap = (
     return null;
   }
 
-  const normalized: Record<string, number> = {};
+  const normalized = createMasteryMap();
   for (const [key, mastery] of Object.entries(value)) {
     if (!isNonEmptyString(key) || !isUnitIntervalNumber(mastery)) {
       return null;
@@ -300,6 +337,18 @@ const normalizeContext = (value: unknown): ProfileContext | null => {
   return { lastMode, lastScenario, lastUnit, lastNode };
 };
 
+const isCanonicalTimestamp = (value: unknown): value is string => {
+  if (!isNonEmptyString(value)) {
+    return false;
+  }
+
+  try {
+    return Date.prototype.toISOString.call(new Date(value)) === value;
+  } catch {
+    return false;
+  }
+};
+
 const normalizeAttempt = (value: unknown): LearningAttempt | null => {
   if (!isPlainRecord(value)) {
     return null;
@@ -310,8 +359,7 @@ const normalizeAttempt = (value: unknown): LearningAttempt | null => {
     !isNonEmptyString(value.capabilityId) ||
     !isNullableNonEmptyString(value.scenarioId) ||
     !isNonEmptyString(value.evaluationVersion) ||
-    !isNonEmptyString(value.timestamp) ||
-    Number.isNaN(Date.parse(value.timestamp)) ||
+    !isCanonicalTimestamp(value.timestamp) ||
     context === null
   ) {
     return null;
@@ -379,7 +427,7 @@ const normalizeStoredProfile = (value: unknown): ProfileLoadResult => {
       version: 1,
       generalMastery,
       scenarioMastery,
-      attempts,
+      attempts: retainLatestAttempts(attempts),
       ...context,
     },
   };
@@ -461,7 +509,26 @@ const requireNullableNonEmptyString = (
 const scenarioMasteryKey = (
   capabilityId: string,
   scenarioId: string,
-): string => `${capabilityId}::${scenarioId}`;
+): string => `${capabilityId}${SCENARIO_KEY_SEPARATOR}${scenarioId}`;
+
+const assertUnambiguousScenarioKey = (
+  capabilityId: string,
+  scenarioId: string | null,
+): void => {
+  if (scenarioId === null) {
+    return;
+  }
+  if (capabilityId.includes(SCENARIO_KEY_SEPARATOR)) {
+    throw new TypeError(
+      `Scenario capabilityId must not contain "${SCENARIO_KEY_SEPARATOR}".`,
+    );
+  }
+  if (scenarioId.includes(SCENARIO_KEY_SEPARATOR)) {
+    throw new TypeError(
+      `scenarioId must not contain "${SCENARIO_KEY_SEPARATOR}".`,
+    );
+  }
+};
 
 export const createProfileStore = (
   storage: ProfileStorage,
@@ -473,10 +540,21 @@ export const createProfileStore = (
 
   const timestampNow = (): string => {
     const timestamp = clock();
-    if (!(timestamp instanceof Date) || !Number.isFinite(timestamp.getTime())) {
+    let time: number;
+    try {
+      time = Date.prototype.getTime.call(timestamp);
+    } catch {
       throw new TypeError("Profile clock must return a valid Date.");
     }
-    return timestamp.toISOString();
+    if (!Number.isFinite(time)) {
+      throw new TypeError("Profile clock must return a valid Date.");
+    }
+
+    try {
+      return Date.prototype.toISOString.call(timestamp);
+    } catch {
+      throw new TypeError("Profile clock must return a valid Date.");
+    }
   };
 
   const commit = (candidate: LearningProfileV1): void => {
@@ -492,18 +570,23 @@ export const createProfileStore = (
   };
 
   const recordExercise = (input: RecordExerciseInput): void => {
+    const capabilityIdInput = input.capabilityId;
+    const score = input.score;
+    const scenarioIdInput = input.scenarioId;
+    const evaluationVersionInput = input.evaluationVersion;
     const capabilityId = requireNonEmptyString(
-      input.capabilityId,
+      capabilityIdInput,
       "capabilityId",
     );
     const scenarioId = requireNullableNonEmptyString(
-      input.scenarioId,
+      scenarioIdInput,
       "scenarioId",
     );
     const evaluationVersion = requireNonEmptyString(
-      input.evaluationVersion,
+      evaluationVersionInput,
       "evaluationVersion",
     );
+    assertUnambiguousScenarioKey(capabilityId, scenarioId);
     const candidate = cloneProfile(profile);
     const masteryMap =
       scenarioId === null
@@ -515,34 +598,40 @@ export const createProfileStore = (
         : scenarioMasteryKey(capabilityId, scenarioId);
     masteryMap[masteryKey] = applyExerciseScore(
       masteryMap[masteryKey] ?? 0,
-      input.score,
+      score,
     );
     candidate.attempts.push({
       kind: "exercise",
       capabilityId,
       scenarioId,
-      score: input.score,
+      score,
       evaluationVersion,
       timestamp: timestampNow(),
       context: cloneContext(candidate),
     });
+    candidate.attempts = retainLatestAttempts(candidate.attempts);
 
     commit(candidate);
   };
 
   const recordDiagnostic = (input: RecordDiagnosticInput): void => {
+    const capabilityIdInput = input.capabilityId;
+    const severity = input.severity;
+    const scenarioIdInput = input.scenarioId;
+    const evaluationVersionInput = input.evaluationVersion;
     const capabilityId = requireNonEmptyString(
-      input.capabilityId,
+      capabilityIdInput,
       "capabilityId",
     );
     const scenarioId = requireNullableNonEmptyString(
-      input.scenarioId,
+      scenarioIdInput,
       "scenarioId",
     );
     const evaluationVersion = requireNonEmptyString(
-      input.evaluationVersion,
+      evaluationVersionInput,
       "evaluationVersion",
     );
+    assertUnambiguousScenarioKey(capabilityId, scenarioId);
     const candidate = cloneProfile(profile);
     const masteryMap =
       scenarioId === null
@@ -554,17 +643,18 @@ export const createProfileStore = (
         : scenarioMasteryKey(capabilityId, scenarioId);
     masteryMap[masteryKey] = applyDiagnosticPenalty(
       masteryMap[masteryKey] ?? 0,
-      input.severity,
+      severity,
     );
     candidate.attempts.push({
       kind: "diagnostic",
       capabilityId,
       scenarioId,
-      severity: input.severity,
+      severity,
       evaluationVersion,
       timestamp: timestampNow(),
       context: cloneContext(candidate),
     });
+    candidate.attempts = retainLatestAttempts(candidate.attempts);
 
     commit(candidate);
   };
@@ -574,30 +664,60 @@ export const createProfileStore = (
       throw new TypeError("context update must be an object.");
     }
 
+    const ownKeys = Reflect.ownKeys(update);
+    if (ownKeys.length === 0) {
+      throw new TypeError(
+        "context update must include at least one known field.",
+      );
+    }
+    for (const key of ownKeys) {
+      if (typeof key !== "string" || !CONTEXT_FIELDS.has(key)) {
+        throw new TypeError(
+          `context update contains unknown field: ${String(key)}.`,
+        );
+      }
+    }
+
+    const lastModeInput = hasOwn(update, "lastMode")
+      ? update.lastMode
+      : NO_CONTEXT_VALUE;
+    const lastScenarioInput = hasOwn(update, "lastScenario")
+      ? update.lastScenario
+      : NO_CONTEXT_VALUE;
+    const lastUnitInput = hasOwn(update, "lastUnit")
+      ? update.lastUnit
+      : NO_CONTEXT_VALUE;
+    const lastNodeInput = hasOwn(update, "lastNode")
+      ? update.lastNode
+      : NO_CONTEXT_VALUE;
+    const lastMode =
+      lastModeInput === NO_CONTEXT_VALUE
+        ? NO_CONTEXT_VALUE
+        : requireNullableNonEmptyString(lastModeInput, "lastMode");
+    const lastScenario =
+      lastScenarioInput === NO_CONTEXT_VALUE
+        ? NO_CONTEXT_VALUE
+        : requireNullableNonEmptyString(lastScenarioInput, "lastScenario");
+    const lastUnit =
+      lastUnitInput === NO_CONTEXT_VALUE
+        ? NO_CONTEXT_VALUE
+        : requireNullableNonEmptyString(lastUnitInput, "lastUnit");
+    const lastNode =
+      lastNodeInput === NO_CONTEXT_VALUE
+        ? NO_CONTEXT_VALUE
+        : requireNullableNonEmptyString(lastNodeInput, "lastNode");
     const candidate = cloneProfile(profile);
-    if (hasOwn(update, "lastMode")) {
-      candidate.lastMode = requireNullableNonEmptyString(
-        update.lastMode,
-        "lastMode",
-      );
+    if (lastMode !== NO_CONTEXT_VALUE) {
+      candidate.lastMode = lastMode;
     }
-    if (hasOwn(update, "lastScenario")) {
-      candidate.lastScenario = requireNullableNonEmptyString(
-        update.lastScenario,
-        "lastScenario",
-      );
+    if (lastScenario !== NO_CONTEXT_VALUE) {
+      candidate.lastScenario = lastScenario;
     }
-    if (hasOwn(update, "lastUnit")) {
-      candidate.lastUnit = requireNullableNonEmptyString(
-        update.lastUnit,
-        "lastUnit",
-      );
+    if (lastUnit !== NO_CONTEXT_VALUE) {
+      candidate.lastUnit = lastUnit;
     }
-    if (hasOwn(update, "lastNode")) {
-      candidate.lastNode = requireNullableNonEmptyString(
-        update.lastNode,
-        "lastNode",
-      );
+    if (lastNode !== NO_CONTEXT_VALUE) {
+      candidate.lastNode = lastNode;
     }
 
     commit(candidate);

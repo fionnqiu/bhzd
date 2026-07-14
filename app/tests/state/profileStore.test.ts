@@ -4,9 +4,11 @@ import {
   applyDiagnosticPenalty,
   applyExerciseScore,
   masteryBand,
+  type DiagnosticSeverity,
 } from "../../src/evaluation/mastery";
 import {
   LEARNING_PROFILE_STORAGE_KEY,
+  MAX_ATTEMPTS,
   createProfileStore,
   type ProfileStorage,
 } from "../../src/state/profileStore";
@@ -23,6 +25,7 @@ const fixedClock = (timestamp = FIRST_TIMESTAMP): (() => Date) =>
 class ControlledStorage implements ProfileStorage {
   readonly values = new Map<string, string>();
   readonly removedKeys: string[] = [];
+  setCalls = 0;
   failGet = false;
   failSet = false;
   failRemove = false;
@@ -36,6 +39,7 @@ class ControlledStorage implements ProfileStorage {
   }
 
   setItem(key: string, value: string): void {
+    this.setCalls += 1;
     if (this.failSet) {
       throw new Error("simulated setItem failure");
     }
@@ -78,6 +82,24 @@ const validStoredProfile = () => ({
   lastUnit: "TU-AUDIO-001",
   lastNode: CAPABILITY_ID,
 });
+
+const storedExerciseAttempt = (index: number) => {
+  const kind: "exercise" = "exercise";
+  return {
+    kind,
+    capabilityId: `${CAPABILITY_ID}-${index}`,
+    scenarioId: null,
+    score: 1,
+    evaluationVersion: EVALUATION_VERSION,
+    timestamp: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+    context: {
+      lastMode: "course",
+      lastScenario: null,
+      lastUnit: null,
+      lastNode: `${CAPABILITY_ID}-${index}`,
+    },
+  };
+};
 
 describe("mastery calculations", () => {
   it("uses the approved exercise formula and severity penalties", () => {
@@ -167,6 +189,60 @@ describe("versioned learning profile", () => {
     expect(store.getLoadError()).toBeNull();
   });
 
+  it("uses null-prototype mastery dictionaries from the default profile", () => {
+    const profile = createProfileStore(localStorage, fixedClock()).snapshot();
+
+    expect(Object.getPrototypeOf(profile.generalMastery)).toBeNull();
+    expect(Object.getPrototypeOf(profile.scenarioMastery)).toBeNull();
+    expect(profile.generalMastery.constructor).toBeUndefined();
+    expect(profile.generalMastery.toString).toBeUndefined();
+  });
+
+  it("preserves prototype-named mastery keys through load, record, and reload", () => {
+    const stored = {
+      ...validStoredProfile(),
+      generalMastery: Object.fromEntries([
+        ["__proto__", 0.1],
+        ["constructor", 0.2],
+        ["toString", 0.3],
+      ]),
+      scenarioMastery: Object.fromEntries([
+        ["__proto__::SCN-SAFE", 0.4],
+        ["constructor::SCN-SAFE", 0.5],
+        ["toString::SCN-SAFE", 0.6],
+      ]),
+    };
+    localStorage.setItem(
+      LEARNING_PROFILE_STORAGE_KEY,
+      JSON.stringify(stored),
+    );
+    const store = createProfileStore(localStorage, fixedClock());
+
+    for (const capabilityId of ["__proto__", "constructor", "toString"]) {
+      store.recordExercise({
+        capabilityId,
+        score: 1,
+        scenarioId: null,
+        evaluationVersion: EVALUATION_VERSION,
+      });
+    }
+
+    const reloaded = createProfileStore(localStorage, fixedClock()).snapshot();
+    expect(Object.getPrototypeOf(reloaded.generalMastery)).toBeNull();
+    expect(Object.getPrototypeOf(reloaded.scenarioMastery)).toBeNull();
+    expect(Object.keys(reloaded.generalMastery)).toEqual([
+      "__proto__",
+      "constructor",
+      "toString",
+    ]);
+    expect(reloaded.generalMastery.__proto__).toBeCloseTo(0.415);
+    expect(reloaded.generalMastery.constructor).toBeCloseTo(0.48);
+    expect(reloaded.generalMastery.toString).toBeCloseTo(0.545);
+    expect(reloaded.scenarioMastery["__proto__::SCN-SAFE"]).toBe(0.4);
+    expect(reloaded.scenarioMastery["constructor::SCN-SAFE"]).toBe(0.5);
+    expect(reloaded.scenarioMastery["toString::SCN-SAFE"]).toBe(0.6);
+  });
+
   it("isolates general and scenario mastery", () => {
     const store = createProfileStore(localStorage, fixedClock());
 
@@ -192,6 +268,59 @@ describe("versioned learning profile", () => {
     expect(Object.keys(profile.scenarioMastery)).toEqual([
       `${CAPABILITY_ID}::${SCENARIO_ID}`,
     ]);
+  });
+
+  it.each([
+    ["a::b", "c", "Scenario capabilityId must not contain \"::\"."],
+    ["a", "b::c", "scenarioId must not contain \"::\"."],
+  ])(
+    "rejects ambiguous scenario mastery key inputs %s + %s without writing",
+    (capabilityId, scenarioId, message) => {
+      const storage = new ControlledStorage();
+      const store = createProfileStore(storage, fixedClock());
+
+      expect(() =>
+        store.recordExercise({
+          capabilityId,
+          score: 1,
+          scenarioId,
+          evaluationVersion: EVALUATION_VERSION,
+        }),
+      ).toThrowError(new TypeError(message));
+      expect(storage.setCalls).toBe(0);
+      expect(store.snapshot().attempts).toEqual([]);
+    },
+  );
+
+  it("allows the scenario delimiter in a general capability ID", () => {
+    const store = createProfileStore(localStorage, fixedClock());
+
+    store.recordExercise({
+      capabilityId: "a::b",
+      score: 1,
+      scenarioId: null,
+      evaluationVersion: EVALUATION_VERSION,
+    });
+
+    expect(store.snapshot().generalMastery["a::b"]).toBeCloseTo(0.35);
+  });
+
+  it("applies scenario-key delimiter validation to diagnostics", () => {
+    const storage = new ControlledStorage();
+    const store = createProfileStore(storage, fixedClock());
+
+    expect(() =>
+      store.recordDiagnostic({
+        capabilityId: "a::b",
+        severity: "minor",
+        scenarioId: "c",
+        evaluationVersion: EVALUATION_VERSION,
+      }),
+    ).toThrowError(
+      new TypeError("Scenario capabilityId must not contain \"::\"."),
+    );
+    expect(storage.setCalls).toBe(0);
+    expect(store.snapshot().attempts).toEqual([]);
   });
 
   it("records exercise and diagnostic attempts with timestamped context", () => {
@@ -252,6 +381,94 @@ describe("versioned learning profile", () => {
     expect(store.snapshot().generalMastery[CAPABILITY_ID]).toBeCloseTo(0.2);
   });
 
+  it("captures every exercise input accessor exactly once", () => {
+    const reads = {
+      capabilityId: 0,
+      score: 0,
+      scenarioId: 0,
+      evaluationVersion: 0,
+    };
+    const input = {
+      get capabilityId(): string {
+        reads.capabilityId += 1;
+        return reads.capabilityId === 1 ? CAPABILITY_ID : "";
+      },
+      get score(): number {
+        reads.score += 1;
+        return reads.score === 1 ? 1 : Number.NaN;
+      },
+      get scenarioId(): string | null {
+        reads.scenarioId += 1;
+        return reads.scenarioId === 1 ? null : SCENARIO_ID;
+      },
+      get evaluationVersion(): string {
+        reads.evaluationVersion += 1;
+        return reads.evaluationVersion === 1 ? EVALUATION_VERSION : "";
+      },
+    };
+    const store = createProfileStore(localStorage, fixedClock());
+
+    store.recordExercise(input);
+
+    expect(reads).toEqual({
+      capabilityId: 1,
+      score: 1,
+      scenarioId: 1,
+      evaluationVersion: 1,
+    });
+    expect(store.snapshot().attempts[0]).toMatchObject({
+      kind: "exercise",
+      capabilityId: CAPABILITY_ID,
+      score: 1,
+      scenarioId: null,
+      evaluationVersion: EVALUATION_VERSION,
+    });
+  });
+
+  it("captures every diagnostic input accessor exactly once", () => {
+    const reads = {
+      capabilityId: 0,
+      severity: 0,
+      scenarioId: 0,
+      evaluationVersion: 0,
+    };
+    const input = {
+      get capabilityId(): string {
+        reads.capabilityId += 1;
+        return reads.capabilityId === 1 ? CAPABILITY_ID : "";
+      },
+      get severity(): DiagnosticSeverity {
+        reads.severity += 1;
+        return reads.severity === 1 ? "minor" : "severe";
+      },
+      get scenarioId(): string | null {
+        reads.scenarioId += 1;
+        return reads.scenarioId === 1 ? null : SCENARIO_ID;
+      },
+      get evaluationVersion(): string {
+        reads.evaluationVersion += 1;
+        return reads.evaluationVersion === 1 ? EVALUATION_VERSION : "";
+      },
+    };
+    const store = createProfileStore(localStorage, fixedClock());
+
+    store.recordDiagnostic(input);
+
+    expect(reads).toEqual({
+      capabilityId: 1,
+      severity: 1,
+      scenarioId: 1,
+      evaluationVersion: 1,
+    });
+    expect(store.snapshot().attempts[0]).toMatchObject({
+      kind: "diagnostic",
+      capabilityId: CAPABILITY_ID,
+      severity: "minor",
+      scenarioId: null,
+      evaluationVersion: EVALUATION_VERSION,
+    });
+  });
+
   it("updates only supplied context fields and persists them", () => {
     const store = createProfileStore(localStorage, fixedClock());
     store.setContext({
@@ -277,6 +494,76 @@ describe("versioned learning profile", () => {
       lastUnit: "TU-AUDIO-001",
       lastNode: CAPABILITY_ID,
     });
+  });
+
+  it("captures every supplied context accessor exactly once", () => {
+    const reads = {
+      lastMode: 0,
+      lastScenario: 0,
+      lastUnit: 0,
+      lastNode: 0,
+    };
+    const update = {
+      get lastMode(): string | null {
+        reads.lastMode += 1;
+        return reads.lastMode === 1 ? "course" : "";
+      },
+      get lastScenario(): string | null {
+        reads.lastScenario += 1;
+        return reads.lastScenario === 1 ? SCENARIO_ID : "";
+      },
+      get lastUnit(): string | null {
+        reads.lastUnit += 1;
+        return reads.lastUnit === 1 ? "TU-AUDIO-001" : "";
+      },
+      get lastNode(): string | null {
+        reads.lastNode += 1;
+        return reads.lastNode === 1 ? CAPABILITY_ID : "";
+      },
+    };
+    const store = createProfileStore(localStorage, fixedClock());
+
+    store.setContext(update);
+
+    expect(reads).toEqual({
+      lastMode: 1,
+      lastScenario: 1,
+      lastUnit: 1,
+      lastNode: 1,
+    });
+    expect(store.snapshot()).toMatchObject({
+      lastMode: "course",
+      lastScenario: SCENARIO_ID,
+      lastUnit: "TU-AUDIO-001",
+      lastNode: CAPABILITY_ID,
+    });
+  });
+
+  it("rejects an empty context update without writing or clearing loadError", () => {
+    const storage = new ControlledStorage();
+    storage.values.set(LEARNING_PROFILE_STORAGE_KEY, "broken");
+    const store = createProfileStore(storage, fixedClock());
+
+    expect(() => store.setContext({})).toThrowError(
+      new TypeError("context update must include at least one known field."),
+    );
+    expect(storage.setCalls).toBe(0);
+    expect(storage.values.get(LEARNING_PROFILE_STORAGE_KEY)).toBe("broken");
+    expect(store.getLoadError()?.code).toBe("invalid_json");
+  });
+
+  it("rejects unknown context fields without writing or clearing loadError", () => {
+    const storage = new ControlledStorage();
+    storage.values.set(LEARNING_PROFILE_STORAGE_KEY, "broken");
+    const store = createProfileStore(storage, fixedClock());
+    const update = { lastMode: "course", unknown: "value" };
+
+    expect(() => store.setContext(update)).toThrowError(
+      new TypeError("context update contains unknown field: unknown."),
+    );
+    expect(storage.setCalls).toBe(0);
+    expect(storage.values.get(LEARNING_PROFILE_STORAGE_KEY)).toBe("broken");
+    expect(store.getLoadError()?.code).toBe("invalid_json");
   });
 
   it("loads a persisted valid v1 profile in a new store instance", () => {
@@ -357,6 +644,69 @@ describe("versioned learning profile", () => {
       message: "Stored learning profile is malformed.",
     });
     expect(localStorage.getItem(LEARNING_PROFILE_STORAGE_KEY)).toBe(malformed);
+  });
+
+  it("rejects parseable but non-canonical attempt timestamps", () => {
+    const profile = validStoredProfile();
+    profile.attempts[0].timestamp = "2026-07-14T01:02:03Z";
+    const stored = JSON.stringify(profile);
+    localStorage.setItem(LEARNING_PROFILE_STORAGE_KEY, stored);
+
+    const store = createProfileStore(localStorage, fixedClock());
+
+    expect(store.snapshot().attempts).toEqual([]);
+    expect(store.getLoadError()?.code).toBe("malformed_profile");
+    expect(localStorage.getItem(LEARNING_PROFILE_STORAGE_KEY)).toBe(stored);
+  });
+
+  it("retains only the latest attempts when loading an oversized profile", () => {
+    const attempts = Array.from(
+      { length: MAX_ATTEMPTS + 2 },
+      (_value, index) => storedExerciseAttempt(index),
+    );
+    const profile = { ...validStoredProfile(), attempts };
+    localStorage.setItem(
+      LEARNING_PROFILE_STORAGE_KEY,
+      JSON.stringify(profile),
+    );
+
+    const loaded = createProfileStore(localStorage, fixedClock()).snapshot();
+
+    expect(loaded.attempts).toHaveLength(MAX_ATTEMPTS);
+    expect(loaded.attempts[0]?.capabilityId).toBe(`${CAPABILITY_ID}-2`);
+    expect(loaded.attempts.at(-1)?.capabilityId).toBe(
+      `${CAPABILITY_ID}-${MAX_ATTEMPTS + 1}`,
+    );
+  });
+
+  it("drops the oldest attempt before persisting a new boundary attempt", () => {
+    const attempts = Array.from(
+      { length: MAX_ATTEMPTS },
+      (_value, index) => storedExerciseAttempt(index),
+    );
+    localStorage.setItem(
+      LEARNING_PROFILE_STORAGE_KEY,
+      JSON.stringify({ ...validStoredProfile(), attempts }),
+    );
+    const store = createProfileStore(localStorage, fixedClock(SECOND_TIMESTAMP));
+
+    store.recordDiagnostic({
+      capabilityId: CAPABILITY_ID,
+      severity: "minor",
+      scenarioId: null,
+      evaluationVersion: EVALUATION_VERSION,
+    });
+
+    const profile = store.snapshot();
+    const reloaded = createProfileStore(localStorage, fixedClock()).snapshot();
+    expect(profile.attempts).toHaveLength(MAX_ATTEMPTS);
+    expect(profile.attempts[0]?.capabilityId).toBe(`${CAPABILITY_ID}-1`);
+    expect(profile.attempts.at(-1)).toMatchObject({
+      kind: "diagnostic",
+      capabilityId: CAPABILITY_ID,
+      timestamp: SECOND_TIMESTAMP,
+    });
+    expect(reloaded.attempts).toEqual(profile.attempts);
   });
 
   it("clears a recoverable load error on the first successful write", () => {
@@ -496,6 +846,47 @@ describe("versioned learning profile", () => {
       code: "storage_read_failed",
       message: "Failed to read stored learning profile.",
     });
+  });
+
+  it.each([
+    ["a proxied Date", () => new Proxy(new Date(FIRST_TIMESTAMP), {})],
+    ["a Date-prototype impostor", () => Object.create(Date.prototype)],
+  ])("rejects %s from the clock with a stable error", (_label, clock) => {
+    const storage = new ControlledStorage();
+    const store = createProfileStore(storage, clock);
+
+    expect(() =>
+      store.recordExercise({
+        capabilityId: CAPABILITY_ID,
+        score: 1,
+        scenarioId: null,
+        evaluationVersion: EVALUATION_VERSION,
+      }),
+    ).toThrowError(new TypeError("Profile clock must return a valid Date."));
+    expect(store.snapshot().attempts).toEqual([]);
+    expect(storage.setCalls).toBe(0);
+  });
+
+  it("uses Date intrinsics instead of overridden instance methods", () => {
+    const timestamp = new Date(FIRST_TIMESTAMP);
+    Object.defineProperties(timestamp, {
+      getTime: {
+        value: () => Number.NaN,
+      },
+      toISOString: {
+        value: () => "malicious timestamp",
+      },
+    });
+    const store = createProfileStore(localStorage, () => timestamp);
+
+    store.recordExercise({
+      capabilityId: CAPABILITY_ID,
+      score: 1,
+      scenarioId: null,
+      evaluationVersion: EVALUATION_VERSION,
+    });
+
+    expect(store.snapshot().attempts[0]?.timestamp).toBe(FIRST_TIMESTAMP);
   });
 
   it("rejects an invalid clock before attempting persistence", () => {
