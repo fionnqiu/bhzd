@@ -443,3 +443,21 @@
 
 **Remaining verification:**
 - Application code has not started; the execution approach must be selected before following the plan.
+
+## [2026-07-14 20:08] Stabilize Windows baseline verification
+
+**Changed files:**
+- `.gitattributes`
+- `docs/superpowers/plans/2026-07-14-task6-teaching-application.md`
+- `docs/logs/document-changelog.md`
+
+**Reason:**
+- Prevent system-level `core.autocrlf=true` from converting generated JSON and GraphML authority files to CRLF and breaking byte-determinism tests in fresh Windows worktrees.
+- Supply the required scenario file arguments in the Task 6 verification commands.
+
+**Verification:**
+- Reproduced both deterministic-build failures and confirmed `git ls-files --eol` reported `i/lf w/crlf` for the compared authority files.
+- Confirmed the scenario validator CLI requires one or more positional scenario paths.
+
+**Remaining verification:**
+- Recreate the clean worktree so the new attributes apply, then rerun the full Python baseline and both validators before application implementation.

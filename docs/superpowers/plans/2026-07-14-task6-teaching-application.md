@@ -494,7 +494,7 @@ Run:
 
 ```powershell
 npm --prefix app test -- --run tests/tasks
-python scripts/validate_scenarios.py
+python scripts/validate_scenarios.py data/scenarios/medical.json data/scenarios/customer-service.json data/scenarios/in-vehicle.json data/scenarios/content-safety.json
 ```
 
 Expected: task tests pass and scenario validation reports 4 scenarios, 9 overrides, and 9 examples.
@@ -880,7 +880,7 @@ Run:
 ```powershell
 python -m pytest -q
 python scripts/validate_graph.py data/graph/annotation-capability-graph.json
-python scripts/validate_scenarios.py
+python scripts/validate_scenarios.py data/scenarios/medical.json data/scenarios/customer-service.json data/scenarios/in-vehicle.json data/scenarios/content-safety.json
 npm --prefix app run test:run
 npm --prefix app run build
 npm --prefix app run test:e2e
