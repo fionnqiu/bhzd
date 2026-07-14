@@ -1,6 +1,9 @@
 // @vitest-environment node
 
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
@@ -120,14 +123,19 @@ const probePythonCandidate = (candidate: PythonCommand): PythonProbeResult => {
     return { compatible: true, failure: "" };
   }
 
-  const output = [execution.stderr.trim(), execution.stdout.trim()]
+  if (execution.error !== undefined) {
+    return { compatible: false, failure: execution.error.message };
+  }
+
+  const output = [execution.stderr ?? "", execution.stdout ?? ""]
+    .map((value) => value.trim())
     .filter((value) => value.length > 0)
     .join(" | ");
   return {
     compatible: false,
-    failure:
-      execution.error?.message ??
-      `status ${String(execution.status)}${output.length > 0 ? `: ${output}` : ""}`,
+    failure: `status ${String(execution.status)}${
+      output.length > 0 ? `: ${output}` : ""
+    }`,
   };
 };
 
@@ -458,6 +466,25 @@ describe("Python evaluator parity", () => {
 
     expect(selected).toBe(compatible);
     expect(probed).toEqual(["python-incompatible", "python-compatible"]);
+  });
+
+  it("falls back after a real missing Python executable probe", () => {
+    const temporaryDirectory = mkdtempSync(join(tmpdir(), "bhzd-python-probe-"));
+    const missing = {
+      executable: join(temporaryDirectory, "missing-python-runtime"),
+      prefixArguments: [],
+    };
+
+    try {
+      expect(
+        selectCompatiblePythonCommand(
+          [missing, pythonCommand],
+          probePythonCandidate,
+        ),
+      ).toBe(pythonCommand);
+    } finally {
+      rmSync(temporaryDirectory, { recursive: true });
+    }
   });
 
   it("runs the resolved PYTHON or fallback interpreter without a shell", () => {
