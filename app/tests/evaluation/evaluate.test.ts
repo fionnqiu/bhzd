@@ -237,11 +237,76 @@ describe("deterministic exercise evaluator", () => {
     expect(result.matched).toBe("unclassified");
   });
 
-  it("compares primitive values strictly", () => {
+  it("does not equate boolean true with numeric 1", () => {
     const unit = cloneUnit(findUnitByMethod("exact_match"));
     unit.exercise.answer = { value: 1 };
 
     expect(evaluateExercise(unit, { value: true }).passed).toBe(false);
+  });
+
+  it("distinguishes positive and negative zero", () => {
+    const unit = cloneUnit(findUnitByMethod("exact_match"));
+    unit.exercise.answer = { value: -0 };
+
+    expect(evaluateExercise(unit, { value: -0 }).passed).toBe(true);
+    expect(evaluateExercise(unit, { value: 0 }).passed).toBe(false);
+  });
+
+  it("rejects an unsafe integer in a standard answer", () => {
+    const unit = cloneUnit(findUnitByMethod("exact_match"));
+    unit.exercise.answer = { value: Number.MAX_SAFE_INTEGER + 1 };
+
+    expect(() => evaluateExercise(unit, unit.exercise.answer)).toThrowError(
+      new TypeError("unit.exercise.answer must not contain unsafe integers"),
+    );
+  });
+
+  it("rejects an unsafe integer in a diagnostic submission", () => {
+    const unit = cloneUnit(findUnitByMethod("exact_match"));
+    const evaluation = requireRecord(unit.exercise.evaluation, "evaluation");
+    const rules = requireArray(evaluation.diagnostic_rules, "diagnostic_rules");
+    const rule = requireRecord(rules[0], "diagnostic rule");
+    rule.submission = { value: Number.MAX_SAFE_INTEGER + 1 };
+
+    expect(() => evaluateExercise(unit, unit.exercise.answer)).toThrowError(
+      new TypeError(
+        "diagnostic_rules[0].submission must not contain unsafe integers",
+      ),
+    );
+  });
+
+  it("rejects an unsafe integer in an allowed answer", () => {
+    const unit = cloneUnit(findUnitByMethod("allowed_answers"));
+    const evaluation = requireRecord(unit.exercise.evaluation, "evaluation");
+    const allowed = requireArray(evaluation.allowed_answers, "allowed_answers");
+    const candidate = requireRecord(allowed[0], "allowed answer");
+    candidate.answer = { value: Number.MAX_SAFE_INTEGER + 1 };
+
+    expect(() => evaluateExercise(unit, unit.exercise.answer)).toThrowError(
+      new TypeError(
+        "allowed_answers[0].answer must not contain unsafe integers",
+      ),
+    );
+  });
+
+  it("rejects an unsafe integer in a submission", () => {
+    const unit = cloneUnit(findUnitByMethod("exact_match"));
+    unit.exercise.answer = { value: Number.MAX_SAFE_INTEGER };
+
+    expect(() =>
+      evaluateExercise(unit, { value: Number.MAX_SAFE_INTEGER + 1 }),
+    ).toThrowError(
+      new TypeError("submission must not contain unsafe integers"),
+    );
+  });
+
+  it("uses Python truthiness for NaN unmatched review configuration", () => {
+    const unit = cloneUnit(findUnitByMethod("exact_match"));
+    unit.exercise.evaluation.manual_review_on_unmatched = Number.NaN;
+
+    expect(evaluateExercise(unit, { unmatched: true }).manualReviewRequired).toBe(
+      true,
+    );
   });
 
   it("does not mutate the unit or submission and returns independent arrays", () => {
@@ -268,6 +333,26 @@ describe("deterministic exercise evaluator", () => {
 
     expect(() => evaluateExercise(unit, unit.exercise.answer)).toThrowError(
       new TypeError("unit.exercise.evaluation must be an object"),
+    );
+  });
+
+  it("rejects a non-plain evaluation object at the configuration boundary", () => {
+    const unit = cloneUnit(findUnitByMethod("exact_match"));
+    Reflect.set(unit.exercise, "evaluation", new Date("2026-07-14T00:00:00Z"));
+
+    expect(() => evaluateExercise(unit, unit.exercise.answer)).toThrowError(
+      new TypeError("unit.exercise.evaluation must be an object"),
+    );
+  });
+
+  it("rejects malformed correct feedback before evaluating a submission", () => {
+    const unit = cloneUnit(findUnitByMethod("exact_match"));
+    unit.exercise.evaluation.correct_feedback = 42;
+
+    expect(() => evaluateExercise(unit, { unmatched: true })).toThrowError(
+      new TypeError(
+        "unit.exercise.evaluation.correct_feedback must be a non-empty string",
+      ),
     );
   });
 

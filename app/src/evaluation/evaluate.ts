@@ -62,7 +62,7 @@ const fail = (message: string): never => {
 };
 
 const requireRecord = (value: unknown, field: string): ExtensibleFields => {
-  if (!isRecord(value)) {
+  if (!isPlainRecord(value)) {
     return fail(`${field} must be an object`);
   }
 
@@ -130,6 +130,11 @@ const requireMethod = (value: unknown): EvaluationMethod => {
   return value;
 };
 
+// JavaScript JSON parsing collapses integer and integer-valued-float tokens
+// into one Number type. Comparison-bearing values therefore use a deliberate
+// JS JSON domain: finite non-integer numbers, safe integers (including signed
+// zero), and Object.is equality. Raw canonical data is audited separately to
+// exclude integer-valued floats before cross-language parity is asserted.
 const assertJsonValue = (
   value: unknown,
   field: string,
@@ -146,6 +151,9 @@ const assertJsonValue = (
   if (typeof value === "number") {
     if (!Number.isFinite(value)) {
       fail(`${field} must be JSON-compatible`);
+    }
+    if (Number.isInteger(value) && !Number.isSafeInteger(value)) {
+      fail(`${field} must not contain unsafe integers`);
     }
     return;
   }
@@ -178,7 +186,7 @@ const assertJsonValue = (
 };
 
 const deepEqualJson = (left: unknown, right: unknown): boolean => {
-  if (left === right) {
+  if (Object.is(left, right)) {
     return true;
   }
 
@@ -370,7 +378,7 @@ const pythonTruthiness = (value: unknown): boolean => {
     return value;
   }
   if (typeof value === "number") {
-    return value !== 0 && !Number.isNaN(value);
+    return value !== 0;
   }
   if (typeof value === "string" || Array.isArray(value)) {
     return value.length > 0;
@@ -475,6 +483,15 @@ export const evaluateExercise = (
   );
   const base = createBaseResult(unit, exercise, evaluation);
   const method = requireMethod(evaluation.method);
+  // The public result guarantees string feedback, so malformed optional
+  // feedback is rejected at the TypeScript configuration boundary. This
+  // validation is intentionally outside malformed-config Python parity.
+  const declaredCorrectFeedback = hasOwn(evaluation, "correct_feedback")
+    ? requireString(
+        evaluation.correct_feedback,
+        "unit.exercise.evaluation.correct_feedback",
+      )
+    : undefined;
   const errorTypes = requireStringList(
     exercise.error_types,
     "unit.exercise.error_types",
@@ -529,19 +546,12 @@ export const evaluateExercise = (
 
   if (method === "exact_match" || method === "ordered_exact_match") {
     if (deepEqualJson(submission, exercise.answer)) {
-      const feedback = hasOwn(evaluation, "correct_feedback")
-        ? requireString(
-            evaluation.correct_feedback,
-            "unit.exercise.evaluation.correct_feedback",
-          )
-        : "回答正确。";
-
       return {
         ...base,
         score: 1,
         passed: true,
         matched: "answer",
-        feedback,
+        feedback: declaredCorrectFeedback ?? "回答正确。",
       };
     }
 

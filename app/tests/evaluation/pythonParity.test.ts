@@ -22,7 +22,116 @@ interface PythonEvaluationResult {
   evaluation_version: string;
 }
 
+interface PythonCommand {
+  executable: string;
+  prefixArguments: string[];
+}
+
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
+
+const stripSurroundingQuotes = (value: string): string =>
+  value.startsWith('"') && value.endsWith('"') ? value.slice(1, -1) : value;
+
+const configuredPythonCommand = (value: string): PythonCommand => {
+  const trimmed = value.trim();
+  const withoutLauncherArgument = trimmed.replace(/\s+-3$/u, "");
+  const executable = stripSurroundingQuotes(withoutLauncherArgument);
+  const executableName = executable.replace(/^.*[\\/]/u, "").toLowerCase();
+  const usesLauncherArgument =
+    withoutLauncherArgument !== trimmed &&
+    (executableName === "py" || executableName === "py.exe");
+
+  return {
+    executable: usesLauncherArgument ? executable : stripSurroundingQuotes(trimmed),
+    prefixArguments: usesLauncherArgument ? ["-3"] : [],
+  };
+};
+
+const pythonCandidates = (): PythonCommand[] => {
+  const configured = process.env.PYTHON?.trim();
+  const candidates: PythonCommand[] = [];
+  if (configured !== undefined && configured.length > 0) {
+    candidates.push(configuredPythonCommand(configured));
+  }
+  candidates.push(
+    { executable: "python", prefixArguments: [] },
+    { executable: "python3", prefixArguments: [] },
+    { executable: "py", prefixArguments: ["-3"] },
+  );
+
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    const key = JSON.stringify([candidate.executable, ...candidate.prefixArguments]);
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+};
+
+const resolvePythonCommand = (): PythonCommand => {
+  const failures: string[] = [];
+  for (const candidate of pythonCandidates()) {
+    const execution = spawnSync(
+      candidate.executable,
+      [...candidate.prefixArguments, "--version"],
+      {
+        cwd: repoRoot,
+        encoding: "utf8",
+        shell: false,
+        timeout: 5_000,
+        windowsHide: true,
+      },
+    );
+    if (execution.error === undefined && execution.status === 0) {
+      return candidate;
+    }
+
+    failures.push(
+      `${candidate.executable} ${candidate.prefixArguments.join(" ")}: ${
+        execution.error?.message ?? `status ${String(execution.status)}`
+      }`,
+    );
+  }
+
+  throw new Error(`No usable Python interpreter found. ${failures.join("; ")}`);
+};
+
+const pythonCommand = resolvePythonCommand();
+
+const runPython = (arguments_: readonly string[], context: string): string => {
+  const execution = spawnSync(
+    pythonCommand.executable,
+    [...pythonCommand.prefixArguments, ...arguments_],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+      shell: false,
+      timeout: 15_000,
+      windowsHide: true,
+    },
+  );
+
+  if (execution.error !== undefined) {
+    throw new Error(
+      `Python evaluator failed to start for ${context}: ${execution.error.message}`,
+    );
+  }
+
+  if (execution.status !== 0) {
+    throw new Error(
+      [
+        `Python evaluator exited with status ${String(execution.status)} for ${context}.`,
+        `stderr: ${execution.stderr.trim() || "<empty>"}`,
+        `stdout: ${execution.stdout.trim() || "<empty>"}`,
+      ].join("\n"),
+    );
+  }
+
+  return execution.stdout;
+};
 
 const isRecord = (value: unknown): value is ExtensibleFields =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -83,6 +192,29 @@ const serializeSubmission = (submission: unknown): string => {
   return serialized;
 };
 
+const parsePythonEvaluationResult = (
+  stdout: string,
+  context: string,
+): PythonEvaluationResult => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Python evaluator returned invalid JSON for ${context}: ${message}\nstdout: ${stdout}`,
+    );
+  }
+
+  if (!isPythonEvaluationResult(parsed)) {
+    throw new Error(
+      `Python evaluator returned an invalid result shape for ${context}: ${stdout}`,
+    );
+  }
+
+  return parsed;
+};
+
 const evaluateWithPython = (
   unit: TeachingUnit,
   submission: unknown,
@@ -96,47 +228,156 @@ const evaluateWithPython = (
     "--submission",
     serializeSubmission(submission),
   ];
-  const execution = spawnSync("python", arguments_, {
-    cwd: repoRoot,
-    encoding: "utf8",
-    maxBuffer: 1024 * 1024,
-    shell: false,
-    timeout: 15_000,
-  });
+  return parsePythonEvaluationResult(runPython(arguments_, unit.id), unit.id);
+};
 
-  if (execution.error !== undefined) {
-    throw new Error(
-      `Python evaluator failed to start for ${unit.id}: ${execution.error.message}`,
-    );
-  }
+const commonTypeScriptResult = (
+  result: ReturnType<typeof evaluateExercise>,
+): PythonEvaluationResult => ({
+  score: result.score,
+  passed: result.passed,
+  rule_refs: result.ruleRefs,
+  capability_refs: result.capabilityRefs,
+  error_type: result.errorType,
+  feedback: result.feedback,
+  remediation: result.remediation,
+  manual_review_required: result.manualReviewRequired,
+  data_version: result.dataVersion,
+  evaluation_version: result.evaluationVersion,
+});
 
-  if (execution.status !== 0) {
-    throw new Error(
+const rawEvaluationScript = [
+  "import base64, json, sys",
+  "from scripts.evaluate_exercise import evaluate_unit, serialize_result",
+  "unit = json.loads(base64.b64decode(sys.argv[1]).decode('utf-8'))",
+  "submission = json.loads(base64.b64decode(sys.argv[2]).decode('utf-8'))",
+  "output = serialize_result(evaluate_unit(unit, submission))",
+  "sys.stdout.buffer.write((output + '\\n').encode('utf-8'))",
+].join("\n");
+
+const rawEvaluationOutcomeScript = [
+  "import base64, json, sys",
+  "from scripts.evaluate_exercise import evaluate_unit",
+  "unit = json.loads(base64.b64decode(sys.argv[1]).decode('utf-8'))",
+  "submission = json.loads(base64.b64decode(sys.argv[2]).decode('utf-8'))",
+  "try:",
+  "    evaluate_unit(unit, submission)",
+  "except Exception as error:",
+  "    output = json.dumps({'ok': False, 'message': str(error)}, ensure_ascii=False)",
+  "else:",
+  "    output = json.dumps({'ok': True}, ensure_ascii=False)",
+  "sys.stdout.buffer.write((output + '\\n').encode('utf-8'))",
+].join("\n");
+
+const canonicalNumericAuditScript = [
+  "import json, math",
+  "from pathlib import Path",
+  "from scripts.evaluate_exercise import canonical_json",
+  "class RawInt(int):",
+  "    pass",
+  "class RawFloat(float):",
+  "    pass",
+  "with Path('data/curriculum/teaching-units.json').open(encoding='utf-8') as handle:",
+  "    document = json.load(handle, parse_int=RawInt, parse_float=RawFloat)",
+  "issues = []",
+  "def audit(value, path):",
+  "    if isinstance(value, bool) or value is None or isinstance(value, str):",
+  "        return",
+  "    if isinstance(value, RawInt):",
+  "        if abs(value) > 9007199254740991:",
+  "            issues.append(f'{path}: unsafe integer {value}')",
+  "        return",
+  "    if isinstance(value, RawFloat):",
+  "        if not math.isfinite(value):",
+  "            issues.append(f'{path}: non-finite float')",
+  "        elif value.is_integer():",
+  "            issues.append(f'{path}: integer-valued float {value!r}')",
+  "        return",
+  "    if isinstance(value, list):",
+  "        for index, item in enumerate(value):",
+  "            audit(item, f'{path}[{index}]')",
+  "        return",
+  "    if isinstance(value, dict):",
+  "        for key, item in value.items():",
+  "            audit(item, f'{path}.{key}')",
+  "def audit_exercise(exercise, path):",
+  "    if 'answer' in exercise:",
+  "        audit(exercise['answer'], f'{path}.answer')",
+  "    evaluation = exercise.get('evaluation', {})",
+  "    for index, rule in enumerate(evaluation.get('diagnostic_rules', [])):",
+  "        audit(rule.get('submission'), f'{path}.evaluation.diagnostic_rules[{index}].submission')",
+  "    for index, candidate in enumerate(evaluation.get('allowed_answers', [])):",
+  "        audit(candidate.get('answer'), f'{path}.evaluation.allowed_answers[{index}].answer')",
+  "for unit_index, unit in enumerate(document['units']):",
+  "    audit_exercise(unit['exercise'], f'units[{unit_index}].exercise')",
+  "    for variant_index, variant in enumerate(unit.get('practice_variants', [])):",
+  "        audit_exercise(variant, f'units[{unit_index}].practice_variants[{variant_index}]')",
+  "print(json.dumps({'issues': issues, 'one': canonical_json(1), 'one_float': canonical_json(1.0)}, ensure_ascii=False))",
+].join("\n");
+
+const evaluateRawWithPython = (
+  rawUnit: string,
+  rawSubmission: string,
+  context: string,
+): PythonEvaluationResult =>
+  parsePythonEvaluationResult(
+    runPython(
       [
-        `Python evaluator exited with status ${String(execution.status)} for ${unit.id}.`,
-        `stderr: ${execution.stderr.trim() || "<empty>"}`,
-        `stdout: ${execution.stdout.trim() || "<empty>"}`,
-      ].join("\n"),
-    );
-  }
+        "-c",
+        rawEvaluationScript,
+        Buffer.from(rawUnit, "utf8").toString("base64"),
+        Buffer.from(rawSubmission, "utf8").toString("base64"),
+      ],
+      context,
+    ),
+    context,
+  );
 
-  let parsed: unknown;
+const evaluateRawFailureWithPython = (
+  rawUnit: string,
+  rawSubmission: string,
+  context: string,
+): string => {
+  const stdout = runPython(
+    [
+      "-c",
+      rawEvaluationOutcomeScript,
+      Buffer.from(rawUnit, "utf8").toString("base64"),
+      Buffer.from(rawSubmission, "utf8").toString("base64"),
+    ],
+    context,
+  );
+  const parsed: unknown = JSON.parse(stdout);
+  const outcome = requireRecord(parsed, `${context} outcome`);
+  if (outcome.ok !== false || typeof outcome.message !== "string") {
+    throw new Error(`Expected Python failure for ${context}, received: ${stdout}`);
+  }
+  return outcome.message;
+};
+
+const injectRawJsonToken = (
+  value: unknown,
+  marker: string,
+  rawToken: string,
+): string => {
+  const serialized = serializeSubmission(value);
+  const pieces = serialized.split(serializeSubmission(marker));
+  if (pieces.length !== 2) {
+    throw new Error(`Expected exactly one raw JSON marker ${marker}.`);
+  }
+  return `${pieces[0]}${rawToken}${pieces[1]}`;
+};
+
+const captureErrorMessage = (operation: () => unknown): string => {
   try {
-    parsed = JSON.parse(execution.stdout);
+    operation();
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `Python evaluator returned invalid JSON for ${unit.id}: ${message}\nstdout: ${execution.stdout}`,
-    );
+    if (error instanceof Error) {
+      return error.message;
+    }
+    throw error;
   }
-
-  if (!isPythonEvaluationResult(parsed)) {
-    throw new Error(
-      `Python evaluator returned an invalid result shape for ${unit.id}: ${execution.stdout}`,
-    );
-  }
-
-  return parsed;
+  throw new Error("Expected operation to fail.");
 };
 
 const expectPythonParity = (
@@ -146,21 +387,16 @@ const expectPythonParity = (
   const python = evaluateWithPython(unit, submission);
   const typescript = evaluateExercise(unit, submission);
 
-  expect({
-    score: typescript.score,
-    passed: typescript.passed,
-    rule_refs: typescript.ruleRefs,
-    capability_refs: typescript.capabilityRefs,
-    error_type: typescript.errorType,
-    feedback: typescript.feedback,
-    remediation: typescript.remediation,
-    manual_review_required: typescript.manualReviewRequired,
-    data_version: typescript.dataVersion,
-    evaluation_version: typescript.evaluationVersion,
-  }).toEqual(python);
+  expect(commonTypeScriptResult(typescript)).toEqual(python);
 };
 
 describe("Python evaluator parity", () => {
+  it("runs the resolved PYTHON or fallback interpreter without a shell", () => {
+    expect(runPython(["-c", "print('ready')"], "interpreter probe").trim()).toBe(
+      "ready",
+    );
+  });
+
   for (const unit of teachingUnits.units) {
     it(`matches Python for the declared answer of ${unit.id}`, () => {
       expectPythonParity(unit, unit.exercise.answer);
@@ -199,5 +435,85 @@ describe("Python evaluator parity", () => {
     const partialAnswer = requireRecord(allowedAnswers[1], "allowed answer");
 
     expectPythonParity(unit, partialAnswer.answer);
+  });
+
+  it("audits the canonical comparison numeric domain independently in Python", () => {
+    const stdout = runPython(
+      ["-c", canonicalNumericAuditScript],
+      "canonical numeric audit",
+    );
+    const parsed: unknown = JSON.parse(stdout);
+    const audit = requireRecord(parsed, "canonical numeric audit");
+
+    expect(audit.issues).toEqual([]);
+    expect(audit.one).toBe("1");
+    expect(audit.one_float).toBe("1.0");
+    expect(Object.is(1, 1.0)).toBe(true);
+  });
+
+  it("matches Python raw JSON signed-zero evaluation", () => {
+    const unit = structuredClone(findUnitByMethod("exact_match"));
+    const rawUnitView = structuredClone(unit);
+    const marker = "__RAW_NEGATIVE_ZERO__";
+    unit.exercise.answer = { value: -0 };
+    rawUnitView.exercise.answer = { value: marker };
+    const rawUnit = injectRawJsonToken(rawUnitView, marker, "-0.0");
+
+    const negativePython = evaluateRawWithPython(
+      rawUnit,
+      '{"value":-0.0}',
+      "negative-zero match",
+    );
+    const positivePython = evaluateRawWithPython(
+      rawUnit,
+      '{"value":0.0}',
+      "positive-zero mismatch",
+    );
+
+    expect(commonTypeScriptResult(evaluateExercise(unit, { value: -0 }))).toEqual(
+      negativePython,
+    );
+    expect(commonTypeScriptResult(evaluateExercise(unit, { value: 0 }))).toEqual(
+      positivePython,
+    );
+    expect(positivePython.passed).toBe(false);
+  });
+
+  it("matches Python NaN truthiness outside comparison-bearing values", () => {
+    const unit = structuredClone(findUnitByMethod("exact_match"));
+    const rawUnitView = structuredClone(unit);
+    const marker = "__RAW_NAN_TRUTHINESS__";
+    unit.exercise.evaluation.manual_review_on_unmatched = Number.NaN;
+    rawUnitView.exercise.evaluation.manual_review_on_unmatched = marker;
+    const rawUnit = injectRawJsonToken(rawUnitView, marker, "NaN");
+    const submission = { unmatched_nan_truthiness: true };
+    const python = evaluateRawWithPython(
+      rawUnit,
+      serializeSubmission(submission),
+      "NaN truthiness",
+    );
+
+    expect(commonTypeScriptResult(evaluateExercise(unit, submission))).toEqual(
+      python,
+    );
+    expect(python.manual_review_required).toBe(true);
+  });
+
+  it("matches Python malformed diagnostic configuration errors by message", () => {
+    const unit = structuredClone(findUnitByMethod("exact_match"));
+    unit.exercise.evaluation.diagnostic_rules = null;
+    const rawUnit = serializeSubmission(unit);
+    const rawSubmission = serializeSubmission(unit.exercise.answer);
+    const pythonMessage = evaluateRawFailureWithPython(
+      rawUnit,
+      rawSubmission,
+      "null diagnostic_rules",
+    );
+    const typescriptMessage = captureErrorMessage(() =>
+      evaluateExercise(unit, unit.exercise.answer),
+    );
+
+    expect(typescriptMessage).toBe(pythonMessage);
+    expect(pythonMessage).toBe("diagnostic_rules must be a list");
   });
 });
