@@ -27,6 +27,13 @@ interface PythonCommand {
   prefixArguments: string[];
 }
 
+interface PythonProbeResult {
+  compatible: boolean;
+  failure: string;
+}
+
+type PythonCandidateProbe = (candidate: PythonCommand) => PythonProbeResult;
+
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 
 const stripSurroundingQuotes = (value: string): string =>
@@ -70,33 +77,62 @@ const pythonCandidates = (): PythonCommand[] => {
   });
 };
 
-const resolvePythonCommand = (): PythonCommand => {
+const selectCompatiblePythonCommand = (
+  candidates: readonly PythonCommand[],
+  probe: PythonCandidateProbe,
+): PythonCommand => {
   const failures: string[] = [];
-  for (const candidate of pythonCandidates()) {
-    const execution = spawnSync(
-      candidate.executable,
-      [...candidate.prefixArguments, "--version"],
-      {
-        cwd: repoRoot,
-        encoding: "utf8",
-        shell: false,
-        timeout: 5_000,
-        windowsHide: true,
-      },
-    );
-    if (execution.error === undefined && execution.status === 0) {
+  for (const candidate of candidates) {
+    const result = probe(candidate);
+    if (result.compatible) {
       return candidate;
     }
-
     failures.push(
-      `${candidate.executable} ${candidate.prefixArguments.join(" ")}: ${
-        execution.error?.message ?? `status ${String(execution.status)}`
-      }`,
+      `${candidate.executable} ${candidate.prefixArguments.join(" ")}: ${result.failure}`,
     );
   }
 
-  throw new Error(`No usable Python interpreter found. ${failures.join("; ")}`);
+  throw new Error(
+    `No usable Python 3.11+ evaluator runtime found. ${failures.join("; ")}`,
+  );
 };
+
+const pythonCompatibilityScript = [
+  "import sys",
+  "if sys.version_info < (3, 11):",
+  "    raise SystemExit('Python 3.11+ required')",
+  "import scripts.evaluate_exercise",
+].join("\n");
+
+const probePythonCandidate = (candidate: PythonCommand): PythonProbeResult => {
+  const execution = spawnSync(
+    candidate.executable,
+    [...candidate.prefixArguments, "-c", pythonCompatibilityScript],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      shell: false,
+      timeout: 5_000,
+      windowsHide: true,
+    },
+  );
+  if (execution.error === undefined && execution.status === 0) {
+    return { compatible: true, failure: "" };
+  }
+
+  const output = [execution.stderr.trim(), execution.stdout.trim()]
+    .filter((value) => value.length > 0)
+    .join(" | ");
+  return {
+    compatible: false,
+    failure:
+      execution.error?.message ??
+      `status ${String(execution.status)}${output.length > 0 ? `: ${output}` : ""}`,
+  };
+};
+
+const resolvePythonCommand = (): PythonCommand =>
+  selectCompatiblePythonCommand(pythonCandidates(), probePythonCandidate);
 
 const pythonCommand = resolvePythonCommand();
 
@@ -274,45 +310,53 @@ const canonicalNumericAuditScript = [
   "from pathlib import Path",
   "from scripts.evaluate_exercise import canonical_json",
   "class RawInt(int):",
-  "    pass",
+  "    def __new__(cls, token):",
+  "        value = super().__new__(cls, token)",
+  "        value.token = token",
+  "        return value",
   "class RawFloat(float):",
   "    pass",
   "with Path('data/curriculum/teaching-units.json').open(encoding='utf-8') as handle:",
   "    document = json.load(handle, parse_int=RawInt, parse_float=RawFloat)",
   "issues = []",
-  "def audit(value, path):",
+  "def audit(value, path, target):",
   "    if isinstance(value, bool) or value is None or isinstance(value, str):",
   "        return",
   "    if isinstance(value, RawInt):",
-  "        if abs(value) > 9007199254740991:",
-  "            issues.append(f'{path}: unsafe integer {value}')",
+  "        if value.token == '-0':",
+  "            target.append(f'{path}: integer token -0 is unsupported')",
+  "        elif abs(value) > 9007199254740991:",
+  "            target.append(f'{path}: unsafe integer {value}')",
   "        return",
   "    if isinstance(value, RawFloat):",
   "        if not math.isfinite(value):",
-  "            issues.append(f'{path}: non-finite float')",
+  "            target.append(f'{path}: non-finite float')",
   "        elif value.is_integer():",
-  "            issues.append(f'{path}: integer-valued float {value!r}')",
+  "            target.append(f'{path}: integer-valued float {value!r}')",
   "        return",
   "    if isinstance(value, list):",
   "        for index, item in enumerate(value):",
-  "            audit(item, f'{path}[{index}]')",
+  "            audit(item, f'{path}[{index}]', target)",
   "        return",
   "    if isinstance(value, dict):",
   "        for key, item in value.items():",
-  "            audit(item, f'{path}.{key}')",
+  "            audit(item, f'{path}.{key}', target)",
   "def audit_exercise(exercise, path):",
   "    if 'answer' in exercise:",
-  "        audit(exercise['answer'], f'{path}.answer')",
+  "        audit(exercise['answer'], f'{path}.answer', issues)",
   "    evaluation = exercise.get('evaluation', {})",
   "    for index, rule in enumerate(evaluation.get('diagnostic_rules', [])):",
-  "        audit(rule.get('submission'), f'{path}.evaluation.diagnostic_rules[{index}].submission')",
+  "        audit(rule.get('submission'), f'{path}.evaluation.diagnostic_rules[{index}].submission', issues)",
   "    for index, candidate in enumerate(evaluation.get('allowed_answers', [])):",
-  "        audit(candidate.get('answer'), f'{path}.evaluation.allowed_answers[{index}].answer')",
+  "        audit(candidate.get('answer'), f'{path}.evaluation.allowed_answers[{index}].answer', issues)",
   "for unit_index, unit in enumerate(document['units']):",
   "    audit_exercise(unit['exercise'], f'units[{unit_index}].exercise')",
   "    for variant_index, variant in enumerate(unit.get('practice_variants', [])):",
   "        audit_exercise(variant, f'units[{unit_index}].practice_variants[{variant_index}]')",
-  "print(json.dumps({'issues': issues, 'one': canonical_json(1), 'one_float': canonical_json(1.0)}, ensure_ascii=False))",
+  "negative_zero_integer_issues = []",
+  "negative_zero_integer = json.loads('-0', parse_int=RawInt, parse_float=RawFloat)",
+  "audit(negative_zero_integer, 'probe', negative_zero_integer_issues)",
+  "print(json.dumps({'issues': issues, 'negative_zero_integer_issues': negative_zero_integer_issues, 'one': canonical_json(1), 'one_float': canonical_json(1.0)}, ensure_ascii=False))",
 ].join("\n");
 
 const evaluateRawWithPython = (
@@ -391,6 +435,31 @@ const expectPythonParity = (
 };
 
 describe("Python evaluator parity", () => {
+  it("skips an incompatible Python candidate and selects the next one", () => {
+    const incompatible = {
+      executable: "python-incompatible",
+      prefixArguments: [],
+    };
+    const compatible = {
+      executable: "python-compatible",
+      prefixArguments: ["-X", "utf8"],
+    };
+    const probed: string[] = [];
+
+    const selected = selectCompatiblePythonCommand(
+      [incompatible, compatible],
+      (candidate) => {
+        probed.push(candidate.executable);
+        return candidate === compatible
+          ? { compatible: true, failure: "" }
+          : { compatible: false, failure: "Python 3.11+ required" };
+      },
+    );
+
+    expect(selected).toBe(compatible);
+    expect(probed).toEqual(["python-incompatible", "python-compatible"]);
+  });
+
   it("runs the resolved PYTHON or fallback interpreter without a shell", () => {
     expect(runPython(["-c", "print('ready')"], "interpreter probe").trim()).toBe(
       "ready",
@@ -446,6 +515,9 @@ describe("Python evaluator parity", () => {
     const audit = requireRecord(parsed, "canonical numeric audit");
 
     expect(audit.issues).toEqual([]);
+    expect(audit.negative_zero_integer_issues).toEqual([
+      "probe: integer token -0 is unsupported",
+    ]);
     expect(audit.one).toBe("1");
     expect(audit.one_float).toBe("1.0");
     expect(Object.is(1, 1.0)).toBe(true);
