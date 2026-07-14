@@ -3,9 +3,15 @@ export interface ProductMetadataValue {
   readonly sourceRef: string;
 }
 
+export interface ProductMetadataSteps {
+  readonly values: readonly string[];
+  readonly sourceRef: string;
+}
+
 export interface ApprovedProductMetadata {
   readonly role: ProductMetadataValue;
   readonly defaultScene: ProductMetadataValue;
+  readonly structureSteps: ProductMetadataSteps;
   readonly scenarioDocuments: Readonly<Record<string, string>>;
 }
 
@@ -18,6 +24,17 @@ const DEFAULT_SCENE = Object.freeze({
   value: "通用标注规则",
   sourceRef:
     "docs/superpowers/specs/2026-07-14-task6-teaching-application-design.md#6.4-场景切换",
+});
+
+const STRUCTURE_STEP_VALUES = Object.freeze([
+  "在能力图谱中定位当前能力及其 PRE 前置关系",
+  "阅读已发布规则或当前开发态结构节点说明",
+  "完成任务卡自检并确认下一学习步骤",
+]);
+
+const STRUCTURE_STEPS = Object.freeze({
+  values: STRUCTURE_STEP_VALUES,
+  sourceRef: "docs/标航智导.md#5.4-模块二-标注任务转化器",
 });
 
 const SCENARIO_DOCUMENTS: Readonly<Record<string, string>> = Object.freeze({
@@ -35,5 +52,6 @@ export const APPROVED_PRODUCT_METADATA: ApprovedProductMetadata =
   Object.freeze({
     role: ROLE,
     defaultScene: DEFAULT_SCENE,
+    structureSteps: STRUCTURE_STEPS,
     scenarioDocuments: SCENARIO_DOCUMENTS,
   });

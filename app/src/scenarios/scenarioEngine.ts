@@ -21,11 +21,19 @@ export interface AppliedScenarioRule {
   evidence: string[];
 }
 
+export interface ScenarioRuleConflict {
+  baseRuleRef: string;
+  ruleIds: string[];
+  reason: "multiple_replace";
+}
+
 export interface ScenarioApplication {
   scenarioId: string | null;
+  scenarioName: string | null;
   dataType: string;
   rules: ScenarioRule[];
   appliedRules: AppliedScenarioRule[];
+  conflicts: ScenarioRuleConflict[];
   evidence: string[];
 }
 
@@ -114,6 +122,9 @@ const cloneBaseRules = (
     baseRuleRef: null,
   }));
 
+const compareIds = (left: string, right: string): number =>
+  left < right ? -1 : left > right ? 1 : 0;
+
 export const createScenarioEngine = (
   repository: TeachingRepository,
 ): ScenarioEngine => {
@@ -122,13 +133,16 @@ export const createScenarioEngine = (
     let rules = cloneBaseRules(input.baseRules);
     const evidence: string[] = [];
     const appliedRules: AppliedScenarioRule[] = [];
+    const conflicts: ScenarioRuleConflict[] = [];
 
     if (input.scenarioId === null) {
       return {
         scenarioId: null,
+        scenarioName: null,
         dataType,
         rules,
         appliedRules,
+        conflicts,
         evidence,
       };
     }
@@ -141,10 +155,12 @@ export const createScenarioEngine = (
       !scenario.supported_data_types.includes(dataType)
     ) {
       return {
-        scenarioId: input.scenarioId,
+        scenarioId: null,
+        scenarioName: null,
         dataType,
         rules,
         appliedRules,
+        conflicts,
         evidence,
       };
     }
@@ -152,21 +168,12 @@ export const createScenarioEngine = (
     const scenarioRecord: Record<string, unknown> = scenario;
     if (!hasPublishedState(scenarioRecord)) {
       return {
-        scenarioId: input.scenarioId,
+        scenarioId: null,
+        scenarioName: null,
         dataType,
         rules,
         appliedRules,
-        evidence,
-      };
-    }
-
-    const rawOverrides = scenario.overrides;
-    if (!Array.isArray(rawOverrides)) {
-      return {
-        scenarioId: input.scenarioId,
-        dataType,
-        rules,
-        appliedRules,
+        conflicts,
         evidence,
       };
     }
@@ -174,20 +181,29 @@ export const createScenarioEngine = (
     evidence.push(`scenario:${scenario.id}:published`);
     evidence.push(`scenario:${scenario.id}:declares:${dataType}`);
 
+    const baseRuleIds = new Set(input.baseRules.map(({ id }) => id));
+    const overrideGroups = new Map<string, PublishedOverride[]>();
+    const rawOverrides = Array.isArray(scenario.overrides)
+      ? scenario.overrides
+      : [];
     for (const rawOverride of rawOverrides) {
       const override = readPublishedOverride(rawOverride);
       if (
         override === null ||
         override.dataType !== dataType ||
-        !rules.some(({ id }) => id === override.baseRuleRef)
+        !baseRuleIds.has(override.baseRuleRef)
       ) {
         continue;
       }
-
-      if (override.overrideType === "replace") {
-        rules = rules.filter(({ id }) => id !== override.baseRuleRef);
+      const group = overrideGroups.get(override.baseRuleRef);
+      if (group === undefined) {
+        overrideGroups.set(override.baseRuleRef, [override]);
+      } else {
+        group.push(override);
       }
+    }
 
+    const applyOverride = (override: PublishedOverride): void => {
       rules.push({
         id: override.ruleId,
         content: override.content,
@@ -208,10 +224,53 @@ export const createScenarioEngine = (
         evidence: ruleEvidence,
       });
       evidence.push(...ruleEvidence);
+    };
+
+    const baseRuleOrder = new Map(
+      input.baseRules.map(({ id }, index) => [id, index]),
+    );
+    const orderedGroups = [...overrideGroups.entries()].sort(
+      ([left], [right]) =>
+        (baseRuleOrder.get(left) ?? Number.MAX_SAFE_INTEGER) -
+          (baseRuleOrder.get(right) ?? Number.MAX_SAFE_INTEGER) ||
+        compareIds(left, right),
+    );
+
+    for (const [baseRuleRef, group] of orderedGroups) {
+      const orderedOverrides = [...group].sort((left, right) =>
+        compareIds(left.ruleId, right.ruleId),
+      );
+      const replacements = orderedOverrides.filter(
+        ({ overrideType }) => overrideType === "replace",
+      );
+      if (replacements.length > 1) {
+        const ruleIds = replacements.map(({ ruleId }) => ruleId);
+        conflicts.push({
+          baseRuleRef,
+          ruleIds,
+          reason: "multiple_replace",
+        });
+        evidence.push(
+          `override_conflict:${baseRuleRef}:multiple_replace:${ruleIds.join("+")}`,
+        );
+        continue;
+      }
+
+      const replacement = replacements[0];
+      if (replacement !== undefined) {
+        rules = rules.filter(({ id }) => id !== baseRuleRef);
+        applyOverride(replacement);
+      }
+      for (const addition of orderedOverrides.filter(
+        ({ overrideType }) => overrideType === "add",
+      )) {
+        applyOverride(addition);
+      }
     }
 
     return {
-      scenarioId: input.scenarioId,
+      scenarioId: scenario.id,
+      scenarioName: scenario.name,
       dataType,
       rules: rules.map((rule) => ({
         ...rule,
@@ -220,6 +279,10 @@ export const createScenarioEngine = (
       appliedRules: appliedRules.map((rule) => ({
         ...rule,
         evidence: [...rule.evidence],
+      })),
+      conflicts: conflicts.map((conflict) => ({
+        ...conflict,
+        ruleIds: [...conflict.ruleIds],
       })),
       evidence: [...evidence],
     };

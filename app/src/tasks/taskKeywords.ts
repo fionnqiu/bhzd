@@ -1,5 +1,6 @@
 import type { GraphNode } from "../data/contracts";
 import { graph } from "../data/rawData";
+import type { DeepReadonly } from "../data/repository";
 
 interface KeywordRule {
   id: string;
@@ -184,14 +185,63 @@ const GOAL_MARKERS = [
   "事件",
 ] as const;
 
-const taskNodes = graph.nodes.filter(({ type }) => type === "TSK");
+const deepFreeze = <T>(value: T, seen = new WeakSet<object>()): T => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    seen.has(value) ||
+    Object.isFrozen(value)
+  ) {
+    return value;
+  }
+
+  seen.add(value);
+  for (const nested of Object.values(value)) {
+    deepFreeze(nested, seen);
+  }
+  return Object.freeze(value);
+};
+
+const taskNodes: readonly DeepReadonly<GraphNode>[] = deepFreeze(
+  structuredClone(graph.nodes.filter(({ type }) => type === "TSK")),
+);
 const taskNodeIndex = new Map(taskNodes.map((node) => [node.id, node]));
+
+const isAsciiWordCharacter = (value: string | undefined): boolean =>
+  value !== undefined && /[a-z0-9_]/i.test(value);
+
+const containsKeyword = (
+  normalizedText: string,
+  rawKeyword: string,
+): boolean => {
+  const keyword = rawKeyword.normalize("NFKC").toLowerCase();
+  let startIndex = normalizedText.indexOf(keyword);
+
+  while (startIndex !== -1) {
+    const endIndex = startIndex + keyword.length;
+    const startsWithLatin = isAsciiWordCharacter(keyword[0]);
+    const endsWithLatin = isAsciiWordCharacter(keyword.at(-1));
+    const hasLeftBoundary =
+      !startsWithLatin ||
+      !isAsciiWordCharacter(normalizedText[startIndex - 1]);
+    const hasRightBoundary =
+      !endsWithLatin || !isAsciiWordCharacter(normalizedText[endIndex]);
+
+    if (hasLeftBoundary && hasRightBoundary) {
+      return true;
+    }
+
+    startIndex = normalizedText.indexOf(keyword, startIndex + 1);
+  }
+
+  return false;
+};
 
 const matchingKeywords = (
   normalizedText: string,
   keywords: readonly string[],
 ): string[] =>
-  keywords.filter((keyword) => normalizedText.includes(keyword.toLowerCase()));
+  keywords.filter((keyword) => containsKeyword(normalizedText, keyword));
 
 const rankRules = (
   normalizedText: string,
@@ -214,11 +264,11 @@ const rankRules = (
     );
 
 export const normalizeTaskText = (text: string): string =>
-  text.trim().toLowerCase();
+  text.normalize("NFKC").trim().toLowerCase();
 
-export const detectDataType = (
+export const detectDataTypeMatches = (
   normalizedText: string,
-): KeywordMatch | null => {
+): KeywordMatch[] => {
   const matches = DATA_TYPE_RULES.map((rule, precedence): KeywordMatch => {
     const keywords = matchingKeywords(normalizedText, rule.keywords);
     return {
@@ -234,7 +284,10 @@ export const detectDataType = (
         right.score - left.score || left.precedence - right.precedence,
     );
 
-  return matches[0] ?? null;
+  const highestScore = matches[0]?.score;
+  return highestScore === undefined
+    ? []
+    : matches.filter(({ score }) => score === highestScore);
 };
 
 export const detectScenario = (
@@ -257,5 +310,7 @@ export const candidateLabels = (dataType: string | null): string[] =>
     .filter((node) => dataType === null || node.data_types.includes(dataType))
     .map((node) => `${node.id}|${node.label}`);
 
-export const getTaskNode = (taskId: string): GraphNode | undefined =>
+export const getTaskNode = (
+  taskId: string,
+): DeepReadonly<GraphNode> | undefined =>
   taskNodeIndex.get(taskId);

@@ -13,6 +13,7 @@ import { APPROVED_PRODUCT_METADATA } from "./productMetadata";
 export interface TaskCardProvenance {
   roleSourceRef: string;
   sceneSourceRef: string;
+  structureStepsSourceRef: string | null;
 }
 
 export interface TaskCard {
@@ -31,6 +32,7 @@ export interface TaskCard {
   teachingUnitIds: string[];
   scenarioRuleIds: string[];
   scenarioRules: ScenarioRule[];
+  matchEvidence: string[];
   contentKind: "lesson" | "structure";
   provenance: TaskCardProvenance;
 }
@@ -80,6 +82,7 @@ const collectCapabilityUnits = (
 
 const relationBackedUnitKnowledge = (
   repository: TeachingRepository,
+  capabilityId: string,
   units: readonly DeepReadonly<TeachingUnit>[],
 ): string[] =>
   unique(
@@ -90,7 +93,11 @@ const relationBackedUnitKnowledge = (
           node?.type === "KNG" &&
           repository
             .getOutgoingEdges(ruleId)
-            .some(({ relation }) => relation === "ISA" || relation === "SUP")
+            .some(
+              ({ relation, target }) =>
+                target === capabilityId &&
+                (relation === "ISA" || relation === "SUP"),
+            )
         );
       }),
     ),
@@ -150,6 +157,24 @@ const lessonSteps = (
 const structuralSteps = (node: DeepReadonly<GraphNode>): string[] =>
   unique([node.label, node.description, node.data_types.join(",")]).slice(0, 9);
 
+interface BoundedSteps {
+  steps: string[];
+  structureStepsSourceRef: string | null;
+}
+
+const boundSteps = (values: readonly string[]): BoundedSteps => {
+  const steps = unique(values).slice(0, 9);
+  if (steps.length >= 3) {
+    return { steps, structureStepsSourceRef: null };
+  }
+
+  return {
+    steps: [...APPROVED_PRODUCT_METADATA.structureSteps.values].slice(0, 9),
+    structureStepsSourceRef:
+      APPROVED_PRODUCT_METADATA.structureSteps.sourceRef,
+  };
+};
+
 const buildTaskCard = (
   repository: TeachingRepository,
   scenarioEngine: ScenarioEngine,
@@ -166,7 +191,7 @@ const buildTaskCard = (
   const units = collectCapabilityUnits(repository, capabilityId);
   const knowledgeIds = unique([
     ...relatedNodeIds(repository, capabilityId, "KNG"),
-    ...relationBackedUnitKnowledge(repository, units),
+    ...relationBackedUnitKnowledge(repository, capabilityId, units),
   ]);
   const baseRules = knowledgeIds.flatMap((knowledgeId) => {
     const node = repository.getNode(knowledgeId);
@@ -188,38 +213,43 @@ const buildTaskCard = (
   const scenarioRules = scenarioApplication.rules.filter(
     ({ origin }) => origin === "scenario",
   );
-  const scenario = scenarioId === null ? undefined : repository.getScenario(scenarioId);
   const scenarioSourceRef =
-    scenario === undefined
+    scenarioApplication.scenarioId === null
       ? undefined
-      : APPROVED_PRODUCT_METADATA.scenarioDocuments[scenario.id];
-  const hasSourcedScenario =
-    scenario !== undefined && scenarioSourceRef !== undefined;
+      : APPROVED_PRODUCT_METADATA.scenarioDocuments[
+          scenarioApplication.scenarioId
+        ];
+  const sceneMetadata =
+    scenarioApplication.scenarioName !== null && scenarioSourceRef !== undefined
+      ? {
+          value: scenarioApplication.scenarioName,
+          sourceRef: scenarioSourceRef,
+        }
+      : APPROVED_PRODUCT_METADATA.defaultScene;
   const contentKind = units.length > 0 ? "lesson" : "structure";
   const objectives =
     contentKind === "lesson"
       ? unique(units.flatMap(({ learning_objectives: values }) => values))
       : [capability.description];
-  const steps =
+  const rawSteps =
     contentKind === "lesson"
       ? lessonSteps(
           units,
           scenarioRules.map(({ content }) => content),
         )
       : structuralSteps(capability);
+  const boundedSteps = boundSteps(rawSteps);
 
   return {
     name: units[0]?.title ?? capability.label,
     objectives,
     role: APPROVED_PRODUCT_METADATA.role.value,
-    scene: hasSourcedScenario
-      ? scenario.name
-      : APPROVED_PRODUCT_METADATA.defaultScene.value,
+    scene: sceneMetadata.value,
     capabilityPath: [...capabilityPath],
     capabilityIds: [capabilityId],
     knowledgeIds,
     certificateIds: certificateIds(repository, capabilityId),
-    steps,
+    steps: boundedSteps.steps,
     commonErrors: unique(
       units.flatMap((unit) => stringArray(unit.common_errors)),
     ),
@@ -234,12 +264,12 @@ const buildTaskCard = (
       ...rule,
       sourceRefs: [...rule.sourceRefs],
     })),
+    matchEvidence: [...scenarioApplication.evidence],
     contentKind,
     provenance: {
       roleSourceRef: APPROVED_PRODUCT_METADATA.role.sourceRef,
-      sceneSourceRef: hasSourcedScenario
-        ? scenarioSourceRef
-        : APPROVED_PRODUCT_METADATA.defaultScene.sourceRef,
+      sceneSourceRef: sceneMetadata.sourceRef,
+      structureStepsSourceRef: boundedSteps.structureStepsSourceRef,
     },
   };
 };
