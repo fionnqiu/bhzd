@@ -60,6 +60,18 @@ describe("task converter", () => {
     expect(converter.convert("帮我做一个标注任务", null)).toMatchObject({
       kind: "clarification",
       missing: ["data_type"],
+      matchedDataType: null,
+    });
+  });
+
+  it("keeps the unique matched data type for scenario compatibility checks", () => {
+    expect(converter.convert("请处理音频文件", null)).toMatchObject({
+      kind: "clarification",
+      matchedDataType: "audio",
+    });
+    expect(converter.convert("医疗视频行为事件标注", null)).toMatchObject({
+      kind: "cards",
+      matchedDataType: "video",
     });
   });
 
@@ -74,6 +86,32 @@ describe("task converter", () => {
       appliedScenarioId: "SCN-CUSTOMER-SERVICE-001",
     });
   });
+
+  it.each([
+    ["draft", true],
+    ["published", false],
+  ] as const)(
+    "does not expose an ineligible detected %s scenario in conversion output",
+    (reviewStatus, studentVisible) => {
+      const input = structuredClone(repositoryInput);
+      const medicalScenario = input.scenarios.find(
+        (document) => document.scenario.id === "SCN-MEDICAL-001",
+      )?.scenario;
+      if (medicalScenario === undefined) {
+        throw new Error("canonical medical scenario missing");
+      }
+      medicalScenario.review_status = reviewStatus;
+      medicalScenario.student_visible = studentVisible;
+
+      const result = createTaskConverter(createRepository(input)).convert(
+        "医疗文本实体标注",
+        "SCN-CUSTOMER-SERVICE-001",
+      );
+
+      expect(result.suggestedScenarioId).toBeNull();
+      expect(result.matchEvidence.join("\n")).not.toContain("SCN-MEDICAL-001");
+    },
+  );
 
   it.each([
     ["文本实体边界标注", "text", "CAP-TXT-ENTITY-BOUNDARY-001"],
@@ -104,6 +142,7 @@ describe("task converter", () => {
 
     expect(result.appliedScenarioId).toBeNull();
     expect(result.suggestedScenarioId).toBe(suggestedScenarioId);
+    expect(result.matchedDataType).not.toBeNull();
   });
 
   it("returns stable missing fields for empty and ambiguous input", () => {

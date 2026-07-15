@@ -28,12 +28,20 @@ import {
   CourseBrowser,
   isConsumableTeachingUnit,
 } from "../features/course/CourseBrowser";
+import {
+  DiagnosticView,
+  type DiagnosticMasteryInput,
+} from "../features/diagnostics/DiagnosticView";
 import { LessonView } from "../features/course/LessonView";
 import type { GraphLessonRepository } from "../features/graph/lessonLinks";
+import { TaskConverterView } from "../features/tasks/TaskConverterView";
 import { createGraphEngine } from "../graph/graphEngine";
 import {
   createProfileStore,
+  type LearningProfileSnapshot,
   type ProfileStorage,
+  type RecordDiagnosticInput,
+  type RecordExerciseInput,
 } from "../state/profileStore";
 import {
   AppProvider,
@@ -103,6 +111,46 @@ const MODE_INDEX = new Map(
   MODE_DETAILS.map(({ id }, index) => [id, index] as const),
 );
 
+export const masteryForScenario = (
+  profileSnapshot: LearningProfileSnapshot,
+  scenarioId: string | null,
+  capabilityId: string,
+): number | null => {
+  const mastery =
+    scenarioId === null
+      ? profileSnapshot.generalMastery[capabilityId]
+      : profileSnapshot.scenarioMastery[`${capabilityId}::${scenarioId}`];
+
+  return mastery ?? null;
+};
+
+export const applyDiagnosticMastery = (
+  input: DiagnosticMasteryInput,
+  scenarioId: string | null,
+  recordExercises: (inputs: readonly RecordExerciseInput[]) => boolean,
+  recordDiagnostics: (inputs: readonly RecordDiagnosticInput[]) => boolean,
+): boolean => {
+  if (input.kind === "exercise") {
+    return recordExercises(
+      input.capabilityIds.map((capabilityId) => ({
+        capabilityId,
+        score: input.score,
+        scenarioId,
+        evaluationVersion: "diagnostic-v1",
+      })),
+    );
+  }
+
+  return recordDiagnostics(
+    input.entries.map(({ capabilityId, severity }) => ({
+      capabilityId,
+      severity,
+      scenarioId,
+      evaluationVersion: "diagnostic-v1",
+    })),
+  );
+};
+
 const FOCUSABLE_SELECTOR = [
   "a[href]",
   "button:not([disabled])",
@@ -139,8 +187,11 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
     profileError,
     selectDomain,
     selectNode,
+    selectScenario,
     selectWorkMode,
     selectUnit,
+    recordDiagnostics,
+    recordExercises,
     resetLearningProfile,
   } = useAppContext();
   const [resetOpen, setResetOpen] = useState(false);
@@ -199,6 +250,10 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
           (unit) =>
             unit.id === selectedUnitId && unit.data_type === selectedDomain,
         ) ?? null;
+  const diagnosticTargetUnitId =
+    selectedUnit?.id ??
+    selectableUnits.find((unit) => unit.data_type === selectedDomain)?.id ??
+    null;
 
   const domainLabel = DOMAIN_LABELS[selectedDomain];
   const scenarioLabel = selectedScenarioId ?? "通用场景";
@@ -523,7 +578,7 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
                   </Suspense>
                 </div>
               ) : (
-                <>
+                <div className="feature-workspace">
                   <div className="chart-room__coordinate" aria-hidden="true">
                     LAT 31.2304 N&nbsp;&nbsp; / &nbsp;&nbsp;LON 121.4737 E
                   </div>
@@ -545,40 +600,39 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
 
                   <p className="chart-room__lede">{activeMode.description}</p>
 
-                  <div className="bearing-chart" aria-hidden="true">
-                    <span className="bearing-chart__axis bearing-chart__axis--x" />
-                    <span className="bearing-chart__axis bearing-chart__axis--y" />
-                    <span className="bearing-chart__orbit bearing-chart__orbit--outer" />
-                    <span className="bearing-chart__orbit bearing-chart__orbit--inner" />
-                    <span className="bearing-chart__north">N</span>
-                    <span className="bearing-chart__east">E</span>
-                    <span className="bearing-chart__needle" />
-                    <span className="bearing-chart__star">✦</span>
-                    <span className="bearing-chart__readout">
-                      {activeMode.coordinate}
-                    </span>
-                  </div>
-
-                  <div className="route-briefing">
-                    <p className="route-briefing__label">当前工作台</p>
-                    <h2>{WORK_MODE_LABELS[selectedWorkMode]}</h2>
-                    <p>{activeMode.pending}</p>
-                    <dl>
-                      <div>
-                        <dt>数据域</dt>
-                        <dd>{domainLabel}</dd>
-                      </div>
-                      <div>
-                        <dt>可学习单元</dt>
-                        <dd>{counts[selectedDomain]}</dd>
-                      </div>
-                      <div>
-                        <dt>场景覆盖</dt>
-                        <dd>{scenarioLabel}</dd>
-                      </div>
-                    </dl>
-                  </div>
-                </>
+                  {selectedWorkMode === "task" ? (
+                    <TaskConverterView
+                      repository={canonicalRepository}
+                      graphEngine={canonicalGraphEngine}
+                      currentScenarioId={selectedScenarioId}
+                      dataType={selectedDomain}
+                      onSelectScenario={selectScenario}
+                      onApplyScenario={selectScenario}
+                    />
+                  ) : (
+                    <DiagnosticView
+                      dataType={selectedDomain}
+                      targetUnitId={diagnosticTargetUnitId}
+                      repository={canonicalRepository}
+                      graphEngine={canonicalGraphEngine}
+                      masteryForNode={(capabilityId) =>
+                        masteryForScenario(
+                          profileSnapshot,
+                          selectedScenarioId,
+                          capabilityId,
+                        )
+                      }
+                      onApplyMastery={(input) => {
+                        applyDiagnosticMastery(
+                          input,
+                          selectedScenarioId,
+                          recordExercises,
+                          recordDiagnostics,
+                        );
+                      }}
+                    />
+                  )}
+                </div>
               )}
             </Panel>
           </main>
@@ -704,11 +758,19 @@ export function App({
     return (unitId: string): Domain | null =>
       domainByUnitId.get(unitId) ?? null;
   }, [repository]);
+  const isScenarioSupported = useMemo(
+    () => (scenarioId: string, domain: Domain): boolean =>
+      canonicalRepository
+        .getScenario(scenarioId)
+        ?.supported_data_types.includes(domain) ?? false,
+    [],
+  );
 
   return (
     <AppProvider
       profileStore={resolvedProfileStore}
       resolveUnitDomain={resolveUnitDomain}
+      isScenarioSupported={isScenarioSupported}
     >
       <ApplicationShell repository={repository} />
     </AppProvider>

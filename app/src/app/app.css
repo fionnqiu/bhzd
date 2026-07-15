@@ -1875,6 +1875,197 @@ code {
   border-left: 0.2rem solid var(--error-red);
 }
 
+.feature-workspace {
+  display: grid;
+  min-width: 0;
+  gap: 1rem;
+}
+
+.task-converter,
+.diagnostic-view,
+.diagnostic-report,
+.task-card {
+  min-width: 0;
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+  color: var(--ink);
+  border: 0.0625rem solid rgb(16 35 63 / 16%);
+  background: rgb(247 248 250 / 96%);
+}
+
+.task-converter,
+.diagnostic-view,
+.diagnostic-report {
+  display: grid;
+  gap: 1rem;
+}
+
+.task-converter h1,
+.task-converter h2,
+.task-converter h3,
+.diagnostic-view h2,
+.diagnostic-report h2,
+.diagnostic-report h3,
+.task-card h3,
+.task-card h4 {
+  margin: 0;
+}
+
+.task-converter label,
+.diagnostic-view > label {
+  color: var(--metadata-ink);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.task-converter textarea,
+.diagnostic-view input[type="file"] {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  color: var(--ink);
+  border: 0.0625rem solid rgb(16 35 63 / 28%);
+  background: #fff;
+}
+
+.task-converter textarea {
+  min-height: 9rem;
+  padding: 0.75rem;
+  resize: vertical;
+  font-family: Consolas, "Microsoft YaHei UI", monospace;
+  line-height: 1.55;
+}
+
+.diagnostic-view input[type="file"] {
+  min-height: 2.75rem;
+  padding: 0.5rem;
+}
+
+.task-converter button,
+.scenario-switcher button {
+  min-height: 2.5rem;
+  padding: 0.45rem 0.75rem;
+  color: var(--space-blue);
+  font-weight: 700;
+  background: #fff;
+  border: 0.0625rem solid var(--accessible-cyan);
+  cursor: pointer;
+}
+
+.task-converter button:disabled,
+.scenario-switcher button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.scenario-switcher,
+.task-converter__scenario-suggestion,
+.task-converter__clarification,
+.task-converter__evidence,
+.task-converter__cards {
+  display: grid;
+  min-width: 0;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 0.0625rem solid rgb(16 35 63 / 13%);
+  background: #fff;
+}
+
+.scenario-switcher__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.scenario-switcher [aria-pressed="true"] {
+  color: var(--paper-white);
+  background: var(--space-blue);
+}
+
+.task-converter__scenario-suggestion {
+  border-left: 0.25rem solid var(--navigation-orange);
+}
+
+.task-converter__scenario-suggestion p,
+.task-converter__clarification p,
+.diagnostic-view > p,
+.diagnostic-report > p,
+.diagnostic-report li > p {
+  margin: 0;
+  line-height: 1.65;
+}
+
+.task-converter__cards {
+  gap: 1rem;
+}
+
+.task-card {
+  display: grid;
+  gap: 0.8rem;
+  background: #fff;
+}
+
+.task-card > p {
+  margin: 0;
+  color: var(--metadata-ink);
+  font-family: Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.task-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.task-card dl > div {
+  min-width: 0;
+}
+
+.task-card dt {
+  color: var(--metadata-ink);
+  font-size: 0.7rem;
+}
+
+.task-card dd {
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+
+.task-card section,
+.diagnostic-report > section {
+  min-width: 0;
+}
+
+.task-card ul,
+.task-card ol,
+.diagnostic-report ul,
+.diagnostic-report ol {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.55rem 0 0;
+  padding-left: 1.2rem;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+
+.diagnostic-view__image-mode {
+  padding: 0.75rem;
+  color: #185c45;
+  border-left: 0.2rem solid var(--mastery-green);
+  background: rgb(46 194 126 / 8%);
+  font-weight: 700;
+}
+
+.diagnostic-report code {
+  margin-inline-end: 0.45rem;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 1180px) {
   .app-header {
     grid-template-columns: minmax(15rem, 0.85fr) minmax(25rem, 1.3fr);
@@ -2032,6 +2223,20 @@ code {
 
   .reset-dialog__actions {
     display: grid;
+  }
+
+  .scenario-switcher__options {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .scenario-switcher button,
+  .task-converter__scenario-suggestion button {
+    width: 100%;
+  }
+
+  .task-card dl {
+    grid-template-columns: 1fr;
   }
 }
 

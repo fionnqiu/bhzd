@@ -31,6 +31,7 @@ export type ConversionResult =
       matchEvidence: string[];
       appliedScenarioId: string | null;
       suggestedScenarioId: string | null;
+      matchedDataType: string | null;
     }
   | {
       kind: "cards";
@@ -38,6 +39,7 @@ export type ConversionResult =
       matchEvidence: string[];
       appliedScenarioId: string | null;
       suggestedScenarioId: string | null;
+      matchedDataType: string | null;
     };
 
 export interface TaskConverter {
@@ -186,6 +188,7 @@ const clarification = (
   candidates: string[],
   appliedScenarioId: string | null,
   suggestedScenarioId: string | null,
+  matchedDataType: string | null,
   matchEvidence: string[] = [],
 ): ConversionResult => ({
   kind: "clarification",
@@ -194,6 +197,7 @@ const clarification = (
   matchEvidence,
   appliedScenarioId,
   suggestedScenarioId,
+  matchedDataType,
 });
 
 export const createTaskConverter = (
@@ -206,8 +210,13 @@ export const createTaskConverter = (
   ): ConversionResult => {
     const normalizedText = normalizeTaskText(text);
     const sceneMatch = detectScenario(normalizedText);
+    const matchedScenario =
+      sceneMatch === null ? undefined : repository.getScenario(sceneMatch.id);
     const suggestedScenarioId =
-      sceneMatch !== null && sceneMatch.id !== currentScenarioId
+      sceneMatch !== null &&
+      sceneMatch.id !== currentScenarioId &&
+      matchedScenario?.review_status === "published" &&
+      matchedScenario.student_visible === true
         ? sceneMatch.id
         : null;
     const dataTypeMatches = detectDataTypeMatches(normalizedText);
@@ -218,6 +227,7 @@ export const createTaskConverter = (
         candidateLabels(null),
         null,
         suggestedScenarioId,
+        null,
       );
     }
 
@@ -229,6 +239,7 @@ export const createTaskConverter = (
         candidateLabels(null),
         null,
         suggestedScenarioId,
+        null,
       );
     }
 
@@ -240,6 +251,7 @@ export const createTaskConverter = (
         ),
         null,
         suggestedScenarioId,
+        null,
         dataTypeMatches.map(
           ({ id, keywords }) =>
             `data_type_ambiguous:${id}:${keywords.join("+")}`,
@@ -254,6 +266,7 @@ export const createTaskConverter = (
         candidateLabels(null),
         null,
         suggestedScenarioId,
+        null,
       );
     }
 
@@ -271,6 +284,7 @@ export const createTaskConverter = (
         candidateLabels(dataTypeMatch.id),
         appliedScenarioId,
         suggestedScenarioId,
+        dataTypeMatch.id,
       );
     }
 
@@ -281,6 +295,7 @@ export const createTaskConverter = (
         candidateLabels(dataTypeMatch.id),
         appliedScenarioId,
         suggestedScenarioId,
+        dataTypeMatch.id,
       );
     }
 
@@ -293,6 +308,7 @@ export const createTaskConverter = (
           : [`${taskNode.id}|${taskNode.label}`],
         appliedScenarioId,
         suggestedScenarioId,
+        dataTypeMatch.id,
         capabilitySelection.evidence,
       );
     }
@@ -305,6 +321,7 @@ export const createTaskConverter = (
         [`${taskNode.id}|${taskNode.label}`],
         appliedScenarioId,
         suggestedScenarioId,
+        dataTypeMatch.id,
         capabilitySelection.evidence,
       );
     }
@@ -316,6 +333,7 @@ export const createTaskConverter = (
         [`${taskNode.id}|${taskNode.label}`],
         appliedScenarioId,
         suggestedScenarioId,
+        dataTypeMatch.id,
       );
     }
 
@@ -335,10 +353,10 @@ export const createTaskConverter = (
         const knowledge = repository.getNode(knowledgeId);
         return `knowledge:${knowledgeId}:label=${knowledge?.label ?? ""};description=${knowledge?.description ?? ""}`;
       }) ?? []),
-      ...(sceneMatch === null
+      ...(suggestedScenarioId === null || sceneMatch === null
         ? []
         : [
-            `scenario:suggested:${sceneMatch.id}:keywords=${sceneMatch.keywords.join("+")}`,
+            `scenario:suggested:${suggestedScenarioId}:keywords=${sceneMatch.keywords.join("+")}`,
           ]),
       ...scenarioApplication.evidence,
       ...cards.flatMap(({ matchEvidence }) => matchEvidence),
@@ -356,6 +374,7 @@ export const createTaskConverter = (
       matchEvidence,
       appliedScenarioId,
       suggestedScenarioId,
+      matchedDataType: dataTypeMatch.id,
     };
   };
 

@@ -9,6 +9,7 @@ import {
 import type {
   LearningProfileSnapshot,
   ProfileStore,
+  RecordDiagnosticInput,
   RecordExerciseInput,
 } from "../state/profileStore";
 
@@ -32,7 +33,12 @@ export type WorkMode = keyof typeof WORK_MODE_LABELS;
 
 export type AppProfileStore = Pick<
   ProfileStore,
-  "snapshot" | "getLoadError" | "recordExercise" | "setContext" | "reset"
+  | "snapshot"
+  | "getLoadError"
+  | "recordExercise"
+  | "recordDiagnostic"
+  | "setContext"
+  | "reset"
 >;
 
 interface AppContextValue {
@@ -49,6 +55,7 @@ interface AppContextValue {
   selectUnit(unitId: string | null): void;
   recordExercise(input: RecordExerciseInput): boolean;
   recordExercises(inputs: readonly RecordExerciseInput[]): boolean;
+  recordDiagnostics(inputs: readonly RecordDiagnosticInput[]): boolean;
   resetLearningProfile(): boolean;
 }
 
@@ -56,6 +63,7 @@ interface AppProviderProps {
   children: ReactNode;
   profileStore: AppProfileStore;
   resolveUnitDomain?(unitId: string): Domain | null;
+  isScenarioSupported?(scenarioId: string, domain: Domain): boolean;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -103,6 +111,7 @@ const recoveryProfileState = (): InitialAppProfileState => ({
 const loadInitialProfileState = (
   profileStore: AppProfileStore,
   resolveUnitDomain: AppProviderProps["resolveUnitDomain"],
+  isScenarioSupported: AppProviderProps["isScenarioSupported"],
 ): InitialAppProfileState => {
   try {
     if (profileStore.getLoadError() !== null) {
@@ -114,15 +123,31 @@ const loadInitialProfileState = (
       snapshot.lastUnit === null
         ? null
         : resolveUnitDomain?.(snapshot.lastUnit) ?? null;
+    const selectedDomain = restoredUnitDomain ?? "text";
+    const shouldClearScenario =
+      snapshot.lastScenario !== null &&
+      isScenarioSupported?.(snapshot.lastScenario, selectedDomain) === false;
+    let profileSnapshot = snapshot;
+
+    if (shouldClearScenario) {
+      try {
+        profileStore.setContext({ lastScenario: null });
+        profileSnapshot = profileStore.snapshot();
+      } catch {
+        // A failed cleanup must not turn a recoverable persisted selection into
+        // a profile-load failure. The in-memory context is still normalized.
+      }
+    }
+
     return {
-      selectedDomain: restoredUnitDomain ?? "text",
+      selectedDomain,
       selectedWorkMode: isWorkMode(snapshot.lastMode)
         ? snapshot.lastMode
         : "course",
-      selectedScenarioId: snapshot.lastScenario,
+      selectedScenarioId: shouldClearScenario ? null : snapshot.lastScenario,
       selectedUnitId:
         restoredUnitDomain === null ? null : snapshot.lastUnit,
-      profileSnapshot: snapshot,
+      profileSnapshot,
       recoveryRequired: false,
       profileError: null,
     };
@@ -135,9 +160,14 @@ export function AppProvider({
   children,
   profileStore,
   resolveUnitDomain,
+  isScenarioSupported,
 }: AppProviderProps) {
   const [initialProfile] = useState(() =>
-    loadInitialProfileState(profileStore, resolveUnitDomain),
+    loadInitialProfileState(
+      profileStore,
+      resolveUnitDomain,
+      isScenarioSupported,
+    ),
   );
   const [selectedDomain, setSelectedDomain] = useState<Domain>(
     initialProfile.selectedDomain,
@@ -163,21 +193,39 @@ export function AppProvider({
   const selectDomain = useCallback(
     (domain: Domain) => {
       const shouldClearLastUnit = selectedUnitId !== null;
+      const shouldClearScenario =
+        selectedScenarioId !== null &&
+        isScenarioSupported?.(selectedScenarioId, domain) === false;
       setSelectedDomain(domain);
       setSelectedUnitId(null);
-      if (!shouldClearLastUnit || recoveryRequired) {
+      if (shouldClearScenario) {
+        setSelectedScenarioId(null);
+      }
+      if (
+        (!shouldClearLastUnit && !shouldClearScenario) ||
+        recoveryRequired
+      ) {
         return;
       }
 
       try {
-        profileStore.setContext({ lastUnit: null });
+        profileStore.setContext({
+          ...(shouldClearLastUnit ? { lastUnit: null } : {}),
+          ...(shouldClearScenario ? { lastScenario: null } : {}),
+        });
         setProfileSnapshot(profileStore.snapshot());
         setProfileError(null);
       } catch {
-        setProfileError("最近课程清理失败；当前数据域选择仍可继续使用。");
+        setProfileError("数据域上下文保存失败；当前选择仍可继续使用。");
       }
     },
-    [profileStore, recoveryRequired, selectedUnitId],
+    [
+      isScenarioSupported,
+      profileStore,
+      recoveryRequired,
+      selectedScenarioId,
+      selectedUnitId,
+    ],
   );
 
   const selectWorkMode = useCallback(
@@ -286,6 +334,38 @@ export function AppProvider({
     [recordExercises],
   );
 
+  const recordDiagnostics = useCallback(
+    (inputs: readonly RecordDiagnosticInput[]): boolean => {
+      if (recoveryRequired) {
+        return false;
+      }
+
+      let persistenceFailed = false;
+      for (const input of inputs) {
+        try {
+          profileStore.recordDiagnostic(input);
+        } catch {
+          persistenceFailed = true;
+        }
+      }
+
+      try {
+        setProfileSnapshot(profileStore.snapshot());
+      } catch {
+        persistenceFailed = true;
+      }
+
+      if (persistenceFailed) {
+        setProfileError("掌握度保存失败；本次自检反馈仍已保留，可稍后重试。");
+        return false;
+      }
+
+      setProfileError(null);
+      return true;
+    },
+    [profileStore, recoveryRequired],
+  );
+
   const resetLearningProfile = useCallback((): boolean => {
     try {
       profileStore.reset();
@@ -324,6 +404,7 @@ export function AppProvider({
         selectUnit,
         recordExercise,
         recordExercises,
+        recordDiagnostics,
         resetLearningProfile,
       }}
     >

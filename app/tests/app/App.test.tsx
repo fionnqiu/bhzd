@@ -14,7 +14,12 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { App } from "../../src/app/App";
+import {
+  App,
+  applyDiagnosticMastery,
+  masteryForScenario,
+} from "../../src/app/App";
+import { AppProvider, useAppContext } from "../../src/app/AppContext";
 import { teachingUnits } from "../../src/data/rawData";
 import type {
   LearningProfileSnapshot,
@@ -24,13 +29,14 @@ import type {
 const createSnapshot = (
   lastMode: string | null = null,
   lastNode: string | null = null,
+  lastScenario: string | null = null,
 ): LearningProfileSnapshot => ({
   version: 1,
   generalMastery: {},
   scenarioMastery: {},
   attempts: [],
   lastMode,
-  lastScenario: null,
+  lastScenario,
   lastUnit: null,
   lastNode,
 });
@@ -354,6 +360,176 @@ describe("application shell", () => {
     expect(courseTab).toHaveFocus();
     expect(courseTab).toHaveAttribute("aria-selected", "true");
     expect(modeTabs.filter((tab) => tab.tabIndex === 0)).toHaveLength(1);
+  });
+
+  it("clears an unsupported scenario when the selected domain changes", () => {
+    const setContext = vi.fn();
+    render(
+      <App
+        profileStore={createTestStore({
+          snapshot: () =>
+            createSnapshot("task", null, "SCN-CUSTOMER-SERVICE-001"),
+          setContext,
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "智能客服标注" }),
+    ).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "视频课程，3 个可学习单元" }),
+    );
+
+    expect(
+      screen.getByRole("button", { name: "通用场景" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(setContext).toHaveBeenCalledWith({ lastScenario: null });
+  });
+
+  it("clears an initially restored scenario that is unsupported by the default domain", () => {
+    const setContext = vi.fn();
+    render(
+      <App
+        profileStore={createTestStore({
+          snapshot: () => createSnapshot("task", null, "SCN-IN-VEHICLE-001"),
+          setContext,
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "通用场景" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(setContext).toHaveBeenCalledWith({ lastScenario: null });
+  });
+
+  it("keeps diagnostic remediation mastery isolated by the active scenario", () => {
+    const snapshot: LearningProfileSnapshot = {
+      ...createSnapshot(),
+      generalMastery: { "CAP-TEST-001": 0.9 },
+      scenarioMastery: {
+        "CAP-TEST-001::SCN-CUSTOMER-SERVICE-001": 0.2,
+      },
+    };
+
+    expect(masteryForScenario(snapshot, null, "CAP-TEST-001")).toBe(0.9);
+    expect(
+      masteryForScenario(
+        snapshot,
+        "SCN-CUSTOMER-SERVICE-001",
+        "CAP-TEST-001",
+      ),
+    ).toBe(0.2);
+    expect(
+      masteryForScenario(snapshot, "SCN-MEDICAL-001", "CAP-TEST-001"),
+    ).toBeNull();
+  });
+
+  it("routes diagnostic severities separately from exercise scores", () => {
+    const recordExercises = vi.fn(() => true);
+    const recordDiagnostics = vi.fn(() => true);
+
+    expect(
+      applyDiagnosticMastery(
+        {
+          kind: "diagnostic",
+          entries: [
+            { capabilityId: "CAP-TEST-001", severity: "severe" },
+          ],
+        },
+        "SCN-CUSTOMER-SERVICE-001",
+        recordExercises,
+        recordDiagnostics,
+      ),
+    ).toBe(true);
+    expect(recordExercises).not.toHaveBeenCalled();
+    expect(recordDiagnostics).toHaveBeenCalledWith([
+      {
+        capabilityId: "CAP-TEST-001",
+        severity: "severe",
+        scenarioId: "SCN-CUSTOMER-SERVICE-001",
+        evaluationVersion: "diagnostic-v1",
+      },
+    ]);
+
+    expect(
+      applyDiagnosticMastery(
+        {
+          kind: "exercise",
+          capabilityIds: ["CAP-TEST-002"],
+          score: 0.75,
+        },
+        null,
+        recordExercises,
+        recordDiagnostics,
+      ),
+    ).toBe(true);
+    expect(recordExercises).toHaveBeenCalledWith([
+      {
+        capabilityId: "CAP-TEST-002",
+        score: 0.75,
+        scenarioId: null,
+        evaluationVersion: "diagnostic-v1",
+      },
+    ]);
+    expect(recordDiagnostics).toHaveBeenCalledTimes(1);
+  });
+
+  it("persists every diagnostic entry and refreshes the profile snapshot", () => {
+    const initialSnapshot = createSnapshot();
+    const refreshedSnapshot = createSnapshot(null, "CAP-REFRESHED-001");
+    const snapshot = vi
+      .fn<ProfileStore["snapshot"]>()
+      .mockReturnValueOnce(initialSnapshot)
+      .mockReturnValue(refreshedSnapshot);
+    const recordDiagnostic = vi.fn();
+    const inputs = [
+      {
+        capabilityId: "CAP-TEST-001",
+        severity: "severe" as const,
+        scenarioId: "SCN-CUSTOMER-SERVICE-001",
+        evaluationVersion: "diagnostic-v1",
+      },
+      {
+        capabilityId: "CAP-TEST-002",
+        severity: "minor" as const,
+        scenarioId: null,
+        evaluationVersion: "diagnostic-v1",
+      },
+    ];
+
+    function DiagnosticPersistenceProbe() {
+      const { profileSnapshot, recordDiagnostics } = useAppContext();
+      return (
+        <>
+          <button type="button" onClick={() => recordDiagnostics(inputs)}>
+            保存诊断
+          </button>
+          <output aria-label="诊断刷新节点">
+            {profileSnapshot.lastNode ?? "未刷新"}
+          </output>
+        </>
+      );
+    }
+
+    render(
+      <AppProvider
+        profileStore={createTestStore({ snapshot, recordDiagnostic })}
+      >
+        <DiagnosticPersistenceProbe />
+      </AppProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "保存诊断" }));
+
+    expect(recordDiagnostic).toHaveBeenNthCalledWith(1, inputs[0]);
+    expect(recordDiagnostic).toHaveBeenNthCalledWith(2, inputs[1]);
+    expect(snapshot).toHaveBeenCalledTimes(2);
+    expect(screen.getByLabelText("诊断刷新节点")).toHaveTextContent(
+      "CAP-REFRESHED-001",
+    );
   });
 
   it("focuses a work-mode tab when it is selected by pointer", () => {
