@@ -298,7 +298,7 @@ describe("course learning loop", () => {
     expect(screen.getByText("场景掌握度")).toBeVisible();
   });
 
-  it("keeps hidden evaluator payloads out of the lesson before submission", () => {
+  it("keeps hidden evaluator payloads out of the lesson before the test helper is used", () => {
     render(<App profileStore={createTestStore()} />);
     openLesson("处理意图歧义与允许答案集");
 
@@ -317,8 +317,32 @@ describe("course learning loop", () => {
       "已完整保留两个候选意图并明确声明优先级未解决",
     );
     expect(
-      screen.queryByRole("button", { name: "载入标准结构示例" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "载入标准结构示例" }),
+    ).toBeVisible();
+  });
+
+  it("loads the standard structured example only through the test-mode helper", () => {
+    const profileStore = createProfileStore(new MemoryStorage());
+    const unit = findUnit("TU-TEXT-LABEL-VOCAB-001");
+    render(<App profileStore={profileStore} />);
+    openLesson(unit.title);
+
+    const editor = screen.getByRole("textbox", { name: "结构化答案" });
+    expect(JSON.parse((editor as HTMLTextAreaElement).value)).not.toEqual(
+      unit.exercise.answer,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "载入标准结构示例" }),
+    );
+
+    expect(JSON.parse((editor as HTMLTextAreaElement).value)).toEqual(
+      unit.exercise.answer,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "提交自检" }));
+
+    expect(screen.getByRole("status")).toHaveTextContent("通过");
+    expect(profileStore.snapshot().attempts).toHaveLength(1);
   });
 
   it("shows learner-safe example context without pre-submit answers or evaluation payloads", () => {
@@ -606,8 +630,8 @@ describe("course learning loop", () => {
         expect(() => JSON.parse(editor.value)).not.toThrow();
         expect(JSON.parse(editor.value)).not.toEqual(unit.exercise.answer);
         expect(
-          screen.queryByRole("button", { name: "载入标准结构示例" }),
-        ).not.toBeInTheDocument();
+          screen.getByRole("button", { name: "载入标准结构示例" }),
+        ).toBeVisible();
         fireEvent.click(
           screen.getByRole("button", { name: "返回课程列表" }),
         );

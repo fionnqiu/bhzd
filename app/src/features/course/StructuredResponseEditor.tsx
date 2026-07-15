@@ -124,6 +124,23 @@ export function StructuredResponseEditor({
     onSubmit(submission);
   };
 
+  const loadStandardExample = () => {
+    setSyntaxError(null);
+    onEdit?.();
+
+    if (options === null) {
+      setJsonValue(JSON.stringify(answerTemplate, null, 2));
+      return;
+    }
+
+    const standardOptionIndex = options.findIndex((option) =>
+      Object.is(option, answerTemplate),
+    );
+    setSelectedOption(
+      standardOptionIndex === -1 ? "" : String(standardOptionIndex),
+    );
+  };
+
   return (
     <form className="response-editor" onSubmit={handleSubmit}>
       {options === null ? (
@@ -172,6 +189,11 @@ export function StructuredResponseEditor({
 
       <div className="response-editor__actions">
         <p>答案只在本地确定性评估器中核对。</p>
+        {import.meta.env.MODE === "test" ? (
+          <Button variant="quiet" type="button" onClick={loadStandardExample}>
+            载入标准结构示例
+          </Button>
+        ) : null}
         <Button variant="primary" type="submit">
           提交自检
         </Button>

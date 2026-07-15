@@ -337,9 +337,72 @@ describe("application shell", () => {
     );
 
     const modeTabs = screen.getAllByRole("tab");
+    const modeTabScrollport = screen.getByRole("tablist", {
+      name: "主工作模式",
+    });
     const courseTab = screen.getByRole("tab", { name: "课程" });
     const graphTab = screen.getByRole("tab", { name: "图谱" });
     const diagnosticsTab = screen.getByRole("tab", { name: "标注诊断" });
+    let diagnosticsLeft = 336;
+    const scrollportRect = {
+      x: 0,
+      y: 0,
+      width: 390,
+      height: 40,
+      top: 0,
+      right: 390,
+      bottom: 40,
+      left: 0,
+      toJSON: () => ({}),
+    };
+    const tabRect = (left: number) => ({
+      x: left,
+      y: 0,
+      width: 112,
+      height: 40,
+      top: 0,
+      right: left + 112,
+      bottom: 40,
+      left,
+      toJSON: () => ({}),
+    });
+    Object.defineProperty(modeTabScrollport, "getBoundingClientRect", {
+      configurable: true,
+      value: () => scrollportRect,
+    });
+    Object.defineProperty(courseTab, "getBoundingClientRect", {
+      configurable: true,
+      value: () => tabRect(0),
+    });
+    Object.defineProperty(graphTab, "getBoundingClientRect", {
+      configurable: true,
+      value: () => tabRect(112),
+    });
+    Object.defineProperty(diagnosticsTab, "getBoundingClientRect", {
+      configurable: true,
+      value: () => tabRect(diagnosticsLeft),
+    });
+    Object.defineProperty(graphTab, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    Object.defineProperty(diagnosticsTab, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(() => {
+        diagnosticsLeft = 278;
+      }),
+    });
+    Object.defineProperty(courseTab, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    const expectTabInScrollport = (tab: HTMLElement) => {
+      const tabBounds = tab.getBoundingClientRect();
+      const scrollportBounds = modeTabScrollport.getBoundingClientRect();
+
+      expect(tabBounds.left).toBeGreaterThanOrEqual(scrollportBounds.left);
+      expect(tabBounds.right).toBeLessThanOrEqual(scrollportBounds.right);
+    };
 
     expect(modeTabs.filter((tab) => tab.tabIndex === 0)).toHaveLength(1);
     expect(courseTab).toHaveAttribute("aria-selected", "true");
@@ -351,10 +414,12 @@ describe("application shell", () => {
     expect(courseTab).toHaveAttribute("tabindex", "-1");
     expect(screen.getByRole("main")).toHaveTextContent("图谱");
     expect(screen.getByRole("main")).toHaveTextContent("语音");
+    expectTabInScrollport(graphTab);
 
     fireEvent.keyDown(graphTab, { key: "End" });
     expect(diagnosticsTab).toHaveFocus();
     expect(diagnosticsTab).toHaveAttribute("aria-selected", "true");
+    expectTabInScrollport(diagnosticsTab);
 
     fireEvent.keyDown(diagnosticsTab, { key: "Home" });
     expect(courseTab).toHaveFocus();

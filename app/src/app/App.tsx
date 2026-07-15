@@ -386,7 +386,9 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
     }
 
     selectWorkMode(mode.id);
-    tabRefs.current[index]?.focus();
+    const tab = tabRefs.current[index];
+    tab?.focus();
+    tab?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   };
 
   const handleModeKeyDown = (
