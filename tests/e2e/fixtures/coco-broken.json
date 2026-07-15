@@ -1,0 +1,12 @@
+{
+  "images": [
+    { "id": 1, "file_name": "frame-001.png", "width": 640, "height": 480 },
+    { "id": 1, "file_name": "duplicate.png", "width": 640, "height": 480 }
+  ],
+  "annotations": [
+    { "id": 1, "image_id": 99, "category_id": 7, "bbox": [10, 20, -100, 80] }
+  ],
+  "categories": [
+    { "id": 1, "name": "person" }
+  ]
+}
