@@ -21,6 +21,7 @@ import type {
 
 const createSnapshot = (
   lastMode: string | null = null,
+  lastNode: string | null = null,
 ): LearningProfileSnapshot => ({
   version: 1,
   generalMastery: {},
@@ -29,7 +30,7 @@ const createSnapshot = (
   lastMode,
   lastScenario: null,
   lastUnit: null,
-  lastNode: null,
+  lastNode,
 });
 
 const createTestStore = (
@@ -331,6 +332,34 @@ describe("application shell", () => {
 
     expect(graphTab).toHaveFocus();
     expect(graphTab).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("announces graph workspace loading before graph panels become interactive", async () => {
+    render(<App profileStore={createTestStore()} />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "图谱" }));
+
+    expect(
+      screen.getByRole("status", { name: "正在加载图谱工作区…" }),
+    ).toBeVisible();
+    expect(
+      await screen.findByRole("option", { name: /转写并添加标点/ }),
+    ).toBeVisible();
+  });
+
+  it("counts only capability nodes in the graph progress summary", async () => {
+    render(<App profileStore={createTestStore()} />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "图谱" }));
+
+    const summary = await screen.findByRole("group", {
+      name: "通用掌握度",
+    });
+    expect(
+      within(summary).getByRole("strong", {
+        name: "通用掌握度未学习数量",
+      }),
+    ).toHaveTextContent("40");
   });
 
   it("wraps forward Tab from the last reset action to the first", () => {
@@ -656,5 +685,70 @@ describe("application shell", () => {
     expect(
       screen.getByRole("button", { name: "重置学习档案" }),
     ).toBeEnabled();
+  });
+
+  it("launches a repository-consumable graph lesson through the learner-safe course flow", async () => {
+    const setContext = vi.fn();
+    render(<App profileStore={createTestStore({ setContext })} />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "图谱" }));
+    fireEvent.click(
+      await screen.findByRole("option", { name: /转写并添加标点/ }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /开始课程：按项目正字法完成转写与标点/,
+      }),
+    );
+
+    const lessonHeading = await screen.findByRole("heading", {
+      name: "按项目正字法完成转写与标点",
+    });
+    expect(lessonHeading).toBeVisible();
+    expect(lessonHeading).toHaveFocus();
+    expect(setContext).toHaveBeenCalledWith({ lastMode: "course" });
+    expect(setContext).toHaveBeenCalledWith({ lastUnit: "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001" });
+  });
+
+  it("persists the selected graph node as learner context and clears it on overview", async () => {
+    const setContext = vi.fn();
+    render(<App profileStore={createTestStore({ setContext })} />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "图谱" }));
+    fireEvent.click(
+      await screen.findByRole("option", { name: /转写并添加标点/ }),
+    );
+
+    expect(setContext).toHaveBeenCalledWith({
+      lastNode: "CAP-AUD-TRANSCRIBE-PUNCT-001",
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "返回总览" }),
+    );
+    expect(setContext).toHaveBeenCalledWith({ lastNode: null });
+  });
+
+  it("restores a valid persisted graph node while ignoring an unknown node", async () => {
+    const validStore = createTestStore({
+      snapshot: () =>
+        createSnapshot("graph", "CAP-AUD-TRANSCRIBE-PUNCT-001"),
+    });
+    render(<App profileStore={validStore} />);
+
+    expect(
+      await screen.findByRole("heading", { name: "转写并添加标点" }),
+    ).toBeVisible();
+    expect(await screen.findByText(/局部视图：2 跳/)).toBeVisible();
+    cleanup();
+
+    const unknownStore = createTestStore({
+      snapshot: () => createSnapshot("graph", "CAP-DELETED-999"),
+    });
+    render(<App profileStore={unknownStore} />);
+
+    expect(
+      screen.queryByRole("heading", { name: "转写并添加标点" }),
+    ).not.toBeInTheDocument();
+    expect(await screen.findByText(/总览：166 个节点/)).toBeVisible();
   });
 });

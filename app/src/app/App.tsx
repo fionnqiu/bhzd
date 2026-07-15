@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
   useMemo,
   useRef,
@@ -27,6 +29,8 @@ import {
   isConsumableTeachingUnit,
 } from "../features/course/CourseBrowser";
 import { LessonView } from "../features/course/LessonView";
+import type { GraphRepository } from "../features/graph/GraphCanvas";
+import { createGraphEngine } from "../graph/graphEngine";
 import {
   createProfileStore,
   type ProfileStorage,
@@ -47,6 +51,10 @@ const canonicalRepository = createRepository({
   sourceRegistry,
   teachingUnits,
 });
+const canonicalGraphEngine = createGraphEngine(graph);
+const GraphWorkspace = lazy(
+  () => import("../features/graph/GraphWorkspace"),
+);
 
 const browserStorage: ProfileStorage = {
   getItem: (key) => window.localStorage.getItem(key),
@@ -65,14 +73,14 @@ const MODE_DETAILS: ReadonlyArray<{
     id: "course",
     coordinate: "BRG 018°",
     title: "课程航线",
-    description: "按数据域进入已发布的教学单元，建立规则、练习与反馈的连续路径。",
+    description: "按数据域进入已发布的教学单元，建立规则、练习与反馈的连续闭环。",
     pending: "课程内容将在下一阶段接入。当前可先确认数据域与学习航向。",
   },
   {
     id: "graph",
     coordinate: "BRG 092°",
     title: "图谱航线",
-    description: "从能力、知识与任务关系观察学习路径，定位可继续探索的节点。",
+    description: "从能力、知识与任务关系观察图谱关联，定位可继续探索的节点。",
     pending: "知识图谱入口已就位，节点网络与关系详情将在后续接入。",
   },
   {
@@ -127,14 +135,22 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
     selectedWorkMode,
     selectedScenarioId,
     selectedUnitId,
+    profileSnapshot,
     profileError,
     selectDomain,
+    selectNode,
     selectWorkMode,
     selectUnit,
     resetLearningProfile,
   } = useAppContext();
   const [resetOpen, setResetOpen] = useState(false);
   const [resetNotice, setResetNotice] = useState<string | null>(null);
+  const [graphTargetNodeId, setGraphTargetNodeId] = useState<string | null>(() => {
+    const candidate = profileSnapshot.lastNode;
+    return candidate !== null && graph.nodes.some((node) => node.id === candidate)
+      ? candidate
+      : null;
+  });
   const resetButtonRef = useRef<HTMLButtonElement>(null);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const resetDialogRef = useRef<HTMLDivElement>(null);
@@ -166,6 +182,22 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
   const scenarioLabel = selectedScenarioId ?? "通用场景";
   const activeMode =
     MODE_DETAILS[MODE_INDEX.get(selectedWorkMode) ?? 0] ?? MODE_DETAILS[0];
+
+  const openGraphLesson = (unit: (typeof selectableUnits)[number]) => {
+    if (!Object.hasOwn(DOMAIN_LABELS, unit.data_type)) {
+      return;
+    }
+    openedCourseTriggerIdRef.current = unit.id;
+    pendingCourseFocusRestoreRef.current = null;
+    selectWorkMode("course");
+    selectDomain(unit.data_type as Domain);
+    selectUnit(unit.id);
+  };
+
+  const handleGraphNodeSelection = (nodeId: string | null) => {
+    setGraphTargetNodeId(nodeId);
+    selectNode(nodeId);
+  };
 
   useEffect(() => {
     if (resetOpen) {
@@ -211,6 +243,7 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
 
   const confirmReset = () => {
     const reset = resetLearningProfile();
+    setGraphTargetNodeId(null);
     setResetOpen(false);
     setResetNotice(reset ? "学习档案已重置，航线已返回文本课程。" : null);
   };
@@ -414,6 +447,50 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
                     }}
                   />
                 )
+              ) : selectedWorkMode === "graph" ? (
+                <div className="graph-workspace">
+                  <div className="chart-room__coordinate" aria-hidden="true">
+                    LAT 31.2304 N&nbsp;&nbsp; / &nbsp;&nbsp;LON 121.4737 E
+                  </div>
+                  <div className="chart-room__heading">
+                    <div>
+                      <p className="eyebrow eyebrow--ink">
+                        {activeMode.coordinate} / {domainLabel}域
+                      </p>
+                      <h1>
+                        {domainLabel}
+                        <span>{activeMode.title}</span>
+                      </h1>
+                    </div>
+                    <span className="route-state">
+                      <span aria-hidden="true" /> 航向已锁定
+                    </span>
+                  </div>
+                  <p className="chart-room__lede">{activeMode.description}</p>
+                  <Suspense
+                    fallback={
+                      <p
+                        className="graph-workspace__loading"
+                        role="status"
+                        aria-live="polite"
+                        aria-label="正在加载图谱工作区…"
+                      >
+                        正在加载图谱工作区…
+                      </p>
+                    }
+                  >
+                    <GraphWorkspace
+                      repository={repository as unknown as GraphRepository}
+                      profileSnapshot={profileSnapshot}
+                      scenarioId={selectedScenarioId}
+                      initialNodeId={graphTargetNodeId}
+                      graphEngine={canonicalGraphEngine}
+                      nodes={graph.nodes.filter((node) => node.type === "CAP")}
+                      onSelectNode={handleGraphNodeSelection}
+                      onOpenUnit={openGraphLesson}
+                    />
+                  </Suspense>
+                </div>
               ) : (
                 <>
                   <div className="chart-room__coordinate" aria-hidden="true">

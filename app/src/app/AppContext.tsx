@@ -45,6 +45,7 @@ interface AppContextValue {
   selectDomain(domain: Domain): void;
   selectWorkMode(mode: WorkMode): void;
   selectScenario(scenarioId: string | null): void;
+  selectNode(nodeId: string | null): void;
   selectUnit(unitId: string | null): void;
   recordExercise(input: RecordExerciseInput): boolean;
   recordExercises(inputs: readonly RecordExerciseInput[]): boolean;
@@ -213,6 +214,23 @@ export function AppProvider({
     [profileStore, recoveryRequired],
   );
 
+  const selectNode = useCallback(
+    (nodeId: string | null) => {
+      if (recoveryRequired) {
+        return;
+      }
+
+      try {
+        profileStore.setContext({ lastNode: nodeId });
+        setProfileSnapshot(profileStore.snapshot());
+        setProfileError(null);
+      } catch {
+        setProfileError("图谱节点状态保存失败，本次选择仍可继续使用。");
+      }
+    },
+    [profileStore, recoveryRequired],
+  );
+
   const selectUnit = useCallback(
     (unitId: string | null) => {
       setSelectedUnitId(unitId);
@@ -302,6 +320,7 @@ export function AppProvider({
         selectDomain,
         selectWorkMode,
         selectScenario,
+        selectNode,
         selectUnit,
         recordExercise,
         recordExercises,

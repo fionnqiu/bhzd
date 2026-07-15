@@ -1629,6 +1629,252 @@ code {
   margin-top: 1.75rem;
 }
 
+.graph-workspace {
+  display: grid;
+  min-width: 0;
+  gap: 1rem;
+}
+
+.graph-explorer,
+.graph-progress-panel {
+  min-width: 0;
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+  color: var(--ink);
+  background: rgb(247 248 250 / 96%);
+  border: 0.0625rem solid rgb(16 35 63 / 16%);
+}
+
+.graph-explorer {
+  display: grid;
+  gap: 1rem;
+}
+
+.graph-explorer__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.6rem;
+}
+
+.graph-explorer__toolbar label {
+  width: 100%;
+  color: var(--metadata-ink);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.graph-explorer__toolbar input {
+  min-width: 0;
+  flex: 1 1 14rem;
+  min-height: 2.7rem;
+  padding: 0.55rem 0.7rem;
+  color: var(--ink);
+  background: #fff;
+  border: 0.0625rem solid rgb(16 35 63 / 28%);
+}
+
+.graph-explorer__toolbar button,
+.graph-explorer__summary button,
+.graph-node-details button {
+  min-height: 2.5rem;
+  padding: 0.45rem 0.75rem;
+  color: var(--space-blue);
+  font-weight: 700;
+  background: #fff;
+  border: 0.0625rem solid var(--accessible-cyan);
+  cursor: pointer;
+}
+
+.graph-explorer__toolbar button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.graph-explorer__search-results {
+  max-height: 15rem;
+  overflow: auto;
+  padding: 0.65rem;
+  background: #fff;
+  border: 0.0625rem solid rgb(16 35 63 / 16%);
+}
+
+.graph-explorer__search-results > p {
+  margin: 0 0 0.5rem;
+  color: var(--metadata-ink);
+  font-size: 0.8rem;
+}
+
+.graph-explorer__search-results ul,
+.graph-progress-panel ul,
+.graph-node-details ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.graph-explorer__search-results li + li {
+  border-top: 0.0625rem solid rgb(16 35 63 / 8%);
+}
+
+.graph-explorer__search-results [role="option"] {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.25rem;
+  color: var(--ink);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.graph-explorer__search-results [role="option"] span,
+.graph-explorer__search-results [role="option"] small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.graph-explorer__search-results [role="option"] small {
+  color: var(--metadata-ink);
+  font-size: 0.72rem;
+}
+
+.graph-explorer__search-results [aria-selected="true"] {
+  color: var(--space-blue);
+  background: rgb(0 198 255 / 16%);
+}
+
+.graph-explorer__canvas {
+  width: 100%;
+  min-height: 18rem;
+  height: clamp(18rem, 42vw, 30rem);
+  overflow: hidden;
+  background: #fff;
+  border: 0.0625rem solid rgb(16 35 63 / 18%);
+}
+
+.graph-explorer__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--metadata-ink);
+  font-size: 0.82rem;
+}
+
+.graph-node-details {
+  min-width: 0;
+  padding-top: 0.5rem;
+  border-top: 0.125rem solid var(--star-cyan);
+}
+
+.graph-node-details h2,
+.graph-node-details h3,
+.graph-progress-panel h2,
+.graph-progress-panel h3 {
+  margin: 0.5rem 0;
+}
+
+.graph-node-details p,
+.graph-node-details li,
+.graph-progress-panel p,
+.graph-progress-panel li {
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+
+.graph-node-details__status {
+  font-weight: 700;
+}
+
+.graph-node-details__relations {
+  margin-top: 0.9rem;
+}
+
+.graph-node-details__relations li {
+  padding: 0.35rem 0;
+  border-bottom: 0.0625rem solid rgb(16 35 63 / 9%);
+}
+
+.graph-node-details__relation-type {
+  color: var(--accessible-cyan);
+  font-weight: 800;
+}
+
+.graph-node-details__lessons li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0;
+  border-bottom: 0.0625rem solid rgb(16 35 63 / 9%);
+}
+
+.graph-progress-panel {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.graph-progress-panel__summary {
+  min-width: 0;
+}
+
+.graph-progress-panel__bands {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.graph-progress-panel__bands li {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+  padding: 0.55rem;
+  background: #fff;
+  border: 0.0625rem solid rgb(16 35 63 / 12%);
+}
+
+.graph-progress-panel__bands strong {
+  color: var(--space-blue);
+  font-size: 1.2rem;
+}
+
+.graph-progress-panel__plan ol {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding-left: 1.3rem;
+}
+
+.graph-progress-panel__step {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.55rem;
+  background: #fff;
+  border-left: 0.2rem solid var(--navigation-orange);
+}
+
+.graph-progress-panel__step span,
+.graph-progress-panel__step em {
+  color: var(--metadata-ink);
+  font-size: 0.78rem;
+  font-style: normal;
+}
+
+.graph-progress-panel__cycle {
+  padding: 0.75rem;
+  color: #7c1d1d;
+  background: #fff1f2;
+  border-left: 0.2rem solid var(--error-red);
+}
+
 @media (max-width: 1180px) {
   .app-header {
     grid-template-columns: minmax(15rem, 0.85fr) minmax(25rem, 1.3fr);
@@ -1687,7 +1933,30 @@ code {
   }
 
   .mode-tabs {
-    min-width: 28rem;
+    min-width: 0;
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .graph-explorer__toolbar,
+  .graph-explorer__summary,
+  .graph-node-details__lessons li {
+    align-items: stretch;
+  }
+
+  .graph-explorer__toolbar input,
+  .graph-explorer__toolbar button,
+  .graph-explorer__summary button,
+  .graph-node-details__lessons button {
+    width: 100%;
+  }
+
+  .graph-explorer__canvas {
+    height: 20rem;
+  }
+
+  .graph-progress-panel__bands {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .domain-grid {
