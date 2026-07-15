@@ -461,3 +461,28 @@
 
 **Remaining verification:**
 - Recreate the clean worktree so the new attributes apply, then rerun the full Python baseline and both validators before application implementation.
+
+## [2026-07-15 23:38] Record verified Task 6 engineering status and real-trial gate
+
+**Changed files:**
+- `evidence/user-trials/README.md`
+- `evidence/user-trials/trial-protocol.md`
+- `evidence/user-trials/trial-record-template.md`
+- `evidence/user-trials/session-summary.schema.json`
+- `docs/superpowers/plans/2026-07-12-annotation-teaching-agent.md`
+- `docs/superpowers/specs/2026-07-14-task6-teaching-application-design.md`
+- `docs/logs/document-changelog.md`
+
+**Reason:**
+- Record that Task 6 engineering and browser verification are complete while preparing blank, non-fabricated materials for the separate real-human trial gate.
+- Mark only Task 6 Steps 1-2 complete and preserve Step 3 as pending until authentic release and participant evidence exists.
+
+**Verification:**
+- `python -m pytest -q` passed: 234 tests.
+- `python scripts/validate_graph.py data/graph/annotation-capability-graph.json` passed: 166 nodes and 240 edges.
+- `python scripts/validate_scenarios.py data/scenarios/medical.json data/scenarios/customer-service.json data/scenarios/in-vehicle.json data/scenarios/content-safety.json` passed: 4 scenarios, 9 overrides, and 9 examples.
+- `npm --prefix app test -- --run` passed: 19 files and 418 tests; `npm --prefix app run build` passed; `npm --prefix app run test:e2e` passed: 28 Chromium/Edge tests.
+- Real-browser inspection passed at 1440x900 and 390x844, including keyboard focus and reduced motion. `rg -n "通过试用|全部满意|教师已批准|学生已完成" evidence/user-trials` returned no matches, and the session schema has all required fields with no `default` keys.
+
+**Remaining verification:**
+- A human domain-release decision and 2-3 genuine participant records, feedback, revisions, and retest outcomes are still required before Task 6 Step 3 can be checked or external trial/release claims can be made.
