@@ -12,7 +12,31 @@ const fileFromText = (
   text: string,
   name: string,
   type = "",
-): File => new File([text], name, { type });
+): {
+  readonly name: string;
+  readonly type: string;
+  readonly size: number;
+  text(): Promise<string>;
+} => ({
+  name,
+  type,
+  size: new TextEncoder().encode(text).byteLength,
+  text: async () => text,
+});
+
+const passEvaluator = () => ({
+  score: 1,
+  passed: true,
+  matched: "answer" as const,
+  errorType: null,
+  feedback: "ok",
+  remediation: [],
+  ruleRefs: [],
+  capabilityRefs: [],
+  dataVersion: "1.0.0",
+  evaluationVersion: "1.0.0",
+  manualReviewRequired: false,
+});
 
 describe("local diagnostics", () => {
   it("rejects files larger than five MiB before reading", async () => {
@@ -49,9 +73,7 @@ describe("local diagnostics", () => {
         { id: 1, image_id: 1, category_id: 99, bbox: [0, 0, 10, 10] },
       ],
     });
-    const file = new File([body], "sample.json", {
-      type: "application/json",
-    });
+    const file = fileFromText(body, "sample.json", "application/json");
     const result = await diagnoseFile(file, context);
     expect(result.format).toBe("coco");
     expect(result.issues).toContainEqual(
@@ -176,6 +198,78 @@ describe("local diagnostics", () => {
     expect(result.score).toBeNull();
   });
 
+  it("never applies mastery when a permissive evaluator meets broken COCO, VOC, or TextGrid data", async () => {
+    const permissive = { evaluator: passEvaluator };
+    const coco = await diagnoseFile(
+      fileFromText(
+        JSON.stringify({
+          images: [{ id: 1, width: 100, height: 100 }],
+          categories: [{ id: 1, name: "person" }],
+          annotations: [{ id: 1, image_id: 1, category_id: 99, bbox: [0, 0, 10, 10] }],
+        }),
+        "broken.json",
+        "application/json",
+      ),
+      { dataType: "image", targetUnitId: "TU-IMAGE-RECT-BOUNDS-001" },
+      permissive,
+    );
+    const voc = await diagnoseFile(
+      fileFromText(
+        `<annotation><object><name>person</name><bndbox><xmin>10</xmin><ymin>10</ymin><xmax>2</xmax><ymax>2</ymax></bndbox></object></annotation>`,
+        "broken.xml",
+        "application/xml",
+      ),
+      { dataType: "image", targetUnitId: "TU-IMAGE-RECT-BOUNDS-001" },
+      permissive,
+    );
+    const textGrid = await diagnoseFile(
+      fileFromText(
+        `File type = "ooTextFile"\nObject class = "TextGrid"\nxmin = 0\nxmax = 2\ntiers? <exists>\nsize = 1\nitem []:\n    item [1]:\n        class = "IntervalTier"\n        name = "speech"\n        xmin = 0\n        xmax = 2\n        intervals: size = 2\n        intervals [1]:\n            xmin = 0\n            xmax = 1.5\n            text = "a"\n        intervals [2]:\n            xmin = 1\n            xmax = 2\n            text = "b"`,
+        "broken.TextGrid",
+        "text/x-textgrid",
+      ),
+      { dataType: "audio", targetUnitId: "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001" },
+      permissive,
+    );
+    for (const report of [coco, voc, textGrid]) {
+      expect(report.status).toBe("manual_review");
+      expect(report.masteryImpact).toBe(false);
+      expect(report.score).toBeNull();
+    }
+  });
+
+  it("keeps unsupported mixed TextGrid in manual review even with a pass evaluator", async () => {
+    const report = await diagnoseFile(
+      fileFromText(
+        `File type = "ooTextFile short"\nObject class = "TextGrid"\n0 2`,
+        "short.TextGrid",
+        "text/x-textgrid",
+      ),
+      { dataType: "audio", targetUnitId: "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001" },
+      { evaluator: passEvaluator },
+    );
+    expect(report.status).toBe("manual_review");
+    expect(report.masteryImpact).toBe(false);
+    expect(report.score).toBeNull();
+  });
+
+  it("validates generic JSON response shape before an injected evaluator", async () => {
+    const target = { dataType: "text", targetUnitId: "TU-TEXT-LABEL-VOCAB-001" } as const;
+    const missing = await diagnoseFile(fileFromText("{}", "response.json", "application/json"), target, { evaluator: passEvaluator });
+    const wrongType = await diagnoseFile(fileFromText(JSON.stringify({ labels: "negative" }), "response.json", "application/json"), target, { evaluator: passEvaluator });
+    const wrongKey = await diagnoseFile(fileFromText(JSON.stringify({ wrong: ["negative"] }), "response.json", "application/json"), target, { evaluator: passEvaluator });
+    const valid = await diagnoseFile(fileFromText(JSON.stringify({ labels: ["negative"] }), "response.json", "application/json"), target, { evaluator: passEvaluator });
+    for (const report of [missing, wrongType, wrongKey]) {
+      expect(report.status).toBe("manual_review");
+      expect(report.masteryImpact).toBe(false);
+      expect(report.score).toBeNull();
+    }
+    expect(valid.status).toBe("complete");
+    expect(valid.masteryImpact).toBe(true);
+    expect(valid.score).toBe(1);
+    expect(missing.issues.every((candidate) => !candidate.message.includes("negative"))).toBe(true);
+  });
+
   it("handles VOC malformed XML, forbidden DOCTYPE, and coordinate order", () => {
     const invalid = inspectVocXml(
       `<annotation><size><width>100</width><height>80</height></size><object><name>x</name><bndbox><xmin>50</xmin><ymin>2</ymin><xmax>10</xmax><ymax>1</ymax></bndbox></object></annotation>`,
@@ -257,5 +351,15 @@ item []:
     };
     expect(detectFormat(file)).toMatchObject({ format: "textgrid", conflict: false });
     expect(reads).toBe(0);
+  });
+
+  it("accepts a recognized MIME when the filename has no extension", () => {
+    const detected = detectFormat({
+      name: "annotation-export",
+      type: "application/json",
+      size: 2,
+      text: async () => "{}",
+    });
+    expect(detected).toMatchObject({ format: "json", conflict: false });
   });
 });

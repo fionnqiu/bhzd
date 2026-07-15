@@ -278,3 +278,211 @@ export const validateCoco = (value: unknown): readonly DiagnosticIssue[] =>
     : [issue("json_root_not_object", "severe", "The COCO root must be an object.")];
 
 export const parseJson = inspectJsonText;
+
+type JsonShape =
+  | { readonly kind: "null" }
+  | { readonly kind: "boolean" }
+  | { readonly kind: "number" }
+  | { readonly kind: "string" }
+  | { readonly kind: "array"; readonly items: readonly JsonShape[] }
+  | { readonly kind: "object"; readonly fields: ReadonlyMap<string, JsonShape> };
+
+const shapeOf = (value: unknown, ancestors = new WeakSet<object>()): JsonShape | null => {
+  if (value === null) {
+    return { kind: "null" };
+  }
+  if (typeof value === "string") {
+    return { kind: "string" };
+  }
+  if (typeof value === "boolean") {
+    return { kind: "boolean" };
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? { kind: "number" } : null;
+  }
+  if (typeof value !== "object" || ancestors.has(value)) {
+    return null;
+  }
+  ancestors.add(value);
+  if (Array.isArray(value)) {
+    const items: JsonShape[] = [];
+    for (const item of value) {
+      const shape = shapeOf(item, ancestors);
+      if (shape === null) {
+        ancestors.delete(value);
+        return null;
+      }
+      items.push(shape);
+    }
+    ancestors.delete(value);
+    return { kind: "array", items };
+  }
+  if (!isPlainObject(value)) {
+    ancestors.delete(value);
+    return null;
+  }
+  const fields = new Map<string, JsonShape>();
+  for (const [key, nested] of Object.entries(value)) {
+    const shape = shapeOf(nested, ancestors);
+    if (shape === null) {
+      ancestors.delete(value);
+      return null;
+    }
+    fields.set(key, shape);
+  }
+  ancestors.delete(value);
+  return { kind: "object", fields };
+};
+
+const shapeKind = (shape: JsonShape): string => shape.kind;
+
+const responseIssue = (
+  code: string,
+  message: string,
+  path: string,
+): DiagnosticIssue =>
+  issue(code, "moderate", `${path} ${message}`);
+
+const validateShape = (
+  expected: JsonShape,
+  actual: unknown,
+  path: string,
+): DiagnosticIssue[] => {
+  const actualShape = shapeOf(actual);
+  if (actualShape === null || actualShape.kind !== expected.kind) {
+    return [
+      responseIssue(
+        "response_type_mismatch",
+        `must have type ${shapeKind(expected)}.`,
+        path,
+      ),
+    ];
+  }
+
+  if (expected.kind === "object" && actualShape.kind === "object") {
+    if (!isPlainObject(actual)) {
+      return [
+        responseIssue(
+          "response_type_mismatch",
+          "must have type object.",
+          path,
+        ),
+      ];
+    }
+    const actualObject = actual;
+    const issues: DiagnosticIssue[] = [];
+    for (const key of expected.fields.keys()) {
+      if (!Object.prototype.hasOwnProperty.call(actualObject, key)) {
+        issues.push(
+          responseIssue(
+            "missing_response_field",
+            "is missing a required field.",
+            `${path}.${key}`,
+          ),
+        );
+      }
+    }
+    for (const key of Object.keys(actualObject)) {
+      if (!expected.fields.has(key)) {
+        issues.push(
+          responseIssue(
+            "unexpected_response_field",
+            "is not declared by the selected exercise response structure.",
+            `${path}.${key}`,
+          ),
+        );
+      }
+    }
+    for (const [key, nestedShape] of expected.fields.entries()) {
+      if (Object.prototype.hasOwnProperty.call(actualObject, key)) {
+        issues.push(...validateShape(nestedShape, actualObject[key], `${path}.${key}`));
+      }
+    }
+    return issues;
+  }
+
+  if (expected.kind === "array" && actualShape.kind === "array") {
+    if (!Array.isArray(actual)) {
+      return [
+        responseIssue(
+          "response_type_mismatch",
+          "must have type array.",
+          path,
+        ),
+      ];
+    }
+    const actualArray = actual;
+    if (expected.items.length > 0 && actualArray.length !== expected.items.length) {
+      return [
+        responseIssue(
+          "response_array_length_mismatch",
+          `must contain ${expected.items.length} item(s).`,
+          path,
+        ),
+      ];
+    }
+    const issues: DiagnosticIssue[] = [];
+    for (const [index, value] of actualArray.entries()) {
+      const expectedShape = expected.items[index] ?? expected.items[0];
+      if (expectedShape !== undefined) {
+        issues.push(...validateShape(expectedShape, value, `${path}[${index}]`));
+      }
+    }
+    return issues;
+  }
+  return [];
+};
+
+const responseCandidates = (unit: unknown): unknown[] => {
+  if (!isPlainObject(unit) || !isPlainObject(unit.exercise)) {
+    return [];
+  }
+  const exercise = unit.exercise;
+  const candidates: unknown[] = [];
+  if (Object.prototype.hasOwnProperty.call(exercise, "answer")) {
+    candidates.push(exercise.answer);
+  }
+  if (!isPlainObject(exercise.evaluation)) {
+    return candidates;
+  }
+  const evaluation = exercise.evaluation;
+  if (Array.isArray(evaluation.allowed_answers)) {
+    for (const candidate of evaluation.allowed_answers) {
+      if (isPlainObject(candidate) && Object.prototype.hasOwnProperty.call(candidate, "answer")) {
+        candidates.push(candidate.answer);
+      }
+    }
+  }
+  if (Array.isArray(evaluation.diagnostic_rules)) {
+    for (const candidate of evaluation.diagnostic_rules) {
+      if (isPlainObject(candidate) && Object.prototype.hasOwnProperty.call(candidate, "submission")) {
+        candidates.push(candidate.submission);
+      }
+    }
+  }
+  return candidates;
+};
+
+/** Validate keys and JSON value shapes without comparing or exposing answer values. */
+export const validateJsonResponseShape = (
+  unit: unknown,
+  submission: unknown,
+): readonly DiagnosticIssue[] => {
+  const shapes = responseCandidates(unit)
+    .map((candidate) => shapeOf(candidate))
+    .filter((shape): shape is JsonShape => shape !== null);
+  if (shapes.length === 0) {
+    return [
+      issue(
+        "response_structure_unavailable",
+        "moderate",
+        "The selected exercise does not declare a usable JSON response structure.",
+      ),
+    ];
+  }
+  const attempts = shapes.map((shape) => validateShape(shape, submission, "$response"));
+  const best = attempts.reduce((current, candidate) =>
+    candidate.length < current.length ? candidate : current,
+  );
+  return best;
+};

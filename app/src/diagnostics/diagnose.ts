@@ -4,11 +4,12 @@ import type { TeachingUnit } from "../data/contracts";
 import { graph, scenarios, sourceRegistry, teachingUnits } from "../data/rawData";
 import { createRepository } from "../data/repository";
 import { detectFormat } from "./detectFormat";
-import { inspectJsonText } from "./json";
+import { inspectJsonText, validateJsonResponseShape } from "./json";
 import { inspectTextGrid } from "./textGrid";
 import type {
   DiagnosticContext,
   DiagnosticDependencies,
+  DiagnosticExerciseEvaluator,
   DiagnosticEvaluator,
   DiagnosticFileLike,
   DiagnosticFormat,
@@ -313,24 +314,6 @@ const readFileText = (file: DiagnosticFileLike): Promise<string> => {
   if (typeof textMethod === "function") {
     return textMethod.call(file);
   }
-
-  // jsdom versions used by unit tests do not yet expose File.text().  The
-  // browser fallback remains local and is only reached when the standard
-  // method is unavailable; production Chromium/Edge takes the first branch.
-  if (typeof FileReader !== "undefined" && typeof Blob !== "undefined" && file instanceof Blob) {
-    return new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === "string") {
-          resolve(reader.result);
-        } else {
-          reject(new Error("FileReader did not return text."));
-        }
-      };
-      reader.onerror = () => reject(reader.error ?? new Error("FileReader failed."));
-      reader.readAsText(file);
-    });
-  }
   return Promise.reject(new Error("File.text is unavailable."));
 };
 
@@ -339,24 +322,41 @@ const mergeRefs = (
   refs: { ruleRefs: string[]; capabilityRefs: string[] },
 ): DiagnosticIssue[] => issues.map((candidate) => cloneIssue(candidate, refs.ruleRefs, refs.capabilityRefs));
 
+const adaptExerciseEvaluator = (
+  candidate: DiagnosticExerciseEvaluator | undefined,
+): DiagnosticEvaluator | undefined => {
+  if (candidate === undefined) {
+    return undefined;
+  }
+  return (unit: unknown, submission: unknown): EvaluationResult => {
+    if (!isTeachingUnit(unit)) {
+      throw new TypeError("Selected target unit does not satisfy the teaching-unit contract.");
+    }
+    return candidate(unit, submission);
+  };
+};
+
 const diagnosticDependencies = (
   context: DiagnosticContext | undefined,
   dependencies: DiagnosticDependencies | undefined,
-): { repository: DiagnosticRepository; evaluator?: DiagnosticEvaluator } => ({
-  repository:
+): { repository: DiagnosticRepository; evaluator?: DiagnosticEvaluator } => {
+  const repository =
     dependencies?.repository ??
     context?.dependencies?.repository ??
     context?.repository ??
-    defaultRepository,
-  evaluator:
+    defaultRepository;
+  const evaluator =
     dependencies?.evaluator ??
-    dependencies?.evaluateExercise ??
     context?.dependencies?.evaluator ??
-    context?.dependencies?.evaluateExercise ??
     context?.evaluator ??
-    context?.evaluateExercise ??
-    defaultEvaluatorFor(targetIdFromContext(context)),
-});
+    adaptExerciseEvaluator(
+      dependencies?.evaluateExercise ??
+        context?.dependencies?.evaluateExercise ??
+        context?.evaluateExercise,
+    ) ??
+    defaultEvaluatorFor(targetIdFromContext(context));
+  return { repository, evaluator };
+};
 
 /**
  * Diagnose one local file.  The body is read exactly once and never persisted;
@@ -546,6 +546,37 @@ export const diagnoseFile = async (
       null,
       semanticContextIssue?.code ?? "manual_review_required",
     );
+  }
+
+  // A structurally diagnosed export is never a semantic answer.  Do this
+  // before invoking an injected evaluator so a permissive adapter cannot turn
+  // malformed COCO/VOC/TextGrid data into a mastery update.
+  if (
+    (outputFormat === "coco" || outputFormat === "voc" || outputFormat === "textgrid") &&
+    parserIssues.length > 0
+  ) {
+    return freezeReport(
+      "manual_review",
+      outputFormat,
+      enrichedParserIssues,
+      false,
+      null,
+      "manual_review_required",
+    );
+  }
+
+  if (outputFormat === "json" && resolution.unit !== undefined) {
+    const shapeIssues = validateJsonResponseShape(resolution.unit, parsedValue);
+    if (shapeIssues.length > 0) {
+      return freezeReport(
+        "manual_review",
+        outputFormat,
+        mergeRefs(shapeIssues, refs),
+        false,
+        null,
+        "invalid_response_structure",
+      );
+    }
   }
 
   const evaluator = dependenciesResolved.evaluator;

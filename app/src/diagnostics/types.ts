@@ -1,4 +1,5 @@
 import type { EvaluationResult } from "../evaluation/evaluate";
+import type { TeachingUnit } from "../data/contracts";
 
 export type DiagnosticStatus =
   | "complete"
@@ -57,12 +58,17 @@ export type DiagnosticEvaluator = (
   submission: unknown,
 ) => EvaluationResult;
 
+export type DiagnosticExerciseEvaluator = (
+  unit: TeachingUnit,
+  submission: unknown,
+) => EvaluationResult;
+
 export interface DiagnosticDependencies {
   readonly repository?: DiagnosticRepository;
   /** A narrow adapter can be supplied for tests or another repository shape. */
   readonly evaluator?: DiagnosticEvaluator;
   /** Alias kept for callers that name the injected evaluator after the domain API. */
-  readonly evaluateExercise?: DiagnosticEvaluator;
+  readonly evaluateExercise?: DiagnosticExerciseEvaluator;
 }
 
 export interface DiagnosticContext {
@@ -70,7 +76,7 @@ export interface DiagnosticContext {
   readonly targetUnitId?: string | null;
   readonly repository?: DiagnosticRepository;
   readonly evaluator?: DiagnosticEvaluator;
-  readonly evaluateExercise?: DiagnosticEvaluator;
+  readonly evaluateExercise?: DiagnosticExerciseEvaluator;
   readonly dependencies?: DiagnosticDependencies;
 }
 

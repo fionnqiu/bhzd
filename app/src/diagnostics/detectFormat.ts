@@ -48,11 +48,6 @@ const mimeFormat = (mime: string): RecognizedSource => {
   return null;
 };
 
-const isNeutralMime = (mime: string | undefined): boolean => {
-  const normalized = (mime ?? "").trim().toLowerCase().split(";", 1)[0] ?? "";
-  return normalized === "" || normalized === "application/octet-stream";
-};
-
 /**
  * Detect only from metadata.  The body is deliberately not read here so a
  * caller can enforce the size limit before any potentially expensive read.
@@ -76,20 +71,10 @@ export const detectFormat = (file: DiagnosticFileLike): DetectedFormat => {
     return { format: byExtension, conflict: false };
   }
 
-  if (byMime !== null && (name === undefined || isNeutralMime(rawMime))) {
-    return { format: byMime, conflict: false };
-  }
-
-  if (byMime !== null && (name ?? "").trim() === "") {
-    return { format: byMime, conflict: false };
-  }
-
   if (byMime !== null) {
-    return {
-      format: "unknown",
-      conflict: true,
-      code: "mime_extension_conflict",
-    };
+    // A MIME type is sufficient when no recognized extension is present. An
+    // explicit conflict is reserved for two recognized, disagreeing signals.
+    return { format: byMime, conflict: false };
   }
 
   const hasExtension = /\.[^./\\]+$/u.test(name ?? "");
