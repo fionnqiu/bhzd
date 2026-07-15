@@ -190,6 +190,7 @@ describe("application shell", () => {
       ".feedback-panel__score",
       ".mastery-panel__grid > section > p",
       ".eyebrow--ink",
+      ".route-briefing dt",
     ];
 
     for (const selector of selectors) {

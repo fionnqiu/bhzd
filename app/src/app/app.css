@@ -739,7 +739,7 @@ button {
 }
 
 .route-briefing dt {
-  color: rgb(16 35 63 / 48%);
+  color: var(--metadata-ink);
   font-size: 0.68rem;
 }
 

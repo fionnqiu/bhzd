@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../src/app/App";
 import type { TeachingUnit } from "../../src/data/contracts";
 import { teachingUnits } from "../../src/data/rawData";
+import { createLearnerSafeExampleProjection } from "../../src/features/course/learnerSafeStructured";
 import { createEmptyResponseShape } from "../../src/features/course/StructuredResponseEditor";
 import {
   createProfileStore,
@@ -81,6 +82,16 @@ const openLesson = (title: string): void => {
   fireEvent.click(
     screen.getByRole("button", { name: new RegExp(title, "u") }),
   );
+};
+
+const getLessonSection = (heading: string): HTMLElement => {
+  const section = screen
+    .getByRole("heading", { name: heading })
+    .closest("section");
+  if (section === null) {
+    throw new Error(`Missing lesson section ${heading}.`);
+  }
+  return section;
 };
 
 afterEach(() => {
@@ -393,6 +404,180 @@ describe("course learning loop", () => {
     ]) {
       expect(exampleText).not.toContain(hiddenValue);
     }
+  });
+
+  it("sanitizes policy structures and raw pass criteria across canonical image lessons", () => {
+    render(<App profileStore={createTestStore()} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: domainButtonNames.image }),
+    );
+
+    openLesson("区分遮挡与画面截断");
+    const boundaryCases = getLessonSection("边界案例");
+    expect(boundaryCases).toHaveTextContent(
+      "目标轮廓在画面内闭合，但中段被前景栏杆遮住",
+    );
+    expect(boundaryCases).not.toHaveTextContent('"expected"');
+    expect(getLessonSection("规则说明")).toHaveTextContent(
+      "两个条件独立判断",
+    );
+    expect(getLessonSection("通过条件")).not.toHaveTextContent("score ==");
+    fireEvent.click(
+      screen.getByRole("button", { name: "返回课程列表" }),
+    );
+
+    openLesson("判定关键点可见性");
+    const visibilityPolicy = getLessonSection("可见性策略");
+    expect(visibilityPolicy).toHaveTextContent(
+      "画面内关键点缺少足以区分直接可见与前景遮挡的证据",
+    );
+    expect(visibilityPolicy).not.toHaveTextContent('"submission"');
+    expect(visibilityPolicy).not.toHaveTextContent('"decision": "unknown"');
+    const exerciseInput = getLessonSection("练习输入");
+    expect(exerciseInput).toHaveTextContent('"hidden_region": "left_knee"');
+    expect(exerciseInput).toHaveTextContent('"allowed_visibility_values"');
+    expect(getLessonSection("通过条件")).not.toHaveTextContent("score ==");
+    fireEvent.click(
+      screen.getByRole("button", { name: "返回课程列表" }),
+    );
+
+    openLesson("规范多边形有序顶点");
+    expect(
+      screen.queryByRole("heading", { name: "校验优先级" }),
+    ).not.toBeInTheDocument();
+    expect(getLessonSection("规则说明")).toHaveTextContent(
+      "多边形至少包含 3 个互异顶点",
+    );
+    expect(document.body).not.toHaveTextContent("score == 1.0");
+  });
+
+  it("redacts canonical scoring and diagnostic-order clauses from rule instructions", () => {
+    render(<App profileStore={createTestStore()} />);
+
+    openLesson("处理意图歧义与允许答案集");
+    const intentRules = getLessonSection("规则说明");
+    expect(intentRules).toHaveTextContent(
+      "Label Studio Choices 候选文档仅说明可配置和提交选项",
+    );
+    expect(intentRules).toHaveTextContent(
+      "若两个意图均被识别但优先级未解决",
+    );
+    expect(intentRules).not.toHaveTextContent("refund_status 为满分主意图");
+    expect(intentRules).not.toHaveTextContent("固定得 0.5 分");
+    fireEvent.click(
+      screen.getByRole("button", { name: "返回课程列表" }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: domainButtonNames.image }),
+    );
+    openLesson("规范多边形有序顶点");
+    const polygonRules = getLessonSection("规则说明");
+    expect(polygonRules).toHaveTextContent("多边形至少包含 3 个互异顶点");
+    expect(polygonRules).not.toHaveTextContent("校验顺序固定为");
+    expect(polygonRules).not.toHaveTextContent("首个失败项为错误码");
+  });
+
+  it("sanitizes learner inputs, response spaces, paths, and practice variants", () => {
+    render(<App profileStore={createTestStore()} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: domainButtonNames.audio }),
+    );
+
+    openLesson("按可听证据标注语种与方言");
+    const languageResponseSpace = getLessonSection("响应空间");
+    expect(languageResponseSpace).toHaveTextContent(
+      '"configured_bcp47_labels"',
+    );
+    expect(languageResponseSpace).toHaveTextContent("cmn");
+    expect(languageResponseSpace).not.toHaveTextContent(
+      '"recognized_submissions"',
+    );
+    expect(languageResponseSpace).not.toHaveTextContent("standard_answer");
+    expect(languageResponseSpace).not.toHaveTextContent('"unmatched_behavior"');
+
+    const languageVariants = getLessonSection("练习变体");
+    expect(languageVariants).toHaveTextContent("完整可辨识普通话句子");
+    expect(languageVariants).toHaveTextContent('"configured_labels"');
+    for (const hiddenValue of [
+      '"submitted"',
+      '"ordered_error_precedence"',
+      '"pass_condition"',
+      '"error_types"',
+      "zh-Hans-CN",
+      "score ==",
+    ]) {
+      expect(languageVariants).not.toHaveTextContent(hiddenValue);
+    }
+    expect(getLessonSection("通过条件")).not.toHaveTextContent("score ==");
+    fireEvent.click(
+      screen.getByRole("button", { name: "返回课程列表" }),
+    );
+
+    openLesson("分轨标注语音情感与副语言事件");
+    const emotionVariants = getLessonSection("练习变体");
+    expect(emotionVariants).toHaveTextContent("emo-review-001");
+    expect(emotionVariants).toHaveTextContent('"allowed_emotion_labels"');
+    for (const hiddenValue of [
+      '"candidate_annotation"',
+      '"declared_by"',
+      "evaluation.allowed_answers",
+      '"pass_condition"',
+      "score ==",
+    ]) {
+      expect(emotionVariants).not.toHaveTextContent(hiddenValue);
+    }
+    const learningPath = getLessonSection("学习路径");
+    expect(learningPath).toHaveTextContent('"remediation_resource_refs"');
+    expect(learningPath).not.toHaveTextContent('"error_type"');
+    fireEvent.click(
+      screen.getByRole("button", { name: "返回课程列表" }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: domainButtonNames.video }),
+    );
+    openLesson("按行为本体标注视频事件区间");
+    const videoResponseSpace = getLessonSection("响应空间");
+    expect(videoResponseSpace).toHaveTextContent('"allowed_event_types"');
+    expect(videoResponseSpace).toHaveTextContent("door_entry");
+    expect(videoResponseSpace).not.toHaveTextContent(
+      '"unmatched_submission_handling"',
+    );
+  });
+
+  it("rejects normalized and suffixed answer-policy keys without dropping safe evidence", () => {
+    expect(
+      createLearnerSafeExampleProjection([
+        {
+          id: "SAFE-EXAMPLE-001",
+          input: {
+            safe_evidence: "SAFE_EVIDENCE_SENTINEL",
+            hidden_region: "left_wrist",
+            "expected.value": "LEAKED_EXPECTED_SENTINEL",
+            "answer/value": "LEAKED_ANSWER_SENTINEL",
+            answer1: "LEAKED_SUFFIXED_ANSWER_SENTINEL",
+            passScore: 0.9,
+            passCondition1: "LEAKED_PASS_CONDITION_SENTINEL",
+            diagnostic2: "LEAKED_DIAGNOSTIC_SENTINEL",
+            "evaluation.payload": "LEAKED_EVALUATION_SENTINEL",
+            ordered_error_precedence: ["LEAKED_PRECEDENCE_SENTINEL"],
+            recognized_submissions: ["LEAKED_SUBMISSION_SENTINEL"],
+            unmatchedBehavior1: "LEAKED_UNMATCHED_SENTINEL",
+            errorType1: "LEAKED_ERROR_TYPE_SENTINEL",
+            candidate_annotation: "LEAKED_CANDIDATE_SENTINEL",
+          },
+        },
+      ]),
+    ).toEqual([
+      {
+        id: "SAFE-EXAMPLE-001",
+        input: {
+          safe_evidence: "SAFE_EVIDENCE_SENTINEL",
+          hidden_region: "left_wrist",
+        },
+      },
+    ]);
   });
 
   it("makes every published lesson reachable with a type-shaped empty editor", () => {

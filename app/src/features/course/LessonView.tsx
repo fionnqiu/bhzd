@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import { useAppContext } from "../../app/AppContext";
 import { Button } from "../../components/Button";
 import type {
-  Exercise,
   ExtensibleFields,
   TeachingUnit,
 } from "../../data/contracts";
@@ -13,7 +12,13 @@ import {
 } from "../../evaluation/evaluate";
 import { AudioAsset } from "./AudioAsset";
 import { FeedbackPanel } from "./FeedbackPanel";
-import { createLearnerSafeExampleProjection } from "./learnerSafeExample";
+import {
+  createLearnerSafeExampleProjection,
+  createLearnerSafeInstructionProjection,
+  createLearnerSafePracticeVariantProjection,
+  createLearnerSafeResponseSpaceProjection,
+  createLearnerSafeStructuredProjection,
+} from "./learnerSafeStructured";
 import { StructuredResponseEditor } from "./StructuredResponseEditor";
 
 const isRecord = (value: unknown): value is ExtensibleFields =>
@@ -75,64 +80,25 @@ function StructuredSection({
   value,
   className,
 }: StructuredSectionProps) {
-  if (!hasContent(value)) {
+  const learnerSafeValue = createLearnerSafeStructuredProjection(value);
+  if (!hasContent(learnerSafeValue)) {
     return null;
   }
 
   return (
     <section className={className ?? "lesson-section"}>
       <h2>{title}</h2>
-      <pre className="structured-data">{formatStructuredValue(value)}</pre>
+      <pre className="structured-data">
+        {formatStructuredValue(learnerSafeValue)}
+      </pre>
     </section>
   );
 }
-
-const safePracticeExercise = (value: unknown): ExtensibleFields | null => {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const safeKeys = [
-    "exercise_id",
-    "exercise_type",
-    "asset_ref",
-    "representation",
-    "manifest_resolution",
-    "input",
-    "student_action",
-    "response_space",
-    "data_version",
-    "pass_condition",
-    "capability_refs",
-    "error_types",
-    "asset_authorization",
-  ] as const;
-  const safe: ExtensibleFields = {};
-
-  for (const key of safeKeys) {
-    if (Object.prototype.hasOwnProperty.call(value, key)) {
-      safe[key] = value[key];
-    }
-  }
-
-  return safe;
-};
-
-const safePracticeVariants = (value: unknown): ExtensibleFields[] => {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .map(safePracticeExercise)
-    .filter((item): item is ExtensibleFields => item !== null);
-};
 
 const POLICY_SECTIONS = [
   ["boundary_cases", "边界案例"],
   ["visibility_policy", "可见性策略"],
   ["instance_policy", "实例策略"],
-  ["validation_precedence", "校验优先级"],
   ["timebase_policy", "时间基准策略"],
   ["related_primitives", "相关基础能力"],
 ] as const;
@@ -157,7 +123,9 @@ export function LessonView({
   const [evaluationError, setEvaluationError] = useState<string | null>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const goals = Array.isArray(unit.goals) ? unit.goals : [];
-  const practiceVariants = safePracticeVariants(unit.practice_variants);
+  const practiceVariants = createLearnerSafePracticeVariantProjection(
+    unit.practice_variants,
+  );
   const responseSpace =
     unit.exercise.response_space ??
     (isRecord(unit.exercise.evaluation)
@@ -286,7 +254,12 @@ export function LessonView({
           </dl>
         </section>
 
-        <StructuredSection title="规则说明" value={unit.rule_explanation} />
+        <StructuredSection
+          title="规则说明"
+          value={createLearnerSafeInstructionProjection(
+            unit.rule_explanation,
+          )}
+        />
 
         {POLICY_SECTIONS.map(([key, label]) => (
           <StructuredSection key={key} title={label} value={unit[key]} />
@@ -329,7 +302,9 @@ export function LessonView({
           <section className="exercise-block">
             <h3>练习输入</h3>
             <pre className="structured-data">
-              {formatStructuredValue(unit.exercise.input)}
+              {formatStructuredValue(
+                createLearnerSafeStructuredProjection(unit.exercise.input),
+              )}
             </pre>
           </section>
 
@@ -341,13 +316,14 @@ export function LessonView({
           <section className="exercise-block">
             <h3>通过条件</h3>
             <p>
-              {typeof unit.exercise.pass_condition === "string"
-                ? unit.exercise.pass_condition
-                : formatStructuredValue(unit.exercise.pass_condition)}
+              提交后会显示是否满足本题通过条件；预提交阶段不公开具体评分阈值或判定表达式。
             </p>
           </section>
 
-          <StructuredSection title="响应空间" value={responseSpace} />
+          <StructuredSection
+            title="响应空间"
+            value={createLearnerSafeResponseSpaceProjection(responseSpace)}
+          />
           <section className="exercise-block exercise-block--protocol">
             <h3>评估方式</h3>
             <p>
