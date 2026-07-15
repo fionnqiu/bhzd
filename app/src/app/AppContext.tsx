@@ -28,7 +28,7 @@ export type WorkMode = keyof typeof WORK_MODE_LABELS;
 
 export type AppProfileStore = Pick<
   ProfileStore,
-  "snapshot" | "setContext" | "reset"
+  "snapshot" | "getLoadError" | "setContext" | "reset"
 >;
 
 interface AppContextValue {
@@ -52,16 +52,65 @@ const AppContext = createContext<AppContextValue | null>(null);
 const isWorkMode = (value: string | null): value is WorkMode =>
   value !== null && Object.hasOwn(WORK_MODE_LABELS, value);
 
+const PROFILE_RECOVERY_GUIDANCE =
+  "本地学习档案无法读取。当前选择只保留在内存中，不会覆盖原档案。请打开“重置学习档案”并确认重置后恢复保存。";
+
+const PROFILE_RECOVERY_RESET_FAILURE =
+  "本地学习档案无法读取，且重置失败。当前选择仍只保留在内存中；请检查浏览器存储权限后再次确认重置。";
+
+interface InitialAppProfileState {
+  readonly selectedWorkMode: WorkMode;
+  readonly selectedScenarioId: string | null;
+  readonly recoveryRequired: boolean;
+  readonly profileError: string | null;
+}
+
+const recoveryProfileState = (): InitialAppProfileState => ({
+  selectedWorkMode: "course",
+  selectedScenarioId: null,
+  recoveryRequired: true,
+  profileError: PROFILE_RECOVERY_GUIDANCE,
+});
+
+const loadInitialProfileState = (
+  profileStore: AppProfileStore,
+): InitialAppProfileState => {
+  try {
+    if (profileStore.getLoadError() !== null) {
+      return recoveryProfileState();
+    }
+
+    const snapshot = profileStore.snapshot();
+    return {
+      selectedWorkMode: isWorkMode(snapshot.lastMode)
+        ? snapshot.lastMode
+        : "course",
+      selectedScenarioId: snapshot.lastScenario,
+      recoveryRequired: false,
+      profileError: null,
+    };
+  } catch {
+    return recoveryProfileState();
+  }
+};
+
 export function AppProvider({ children, profileStore }: AppProviderProps) {
-  const [initialProfile] = useState(() => profileStore.snapshot());
+  const [initialProfile] = useState(() =>
+    loadInitialProfileState(profileStore),
+  );
   const [selectedDomain, setSelectedDomain] = useState<Domain>("text");
-  const [selectedWorkMode, setSelectedWorkMode] = useState<WorkMode>(() =>
-    isWorkMode(initialProfile.lastMode) ? initialProfile.lastMode : "course",
+  const [selectedWorkMode, setSelectedWorkMode] = useState<WorkMode>(
+    initialProfile.selectedWorkMode,
   );
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(
-    initialProfile.lastScenario,
+    initialProfile.selectedScenarioId,
   );
-  const [profileError, setProfileError] = useState<string | null>(null);
+  const [recoveryRequired, setRecoveryRequired] = useState(
+    initialProfile.recoveryRequired,
+  );
+  const [profileError, setProfileError] = useState<string | null>(
+    initialProfile.profileError,
+  );
 
   const selectDomain = useCallback((domain: Domain) => {
     setSelectedDomain(domain);
@@ -70,6 +119,10 @@ export function AppProvider({ children, profileStore }: AppProviderProps) {
   const selectWorkMode = useCallback(
     (mode: WorkMode) => {
       setSelectedWorkMode(mode);
+      if (recoveryRequired) {
+        return;
+      }
+
       try {
         profileStore.setContext({ lastMode: mode });
         setProfileError(null);
@@ -77,12 +130,16 @@ export function AppProvider({ children, profileStore }: AppProviderProps) {
         setProfileError("学习状态保存失败，本次选择仍可继续使用。");
       }
     },
-    [profileStore],
+    [profileStore, recoveryRequired],
   );
 
   const selectScenario = useCallback(
     (scenarioId: string | null) => {
       setSelectedScenarioId(scenarioId);
+      if (recoveryRequired) {
+        return;
+      }
+
       try {
         profileStore.setContext({ lastScenario: scenarioId });
         setProfileError(null);
@@ -90,23 +147,28 @@ export function AppProvider({ children, profileStore }: AppProviderProps) {
         setProfileError("场景状态保存失败，本次选择仍可继续使用。");
       }
     },
-    [profileStore],
+    [profileStore, recoveryRequired],
   );
 
   const resetLearningProfile = useCallback((): boolean => {
     try {
       profileStore.reset();
     } catch {
-      setProfileError("学习档案重置失败，请检查浏览器存储权限后重试。");
+      setProfileError(
+        recoveryRequired
+          ? PROFILE_RECOVERY_RESET_FAILURE
+          : "学习档案重置失败，请检查浏览器存储权限后重试。",
+      );
       return false;
     }
 
     setSelectedDomain("text");
     setSelectedWorkMode("course");
     setSelectedScenarioId(null);
+    setRecoveryRequired(false);
     setProfileError(null);
     return true;
-  }, [profileStore]);
+  }, [profileStore, recoveryRequired]);
 
   return (
     <AppContext.Provider

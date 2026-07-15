@@ -146,6 +146,11 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
     if (resetOpen) {
       resetWasOpenRef.current = true;
       cancelButtonRef.current?.focus();
+      const previousDocumentOverflow =
+        document.documentElement.style.overflow;
+      const previousBodyOverflow = document.body.style.overflow;
+      document.documentElement.style.overflow = "hidden";
+      document.body.style.overflow = "hidden";
 
       const containFocus = (event: FocusEvent) => {
         const dialog = resetDialogRef.current;
@@ -160,7 +165,11 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
       };
 
       document.addEventListener("focusin", containFocus);
-      return () => document.removeEventListener("focusin", containFocus);
+      return () => {
+        document.removeEventListener("focusin", containFocus);
+        document.documentElement.style.overflow = previousDocumentOverflow;
+        document.body.style.overflow = previousBodyOverflow;
+      };
     }
 
     if (!resetWasOpenRef.current) {
@@ -275,197 +284,197 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
         </a>
 
         <header className="app-header">
-        <div className="brand-lockup" aria-label="标航智导">
-          <span className="brand-lockup__mark" aria-hidden="true">
-            <span />
-          </span>
-          <span className="brand-lockup__copy">
-            <span>ANNOTATION NAVIGATOR</span>
-            <strong>标航智导</strong>
-          </span>
-          <span className="preview-badge">开发预览</span>
-        </div>
-
-        <nav className="mode-navigation" aria-label="工作模式">
-          <div role="tablist" aria-label="主工作模式" className="mode-tabs">
-            {MODE_DETAILS.map((mode, index) => {
-              const selected = selectedWorkMode === mode.id;
-
-              return (
-                <button
-                  key={mode.id}
-                  ref={(element) => {
-                    tabRefs.current[index] = element;
-                  }}
-                  id={`mode-${mode.id}-tab`}
-                  className="mode-tab"
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  aria-controls="mode-panel"
-                  tabIndex={selected ? 0 : -1}
-                  onClick={() => selectWorkMode(mode.id)}
-                  onKeyDown={(event) => handleModeKeyDown(event, index)}
-                >
-                  {WORK_MODE_LABELS[mode.id]}
-                </button>
-              );
-            })}
+          <div className="brand-lockup" aria-label="标航智导">
+            <span className="brand-lockup__mark" aria-hidden="true">
+              <span />
+            </span>
+            <span className="brand-lockup__copy">
+              <span>ANNOTATION NAVIGATOR</span>
+              <strong>标航智导</strong>
+            </span>
+            <span className="preview-badge">开发预览</span>
           </div>
-        </nav>
 
-        <dl className="header-position" aria-label="当前位置">
-          <div>
-            <dt>数据域</dt>
-            <dd>{domainLabel}</dd>
-          </div>
-          <div>
-            <dt>场景</dt>
-            <dd>{scenarioLabel}</dd>
-          </div>
-        </dl>
+          <nav className="mode-navigation" aria-label="工作模式">
+            <div role="tablist" aria-label="主工作模式" className="mode-tabs">
+              {MODE_DETAILS.map((mode, index) => {
+                const selected = selectedWorkMode === mode.id;
+
+                return (
+                  <button
+                    key={mode.id}
+                    ref={(element) => {
+                      tabRefs.current[index] = element;
+                    }}
+                    id={`mode-${mode.id}-tab`}
+                    className="mode-tab"
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    aria-controls="mode-panel"
+                    tabIndex={selected ? 0 : -1}
+                    onClick={() => activateMode(index)}
+                    onKeyDown={(event) => handleModeKeyDown(event, index)}
+                  >
+                    {WORK_MODE_LABELS[mode.id]}
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+
+          <dl className="header-position" aria-label="当前位置">
+            <div>
+              <dt>数据域</dt>
+              <dd>{domainLabel}</dd>
+            </div>
+            <div>
+              <dt>场景</dt>
+              <dd>{scenarioLabel}</dd>
+            </div>
+          </dl>
         </header>
 
         <div className="workspace">
-        <aside className="workspace__domains" aria-label="课程域导航">
-          <Dashboard
-            counts={counts}
-            selectedDomain={selectedDomain}
-            onSelectDomain={selectDomain}
-          />
-        </aside>
+          <aside className="workspace__domains" aria-label="课程域导航">
+            <Dashboard
+              counts={counts}
+              selectedDomain={selectedDomain}
+              onSelectDomain={selectDomain}
+            />
+          </aside>
 
-        <main id="main-content" className="workspace__main" tabIndex={-1}>
-          <Panel
-            id="mode-panel"
-            role="tabpanel"
-            aria-labelledby={`mode-${selectedWorkMode}-tab`}
-            tone="paper"
-            className="chart-room"
-          >
-            <div className="chart-room__coordinate" aria-hidden="true">
-              LAT 31.2304 N&nbsp;&nbsp; / &nbsp;&nbsp;LON 121.4737 E
-            </div>
-
-            <div className="chart-room__heading">
-              <div>
-                <p className="eyebrow eyebrow--ink">
-                  {activeMode.coordinate} / {domainLabel}域
-                </p>
-                <h1>
-                  {domainLabel}
-                  <span>{activeMode.title}</span>
-                </h1>
+          <main id="main-content" className="workspace__main" tabIndex={-1}>
+            <Panel
+              id="mode-panel"
+              role="tabpanel"
+              aria-labelledby={`mode-${selectedWorkMode}-tab`}
+              tone="paper"
+              className="chart-room"
+            >
+              <div className="chart-room__coordinate" aria-hidden="true">
+                LAT 31.2304 N&nbsp;&nbsp; / &nbsp;&nbsp;LON 121.4737 E
               </div>
-              <span className="route-state">
-                <span aria-hidden="true" /> 航向已锁定
-              </span>
-            </div>
 
-            <p className="chart-room__lede">{activeMode.description}</p>
+              <div className="chart-room__heading">
+                <div>
+                  <p className="eyebrow eyebrow--ink">
+                    {activeMode.coordinate} / {domainLabel}域
+                  </p>
+                  <h1>
+                    {domainLabel}
+                    <span>{activeMode.title}</span>
+                  </h1>
+                </div>
+                <span className="route-state">
+                  <span aria-hidden="true" /> 航向已锁定
+                </span>
+              </div>
 
-            <div className="bearing-chart" aria-hidden="true">
-              <span className="bearing-chart__axis bearing-chart__axis--x" />
-              <span className="bearing-chart__axis bearing-chart__axis--y" />
-              <span className="bearing-chart__orbit bearing-chart__orbit--outer" />
-              <span className="bearing-chart__orbit bearing-chart__orbit--inner" />
-              <span className="bearing-chart__north">N</span>
-              <span className="bearing-chart__east">E</span>
-              <span className="bearing-chart__needle" />
-              <span className="bearing-chart__star">✦</span>
-              <span className="bearing-chart__readout">
-                {activeMode.coordinate}
-              </span>
-            </div>
+              <p className="chart-room__lede">{activeMode.description}</p>
 
-            <div className="route-briefing">
-              <p className="route-briefing__label">当前工作台</p>
-              <h2>{WORK_MODE_LABELS[selectedWorkMode]}</h2>
-              <p>{activeMode.pending}</p>
-              <dl>
+              <div className="bearing-chart" aria-hidden="true">
+                <span className="bearing-chart__axis bearing-chart__axis--x" />
+                <span className="bearing-chart__axis bearing-chart__axis--y" />
+                <span className="bearing-chart__orbit bearing-chart__orbit--outer" />
+                <span className="bearing-chart__orbit bearing-chart__orbit--inner" />
+                <span className="bearing-chart__north">N</span>
+                <span className="bearing-chart__east">E</span>
+                <span className="bearing-chart__needle" />
+                <span className="bearing-chart__star">✦</span>
+                <span className="bearing-chart__readout">
+                  {activeMode.coordinate}
+                </span>
+              </div>
+
+              <div className="route-briefing">
+                <p className="route-briefing__label">当前工作台</p>
+                <h2>{WORK_MODE_LABELS[selectedWorkMode]}</h2>
+                <p>{activeMode.pending}</p>
+                <dl>
+                  <div>
+                    <dt>数据域</dt>
+                    <dd>{domainLabel}</dd>
+                  </div>
+                  <div>
+                    <dt>可学习单元</dt>
+                    <dd>{counts[selectedDomain]}</dd>
+                  </div>
+                  <div>
+                    <dt>场景覆盖</dt>
+                    <dd>{scenarioLabel}</dd>
+                  </div>
+                </dl>
+              </div>
+            </Panel>
+          </main>
+
+          <aside className="workspace__status" aria-label="航线状态">
+            <Panel tone="dark" className="status-panel">
+              <div className="panel-heading">
+                <p className="eyebrow">NAVIGATION FIX</p>
+                <h2>当前航线</h2>
+              </div>
+
+              <dl className="position-list">
                 <div>
                   <dt>数据域</dt>
                   <dd>{domainLabel}</dd>
                 </div>
                 <div>
-                  <dt>可学习单元</dt>
-                  <dd>{counts[selectedDomain]}</dd>
+                  <dt>工作模式</dt>
+                  <dd>{WORK_MODE_LABELS[selectedWorkMode]}</dd>
                 </div>
                 <div>
-                  <dt>场景覆盖</dt>
+                  <dt>场景</dt>
                   <dd>{scenarioLabel}</dd>
                 </div>
+                <div>
+                  <dt>内容信号</dt>
+                  <dd className="signal-value">
+                    <span aria-hidden="true" /> {counts[selectedDomain]} 个单元
+                  </dd>
+                </div>
               </dl>
-            </div>
-          </Panel>
-        </main>
 
-        <aside className="workspace__status" aria-label="航线状态">
-          <Panel tone="dark" className="status-panel">
-            <div className="panel-heading">
-              <p className="eyebrow">NAVIGATION FIX</p>
-              <h2>当前航线</h2>
-            </div>
-
-            <dl className="position-list">
-              <div>
-                <dt>数据域</dt>
-                <dd>{domainLabel}</dd>
+              <div className="legend" aria-label="状态图例">
+                <p>航图图例</p>
+                <span>
+                  <i className="legend__mastery" aria-hidden="true" /> 可用内容
+                </span>
+                <span>
+                  <i className="legend__bearing" aria-hidden="true" /> 当前航向
+                </span>
+                <span>
+                  <i className="legend__error" aria-hidden="true" /> 需处理错误
+                </span>
               </div>
-              <div>
-                <dt>工作模式</dt>
-                <dd>{WORK_MODE_LABELS[selectedWorkMode]}</dd>
-              </div>
-              <div>
-                <dt>场景</dt>
-                <dd>{scenarioLabel}</dd>
-              </div>
-              <div>
-                <dt>内容信号</dt>
-                <dd className="signal-value">
-                  <span aria-hidden="true" /> {counts[selectedDomain]} 个单元
-                </dd>
-              </div>
-            </dl>
 
-            <div className="legend" aria-label="状态图例">
-              <p>航图图例</p>
-              <span>
-                <i className="legend__mastery" aria-hidden="true" /> 可用内容
-              </span>
-              <span>
-                <i className="legend__bearing" aria-hidden="true" /> 当前航向
-              </span>
-              <span>
-                <i className="legend__error" aria-hidden="true" /> 需处理错误
-              </span>
-            </div>
+              {profileError !== null ? (
+                <p className="profile-message profile-message--error" role="alert">
+                  {profileError}
+                </p>
+              ) : null}
+              {resetNotice !== null ? (
+                <p className="profile-message" role="status">
+                  {resetNotice}
+                </p>
+              ) : null}
 
-            {profileError !== null ? (
-              <p className="profile-message profile-message--error" role="alert">
-                {profileError}
-              </p>
-            ) : null}
-            {resetNotice !== null ? (
-              <p className="profile-message" role="status">
-                {resetNotice}
-              </p>
-            ) : null}
-
-            <Button
-              ref={resetButtonRef}
-              variant="quiet"
-              fullWidth
-              onClick={() => {
-                setResetNotice(null);
-                setResetOpen(true);
-              }}
-            >
-              重置学习档案
-            </Button>
-            <p className="reset-note">仅清除本应用保存在此浏览器中的学习档案。</p>
-          </Panel>
-        </aside>
+              <Button
+                ref={resetButtonRef}
+                variant="quiet"
+                fullWidth
+                onClick={() => {
+                  setResetNotice(null);
+                  setResetOpen(true);
+                }}
+              >
+                重置学习档案
+              </Button>
+              <p className="reset-note">仅清除本应用保存在此浏览器中的学习档案。</p>
+            </Panel>
+          </aside>
         </div>
       </div>
 

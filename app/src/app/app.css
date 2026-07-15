@@ -847,7 +847,7 @@ button {
 
 .reset-note {
   margin: 0.75rem 0 0;
-  color: rgb(247 248 250 / 45%);
+  color: rgb(247 248 250 / 68%);
   font-size: 0.68rem;
   line-height: 1.6;
 }
@@ -860,6 +860,7 @@ button {
   align-items: flex-start;
   justify-content: center;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding:
     max(0.75rem, env(safe-area-inset-top))
     max(1rem, env(safe-area-inset-right))
@@ -916,20 +917,7 @@ button {
   }
 }
 
-@media (max-width: 960px) {
-  .app-header {
-    grid-template-columns: 1fr;
-  }
-
-  .brand-lockup {
-    border-right: 0;
-    border-bottom: 0.0625rem solid rgb(0 198 255 / 15%);
-  }
-
-  .mode-tab {
-    min-height: 3.5rem;
-  }
-
+@media (max-width: 68rem) {
   .workspace {
     grid-template-columns: 1fr;
   }
@@ -953,6 +941,21 @@ button {
 
   .status-panel {
     position: static;
+  }
+}
+
+@media (max-width: 960px) {
+  .app-header {
+    grid-template-columns: 1fr;
+  }
+
+  .brand-lockup {
+    border-right: 0;
+    border-bottom: 0.0625rem solid rgb(0 198 255 / 15%);
+  }
+
+  .mode-tab {
+    min-height: 3.5rem;
   }
 }
 
