@@ -1,0 +1,431 @@
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
+
+import { Button } from "../components/Button";
+import { Panel } from "../components/Panel";
+import {
+  createRepository,
+} from "../data/repository";
+import {
+  graph,
+  scenarios,
+  sourceRegistry,
+  teachingUnits,
+} from "../data/rawData";
+import {
+  countConsumableUnitsByDomain,
+  Dashboard,
+  type ConsumableUnitSource,
+} from "../features/dashboard/Dashboard";
+import {
+  createProfileStore,
+  type ProfileStorage,
+} from "../state/profileStore";
+import {
+  AppProvider,
+  DOMAIN_LABELS,
+  WORK_MODE_LABELS,
+  useAppContext,
+  type AppProfileStore,
+  type WorkMode,
+} from "./AppContext";
+
+const canonicalRepository = createRepository({
+  graph,
+  scenarios,
+  sourceRegistry,
+  teachingUnits,
+});
+
+const browserStorage: ProfileStorage = {
+  getItem: (key) => window.localStorage.getItem(key),
+  setItem: (key, value) => window.localStorage.setItem(key, value),
+  removeItem: (key) => window.localStorage.removeItem(key),
+};
+
+const MODE_DETAILS: ReadonlyArray<{
+  id: WorkMode;
+  coordinate: string;
+  title: string;
+  description: string;
+  pending: string;
+}> = [
+  {
+    id: "course",
+    coordinate: "BRG 018°",
+    title: "课程航线",
+    description: "按数据域进入已发布的教学单元，建立规则、练习与反馈的连续路径。",
+    pending: "课程内容将在下一阶段接入。当前可先确认数据域与学习航向。",
+  },
+  {
+    id: "graph",
+    coordinate: "BRG 092°",
+    title: "图谱航线",
+    description: "从能力、知识与任务关系观察学习路径，定位可继续探索的节点。",
+    pending: "知识图谱入口已就位，节点网络与关系详情将在后续接入。",
+  },
+  {
+    id: "task",
+    coordinate: "BRG 184°",
+    title: "任务转化航线",
+    description: "把企业标注需求整理为可核验的学习任务与能力证据。",
+    pending: "任务转化入口已就位，输入与任务卡工作区将在后续接入。",
+  },
+  {
+    id: "diagnostics",
+    coordinate: "BRG 276°",
+    title: "标注诊断航线",
+    description: "在本地检查结构化标注导出，返回可恢复的问题定位线索。",
+    pending: "诊断入口已就位，文件检查与结果面板将在后续接入。",
+  },
+];
+
+const MODE_INDEX = new Map(
+  MODE_DETAILS.map(({ id }, index) => [id, index] as const),
+);
+
+export interface AppProps {
+  repository?: ConsumableUnitSource;
+  profileStore?: AppProfileStore;
+}
+
+interface ApplicationShellProps {
+  repository: ConsumableUnitSource;
+}
+
+function ApplicationShell({ repository }: ApplicationShellProps) {
+  const {
+    selectedDomain,
+    selectedWorkMode,
+    selectedScenarioId,
+    profileError,
+    selectDomain,
+    selectWorkMode,
+    resetLearningProfile,
+  } = useAppContext();
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetNotice, setResetNotice] = useState<string | null>(null);
+  const resetButtonRef = useRef<HTMLButtonElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const counts = useMemo(
+    () => countConsumableUnitsByDomain(repository.listConsumableUnits()),
+    [repository],
+  );
+
+  const domainLabel = DOMAIN_LABELS[selectedDomain];
+  const scenarioLabel = selectedScenarioId ?? "通用场景";
+  const activeMode =
+    MODE_DETAILS[MODE_INDEX.get(selectedWorkMode) ?? 0] ?? MODE_DETAILS[0];
+
+  useEffect(() => {
+    if (!resetOpen) {
+      return;
+    }
+
+    cancelButtonRef.current?.focus();
+  }, [resetOpen]);
+
+  const closeResetDialog = () => {
+    setResetOpen(false);
+    resetButtonRef.current?.focus();
+  };
+
+  const confirmReset = () => {
+    const reset = resetLearningProfile();
+    setResetOpen(false);
+    setResetNotice(reset ? "学习档案已重置，航线已返回文本课程。" : null);
+    resetButtonRef.current?.focus();
+  };
+
+  const activateMode = (index: number) => {
+    const mode = MODE_DETAILS[index];
+    if (mode === undefined) {
+      return;
+    }
+
+    selectWorkMode(mode.id);
+    tabRefs.current[index]?.focus();
+  };
+
+  const handleModeKeyDown = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    index: number,
+  ) => {
+    let nextIndex: number | null = null;
+
+    switch (event.key) {
+      case "ArrowRight":
+        nextIndex = (index + 1) % MODE_DETAILS.length;
+        break;
+      case "ArrowLeft":
+        nextIndex = (index - 1 + MODE_DETAILS.length) % MODE_DETAILS.length;
+        break;
+      case "Home":
+        nextIndex = 0;
+        break;
+      case "End":
+        nextIndex = MODE_DETAILS.length - 1;
+        break;
+      default:
+        return;
+    }
+
+    event.preventDefault();
+    activateMode(nextIndex);
+  };
+
+  return (
+    <div className="app-shell">
+      <a className="skip-link" href="#main-content">
+        跳到主要内容
+      </a>
+
+      <header className="app-header">
+        <div className="brand-lockup" aria-label="标航智导">
+          <span className="brand-lockup__mark" aria-hidden="true">
+            <span />
+          </span>
+          <span className="brand-lockup__copy">
+            <span>ANNOTATION NAVIGATOR</span>
+            <strong>标航智导</strong>
+          </span>
+          <span className="preview-badge">开发预览</span>
+        </div>
+
+        <nav className="mode-navigation" aria-label="工作模式">
+          <div role="tablist" aria-label="主工作模式" className="mode-tabs">
+            {MODE_DETAILS.map((mode, index) => {
+              const selected = selectedWorkMode === mode.id;
+
+              return (
+                <button
+                  key={mode.id}
+                  ref={(element) => {
+                    tabRefs.current[index] = element;
+                  }}
+                  id={`mode-${mode.id}-tab`}
+                  className="mode-tab"
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  aria-controls="mode-panel"
+                  tabIndex={selected ? 0 : -1}
+                  onClick={() => selectWorkMode(mode.id)}
+                  onKeyDown={(event) => handleModeKeyDown(event, index)}
+                >
+                  {WORK_MODE_LABELS[mode.id]}
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+
+        <dl className="header-position" aria-label="当前位置">
+          <div>
+            <dt>数据域</dt>
+            <dd>{domainLabel}</dd>
+          </div>
+          <div>
+            <dt>场景</dt>
+            <dd>{scenarioLabel}</dd>
+          </div>
+        </dl>
+      </header>
+
+      <div className="workspace">
+        <aside className="workspace__domains" aria-label="课程域导航">
+          <Dashboard
+            counts={counts}
+            selectedDomain={selectedDomain}
+            onSelectDomain={selectDomain}
+          />
+        </aside>
+
+        <main id="main-content" className="workspace__main" tabIndex={-1}>
+          <Panel
+            id="mode-panel"
+            role="tabpanel"
+            aria-labelledby={`mode-${selectedWorkMode}-tab`}
+            tone="paper"
+            className="chart-room"
+          >
+            <div className="chart-room__coordinate" aria-hidden="true">
+              LAT 31.2304 N&nbsp;&nbsp; / &nbsp;&nbsp;LON 121.4737 E
+            </div>
+
+            <div className="chart-room__heading">
+              <div>
+                <p className="eyebrow eyebrow--ink">
+                  {activeMode.coordinate} / {domainLabel}域
+                </p>
+                <h1>
+                  {domainLabel}
+                  <span>{activeMode.title}</span>
+                </h1>
+              </div>
+              <span className="route-state">
+                <span aria-hidden="true" /> 航向已锁定
+              </span>
+            </div>
+
+            <p className="chart-room__lede">{activeMode.description}</p>
+
+            <div className="bearing-chart" aria-hidden="true">
+              <span className="bearing-chart__axis bearing-chart__axis--x" />
+              <span className="bearing-chart__axis bearing-chart__axis--y" />
+              <span className="bearing-chart__orbit bearing-chart__orbit--outer" />
+              <span className="bearing-chart__orbit bearing-chart__orbit--inner" />
+              <span className="bearing-chart__north">N</span>
+              <span className="bearing-chart__east">E</span>
+              <span className="bearing-chart__needle" />
+              <span className="bearing-chart__star">✦</span>
+              <span className="bearing-chart__readout">
+                {activeMode.coordinate}
+              </span>
+            </div>
+
+            <div className="route-briefing">
+              <p className="route-briefing__label">当前工作台</p>
+              <h2>{WORK_MODE_LABELS[selectedWorkMode]}</h2>
+              <p>{activeMode.pending}</p>
+              <dl>
+                <div>
+                  <dt>数据域</dt>
+                  <dd>{domainLabel}</dd>
+                </div>
+                <div>
+                  <dt>可学习单元</dt>
+                  <dd>{counts[selectedDomain]}</dd>
+                </div>
+                <div>
+                  <dt>场景覆盖</dt>
+                  <dd>{scenarioLabel}</dd>
+                </div>
+              </dl>
+            </div>
+          </Panel>
+        </main>
+
+        <aside className="workspace__status" aria-label="航线状态">
+          <Panel tone="dark" className="status-panel">
+            <div className="panel-heading">
+              <p className="eyebrow">NAVIGATION FIX</p>
+              <h2>当前航线</h2>
+            </div>
+
+            <dl className="position-list">
+              <div>
+                <dt>数据域</dt>
+                <dd>{domainLabel}</dd>
+              </div>
+              <div>
+                <dt>工作模式</dt>
+                <dd>{WORK_MODE_LABELS[selectedWorkMode]}</dd>
+              </div>
+              <div>
+                <dt>场景</dt>
+                <dd>{scenarioLabel}</dd>
+              </div>
+              <div>
+                <dt>内容信号</dt>
+                <dd className="signal-value">
+                  <span aria-hidden="true" /> {counts[selectedDomain]} 个单元
+                </dd>
+              </div>
+            </dl>
+
+            <div className="legend" aria-label="状态图例">
+              <p>航图图例</p>
+              <span>
+                <i className="legend__mastery" aria-hidden="true" /> 可用内容
+              </span>
+              <span>
+                <i className="legend__bearing" aria-hidden="true" /> 当前航向
+              </span>
+              <span>
+                <i className="legend__error" aria-hidden="true" /> 需处理错误
+              </span>
+            </div>
+
+            {profileError !== null ? (
+              <p className="profile-message profile-message--error" role="alert">
+                {profileError}
+              </p>
+            ) : null}
+            {resetNotice !== null ? (
+              <p className="profile-message" role="status">
+                {resetNotice}
+              </p>
+            ) : null}
+
+            <Button
+              ref={resetButtonRef}
+              variant="quiet"
+              fullWidth
+              onClick={() => {
+                setResetNotice(null);
+                setResetOpen(true);
+              }}
+            >
+              重置学习档案
+            </Button>
+            <p className="reset-note">仅清除本应用保存在此浏览器中的学习档案。</p>
+          </Panel>
+        </aside>
+      </div>
+
+      {resetOpen ? (
+        <div className="dialog-backdrop">
+          <div
+            className="reset-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="reset-dialog-title"
+            aria-describedby="reset-dialog-description"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                closeResetDialog();
+              }
+            }}
+          >
+            <p className="eyebrow eyebrow--ink">PROFILE RESET</p>
+            <h2 id="reset-dialog-title">确认重置学习档案</h2>
+            <p id="reset-dialog-description">
+              掌握度、练习记录和最近航向将从本浏览器清除。其他站点数据不会受到影响。
+            </p>
+            <div className="reset-dialog__actions">
+              <Button ref={cancelButtonRef} variant="quiet" onClick={closeResetDialog}>
+                取消
+              </Button>
+              <Button variant="danger" onClick={confirmReset}>
+                确认重置
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function App({
+  repository = canonicalRepository,
+  profileStore,
+}: AppProps) {
+  const [resolvedProfileStore] = useState<AppProfileStore>(() =>
+    profileStore ?? createProfileStore(browserStorage),
+  );
+
+  return (
+    <AppProvider profileStore={resolvedProfileStore}>
+      <ApplicationShell repository={repository} />
+    </AppProvider>
+  );
+}

@@ -1,6 +1,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
+import { App } from "./app/App";
+import "./app/app.css";
+
 const rootElement = document.getElementById("root");
 
 if (!rootElement) {
@@ -9,6 +12,6 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <main>标航智导教学应用</main>
+    <App />
   </StrictMode>,
 );
