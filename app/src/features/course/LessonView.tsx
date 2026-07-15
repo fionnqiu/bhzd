@@ -13,6 +13,7 @@ import {
 } from "../../evaluation/evaluate";
 import { AudioAsset } from "./AudioAsset";
 import { FeedbackPanel } from "./FeedbackPanel";
+import { createLearnerSafeExampleProjection } from "./learnerSafeExample";
 import { StructuredResponseEditor } from "./StructuredResponseEditor";
 
 const isRecord = (value: unknown): value is ExtensibleFields =>
@@ -291,8 +292,14 @@ export function LessonView({
           <StructuredSection key={key} title={label} value={unit[key]} />
         ))}
 
-        <StructuredSection title="正例" value={unit.positive_examples} />
-        <StructuredSection title="反例" value={unit.negative_examples} />
+        <StructuredSection
+          title="正例"
+          value={createLearnerSafeExampleProjection(unit.positive_examples)}
+        />
+        <StructuredSection
+          title="反例"
+          value={createLearnerSafeExampleProjection(unit.negative_examples)}
+        />
 
         <section className="lesson-section lesson-section--exercise">
           <div className="lesson-section__heading">

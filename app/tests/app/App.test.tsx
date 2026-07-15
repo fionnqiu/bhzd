@@ -47,11 +47,165 @@ const createTestStore = (
 const readAppCss = (): string =>
   readFileSync(resolve(process.cwd(), "src/app/app.css"), "utf8");
 
+interface RgbaColor {
+  red: number;
+  green: number;
+  blue: number;
+  alpha: number;
+}
+
+const extractCustomProperty = (css: string, property: string): string => {
+  const escaped = property.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  const match = css.match(new RegExp(`${escaped}\\s*:\\s*([^;]+);`, "u"));
+  if (match?.[1] === undefined) {
+    throw new Error(`Missing CSS custom property ${property}.`);
+  }
+  return match[1].trim();
+};
+
+const extractSelectorColor = (css: string, selector: string): string => {
+  const rulePattern = /([^{}]+)\{([^{}]*)\}/gu;
+  for (const match of css.matchAll(rulePattern)) {
+    const selectors = (match[1] ?? "")
+      .split(",")
+      .map((candidate) => candidate.trim());
+    if (!selectors.includes(selector)) {
+      continue;
+    }
+
+    const declaration = (match[2] ?? "").match(
+      /(?:^|\n)\s*color\s*:\s*([^;]+);/u,
+    );
+    if (declaration?.[1] !== undefined) {
+      return declaration[1].trim();
+    }
+  }
+
+  throw new Error(`Missing color declaration for ${selector}.`);
+};
+
+const parseCssColor = (css: string, source: string): RgbaColor => {
+  const value = source.trim();
+  const variable = value.match(/^var\((--[a-z0-9-]+)\)$/u);
+  if (variable?.[1] !== undefined) {
+    return parseCssColor(css, extractCustomProperty(css, variable[1]));
+  }
+
+  const hex = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/iu)?.[1];
+  if (hex !== undefined) {
+    const expanded =
+      hex.length === 3
+        ? [...hex].map((digit) => `${digit}${digit}`).join("")
+        : hex;
+    return {
+      red: Number.parseInt(expanded.slice(0, 2), 16),
+      green: Number.parseInt(expanded.slice(2, 4), 16),
+      blue: Number.parseInt(expanded.slice(4, 6), 16),
+      alpha: 1,
+    };
+  }
+
+  const rgb = value.match(
+    /^rgb\(\s*(\d+)\s+(\d+)\s+(\d+)(?:\s*\/\s*([\d.]+)%)?\s*\)$/u,
+  );
+  if (rgb !== null) {
+    return {
+      red: Number(rgb[1]),
+      green: Number(rgb[2]),
+      blue: Number(rgb[3]),
+      alpha: rgb[4] === undefined ? 1 : Number(rgb[4]) / 100,
+    };
+  }
+
+  throw new Error(`Unsupported CSS color ${source}.`);
+};
+
+const compositeOver = (
+  foreground: RgbaColor,
+  background: RgbaColor,
+): RgbaColor => ({
+  red:
+    foreground.red * foreground.alpha +
+    background.red * (1 - foreground.alpha),
+  green:
+    foreground.green * foreground.alpha +
+    background.green * (1 - foreground.alpha),
+  blue:
+    foreground.blue * foreground.alpha +
+    background.blue * (1 - foreground.alpha),
+  alpha: 1,
+});
+
+const relativeLuminance = (color: RgbaColor): number => {
+  const linearize = (channel: number): number => {
+    const normalized = channel / 255;
+    return normalized <= 0.04045
+      ? normalized / 12.92
+      : ((normalized + 0.055) / 1.055) ** 2.4;
+  };
+
+  return (
+    0.2126 * linearize(color.red) +
+    0.7152 * linearize(color.green) +
+    0.0722 * linearize(color.blue)
+  );
+};
+
+const contrastRatio = (
+  foreground: RgbaColor,
+  background: RgbaColor,
+): number => {
+  const foregroundLuminance = relativeLuminance(
+    compositeOver(foreground, background),
+  );
+  const backgroundLuminance = relativeLuminance(background);
+  return (
+    (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
+    (Math.min(foregroundLuminance, backgroundLuminance) + 0.05)
+  );
+};
+
 afterEach(() => {
   cleanup();
 });
 
 describe("application shell", () => {
+  it("keeps small course metadata at WCAG AA contrast on light surfaces", () => {
+    const css = readAppCss();
+    const backgrounds = [
+      parseCssColor(css, "#fff"),
+      parseCssColor(css, extractCustomProperty(css, "--paper-white")),
+    ];
+    const selectors = [
+      ".course-browser__count",
+      ".course-browser__count strong",
+      ".course-card__id",
+      ".course-card__facts dt",
+      ".lesson-view__id",
+      ".lesson-view__status dt",
+      ".reference-grid dt",
+      ".lesson-section__heading dt",
+      ".asset-panel__facts dt",
+      ".feedback-panel__facts dt",
+      ".feedback-panel__score",
+      ".mastery-panel__grid > section > p",
+      ".eyebrow--ink",
+    ];
+
+    for (const selector of selectors) {
+      const foreground = parseCssColor(
+        css,
+        extractSelectorColor(css, selector),
+      );
+      for (const background of backgrounds) {
+        expect(
+          contrastRatio(foreground, background),
+          `${selector} must meet 4.5:1 on rgb(${background.red} ${background.green} ${background.blue})`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
   it("exposes the product landmarks and opens every repository-backed course domain", () => {
     render(<App profileStore={createTestStore()} />);
 

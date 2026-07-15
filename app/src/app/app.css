@@ -6,6 +6,8 @@
   --error-red: #e5484d;
   --paper-white: #f7f8fa;
   --ink: #10233f;
+  --metadata-ink: #5d6c80;
+  --accessible-cyan: #087591;
   font-family: Bahnschrift, "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
   color: var(--paper-white);
   background: var(--space-blue);
@@ -351,7 +353,7 @@ button {
 }
 
 .eyebrow--ink {
-  color: #087fa0;
+  color: var(--accessible-cyan);
 }
 
 .domain-grid {
@@ -701,7 +703,7 @@ button {
 
 .route-briefing__label {
   margin: 0;
-  color: #087fa0;
+  color: var(--accessible-cyan);
   font-family: Consolas, monospace;
   font-size: 0.65rem;
   font-weight: 700;
@@ -775,12 +777,12 @@ button {
   display: grid;
   min-width: 7rem;
   margin: 0;
-  color: rgb(16 35 63 / 58%);
+  color: var(--metadata-ink);
   text-align: right;
 }
 
 .course-browser__count strong {
-  color: #087fa0;
+  color: var(--accessible-cyan);
   font-family: Consolas, "Microsoft YaHei UI", monospace;
   font-size: clamp(2rem, 4vw, 3.6rem);
   font-weight: 400;
@@ -866,7 +868,7 @@ button {
 
 .course-card__id {
   margin: 0;
-  color: #087fa0;
+  color: var(--accessible-cyan);
   font-family: Consolas, monospace;
   font-size: 0.62rem;
   letter-spacing: 0.06em;
@@ -899,7 +901,7 @@ button {
 }
 
 .course-card__facts dt {
-  color: rgb(16 35 63 / 45%);
+  color: var(--metadata-ink);
   font-size: 0.68rem;
 }
 
@@ -942,7 +944,7 @@ button {
 
 .lesson-view__id {
   margin: 0.75rem 0 0;
-  color: #087fa0;
+  color: var(--accessible-cyan);
   font-family: Consolas, monospace;
   font-size: 0.68rem;
   overflow-wrap: anywhere;
@@ -962,7 +964,7 @@ button {
 }
 
 .lesson-view__status dt {
-  color: rgb(16 35 63 / 48%);
+  color: var(--metadata-ink);
   font-size: 0.68rem;
 }
 
@@ -1005,7 +1007,7 @@ button {
 
 .lesson-section h3 {
   margin: 1rem 0 0.6rem;
-  color: rgb(16 35 63 / 62%);
+  color: var(--metadata-ink);
   font-size: 0.78rem;
   letter-spacing: 0.08em;
 }
@@ -1042,7 +1044,7 @@ button {
 
 .reference-grid dt {
   margin-bottom: 0.55rem;
-  color: rgb(16 35 63 / 52%);
+  color: var(--metadata-ink);
   font-size: 0.68rem;
 }
 
@@ -1122,7 +1124,7 @@ code {
 }
 
 .lesson-section__heading dt {
-  color: rgb(16 35 63 / 52%);
+  color: var(--metadata-ink);
   font-size: 0.68rem;
 }
 
@@ -1159,7 +1161,7 @@ code {
 
 .asset-panel__facts dt,
 .feedback-panel__facts dt {
-  color: rgb(16 35 63 / 48%);
+  color: var(--metadata-ink);
   font-size: 0.65rem;
 }
 
@@ -1303,7 +1305,7 @@ code {
   align-items: baseline;
   gap: 0.25rem;
   margin: 0;
-  color: rgb(16 35 63 / 52%);
+  color: var(--metadata-ink);
   font-size: 0.68rem;
 }
 
@@ -1374,7 +1376,7 @@ code {
 
 .mastery-panel__grid > section > p {
   margin: 0;
-  color: rgb(16 35 63 / 58%);
+  color: var(--metadata-ink);
   font-size: 0.72rem;
 }
 
@@ -1431,7 +1433,7 @@ code {
 }
 
 .lesson-section--review {
-  color: rgb(16 35 63 / 62%);
+  color: var(--metadata-ink);
   border-style: dashed;
 }
 

@@ -310,6 +310,91 @@ describe("course learning loop", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows learner-safe example context without pre-submit answers or evaluation payloads", () => {
+    const unit = structuredClone(
+      findUnit("TU-AUDIO-EMOTION-PARALINGUISTICS-001"),
+    );
+    const positiveExamples = unit.positive_examples;
+    if (!Array.isArray(positiveExamples)) {
+      throw new Error("Expected canonical positive examples.");
+    }
+    const firstPositive = positiveExamples[0];
+    if (typeof firstPositive !== "object" || firstPositive === null) {
+      throw new Error("Expected a canonical positive example object.");
+    }
+    const positiveInput = (firstPositive as Record<string, unknown>).input;
+    if (typeof positiveInput !== "object" || positiveInput === null) {
+      throw new Error("Expected canonical positive example input.");
+    }
+    Object.assign(positiveInput, {
+      learner_context: {
+        note: "经审核的嵌套输入上下文",
+        answer: "LEAKED_ANSWER_SENTINEL",
+        allowed_answers: ["LEAKED_ALLOWED_ANSWER_SENTINEL"],
+        diagnostic_submission: "LEAKED_DIAGNOSTIC_SENTINEL",
+        evaluation: { version: "LEAKED_EVALUATION_SENTINEL" },
+        pass_score: 0.91,
+        diagnostic_precedence: ["LEAKED_PRECEDENCE_SENTINEL"],
+      },
+    });
+    Object.assign(firstPositive, {
+      fault_model: "LEAKED_FAULT_MODEL_SENTINEL",
+      internal_review_payload: "LEAKED_UNKNOWN_TOP_LEVEL_SENTINEL",
+    });
+
+    render(
+      <App
+        repository={{ listConsumableUnits: () => [unit] }}
+        profileStore={createTestStore()}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "语音课程，1 个可学习单元",
+      }),
+    );
+    openLesson("分轨标注语音情感与副语言事件");
+
+    const positiveSection = screen
+      .getByRole("heading", { name: "正例" })
+      .closest("section");
+    const negativeSection = screen
+      .getByRole("heading", { name: "反例" })
+      .closest("section");
+    if (positiveSection === null || negativeSection === null) {
+      throw new Error("Expected example sections.");
+    }
+    const exampleText = `${positiveSection.textContent ?? ""}${negativeSection.textContent ?? ""}`;
+
+    expect(positiveSection).toHaveTextContent("emo-example-001");
+    expect(positiveSection).toHaveTextContent("经审核的嵌套输入上下文");
+    expect(positiveSection).toHaveTextContent(
+      "笑声作为独立事件保留区间；整体情感依据本题可听证据和本地枚举提交 joy。",
+    );
+    expect(positiveSection).toHaveTextContent("SRC-POLICY-AUDIO-TASK4-001");
+
+    for (const hiddenValue of [
+      '"expected"',
+      '"submitted"',
+      '"answer"',
+      '"allowed_answers"',
+      '"diagnostic_submission"',
+      '"evaluation"',
+      '"pass_score"',
+      '"diagnostic_precedence"',
+      "emotion_event_conflation",
+      "LEAKED_ANSWER_SENTINEL",
+      "LEAKED_ALLOWED_ANSWER_SENTINEL",
+      "LEAKED_DIAGNOSTIC_SENTINEL",
+      "LEAKED_EVALUATION_SENTINEL",
+      "LEAKED_PRECEDENCE_SENTINEL",
+      "LEAKED_FAULT_MODEL_SENTINEL",
+      "LEAKED_UNKNOWN_TOP_LEVEL_SENTINEL",
+    ]) {
+      expect(exampleText).not.toContain(hiddenValue);
+    }
+  });
+
   it("makes every published lesson reachable with a type-shaped empty editor", () => {
     render(<App profileStore={createTestStore()} />);
 
