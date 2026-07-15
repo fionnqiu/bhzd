@@ -145,6 +145,12 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
   } = useAppContext();
   const [resetOpen, setResetOpen] = useState(false);
   const [resetNotice, setResetNotice] = useState<string | null>(null);
+  const [unknownPersistedNodeId] = useState<string | null>(() => {
+    const candidate = profileSnapshot.lastNode;
+    return candidate !== null && !graph.nodes.some((node) => node.id === candidate)
+      ? candidate
+      : null;
+  });
   const [graphTargetNodeId, setGraphTargetNodeId] = useState<string | null>(() => {
     const candidate = profileSnapshot.lastNode;
     return candidate !== null && graph.nodes.some((node) => node.id === candidate)
@@ -158,6 +164,7 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const openedCourseTriggerIdRef = useRef<string | null>(null);
   const pendingCourseFocusRestoreRef = useRef<string | null>(null);
+  const unknownNodeCleanupRef = useRef(false);
   const listedUnits = useMemo(
     () => repository.listConsumableUnits(),
     [repository],
@@ -198,6 +205,15 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
     setGraphTargetNodeId(nodeId);
     selectNode(nodeId);
   };
+
+  useEffect(() => {
+    if (unknownPersistedNodeId === null || unknownNodeCleanupRef.current) {
+      return;
+    }
+
+    unknownNodeCleanupRef.current = true;
+    selectNode(null);
+  }, [selectNode, unknownPersistedNodeId]);
 
   useEffect(() => {
     if (resetOpen) {
@@ -485,7 +501,7 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
                       scenarioId={selectedScenarioId}
                       initialNodeId={graphTargetNodeId}
                       graphEngine={canonicalGraphEngine}
-                      nodes={graph.nodes.filter((node) => node.type === "CAP")}
+                      nodes={graph.nodes}
                       onSelectNode={handleGraphNodeSelection}
                       onOpenUnit={openGraphLesson}
                     />

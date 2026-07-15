@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Network } from "vis-network";
-import type { Data, Options } from "vis-network";
+import type { Data, MoveToOptions, Options } from "vis-network";
 import "vis-network/styles/vis-network.css";
 
 import type {
@@ -29,6 +29,7 @@ import type { LearningProfileSnapshot } from "../../state/profileStore";
 import {
   createGraphVisualEdge,
   createGraphVisualNode,
+  graphNetworkMoveOptions,
   graphNetworkOptions,
 } from "./graphVisuals";
 import { NodeDetails } from "./NodeDetails";
@@ -39,7 +40,7 @@ export interface NetworkSelection {
 
 export type GraphNetworkEvent =
   | "selectNode"
-  | "stabilizationIterationsDone";
+  | "stabilized";
 
 export interface NetworkNodeData {
   id: string;
@@ -60,22 +61,11 @@ export interface NetworkData {
   edges: NetworkEdgeData[];
 }
 
-export interface NetworkOptions {
-  autoResize?: boolean;
-  edges?: {
-    smooth?: boolean | Record<string, unknown>;
-    [key: string]: unknown;
-  };
-  physics?: {
-    enabled?: boolean;
-    stabilization?: Record<string, unknown>;
-    [key: string]: unknown;
-  };
-  [key: string]: unknown;
-}
+export type NetworkOptions = Options;
 
 export interface NetworkAdapter {
   destroy(): void;
+  moveTo(options: MoveToOptions): void;
   on(
     event: GraphNetworkEvent,
     handler: (selection: NetworkSelection) => void,
@@ -123,6 +113,7 @@ const defaultNetworkFactory: NetworkFactory = (container, data, options) => {
   if (typeof navigator !== "undefined" && /jsdom/i.test(navigator.userAgent)) {
     return {
       destroy: () => undefined,
+      moveTo: () => undefined,
       on: () => undefined,
       setData: () => undefined,
       setOptions: () => undefined,
@@ -138,18 +129,19 @@ const defaultNetworkFactory: NetworkFactory = (container, data, options) => {
 
     return {
       destroy: () => network.destroy(),
+      moveTo: (nextOptions) => network.moveTo(nextOptions),
       on: (event, handler) => {
         network.on(event, (payload?: { nodes?: Array<string | number> }) => {
           handler({ nodes: payload?.nodes ?? [] });
         });
       },
       setData: (nextData) => network.setData(nextData as unknown as Data),
-      setOptions: (nextOptions) =>
-        network.setOptions(nextOptions as unknown as Options),
+      setOptions: (nextOptions) => network.setOptions(nextOptions),
     };
   } catch {
     return {
       destroy: () => undefined,
+      moveTo: () => undefined,
       on: () => undefined,
       setData: () => undefined,
       setOptions: () => undefined,
@@ -300,6 +292,8 @@ export function GraphCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<NetworkAdapter | null>(null);
   const reducedMotion = useReducedMotion();
+  const reducedMotionRef = useRef(reducedMotion);
+  const stabilizedRef = useRef(false);
   const resolvedEngine = useMemo(
     () => graphEngine ?? createGraphEngine(graphDocument),
     [graphDocument, graphEngine],
@@ -356,6 +350,7 @@ export function GraphCanvas({
       setSelectedNodeId(nodeId);
       initialNodeAppliedRef.current = nodeId;
       onSelectNode?.(nodeId);
+      networkRef.current?.moveTo(graphNetworkMoveOptions(reducedMotionRef.current));
       setNotice(null);
     } catch {
       setNotice("该节点暂时无法展开；请返回总览后重试。 ");
@@ -382,10 +377,11 @@ export function GraphCanvas({
       return;
     }
 
+    stabilizedRef.current = false;
     const network = networkFactory(
       container,
       fullData,
-      graphNetworkOptions(reducedMotion),
+      graphNetworkOptions(reducedMotionRef.current, stabilizedRef.current),
     );
     networkRef.current = network;
     network.on("selectNode", (selection) => {
@@ -394,12 +390,21 @@ export function GraphCanvas({
         selectNodeRef.current(nodeId);
       }
     });
-    network.on("stabilizationIterationsDone", () => {
-      network.setOptions({ physics: { enabled: false } });
+    network.on("stabilized", () => {
+      if (networkRef.current !== network) {
+        return;
+      }
+      stabilizedRef.current = true;
+      network.setOptions(
+        graphNetworkOptions(reducedMotionRef.current, stabilizedRef.current),
+      );
     });
 
     return () => {
-      networkRef.current = null;
+      if (networkRef.current === network) {
+        networkRef.current = null;
+      }
+      stabilizedRef.current = false;
       network.destroy();
     };
     // The adapter is intentionally created once per mounted canvas. Dynamic
@@ -410,6 +415,17 @@ export function GraphCanvas({
   useEffect(() => {
     networkRef.current?.setData(currentData);
   }, [currentData]);
+
+  useEffect(() => {
+    reducedMotionRef.current = reducedMotion;
+    const network = networkRef.current;
+    if (network === null) {
+      return;
+    }
+
+    network.setOptions(graphNetworkOptions(reducedMotion, stabilizedRef.current));
+    network.moveTo(graphNetworkMoveOptions(reducedMotion));
+  }, [reducedMotion]);
 
   const handleSearchKeyDown = (
     event: React.KeyboardEvent<HTMLInputElement>,

@@ -225,26 +225,35 @@ export function ProgressPanel({
   const progressNodeIds = useMemo(() => {
     const ids = new Set<string>();
     for (const node of nodes) {
-      ids.add(node.id);
+      if (node.type === "CAP") {
+        ids.add(node.id);
+      }
     }
 
     if (nodes.length === 0) {
       for (const nodeId of Object.keys(profileSnapshot.generalMastery)) {
-        ids.add(nodeId);
+        if (nodeId.startsWith("CAP-")) {
+          ids.add(nodeId);
+        }
       }
       if (scenarioId !== null) {
         const suffix = `::${scenarioId}`;
         for (const key of Object.keys(profileSnapshot.scenarioMastery)) {
           if (key.endsWith(suffix)) {
-            ids.add(key.slice(0, -suffix.length));
+            const nodeId = key.slice(0, -suffix.length);
+            if (nodeId.startsWith("CAP-")) {
+              ids.add(nodeId);
+            }
           }
         }
       }
-    }
 
-    if (planState.kind === "ready" || planState.kind === "cycle") {
-      for (const step of planState.plan.steps) {
-        ids.add(step.nodeId);
+      if (planState.kind === "ready" || planState.kind === "cycle") {
+        for (const step of planState.plan.steps) {
+          if (step.nodeId.startsWith("CAP-")) {
+            ids.add(step.nodeId);
+          }
+        }
       }
     }
     return [...ids];

@@ -10,10 +10,12 @@ import {
   render,
   screen,
   within,
+  waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "../../src/app/App";
+import { teachingUnits } from "../../src/data/rawData";
 import type {
   LearningProfileSnapshot,
   ProfileStore,
@@ -47,6 +49,36 @@ const createTestStore = (
 
 const readAppCss = (): string =>
   readFileSync(resolve(process.cwd(), "src/app/app.css"), "utf8");
+
+const createForbiddenPayloadRepository = () => ({
+  listConsumableUnits: () =>
+    teachingUnits.units.map((unit) =>
+      unit.id === "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001"
+        ? {
+            ...unit,
+            exercise: {
+              ...unit.exercise,
+              input: {
+                ...unit.exercise.input,
+                grading: "GRAPH_INPUT_GRADING_SENTINEL",
+                pass_score: "GRAPH_INPUT_SCORE_SENTINEL",
+              },
+              allowed_answers: ["GRAPH_ALLOWED_ANSWER_SENTINEL"],
+              diagnostic: "GRAPH_DIAGNOSTIC_SENTINEL",
+              grading: "GRAPH_GRADING_SENTINEL",
+              pass_score: "GRAPH_PASS_SCORE_SENTINEL",
+              evaluation: {
+                ...unit.exercise.evaluation,
+                allowed_answers: ["GRAPH_EVALUATION_ANSWER_SENTINEL"],
+                diagnostic: "GRAPH_EVALUATION_DIAGNOSTIC_SENTINEL",
+                grading: "GRAPH_EVALUATION_GRADING_SENTINEL",
+                pass_score: "GRAPH_EVALUATION_SCORE_SENTINEL",
+              },
+            },
+          }
+        : unit,
+    ),
+});
 
 interface RgbaColor {
   red: number;
@@ -504,6 +536,27 @@ describe("application shell", () => {
     );
   });
 
+  it("keeps the graph workspace usable at a 390px viewport", () => {
+    const appCss = readAppCss();
+    const mobileRules = appCss.match(
+      /@media \(max-width: 620px\) {([\s\S]*?)(?=\n@media|$)/,
+    )?.[1];
+
+    expect(mobileRules).toBeDefined();
+    expect(mobileRules ?? "").toMatch(
+      /\.mode-tabs\s*\{[^}]*min-width:\s*0;[^}]*width:\s*100%;[^}]*overflow-x:\s*auto;/su,
+    );
+    expect(mobileRules ?? "").toMatch(
+      /\.graph-explorer__toolbar input,[\s\S]*?\.graph-explorer__summary button,[\s\S]*?width:\s*100%;/su,
+    );
+    expect(mobileRules ?? "").toMatch(
+      /\.graph-explorer__canvas\s*\{[^}]*height:\s*20rem;/su,
+    );
+    expect(appCss).toMatch(
+      /\.graph-workspace\s*\{[^}]*min-width:\s*0;/su,
+    );
+  });
+
   it("gates profile writes until a warned load failure is explicitly reset", () => {
     const setContext = vi.fn();
     const reset = vi.fn();
@@ -710,6 +763,43 @@ describe("application shell", () => {
     expect(setContext).toHaveBeenCalledWith({ lastUnit: "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001" });
   });
 
+  it("keeps injected grading and diagnostic payloads out of a graph-launched lesson", async () => {
+    render(
+      <App
+        repository={createForbiddenPayloadRepository()}
+        profileStore={createTestStore()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "图谱" }));
+    fireEvent.click(
+      await screen.findByRole("option", { name: /转写并添加标点/ }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /开始课程：按项目正字法完成转写与标点/,
+      }),
+    );
+    await screen.findByRole("heading", {
+      name: "按项目正字法完成转写与标点",
+    });
+
+    for (const sentinel of [
+      "GRAPH_ALLOWED_ANSWER_SENTINEL",
+      "GRAPH_DIAGNOSTIC_SENTINEL",
+      "GRAPH_GRADING_SENTINEL",
+      "GRAPH_PASS_SCORE_SENTINEL",
+      "GRAPH_EVALUATION_ANSWER_SENTINEL",
+      "GRAPH_EVALUATION_DIAGNOSTIC_SENTINEL",
+      "GRAPH_EVALUATION_GRADING_SENTINEL",
+      "GRAPH_EVALUATION_SCORE_SENTINEL",
+      "GRAPH_INPUT_GRADING_SENTINEL",
+      "GRAPH_INPUT_SCORE_SENTINEL",
+    ]) {
+      expect(document.body).not.toHaveTextContent(sentinel);
+    }
+  });
+
   it("persists the selected graph node as learner context and clears it on overview", async () => {
     const setContext = vi.fn();
     render(<App profileStore={createTestStore({ setContext })} />);
@@ -729,9 +819,11 @@ describe("application shell", () => {
   });
 
   it("restores a valid persisted graph node while ignoring an unknown node", async () => {
+    const validSetContext = vi.fn();
     const validStore = createTestStore({
       snapshot: () =>
         createSnapshot("graph", "CAP-AUD-TRANSCRIBE-PUNCT-001"),
+      setContext: validSetContext,
     });
     render(<App profileStore={validStore} />);
 
@@ -739,6 +831,7 @@ describe("application shell", () => {
       await screen.findByRole("heading", { name: "转写并添加标点" }),
     ).toBeVisible();
     expect(await screen.findByText(/局部视图：2 跳/)).toBeVisible();
+    expect(validSetContext).not.toHaveBeenCalledWith({ lastNode: null });
     cleanup();
 
     const unknownStore = createTestStore({
@@ -750,5 +843,19 @@ describe("application shell", () => {
       screen.queryByRole("heading", { name: "转写并添加标点" }),
     ).not.toBeInTheDocument();
     expect(await screen.findByText(/总览：166 个节点/)).toBeVisible();
+  });
+
+  it("clears an unknown persisted graph node from the profile", async () => {
+    const setContext = vi.fn();
+    const store = createTestStore({
+      snapshot: () => createSnapshot("graph", "CAP-DELETED-999"),
+      setContext,
+    });
+
+    render(<App profileStore={store} />);
+
+    await waitFor(() => {
+      expect(setContext).toHaveBeenCalledWith({ lastNode: null });
+    });
   });
 });

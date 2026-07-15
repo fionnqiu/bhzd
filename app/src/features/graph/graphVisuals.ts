@@ -1,5 +1,11 @@
 import type { GraphEdge, GraphNode } from "../../data/contracts";
-import type { NetworkEdgeData, NetworkNodeData, NetworkOptions } from "./GraphCanvas";
+import type { MoveToOptions } from "vis-network";
+
+import type {
+  NetworkEdgeData,
+  NetworkNodeData,
+  NetworkOptions,
+} from "./GraphCanvas";
 
 export type GraphNodeShape =
   | "circle"
@@ -78,6 +84,7 @@ export const createGraphVisualEdge = (
 
 export const graphNetworkOptions = (
   reducedMotion: boolean,
+  stabilized = false,
 ): NetworkOptions => ({
   autoResize: true,
   interaction: {
@@ -91,13 +98,24 @@ export const graphNetworkOptions = (
   },
   edges: {
     color: { color: "#94A3B8", highlight: "#00C6FF" },
-    smooth: reducedMotion ? false : { enabled: true, type: "dynamic" },
+    smooth: reducedMotion
+      ? false
+      : { enabled: true, type: "dynamic", roundness: 0.5 },
   },
   physics: {
-    enabled: !reducedMotion,
-    stabilization: { enabled: !reducedMotion, iterations: 200 },
+    enabled: !reducedMotion && !stabilized,
+    stabilization: {
+      enabled: !reducedMotion && !stabilized,
+      iterations: 200,
+    },
   },
   layout: { improvedLayout: true },
-  animation: reducedMotion ? false : true,
   ...(reducedMotion ? { interaction: { hover: true, keyboard: true } } : {}),
+});
+
+export const graphNetworkMoveOptions = (
+  reducedMotion: boolean,
+): MoveToOptions => ({
+  scale: 1,
+  animation: !reducedMotion,
 });

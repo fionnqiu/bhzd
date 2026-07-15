@@ -16,12 +16,13 @@ const makeNode = (
   id: string,
   label = id,
   status = "published",
+  type: GraphNode["type"] = "CAP",
 ): GraphNode => ({
   id,
   label,
   description: `${label} description`,
   data_types: ["text"],
-  type: "CAP",
+  type,
   status,
   source_refs: [],
 });
@@ -153,6 +154,47 @@ describe("ProgressPanel", () => {
     expect(items[1]).toHaveTextContent("0.65");
     expect(items[1]).toHaveTextContent("需要练习");
     expect(items[1]).toHaveTextContent("skipPractice=false");
+  });
+
+  it("counts only CAP nodes while retaining non-CAP remediation metadata", () => {
+    const capability = makeNode("CAP-PRE", "先修能力", "published");
+    const knowledge = makeNode(
+      "KNG-TARGET",
+      "知识目标",
+      "reviewed",
+      "KNG",
+    );
+    const nodes = [capability, knowledge];
+    const engine = createGraphEngine(
+      makeDocument(nodes, [makeEdge("EDGE-PRE-KNG", capability.id, knowledge.id)]),
+    );
+
+    render(
+      <ProgressPanel
+        graphEngine={engine}
+        profileSnapshot={snapshot()}
+        targetNodeId={knowledge.id}
+        nodes={nodes}
+      />,
+    );
+
+    const general = screen.getByRole("group", { name: "通用掌握度" });
+    expect(
+      within(general).getByLabelText("通用掌握度未学习数量"),
+    ).toHaveTextContent("1");
+    expect(
+      within(general).getByLabelText("通用掌握度需补强数量"),
+    ).toHaveTextContent("0");
+    expect(
+      within(general).getByLabelText("通用掌握度巩固中数量"),
+    ).toHaveTextContent("0");
+    expect(
+      within(general).getByLabelText("通用掌握度已掌握数量"),
+    ).toHaveTextContent("0");
+
+    const steps = screen.getByRole("list", { name: "补强步骤" });
+    expect(within(steps).getByText("知识目标")).toBeVisible();
+    expect(within(steps).getByText("节点状态：reviewed")).toBeVisible();
   });
 
   it("does not fall back to general mastery while a scenario is selected", () => {

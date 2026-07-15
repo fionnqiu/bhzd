@@ -19,10 +19,13 @@ import type { LearningProfileSnapshot } from "../../src/state/profileStore";
 import type { GraphEngine } from "../../src/graph/graphEngine";
 
 const createFakeNetworkFactory = () => {
-  let selectHandler: ((selection: NetworkSelection) => void) | undefined;
-  let stabilizationHandler: (() => void) | undefined;
+  const eventHandlers = new Map<
+    string,
+    (selection: NetworkSelection) => void
+  >();
   let latestNetwork: {
     destroy: ReturnType<typeof vi.fn>;
+    moveTo: ReturnType<typeof vi.fn>;
     setData: ReturnType<typeof vi.fn>;
     setOptions: ReturnType<typeof vi.fn>;
   } | undefined;
@@ -30,6 +33,7 @@ const createFakeNetworkFactory = () => {
   const factory = vi.fn<NetworkFactory>(() => {
     const adapter = {
       destroy: vi.fn(),
+      moveTo: vi.fn(),
       setData: vi.fn(),
       setOptions: vi.fn(),
     };
@@ -37,12 +41,9 @@ const createFakeNetworkFactory = () => {
     return {
       destroy: adapter.destroy,
       on: (event, handler) => {
-        if (event === "selectNode") {
-          selectHandler = handler;
-        } else {
-          stabilizationHandler = () => handler({ nodes: [] });
-        }
+        eventHandlers.set(event, handler);
       },
+      moveTo: adapter.moveTo,
       setData: adapter.setData,
       setOptions: adapter.setOptions,
     };
@@ -55,12 +56,44 @@ const createFakeNetworkFactory = () => {
     },
     emitSelect(nodeId: string) {
       act(() => {
-        selectHandler?.({ nodes: [nodeId] });
+        eventHandlers.get("selectNode")?.({ nodes: [nodeId] });
+      });
+    },
+    emitStabilizationIterationsDone() {
+      act(() => {
+        eventHandlers.get("stabilizationIterationsDone")?.({ nodes: [] });
       });
     },
     emitStabilized() {
       act(() => {
-        stabilizationHandler?.();
+        eventHandlers.get("stabilized")?.({ nodes: [] });
+      });
+    },
+  };
+};
+
+const createReducedMotionController = (initialMatches: boolean) => {
+  let changeHandler: (() => void) | undefined;
+  const query = {
+    matches: initialMatches,
+    addEventListener: vi.fn((_event: string, handler: () => void) => {
+      changeHandler = handler;
+    }),
+    removeEventListener: vi.fn((_event: string, handler: () => void) => {
+      if (changeHandler === handler) {
+        changeHandler = undefined;
+      }
+    }),
+  };
+  const matchMedia = vi.fn(() => query);
+
+  return {
+    matchMedia,
+    query,
+    setMatches(matches: boolean) {
+      query.matches = matches;
+      act(() => {
+        changeHandler?.();
       });
     },
   };
@@ -69,6 +102,7 @@ const createFakeNetworkFactory = () => {
 describe("GraphCanvas", () => {
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
   });
   it("maps every canonical node type to the specified shape without changing status", () => {
     expect(
@@ -213,22 +247,88 @@ describe("GraphCanvas", () => {
     expect(screen.getByRole("heading", { name: "转写并添加标点" })).toBeVisible();
   });
 
-  it("turns physics off after stabilization and disables smooth motion when reduced", () => {
+  it("waits for the real stabilized event before turning physics off", () => {
     const network = createFakeNetworkFactory();
-    vi.stubGlobal("matchMedia", vi.fn(() => ({
-      matches: true,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    })));
+    const reducedMotion = createReducedMotionController(false);
+    vi.stubGlobal("matchMedia", reducedMotion.matchMedia);
 
     render(<GraphCanvas networkFactory={network.factory} />);
-    const [, , options] = network.factory.mock.calls[0] ?? [];
-    expect(options?.edges?.smooth).toBe(false);
+    network.emitStabilizationIterationsDone();
+    expect(
+      network.latestNetwork?.setOptions.mock.calls.some(
+        ([options]) => options.physics?.enabled === false,
+      ),
+    ).toBe(false);
+
     network.emitStabilized();
-    expect(network.latestNetwork?.setOptions).toHaveBeenCalledWith({
-      physics: { enabled: false },
-    });
-    vi.unstubAllGlobals();
+    expect(
+      network.latestNetwork?.setOptions.mock.calls.some(
+        ([options]) => options.physics?.enabled === false,
+      ),
+    ).toBe(true);
+  });
+
+  it("applies a runtime reduced-motion change to the live network and later moves", () => {
+    const network = createFakeNetworkFactory();
+    const reducedMotion = createReducedMotionController(false);
+    vi.stubGlobal("matchMedia", reducedMotion.matchMedia);
+
+    render(<GraphCanvas networkFactory={network.factory} />);
+    reducedMotion.setMatches(true);
+
+    expect(network.latestNetwork?.setOptions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        edges: expect.objectContaining({ smooth: false }),
+        physics: expect.objectContaining({ enabled: false }),
+      }),
+    );
+    expect(network.latestNetwork?.moveTo).toHaveBeenLastCalledWith(
+      expect.objectContaining({ animation: false }),
+    );
+
+    network.latestNetwork?.moveTo.mockClear();
+    network.emitSelect("CAP-AUD-TRANSCRIBE-PUNCT-001");
+    expect(network.latestNetwork?.moveTo).toHaveBeenLastCalledWith(
+      expect.objectContaining({ animation: false }),
+    );
+  });
+
+  it("does not restart physics when reduced motion is later turned off after stabilization", () => {
+    const network = createFakeNetworkFactory();
+    const reducedMotion = createReducedMotionController(true);
+    vi.stubGlobal("matchMedia", reducedMotion.matchMedia);
+
+    const { unmount } = render(
+      <GraphCanvas networkFactory={network.factory} />,
+    );
+    network.emitStabilized();
+    network.latestNetwork?.setOptions.mockClear();
+
+    reducedMotion.setMatches(false);
+
+    expect(network.latestNetwork?.setOptions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        edges: expect.objectContaining({
+          smooth: expect.objectContaining({
+            enabled: true,
+            roundness: expect.any(Number),
+          }),
+        }),
+        physics: expect.objectContaining({ enabled: false }),
+      }),
+    );
+    expect(network.latestNetwork?.setOptions).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        physics: expect.objectContaining({ enabled: true }),
+      }),
+    );
+
+    unmount();
+    expect(network.latestNetwork?.destroy).toHaveBeenCalledTimes(1);
+    expect(reducedMotion.query.removeEventListener).toHaveBeenCalledWith(
+      "change",
+      expect.any(Function),
+    );
   });
 
   it("derives general/scenario mastery bands and a PRE remediation plan without writes", () => {

@@ -7,6 +7,9 @@ const dataRoot = fileURLToPath(new URL("../data/", import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    manifest: true,
+  },
   server: {
     fs: {
       allow: [appRoot, dataRoot],

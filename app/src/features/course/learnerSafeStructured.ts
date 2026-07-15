@@ -60,6 +60,8 @@ const SENSITIVE_TOKEN_PREFIXES = [
   "submission",
   "diagnostic",
   "evaluation",
+  "grade",
+  "grading",
   "precedence",
   "score",
   "rubric",
