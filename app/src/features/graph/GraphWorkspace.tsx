@@ -1,4 +1,4 @@
-import type { GraphNode, TeachingUnit } from "../../data/contracts";
+import type { GraphDocument, TeachingUnit } from "../../data/contracts";
 import type { DeepReadonly } from "../../data/repository";
 import type { GraphEngine } from "../../graph/graphEngine";
 import type { LearningProfileSnapshot } from "../../state/profileStore";
@@ -11,7 +11,7 @@ export interface GraphWorkspaceProps {
   scenarioId: string | null;
   initialNodeId: string | null;
   graphEngine: GraphEngine;
-  nodes: readonly GraphNode[];
+  graphDocument: GraphDocument;
   onSelectNode(nodeId: string | null): void;
   onOpenUnit(unit: DeepReadonly<TeachingUnit>): void;
 }
@@ -22,13 +22,15 @@ export default function GraphWorkspace({
   scenarioId,
   initialNodeId,
   graphEngine,
-  nodes,
+  graphDocument,
   onSelectNode,
   onOpenUnit,
 }: GraphWorkspaceProps) {
   return (
     <>
       <GraphCanvas
+        graphDocument={graphDocument}
+        graphEngine={graphEngine}
         repository={repository}
         profileSnapshot={profileSnapshot}
         scenarioId={scenarioId}
@@ -41,7 +43,7 @@ export default function GraphWorkspace({
         profileSnapshot={profileSnapshot}
         targetNodeId={initialNodeId}
         selectedScenarioId={scenarioId}
-        nodes={nodes}
+        nodes={graphDocument.nodes}
       />
     </>
   );

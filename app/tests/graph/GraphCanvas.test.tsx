@@ -7,13 +7,14 @@ import { describe, expect, it, vi } from "vitest";
 import {
   GraphCanvas,
   type NetworkFactory,
+  type GraphRepository,
   type NetworkSelection,
 } from "../../src/features/graph/GraphCanvas";
 import {
   createGraphVisualNode,
   graphNodeShape,
 } from "../../src/features/graph/graphVisuals";
-import type { GraphNode } from "../../src/data/contracts";
+import type { GraphDocument, GraphNode } from "../../src/data/contracts";
 import { ProgressPanel } from "../../src/features/graph/ProgressPanel";
 import type { LearningProfileSnapshot } from "../../src/state/profileStore";
 import type { GraphEngine } from "../../src/graph/graphEngine";
@@ -99,6 +100,65 @@ const createReducedMotionController = (initialMatches: boolean) => {
   };
 };
 
+const graphFixture: GraphDocument = {
+  schema_version: "1.0.0",
+  graph_id: "GRAPH-TEST",
+  graph_version: "1.0.0",
+  nodes: [
+    {
+      id: "CAP-TEST-A",
+      label: "能力 A",
+      description: "测试能力 A。",
+      data_types: ["text"],
+      type: "CAP",
+      status: "published",
+      source_refs: [],
+    },
+    {
+      id: "CAP-TEST-B",
+      label: "能力 B",
+      description: "测试能力 B。",
+      data_types: ["text"],
+      type: "CAP",
+      status: "published",
+      source_refs: [],
+    },
+    {
+      id: "KNG-TEST-C",
+      label: "知识 C",
+      description: "测试知识 C。",
+      data_types: ["text"],
+      type: "KNG",
+      status: "published",
+      source_refs: [],
+    },
+  ],
+  edges: [
+    {
+      id: "EDGE-TEST-A-B",
+      source: "CAP-TEST-A",
+      target: "CAP-TEST-B",
+      relation: "PRE",
+      label: "前置",
+      metadata: {},
+    },
+  ],
+};
+
+const createGraphEngineFixture = (): GraphEngine => ({
+  neighborhood: vi.fn(() => ({
+    nodes: graphFixture.nodes.slice(0, 2),
+    edges: graphFixture.edges,
+    nodeIds: new Set(["CAP-TEST-A", "CAP-TEST-B"]),
+  })),
+  remediationPlan: vi.fn(),
+});
+
+const graphRepositoryFixture: GraphRepository = {
+  listConsumableUnits: () => [],
+  getNode: (id) => graphFixture.nodes.find((node) => node.id === id),
+};
+
 describe("GraphCanvas", () => {
   afterEach(() => {
     cleanup();
@@ -137,6 +197,82 @@ describe("GraphCanvas", () => {
     expect(unlearned.borderWidth).not.toBe(mastered.borderWidth);
     expect(node.status).toBe("draft");
     expect(unlearned).not.toHaveProperty("status");
+  });
+
+  it("uses the shared mastery bands at every graph color boundary", () => {
+    const node = graphFixture.nodes[0];
+    const toneAt = (mastery: number | null) =>
+      createGraphVisualNode(node, mastery).color;
+
+    expect(toneAt(null)).not.toEqual(toneAt(0));
+    expect(toneAt(0)).toEqual(toneAt(0.39));
+    expect(toneAt(0.39)).toEqual(toneAt(0.4));
+    expect(toneAt(0.4)).toEqual(toneAt(0.59));
+    expect(toneAt(0.59)).not.toEqual(toneAt(0.6));
+    expect(toneAt(0.6)).toEqual(toneAt(0.79));
+    expect(toneAt(0.79)).not.toEqual(toneAt(0.8));
+    expect(toneAt(0.8)).toEqual(toneAt(1));
+  });
+
+  it("constructs with current data once and applies each local/overview transition once", () => {
+    const network = createFakeNetworkFactory();
+    const graphEngine = createGraphEngineFixture();
+
+    render(
+      <GraphCanvas
+        graphDocument={graphFixture}
+        graphEngine={graphEngine}
+        networkFactory={network.factory}
+        repository={graphRepositoryFixture}
+      />,
+    );
+
+    const [, initialData] = network.factory.mock.calls[0] ?? [];
+    expect(initialData?.nodes.map(({ id }) => id)).toEqual([
+      "CAP-TEST-A",
+      "CAP-TEST-B",
+      "KNG-TEST-C",
+    ]);
+    expect(network.latestNetwork?.setData).not.toHaveBeenCalled();
+
+    network.emitStabilized();
+    network.latestNetwork?.setOptions.mockClear();
+    network.emitSelect("CAP-TEST-A");
+
+    expect(network.latestNetwork?.setData).toHaveBeenCalledTimes(1);
+    expect(
+      network.latestNetwork?.setData.mock.calls[0]?.[0].nodes.map(
+        ({ id }: { id: string }) => id,
+      ),
+    ).toEqual(["CAP-TEST-A", "CAP-TEST-B"]);
+    expect(network.latestNetwork?.setOptions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        physics: expect.objectContaining({ enabled: true }),
+      }),
+    );
+
+    network.emitStabilized();
+    expect(network.latestNetwork?.setOptions).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        physics: expect.objectContaining({ enabled: false }),
+      }),
+    );
+
+    network.latestNetwork?.setData.mockClear();
+    network.latestNetwork?.setOptions.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "返回总览" }));
+
+    expect(network.latestNetwork?.setData).toHaveBeenCalledTimes(1);
+    expect(
+      network.latestNetwork?.setData.mock.calls[0]?.[0].nodes.map(
+        ({ id }: { id: string }) => id,
+      ),
+    ).toEqual(["CAP-TEST-A", "CAP-TEST-B", "KNG-TEST-C"]);
+    expect(network.latestNetwork?.setOptions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        physics: expect.objectContaining({ enabled: true }),
+      }),
+    );
   });
 
   it("opens node relations and only repository-consumable linked lessons", async () => {
@@ -224,6 +360,81 @@ describe("GraphCanvas", () => {
     expect(onSelectNode).toHaveBeenCalledTimes(1);
   });
 
+  it("clears the controlled selection and local view when initialNodeId becomes null", () => {
+    const network = createFakeNetworkFactory();
+    const graphEngine = createGraphEngineFixture();
+    const onSelectNode = vi.fn();
+    const view = render(
+      <GraphCanvas
+        graphDocument={graphFixture}
+        graphEngine={graphEngine}
+        initialNodeId="CAP-TEST-A"
+        networkFactory={network.factory}
+        onSelectNode={onSelectNode}
+        repository={graphRepositoryFixture}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "能力 A" })).toBeVisible();
+    expect(screen.getByText(/局部视图：2 跳/)).toBeVisible();
+    network.latestNetwork?.setData.mockClear();
+    onSelectNode.mockClear();
+
+    view.rerender(
+      <GraphCanvas
+        graphDocument={graphFixture}
+        graphEngine={graphEngine}
+        initialNodeId={null}
+        networkFactory={network.factory}
+        onSelectNode={onSelectNode}
+        repository={graphRepositoryFixture}
+      />,
+    );
+
+    expect(screen.queryByRole("heading", { name: "能力 A" })).not.toBeInTheDocument();
+    expect(screen.getByText(/总览：3 个节点/)).toBeVisible();
+    expect(network.latestNetwork?.setData).toHaveBeenCalledTimes(1);
+    expect(onSelectNode).not.toHaveBeenCalled();
+  });
+
+  it("returns to overview once when the parent echoes the user's null selection", () => {
+    const network = createFakeNetworkFactory();
+    const graphEngine = createGraphEngineFixture();
+    let controlledNodeId: string | null = "CAP-TEST-A";
+    const onSelectNode = vi.fn((nodeId: string | null) => {
+      controlledNodeId = nodeId;
+    });
+    const view = render(
+      <GraphCanvas
+        graphDocument={graphFixture}
+        graphEngine={graphEngine}
+        initialNodeId={controlledNodeId}
+        networkFactory={network.factory}
+        onSelectNode={onSelectNode}
+        repository={graphRepositoryFixture}
+      />,
+    );
+    network.latestNetwork?.setData.mockClear();
+    onSelectNode.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "返回总览" }));
+    view.rerender(
+      <GraphCanvas
+        graphDocument={graphFixture}
+        graphEngine={graphEngine}
+        initialNodeId={controlledNodeId}
+        networkFactory={network.factory}
+        onSelectNode={onSelectNode}
+        repository={graphRepositoryFixture}
+      />,
+    );
+
+    expect(controlledNodeId).toBeNull();
+    expect(onSelectNode).toHaveBeenCalledTimes(1);
+    expect(onSelectNode).toHaveBeenCalledWith(null);
+    expect(network.latestNetwork?.setData).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps unknown selections recoverable and exposes keyboard-searchable truth", () => {
     const network = createFakeNetworkFactory();
     render(<GraphCanvas networkFactory={network.factory} />);
@@ -245,6 +456,27 @@ describe("GraphCanvas", () => {
     fireEvent.change(search, { target: { value: "转写并添加标点" } });
     fireEvent.keyDown(search, { key: "Enter" });
     expect(screen.getByRole("heading", { name: "转写并添加标点" })).toBeVisible();
+  });
+
+  it("keeps the semantic graph usable and reports a recoverable network construction error", () => {
+    const networkFactory: NetworkFactory = () => {
+      throw new Error("canvas unavailable");
+    };
+
+    render(
+      <GraphCanvas
+        graphDocument={graphFixture}
+        networkFactory={networkFactory}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "图谱画布暂时无法加载",
+    );
+    expect(screen.getByRole("listbox", { name: "图谱节点列表" })).toBeVisible();
+    expect(
+      screen.getByRole("img", { name: "能力图谱可视化" }),
+    ).toHaveAccessibleDescription(/节点列表/);
   });
 
   it("waits for the real stabilized event before turning physics off", () => {

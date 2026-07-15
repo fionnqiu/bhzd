@@ -12,7 +12,6 @@ import type {
 import {
   createRepository,
   type DeepReadonly,
-  type TeachingRepository,
 } from "../../data/repository";
 import {
   graph,
@@ -32,6 +31,7 @@ import {
   graphNetworkMoveOptions,
   graphNetworkOptions,
 } from "./graphVisuals";
+import type { GraphLessonRepository } from "./lessonLinks";
 import { NodeDetails } from "./NodeDetails";
 
 export interface NetworkSelection {
@@ -80,13 +80,7 @@ export type NetworkFactory = (
   options: NetworkOptions,
 ) => NetworkAdapter;
 
-export interface GraphRepository {
-  listConsumableUnits(): DeepReadonly<TeachingUnit[]>;
-  getNode?(id: string): DeepReadonly<GraphNode> | undefined;
-  getIncomingEdges?(id: string): DeepReadonly<GraphEdge[]>;
-  getOutgoingEdges?(id: string): DeepReadonly<GraphEdge[]>;
-  getConsumableUnitsForNode?(id: string): DeepReadonly<TeachingUnit[]>;
-}
+export type GraphRepository = GraphLessonRepository;
 
 export interface GraphCanvasProps {
   networkFactory?: NetworkFactory;
@@ -120,33 +114,23 @@ const defaultNetworkFactory: NetworkFactory = (container, data, options) => {
     };
   }
 
-  try {
-    const network = new Network(
-      container,
-      data as unknown as Data,
-      options as unknown as Options,
-    );
+  const network = new Network(
+    container,
+    data as unknown as Data,
+    options as unknown as Options,
+  );
 
-    return {
-      destroy: () => network.destroy(),
-      moveTo: (nextOptions) => network.moveTo(nextOptions),
-      on: (event, handler) => {
-        network.on(event, (payload?: { nodes?: Array<string | number> }) => {
-          handler({ nodes: payload?.nodes ?? [] });
-        });
-      },
-      setData: (nextData) => network.setData(nextData as unknown as Data),
-      setOptions: (nextOptions) => network.setOptions(nextOptions),
-    };
-  } catch {
-    return {
-      destroy: () => undefined,
-      moveTo: () => undefined,
-      on: () => undefined,
-      setData: () => undefined,
-      setOptions: () => undefined,
-    };
-  }
+  return {
+    destroy: () => network.destroy(),
+    moveTo: (nextOptions) => network.moveTo(nextOptions),
+    on: (event, handler) => {
+      network.on(event, (payload?: { nodes?: Array<string | number> }) => {
+        handler({ nodes: payload?.nodes ?? [] });
+      });
+    },
+    setData: (nextData) => network.setData(nextData as unknown as Data),
+    setOptions: (nextOptions) => network.setOptions(nextOptions),
+  };
 };
 
 const getMastery = (
@@ -181,58 +165,6 @@ const asNetworkData = (
   ),
   edges: edges.map((edge) => createGraphVisualEdge(edge as GraphEdge)),
 });
-
-const capabilityRefsForUnit = (
-  unit: DeepReadonly<TeachingUnit>,
-): readonly string[] => {
-  const exercise = unit.exercise;
-  if (typeof exercise !== "object" || exercise === null) {
-    return [];
-  }
-  const refs = exercise.capability_refs;
-  return Array.isArray(refs)
-    ? refs.filter((ref): ref is string => typeof ref === "string")
-    : [];
-};
-
-const linkedConsumableUnits = (
-  repository: GraphRepository,
-  nodeId: string,
-  incomingEdges: readonly DeepReadonly<GraphEdge>[],
-  outgoingEdges: readonly DeepReadonly<GraphEdge>[],
-): DeepReadonly<TeachingUnit[]> => {
-  const byId = new Map<string, DeepReadonly<TeachingUnit>>();
-  const candidateNodeIds = new Set<string>([nodeId]);
-
-  // The canonical graph stores teaching_unit_links on TSK nodes. A selected
-  // CAP can therefore reach its consumable lesson only through typed SUP
-  // relations; every candidate is still re-gated by the repository.
-  for (const edge of [...incomingEdges, ...outgoingEdges]) {
-    if (edge.relation !== "SUP") {
-      continue;
-    }
-    candidateNodeIds.add(edge.source === nodeId ? edge.target : edge.source);
-  }
-
-  for (const candidateId of candidateNodeIds) {
-    for (const unit of repository.getConsumableUnitsForNode?.(candidateId) ?? []) {
-      if (typeof unit.id === "string" && typeof unit.title === "string") {
-        byId.set(unit.id, unit);
-      }
-    }
-    for (const unit of repository.listConsumableUnits()) {
-      if (
-        typeof unit.id === "string" &&
-        typeof unit.title === "string" &&
-        capabilityRefsForUnit(unit).includes(candidateId)
-      ) {
-        byId.set(unit.id, unit);
-      }
-    }
-  }
-
-  return [...byId.values()];
-};
 
 const readReducedMotion = (): boolean => {
   const matchMedia =
@@ -291,6 +223,7 @@ export function GraphCanvas({
 }: GraphCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<NetworkAdapter | null>(null);
+  const appliedDataRef = useRef<NetworkData | null>(null);
   const reducedMotion = useReducedMotion();
   const reducedMotionRef = useRef(reducedMotion);
   const stabilizedRef = useRef(false);
@@ -306,6 +239,7 @@ export function GraphCanvas({
   const [localView, setLocalView] = useState<GraphView | null>(null);
   const [query, setQuery] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  const [networkError, setNetworkError] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const selectNodeRef = useRef<(nodeId: string) => void>(() => undefined);
   const initialNodeAppliedRef = useRef<string | null>(null);
@@ -320,10 +254,8 @@ export function GraphCanvas({
     () => asNetworkData(currentNodes, currentEdges, profileSnapshot, scenarioId),
     [currentEdges, currentNodes, profileSnapshot, scenarioId],
   );
-  const fullData = useMemo(
-    () => asNetworkData(graphDocument.nodes, graphDocument.edges, profileSnapshot, scenarioId),
-    [graphDocument.edges, graphDocument.nodes, profileSnapshot, scenarioId],
-  );
+  const currentDataRef = useRef(currentData);
+  currentDataRef.current = currentData;
   const searchResults = useMemo(
     () => graphDocument.nodes.filter((node) => nodeMatches(node, query)),
     [graphDocument.nodes, query],
@@ -361,7 +293,17 @@ export function GraphCanvas({
 
   useEffect(() => {
     if (initialNodeId === null) {
+      if (
+        initialNodeAppliedRef.current === null &&
+        selectedNodeId === null &&
+        localView === null
+      ) {
+        return;
+      }
       initialNodeAppliedRef.current = null;
+      setSelectedNodeId(null);
+      setLocalView(null);
+      setNotice(null);
       return;
     }
     if (initialNodeAppliedRef.current === initialNodeId) {
@@ -369,6 +311,9 @@ export function GraphCanvas({
     }
     initialNodeAppliedRef.current = initialNodeId;
     selectNodeRef.current(initialNodeId);
+    // Selection state is controlled only when the external ID changes. A
+    // user's local selection must remain usable while the prop stays null.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialNodeId]);
 
   useEffect(() => {
@@ -378,12 +323,26 @@ export function GraphCanvas({
     }
 
     stabilizedRef.current = false;
-    const network = networkFactory(
-      container,
-      fullData,
-      graphNetworkOptions(reducedMotionRef.current, stabilizedRef.current),
-    );
+    setNetworkError(null);
+    const initialData = currentDataRef.current;
+    let network: NetworkAdapter;
+    try {
+      network = networkFactory(
+        container,
+        initialData,
+        graphNetworkOptions(reducedMotionRef.current, stabilizedRef.current),
+      );
+    } catch {
+      networkRef.current = null;
+      appliedDataRef.current = null;
+      setNetworkError(
+        "图谱画布暂时无法加载；请使用节点列表继续浏览，稍后重试。",
+      );
+      return;
+    }
+
     networkRef.current = network;
+    appliedDataRef.current = initialData;
     network.on("selectNode", (selection) => {
       const nodeId = selection.nodes[0];
       if (typeof nodeId === "string") {
@@ -404,16 +363,27 @@ export function GraphCanvas({
       if (networkRef.current === network) {
         networkRef.current = null;
       }
+      appliedDataRef.current = null;
       stabilizedRef.current = false;
       network.destroy();
     };
-    // The adapter is intentionally created once per mounted canvas. Dynamic
-    // graph views use setData below so an unmount always owns one destroy call.
+    // The adapter consumes currentData exactly once at construction. Later
+    // view/profile changes use the guarded setData effect below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [networkFactory]);
 
   useEffect(() => {
-    networkRef.current?.setData(currentData);
+    const network = networkRef.current;
+    if (network === null || appliedDataRef.current === currentData) {
+      return;
+    }
+
+    stabilizedRef.current = false;
+    network.setOptions(
+      graphNetworkOptions(reducedMotionRef.current, stabilizedRef.current),
+    );
+    network.setData(currentData);
+    appliedDataRef.current = currentData;
   }, [currentData]);
 
   useEffect(() => {
@@ -500,11 +470,17 @@ export function GraphCanvas({
         ) : null}
       </div>
 
+      <p id="graph-canvas-description">
+        画布展示当前能力图谱；如需键盘操作或画布不可用，请使用上方节点列表。
+      </p>
       <div
         ref={containerRef}
         className="graph-explorer__canvas"
+        role="img"
         aria-label="能力图谱可视化"
+        aria-describedby="graph-canvas-description"
       />
+      {networkError !== null ? <p role="alert">{networkError}</p> : null}
 
       <div className="graph-explorer__summary" aria-live="polite">
         {localView === null ? (
@@ -516,11 +492,11 @@ export function GraphCanvas({
           <button
             type="button"
             onClick={() => {
+              initialNodeAppliedRef.current = null;
               setLocalView(null);
               setSelectedNodeId(null);
               onSelectNode?.(null);
               setNotice(null);
-              networkRef.current?.setData(fullData);
             }}
           >
             返回总览
@@ -538,12 +514,7 @@ export function GraphCanvas({
           incomingEdges={getIncomingEdges(selectedNode.id)}
           outgoingEdges={getOutgoingEdges(selectedNode.id)}
           getNode={getNode}
-          consumableUnits={linkedConsumableUnits(
-            repository,
-            selectedNode.id,
-            getIncomingEdges(selectedNode.id),
-            getOutgoingEdges(selectedNode.id),
-          )}
+          repository={repository}
           onOpenUnit={onOpenUnit}
         />
       )}

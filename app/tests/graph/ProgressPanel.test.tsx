@@ -8,7 +8,10 @@ import type {
   GraphEdge,
   GraphNode,
 } from "../../src/data/contracts";
-import { createGraphEngine } from "../../src/graph/graphEngine";
+import {
+  createGraphEngine,
+  type GraphEngine,
+} from "../../src/graph/graphEngine";
 import { ProgressPanel } from "../../src/features/graph/ProgressPanel";
 import type { LearningProfileSnapshot } from "../../src/state/profileStore";
 
@@ -314,5 +317,30 @@ describe("ProgressPanel", () => {
     expect(
       screen.queryByRole("list", { name: "补强步骤" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("reports remediation engine failures without mislabeling a known node as unknown", () => {
+    const nodes = [makeNode("CAP-TARGET", "目标能力")];
+    const healthyEngine = createGraphEngine(makeDocument(nodes, []));
+    const brokenEngine: GraphEngine = {
+      neighborhood: (nodeId, depth) =>
+        healthyEngine.neighborhood(nodeId, depth),
+      remediationPlan: () => {
+        throw new Error("graph invariant failed");
+      },
+    };
+
+    render(
+      <ProgressPanel
+        graphEngine={brokenEngine}
+        profileSnapshot={snapshot()}
+        targetNodeId="CAP-TARGET"
+        nodes={nodes}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("补强计划暂时无法生成");
+    expect(screen.getByRole("alert")).toHaveTextContent("稍后重试");
+    expect(screen.queryByText(/未找到目标节点/u)).not.toBeInTheDocument();
   });
 });

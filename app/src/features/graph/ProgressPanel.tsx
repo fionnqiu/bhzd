@@ -96,6 +96,7 @@ const countsFor = (
 type PlanState =
   | { kind: "idle" }
   | { kind: "unknown" }
+  | { kind: "error" }
   | { kind: "cycle"; plan: RemediationPlan }
   | { kind: "ready"; plan: RemediationPlan };
 
@@ -104,9 +105,14 @@ const planStateFor = (
   profileSnapshot: LearningProfileSnapshot,
   targetNodeId: string | null,
   scenarioId: string | null,
+  nodeById: ReadonlyMap<string, GraphNode>,
 ): PlanState => {
   if (targetNodeId === null) {
     return { kind: "idle" };
+  }
+
+  if (nodeById.size > 0 && !nodeById.has(targetNodeId)) {
+    return { kind: "unknown" };
   }
 
   try {
@@ -117,7 +123,7 @@ const planStateFor = (
       ? { kind: "cycle", plan }
       : { kind: "ready", plan };
   } catch {
-    return { kind: "unknown" };
+    return { kind: "error" };
   }
 };
 
@@ -212,6 +218,7 @@ export function ProgressPanel({
         profileSnapshot,
         targetNodeId,
         scenarioId,
+        nodeById,
       ),
     [
       graphEngine,
@@ -296,6 +303,10 @@ export function ProgressPanel({
       ) : planState.kind === "unknown" ? (
         <p className="graph-progress-panel__empty" role="status">
           未找到目标节点，请重新选择节点后查看补强计划。
+        </p>
+      ) : planState.kind === "error" ? (
+        <p className="graph-progress-panel__empty" role="alert">
+          补强计划暂时无法生成，请稍后重试或重新选择节点。
         </p>
       ) : planState.kind === "cycle" ? (
         <div className="graph-progress-panel__cycle" role="alert">

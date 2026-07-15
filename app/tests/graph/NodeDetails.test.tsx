@@ -151,7 +151,10 @@ describe("NodeDetails", () => {
 
     render(<NodeDetails {...baseProps(repository)} repository={repository} />);
 
-    expect(screen.getByRole("heading", { level: 2, name: "目标能力" })).toBeVisible();
+    expect(screen.getByRole("heading", { level: 2, name: "目标能力" }))
+      .toBeVisible();
+    expect(screen.getByRole("heading", { level: 2, name: "目标能力" }))
+      .toHaveAttribute("aria-live", "polite");
     expect(screen.getByText("CAP / CAP-TARGET")).toBeVisible();
     expect(screen.getByText("节点状态：draft")).toBeVisible();
     expect(screen.getByRole("heading", { name: "入向关系" })).toBeVisible();
@@ -217,5 +220,50 @@ describe("NodeDetails", () => {
 
     view.rerender(<NodeDetails {...baseProps(repository)} repository={repository} />);
     expect(screen.getByRole("heading", { level: 2, name: "目标能力" })).toBeVisible();
+  });
+
+  it("accepts an explicitly resolved node when an injected graph is outside the repository node index", () => {
+    const repository = makeRepository();
+    const injectedNode = makeNode(
+      "CAP-INJECTED",
+      "注入图谱能力",
+      "CAP",
+      "published",
+    );
+
+    render(
+      <NodeDetails
+        node={injectedNode}
+        incomingEdges={[]}
+        outgoingEdges={[]}
+        getNode={(id) => (id === injectedNode.id ? injectedNode : undefined)}
+        consumableUnits={[]}
+        repository={repository}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { level: 2, name: injectedNode.label }),
+    ).toBeVisible();
+    expect(screen.queryByText(/未找到该节点/)).not.toBeInTheDocument();
+  });
+
+  it("does not create launch buttons from supplied units when no repository can verify the index", () => {
+    const repository = makeRepository();
+    const supplied = repository.listConsumableUnits()[0];
+    if (supplied === undefined) {
+      throw new Error("Expected a consumable fixture unit.");
+    }
+
+    render(
+      <NodeDetails
+        {...baseProps(repository)}
+        repository={undefined}
+        consumableUnits={[supplied]}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /开始课程/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/无法验证课程发布索引/)).toBeVisible();
   });
 });

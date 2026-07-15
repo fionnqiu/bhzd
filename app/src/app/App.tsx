@@ -29,7 +29,7 @@ import {
   isConsumableTeachingUnit,
 } from "../features/course/CourseBrowser";
 import { LessonView } from "../features/course/LessonView";
-import type { GraphRepository } from "../features/graph/GraphCanvas";
+import type { GraphLessonRepository } from "../features/graph/lessonLinks";
 import { createGraphEngine } from "../graph/graphEngine";
 import {
   createProfileStore,
@@ -176,6 +176,21 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
   const selectableUnits = useMemo(
     () => listedUnits.filter(isConsumableTeachingUnit),
     [listedUnits],
+  );
+  const graphRepository = useMemo<GraphLessonRepository>(
+    () => ({
+      // The application-supplied consumable index remains authoritative even
+      // when canonical graph lookup helpers discover link candidates.
+      listConsumableUnits: () => selectableUnits,
+      getNode: (nodeId) => canonicalRepository.getNode(nodeId),
+      getIncomingEdges: (nodeId) =>
+        canonicalRepository.getIncomingEdges(nodeId),
+      getOutgoingEdges: (nodeId) =>
+        canonicalRepository.getOutgoingEdges(nodeId),
+      getConsumableUnitsForNode: (nodeId) =>
+        canonicalRepository.getConsumableUnitsForNode(nodeId),
+    }),
+    [selectableUnits],
   );
   const selectedUnit =
     selectedUnitId === null
@@ -496,12 +511,12 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
                     }
                   >
                     <GraphWorkspace
-                      repository={repository as unknown as GraphRepository}
+                      repository={graphRepository}
                       profileSnapshot={profileSnapshot}
                       scenarioId={selectedScenarioId}
                       initialNodeId={graphTargetNodeId}
                       graphEngine={canonicalGraphEngine}
-                      nodes={graph.nodes}
+                      graphDocument={graph}
                       onSelectNode={handleGraphNodeSelection}
                       onOpenUnit={openGraphLesson}
                     />

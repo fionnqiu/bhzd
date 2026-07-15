@@ -1,6 +1,7 @@
-import type { GraphEdge, GraphNode } from "../../data/contracts";
 import type { MoveToOptions } from "vis-network";
 
+import type { GraphEdge, GraphNode } from "../../data/contracts";
+import { masteryBand } from "../../evaluation/mastery";
 import type {
   NetworkEdgeData,
   NetworkNodeData,
@@ -34,7 +35,6 @@ const MASTERY_TONES: Readonly<Record<string, MasteryTone>> = {
   unlearned: { background: "#E2E8F0", border: "#64748B", borderWidth: 1 },
   needs_work: { background: "#FEE2E2", border: "#E5484D", borderWidth: 2 },
   consolidating: { background: "#FFEDD5", border: "#FF8A3D", borderWidth: 3 },
-  approaching_mastery: { background: "#CFFAFE", border: "#00C6FF", borderWidth: 4 },
   mastered: { background: "#DCFCE7", border: "#2EC27E", borderWidth: 5 },
 };
 
@@ -45,16 +45,11 @@ const masteryTone = (mastery: number | null): MasteryTone => {
   if (mastery === null) {
     return MASTERY_TONES.unlearned;
   }
-  if (mastery < 0.4) {
-    return MASTERY_TONES.needs_work;
-  }
-  if (mastery < 0.6) {
-    return MASTERY_TONES.consolidating;
-  }
-  if (mastery < 0.8) {
-    return MASTERY_TONES.approaching_mastery;
-  }
-  return MASTERY_TONES.mastered;
+
+  const band = masteryBand(mastery);
+  return band === "beginner"
+    ? MASTERY_TONES.needs_work
+    : MASTERY_TONES[band];
 };
 
 export const createGraphVisualNode = (
