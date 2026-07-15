@@ -270,6 +270,40 @@ describe("local diagnostics", () => {
     expect(missing.issues.every((candidate) => !candidate.message.includes("negative"))).toBe(true);
   });
 
+  it("keeps an annotations-only generic image answer as JSON and scores its published unit", async () => {
+    const unit = teachingUnits.units.find(
+      (candidate) => candidate.id === "TU-IMAGE-KEYPOINT-VISIBILITY-001",
+    );
+    if (unit === undefined) throw new Error("canonical keypoint unit missing");
+    const report = await diagnoseFile(
+      fileFromText(
+        JSON.stringify(unit.exercise.answer),
+        "keypoints.json",
+        "application/json",
+      ),
+      { dataType: "image", targetUnitId: unit.id },
+    );
+    expect(report.format).toBe("json");
+    expect(report.status).toBe("complete");
+    expect(report.score).toBe(1);
+    expect(report.masteryImpact).toBe(true);
+  });
+
+  it("distinguishes generic annotations from partial COCO intent", () => {
+    const generic = inspectJsonText(
+      JSON.stringify({ annotations: [{ case_id: "KP-VISIBLE", visibility: "visible" }] }),
+    );
+    expect(generic.isCoco).toBe(false);
+    const partialCoco = inspectJsonText(
+      JSON.stringify({ images: [{ id: 1 }], categories: [] }),
+    );
+    expect(partialCoco.isCoco).toBe(true);
+    const annotationIntent = inspectJsonText(
+      JSON.stringify({ annotations: [{ id: 1, image_id: 1, category_id: 1, bbox: [0, 0, 2, 2] }] }),
+    );
+    expect(annotationIntent.isCoco).toBe(true);
+  });
+
   it("handles VOC malformed XML, forbidden DOCTYPE, and coordinate order", () => {
     const invalid = inspectVocXml(
       `<annotation><size><width>100</width><height>80</height></size><object><name>x</name><bndbox><xmin>50</xmin><ymin>2</ymin><xmax>10</xmax><ymax>1</ymax></bndbox></object></annotation>`,

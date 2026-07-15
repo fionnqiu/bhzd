@@ -58,6 +58,29 @@ const identifier = (value: unknown): Identifier | null => {
 const idKey = (value: Identifier): string =>
   `${typeof value}:${String(value)}`;
 
+const hasCocoAnnotationShape = (value: unknown): boolean => {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+  return value.some(
+    (candidate) =>
+      isPlainObject(candidate) &&
+      ["image_id", "category_id", "bbox"].some((field) => hasOwn(candidate, field)),
+  );
+};
+
+/** Infer COCO intent conservatively so generic annotations-only responses stay JSON. */
+export const hasCocoIntent = (value: Record<string, unknown>): boolean => {
+  const collectionKeys = ["images", "annotations", "categories"] as const;
+  const present = collectionKeys.filter((key) => hasOwn(value, key));
+  if (present.length >= 2) {
+    return true;
+  }
+  return present.length === 1 && present[0] === "annotations"
+    ? hasCocoAnnotationShape(value.annotations)
+    : false;
+};
+
 interface IndexedCollection {
   readonly values: readonly Record<string, unknown>[];
   readonly ids: ReadonlyMap<string, Identifier>;
@@ -263,8 +286,7 @@ export const inspectJsonText = (text: string): JsonInspection => {
     };
   }
 
-  const cocoKeys = ["images", "annotations", "categories"];
-  const isCoco = cocoKeys.some((key) => hasOwn(value, key));
+  const isCoco = hasCocoIntent(value);
   return {
     value,
     isCoco,
