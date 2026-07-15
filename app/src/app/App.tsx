@@ -23,6 +23,11 @@ import {
   type ConsumableUnitSource,
 } from "../features/dashboard/Dashboard";
 import {
+  CourseBrowser,
+  isConsumableTeachingUnit,
+} from "../features/course/CourseBrowser";
+import { LessonView } from "../features/course/LessonView";
+import {
   createProfileStore,
   type ProfileStorage,
 } from "../state/profileStore";
@@ -32,6 +37,7 @@ import {
   WORK_MODE_LABELS,
   useAppContext,
   type AppProfileStore,
+  type Domain,
   type WorkMode,
 } from "./AppContext";
 
@@ -120,9 +126,11 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
     selectedDomain,
     selectedWorkMode,
     selectedScenarioId,
+    selectedUnitId,
     profileError,
     selectDomain,
     selectWorkMode,
+    selectUnit,
     resetLearningProfile,
   } = useAppContext();
   const [resetOpen, setResetOpen] = useState(false);
@@ -132,10 +140,25 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
   const resetDialogRef = useRef<HTMLDivElement>(null);
   const resetWasOpenRef = useRef(false);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const counts = useMemo(
-    () => countConsumableUnitsByDomain(repository.listConsumableUnits()),
+  const listedUnits = useMemo(
+    () => repository.listConsumableUnits(),
     [repository],
   );
+  const counts = useMemo(
+    () => countConsumableUnitsByDomain(listedUnits),
+    [listedUnits],
+  );
+  const selectableUnits = useMemo(
+    () => listedUnits.filter(isConsumableTeachingUnit),
+    [listedUnits],
+  );
+  const selectedUnit =
+    selectedUnitId === null
+      ? null
+      : selectableUnits.find(
+          (unit) =>
+            unit.id === selectedUnitId && unit.data_type === selectedDomain,
+        ) ?? null;
 
   const domainLabel = DOMAIN_LABELS[selectedDomain];
   const scenarioLabel = selectedScenarioId ?? "通用场景";
@@ -352,60 +375,88 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
               tone="paper"
               className="chart-room"
             >
-              <div className="chart-room__coordinate" aria-hidden="true">
-                LAT 31.2304 N&nbsp;&nbsp; / &nbsp;&nbsp;LON 121.4737 E
-              </div>
-
-              <div className="chart-room__heading">
-                <div>
-                  <p className="eyebrow eyebrow--ink">
-                    {activeMode.coordinate} / {domainLabel}域
-                  </p>
-                  <h1>
-                    {domainLabel}
-                    <span>{activeMode.title}</span>
-                  </h1>
-                </div>
-                <span className="route-state">
-                  <span aria-hidden="true" /> 航向已锁定
-                </span>
-              </div>
-
-              <p className="chart-room__lede">{activeMode.description}</p>
-
-              <div className="bearing-chart" aria-hidden="true">
-                <span className="bearing-chart__axis bearing-chart__axis--x" />
-                <span className="bearing-chart__axis bearing-chart__axis--y" />
-                <span className="bearing-chart__orbit bearing-chart__orbit--outer" />
-                <span className="bearing-chart__orbit bearing-chart__orbit--inner" />
-                <span className="bearing-chart__north">N</span>
-                <span className="bearing-chart__east">E</span>
-                <span className="bearing-chart__needle" />
-                <span className="bearing-chart__star">✦</span>
-                <span className="bearing-chart__readout">
-                  {activeMode.coordinate}
-                </span>
-              </div>
-
-              <div className="route-briefing">
-                <p className="route-briefing__label">当前工作台</p>
-                <h2>{WORK_MODE_LABELS[selectedWorkMode]}</h2>
-                <p>{activeMode.pending}</p>
-                <dl>
-                  <div>
-                    <dt>数据域</dt>
-                    <dd>{domainLabel}</dd>
+              {selectedWorkMode === "course" ? (
+                selectedUnit === null ? (
+                  <CourseBrowser
+                    repository={repository}
+                    domain={selectedDomain}
+                    onOpenUnit={(unit) => {
+                      if (
+                        selectableUnits.some(
+                          (candidate) =>
+                            candidate.id === unit.id &&
+                            candidate.data_type === selectedDomain,
+                        )
+                      ) {
+                        selectUnit(unit.id);
+                      }
+                    }}
+                  />
+                ) : (
+                  <LessonView
+                    key={selectedUnit.id}
+                    unit={selectedUnit}
+                    onBack={() => selectUnit(null)}
+                  />
+                )
+              ) : (
+                <>
+                  <div className="chart-room__coordinate" aria-hidden="true">
+                    LAT 31.2304 N&nbsp;&nbsp; / &nbsp;&nbsp;LON 121.4737 E
                   </div>
-                  <div>
-                    <dt>可学习单元</dt>
-                    <dd>{counts[selectedDomain]}</dd>
+
+                  <div className="chart-room__heading">
+                    <div>
+                      <p className="eyebrow eyebrow--ink">
+                        {activeMode.coordinate} / {domainLabel}域
+                      </p>
+                      <h1>
+                        {domainLabel}
+                        <span>{activeMode.title}</span>
+                      </h1>
+                    </div>
+                    <span className="route-state">
+                      <span aria-hidden="true" /> 航向已锁定
+                    </span>
                   </div>
-                  <div>
-                    <dt>场景覆盖</dt>
-                    <dd>{scenarioLabel}</dd>
+
+                  <p className="chart-room__lede">{activeMode.description}</p>
+
+                  <div className="bearing-chart" aria-hidden="true">
+                    <span className="bearing-chart__axis bearing-chart__axis--x" />
+                    <span className="bearing-chart__axis bearing-chart__axis--y" />
+                    <span className="bearing-chart__orbit bearing-chart__orbit--outer" />
+                    <span className="bearing-chart__orbit bearing-chart__orbit--inner" />
+                    <span className="bearing-chart__north">N</span>
+                    <span className="bearing-chart__east">E</span>
+                    <span className="bearing-chart__needle" />
+                    <span className="bearing-chart__star">✦</span>
+                    <span className="bearing-chart__readout">
+                      {activeMode.coordinate}
+                    </span>
                   </div>
-                </dl>
-              </div>
+
+                  <div className="route-briefing">
+                    <p className="route-briefing__label">当前工作台</p>
+                    <h2>{WORK_MODE_LABELS[selectedWorkMode]}</h2>
+                    <p>{activeMode.pending}</p>
+                    <dl>
+                      <div>
+                        <dt>数据域</dt>
+                        <dd>{domainLabel}</dd>
+                      </div>
+                      <div>
+                        <dt>可学习单元</dt>
+                        <dd>{counts[selectedDomain]}</dd>
+                      </div>
+                      <div>
+                        <dt>场景覆盖</dt>
+                        <dd>{scenarioLabel}</dd>
+                      </div>
+                    </dl>
+                  </div>
+                </>
+              )}
             </Panel>
           </main>
 
@@ -517,9 +568,25 @@ export function App({
   const [resolvedProfileStore] = useState<AppProfileStore>(() =>
     profileStore ?? createProfileStore(browserStorage),
   );
+  const resolveUnitDomain = useMemo(() => {
+    const domainByUnitId = new Map<string, Domain>();
+    for (const unit of repository
+      .listConsumableUnits()
+      .filter(isConsumableTeachingUnit)) {
+      if (Object.hasOwn(DOMAIN_LABELS, unit.data_type)) {
+        domainByUnitId.set(unit.id, unit.data_type as Domain);
+      }
+    }
+
+    return (unitId: string): Domain | null =>
+      domainByUnitId.get(unitId) ?? null;
+  }, [repository]);
 
   return (
-    <AppProvider profileStore={resolvedProfileStore}>
+    <AppProvider
+      profileStore={resolvedProfileStore}
+      resolveUnitDomain={resolveUnitDomain}
+    >
       <ApplicationShell repository={repository} />
     </AppProvider>
   );
