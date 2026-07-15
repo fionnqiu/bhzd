@@ -594,7 +594,14 @@ export const validateJsonResponseShape = (
   if (complexityIssues.length > 0) {
     return complexityIssues;
   }
-  const shapes = responseCandidates(unit)
+  const candidates = responseCandidates(unit);
+  for (const candidate of candidates) {
+    const candidateComplexityIssues = validateJsonResponseComplexity(candidate);
+    if (candidateComplexityIssues.length > 0) {
+      return candidateComplexityIssues;
+    }
+  }
+  const shapes = candidates
     .map((candidate) => shapeOf(candidate))
     .filter((shape): shape is JsonShape => shape !== null);
   if (shapes.length === 0) {

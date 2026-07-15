@@ -4,7 +4,10 @@ import {
   MAX_DIAGNOSTIC_FILE_BYTES,
 } from "../../src/diagnostics/diagnose";
 import { detectFormat } from "../../src/diagnostics/detectFormat";
-import { inspectJsonText } from "../../src/diagnostics/json";
+import {
+  inspectJsonText,
+  validateJsonResponseShape,
+} from "../../src/diagnostics/json";
 import { inspectTextGrid } from "../../src/diagnostics/textGrid";
 import { inspectVocXml } from "../../src/diagnostics/vocXml";
 import { teachingUnits } from "../../src/data/rawData";
@@ -131,12 +134,33 @@ const invalidEvaluationCases: readonly {
     fields: { manualReviewRequired: "false" },
   },
   {
-    name: "passed unclassified result",
-    fields: { matched: "unclassified", passed: true },
+    name: "answer marked as failed",
+    fields: { passed: false },
   },
   {
-    name: "passed diagnostic rule",
-    fields: { matched: "diagnostic_rule", passed: true },
+    name: "answer with an error type",
+    fields: { errorType: "answer_error" },
+  },
+  {
+    name: "diagnostic rule with a nonzero score",
+    fields: {
+      matched: "diagnostic_rule",
+      score: 1,
+      passed: false,
+      errorType: "label_error",
+    },
+  },
+  {
+    name: "unclassified result with a nonzero score and passed state",
+    fields: { matched: "unclassified", score: 1, passed: true },
+  },
+  {
+    name: "unclassified result with a nonzero score",
+    fields: { matched: "unclassified", score: 1, passed: false },
+  },
+  {
+    name: "full-score allowed answer marked as failed",
+    fields: { matched: "allowed_answer", passed: false },
   },
 ];
 
@@ -398,6 +422,26 @@ describe("local diagnostics", () => {
     );
   });
 
+  it("bounds deeply nested repository answers before deriving response shapes", () => {
+    const depth = 10_000;
+    const answer = JSON.parse(
+      `{"labels":${"[".repeat(depth)}"negative"${"]".repeat(depth)}}`,
+    ) as unknown;
+    let issues: ReturnType<typeof validateJsonResponseShape> = [];
+
+    expect(() => {
+      issues = validateJsonResponseShape(
+        { exercise: { answer } },
+        { labels: ["negative"] },
+      );
+    }).not.toThrow();
+    expect(issues).toContainEqual(
+      expect.objectContaining({
+        code: expect.stringMatching(/^response_structure_too_(deep|large)$/),
+      }),
+    );
+  });
+
   it.each(invalidEvaluationCases)(
     "rejects evaluator contract violation: $name",
     async ({ fields }) => {
@@ -457,6 +501,40 @@ describe("local diagnostics", () => {
     });
     expect(report.issues).toContainEqual(
       expect.objectContaining({ code: "label_error", severity: "severe" }),
+    );
+  });
+
+  it("preserves a valid lower-score allowed-answer result", async () => {
+    const report = await diagnoseFile(
+      fileFromText(
+        JSON.stringify({ labels: ["negative"] }),
+        "response.json",
+        "application/json",
+      ),
+      { dataType: "text", targetUnitId: "TU-TEXT-LABEL-VOCAB-001" },
+      {
+        evaluator: () => ({
+          score: 0.5,
+          passed: false,
+          matched: "allowed_answer",
+          errorType: null,
+          feedback: "Partially correct.",
+          remediation: ["Review the remaining labels."],
+          ruleRefs: [],
+          capabilityRefs: [],
+          dataVersion: "1.0.0",
+          evaluationVersion: "1.0.0",
+          manualReviewRequired: false,
+        }),
+      },
+    );
+    expect(report).toMatchObject({
+      status: "complete",
+      score: 0.5,
+      masteryImpact: true,
+    });
+    expect(report.issues).not.toContainEqual(
+      expect.objectContaining({ code: "evaluation_failed" }),
     );
   });
 

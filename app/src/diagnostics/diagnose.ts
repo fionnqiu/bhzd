@@ -339,12 +339,29 @@ const isEvaluationResult = (value: unknown): value is EvaluationResult => {
   ) {
     return false;
   }
-  return !(
-    value.passed &&
-    (value.matched === "diagnostic_rule" ||
-      value.matched === "unclassified" ||
-      value.manualReviewRequired)
-  );
+  switch (value.matched) {
+    case "answer":
+      return (
+        value.score === 1 &&
+        value.passed &&
+        value.errorType === null &&
+        !value.manualReviewRequired
+      );
+    case "diagnostic_rule":
+      return (
+        value.score === 0 &&
+        !value.passed &&
+        typeof value.errorType === "string" &&
+        value.errorType.trim().length > 0
+      );
+    case "unclassified":
+      return value.score === 0 && !value.passed;
+    case "allowed_answer":
+      return !(
+        (value.passed && value.manualReviewRequired) ||
+        (value.score === 1 && !value.manualReviewRequired && !value.passed)
+      );
+  }
 };
 
 const readFileText = (file: DiagnosticFileLike): Promise<string> => {
