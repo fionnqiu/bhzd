@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../src/app/App";
 import type { TeachingUnit } from "../../src/data/contracts";
 import { teachingUnits } from "../../src/data/rawData";
+import { createEmptyResponseShape } from "../../src/features/course/StructuredResponseEditor";
 import {
   createProfileStore,
   type LearningProfileSnapshot,
@@ -68,33 +69,6 @@ const domainButtonNames = {
   video: "视频课程，3 个可学习单元",
 } as const;
 
-const emptyResponseFor = (value: unknown): unknown => {
-  if (Array.isArray(value)) {
-    return [];
-  }
-  if (value === null) {
-    return null;
-  }
-  if (typeof value === "string") {
-    return "";
-  }
-  if (typeof value === "number") {
-    return 0;
-  }
-  if (typeof value === "boolean") {
-    return false;
-  }
-  if (typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, nested]) => [
-        key,
-        emptyResponseFor(nested),
-      ]),
-    );
-  }
-  return null;
-};
-
 const findUnit = (id: string): TeachingUnit => {
   const unit = teachingUnits.units.find((candidate) => candidate.id === id);
   if (unit === undefined) {
@@ -114,6 +88,32 @@ afterEach(() => {
 });
 
 describe("course learning loop", () => {
+  it("moves focus into an opened lesson and restores it to the triggering course card", () => {
+    render(<App profileStore={createTestStore()} />);
+    const courseName = "校验封闭文本标签集";
+    const trigger = screen.getByRole("button", {
+      name: `打开课程：${courseName}`,
+    });
+
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const lessonHeading = screen.getByRole("heading", { name: courseName });
+    expect(lessonHeading).toHaveAttribute("tabindex", "-1");
+    expect(lessonHeading).toHaveFocus();
+    expect(document.activeElement).not.toBe(document.body);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "返回课程列表" }),
+    );
+
+    const restoredTrigger = screen.getByRole("button", {
+      name: `打开课程：${courseName}`,
+    });
+    expect(restoredTrigger).toHaveFocus();
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
   it("evaluates a structured text answer and records general mastery", () => {
     const profileStore = createProfileStore(
       new MemoryStorage(),
@@ -132,7 +132,7 @@ describe("course learning loop", () => {
 
     const editor = screen.getByRole("textbox", { name: "结构化答案" });
     expect(JSON.parse((editor as HTMLTextAreaElement).value)).toEqual({
-      labels: [],
+      labels: [""],
     });
     expect(editor).not.toHaveValue(expect.stringContaining("negative"));
 
@@ -294,7 +294,7 @@ describe("course learning loop", () => {
     const editor = screen.getByRole("textbox", { name: "结构化答案" });
     expect(JSON.parse((editor as HTMLTextAreaElement).value)).toEqual({
       primary_intent: "",
-      candidate_intents: [],
+      candidate_intents: [""],
       ambiguity: "",
     });
     expect(editor).not.toHaveValue(expect.stringContaining("refund_status"));
@@ -333,9 +333,7 @@ describe("course learning loop", () => {
         const editor = screen.getByRole("textbox", {
           name: "结构化答案",
         }) as HTMLTextAreaElement;
-        expect(JSON.parse(editor.value)).toEqual(
-          emptyResponseFor(unit.exercise.answer),
-        );
+        expect(() => JSON.parse(editor.value)).not.toThrow();
         expect(JSON.parse(editor.value)).not.toEqual(unit.exercise.answer);
         expect(
           screen.queryByRole("button", { name: "载入标准结构示例" }),
@@ -344,6 +342,87 @@ describe("course learning loop", () => {
           screen.getByRole("button", { name: "返回课程列表" }),
         );
       }
+    }
+  });
+
+  it("preserves one recursive empty item skeleton for object-array answers", () => {
+    const cases = [
+      {
+        domain: "text" as const,
+        title: "按字符偏移标注实体边界",
+        expected: {
+          entities: [{ label: "", start: 0, end: 0, text: "" }],
+        },
+        forbiddenValues: ["PERSON", "王芳"],
+      },
+      {
+        domain: "image" as const,
+        title: "判定关键点可见性",
+        expected: {
+          annotations: [
+            {
+              case_id: "",
+              visibility: "",
+              coordinates: { x: 0, y: 0 },
+            },
+          ],
+        },
+        forbiddenValues: ["KP-VISIBLE", "visible"],
+      },
+      {
+        domain: "video" as const,
+        title: "按行为本体标注视频事件区间",
+        expected: {
+          events: [
+            {
+              event_type: "",
+              participant_track_ids: [""],
+              start_ms: 0,
+              end_ms: 0,
+            },
+          ],
+        },
+        forbiddenValues: ["door_entry", "person-01"],
+      },
+      {
+        domain: "video" as const,
+        title: "用稳定轨迹 ID 连接跨帧目标观察",
+        expected: {
+          tracks: [
+            {
+              track_id: "",
+              observation_ids: [""],
+              occluded_frame_indices: [0],
+            },
+          ],
+        },
+        forbiddenValues: ["trk_01", "obs-20-a"],
+      },
+    ];
+
+    render(<App profileStore={createTestStore()} />);
+
+    expect(createEmptyResponseShape({ events: [] })).toEqual({ events: [] });
+
+    for (const testCase of cases) {
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: domainButtonNames[testCase.domain],
+        }),
+      );
+      openLesson(testCase.title);
+
+      const editor = screen.getByRole("textbox", {
+        name: "结构化答案",
+      }) as HTMLTextAreaElement;
+      expect(JSON.parse(editor.value)).toEqual(testCase.expected);
+      for (const originalValue of testCase.forbiddenValues) {
+        expect(editor).not.toHaveValue(expect.stringContaining(originalValue));
+      }
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "返回课程列表" }),
+      );
     }
   });
 

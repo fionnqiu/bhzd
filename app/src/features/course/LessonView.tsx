@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useAppContext } from "../../app/AppContext";
 import { Button } from "../../components/Button";
@@ -138,10 +138,15 @@ const POLICY_SECTIONS = [
 
 interface LessonViewProps {
   unit: TeachingUnit;
+  focusOnMount?: boolean;
   onBack(): void;
 }
 
-export function LessonView({ unit, onBack }: LessonViewProps) {
+export function LessonView({
+  unit,
+  focusOnMount = false,
+  onBack,
+}: LessonViewProps) {
   const {
     selectedScenarioId,
     profileSnapshot,
@@ -149,6 +154,7 @@ export function LessonView({ unit, onBack }: LessonViewProps) {
   } = useAppContext();
   const [result, setResult] = useState<EvaluationResult | null>(null);
   const [evaluationError, setEvaluationError] = useState<string | null>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
   const goals = Array.isArray(unit.goals) ? unit.goals : [];
   const practiceVariants = safePracticeVariants(unit.practice_variants);
   const responseSpace =
@@ -156,6 +162,12 @@ export function LessonView({ unit, onBack }: LessonViewProps) {
     (isRecord(unit.exercise.evaluation)
       ? unit.exercise.evaluation.response_space
       : undefined);
+
+  useEffect(() => {
+    if (focusOnMount) {
+      titleRef.current?.focus();
+    }
+  }, [focusOnMount]);
 
   const evaluateSubmission = (submission: unknown) => {
     let nextResult: EvaluationResult;
@@ -197,7 +209,9 @@ export function LessonView({ unit, onBack }: LessonViewProps) {
         </Button>
         <div className="lesson-view__title">
           <p className="eyebrow eyebrow--ink">LESSON FIX / {unit.data_type}</p>
-          <h1>{unit.title}</h1>
+          <h1 ref={titleRef} tabIndex={-1}>
+            {unit.title}
+          </h1>
           <p className="lesson-view__id">{unit.id}</p>
         </div>
         <dl className="lesson-view__status">

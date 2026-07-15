@@ -1,4 +1,4 @@
-import { useId, useMemo } from "react";
+import { useEffect, useId, useMemo, useRef } from "react";
 
 import {
   DOMAIN_LABELS,
@@ -48,15 +48,20 @@ export const isConsumableTeachingUnit = (
 interface CourseBrowserProps {
   repository: ConsumableUnitSource;
   domain: Domain;
+  focusUnitId?: string | null;
+  onFocusRestored?(): void;
   onOpenUnit(unit: TeachingUnit): void;
 }
 
 export function CourseBrowser({
   repository,
   domain,
+  focusUnitId = null,
+  onFocusRestored,
   onOpenUnit,
 }: CourseBrowserProps) {
   const headingId = useId();
+  const courseButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const units = useMemo(
     () =>
       repository
@@ -66,6 +71,20 @@ export function CourseBrowser({
     [domain, repository],
   );
   const domainLabel = DOMAIN_LABELS[domain];
+
+  useEffect(() => {
+    if (focusUnitId === null) {
+      return;
+    }
+
+    const trigger = courseButtonRefs.current.get(focusUnitId);
+    if (trigger === undefined) {
+      return;
+    }
+
+    trigger.focus();
+    onFocusRestored?.();
+  }, [focusUnitId, onFocusRestored]);
 
   return (
     <section className="course-browser" aria-labelledby={headingId}>
@@ -118,6 +137,13 @@ export function CourseBrowser({
                 </dl>
               </div>
               <Button
+                ref={(element) => {
+                  if (element === null) {
+                    courseButtonRefs.current.delete(unit.id);
+                  } else {
+                    courseButtonRefs.current.set(unit.id, element);
+                  }
+                }}
                 variant="primary"
                 aria-label={`打开课程：${unit.title}`}
                 onClick={() => onOpenUnit(unit)}

@@ -140,6 +140,8 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
   const resetDialogRef = useRef<HTMLDivElement>(null);
   const resetWasOpenRef = useRef(false);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const openedCourseTriggerIdRef = useRef<string | null>(null);
+  const pendingCourseFocusRestoreRef = useRef<string | null>(null);
   const listedUnits = useMemo(
     () => repository.listConsumableUnits(),
     [repository],
@@ -380,6 +382,10 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
                   <CourseBrowser
                     repository={repository}
                     domain={selectedDomain}
+                    focusUnitId={pendingCourseFocusRestoreRef.current}
+                    onFocusRestored={() => {
+                      pendingCourseFocusRestoreRef.current = null;
+                    }}
                     onOpenUnit={(unit) => {
                       if (
                         selectableUnits.some(
@@ -388,6 +394,8 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
                             candidate.data_type === selectedDomain,
                         )
                       ) {
+                        openedCourseTriggerIdRef.current = unit.id;
+                        pendingCourseFocusRestoreRef.current = null;
                         selectUnit(unit.id);
                       }
                     }}
@@ -396,7 +404,14 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
                   <LessonView
                     key={selectedUnit.id}
                     unit={selectedUnit}
-                    onBack={() => selectUnit(null)}
+                    focusOnMount={
+                      openedCourseTriggerIdRef.current === selectedUnit.id
+                    }
+                    onBack={() => {
+                      pendingCourseFocusRestoreRef.current =
+                        openedCourseTriggerIdRef.current;
+                      selectUnit(null);
+                    }}
                   />
                 )
               ) : (

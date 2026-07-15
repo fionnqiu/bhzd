@@ -15,7 +15,9 @@ const isJsonScalar = (value: unknown): value is JsonScalar =>
 
 export const createEmptyResponseShape = (template: unknown): unknown => {
   if (Array.isArray(template)) {
-    return [];
+    return template.length === 0
+      ? []
+      : [createEmptyResponseShape(template[0])];
   }
   if (template === null) {
     return null;
