@@ -5,6 +5,29 @@ export interface TextGridInspection {
   readonly issues: readonly DiagnosticIssue[];
 }
 
+interface IndexedHeader {
+  readonly lineIndex: number;
+  readonly declaredIndex: number;
+}
+
+interface DeclaredCount {
+  readonly found: boolean;
+  readonly value: number | null;
+}
+
+interface IntervalFields {
+  readonly start: number | null;
+  readonly end: number | null;
+  readonly hasLabel: boolean;
+}
+
+const TIER_HEADER = /^\s*item\s*\[(\d+)\]\s*:\s*$/u;
+const INTERVAL_HEADER = /^\s*intervals\s*\[(\d+)\]\s*:\s*$/u;
+const LONG_FILE_HEADER = /^\s*File type\s*=\s*"ooTextFile"\s*$/u;
+const TEXTGRID_CLASS_HEADER = /^\s*Object class\s*=\s*"TextGrid"\s*$/u;
+const GLOBAL_SIZE = /^\s*size\s*=\s*([^\s]+)\s*$/u;
+const INTERVAL_SIZE = /^\s*intervals\s*:\s*size\s*=\s*([^\s]+)\s*$/u;
+
 const issue = (
   code: string,
   severity: DiagnosticSeverity,
@@ -18,10 +41,15 @@ const issue = (
   remediation: [],
 });
 
-const numberField = (lines: readonly string[], field: string): number | null => {
+const numberFieldInRange = (
+  lines: readonly string[],
+  start: number,
+  end: number,
+  field: string,
+): number | null => {
   const pattern = new RegExp(`^\\s*${field}\\s*=\\s*([^\\s]+)`, "u");
-  for (const line of lines) {
-    const match = pattern.exec(line);
+  for (let index = start; index < end; index += 1) {
+    const match = pattern.exec(lines[index] ?? "");
     if (match?.[1] !== undefined) {
       const value = Number(match[1]);
       return Number.isFinite(value) ? value : null;
@@ -30,10 +58,15 @@ const numberField = (lines: readonly string[], field: string): number | null => 
   return null;
 };
 
-const quotedField = (lines: readonly string[], field: string): string | null => {
+const quotedFieldInRange = (
+  lines: readonly string[],
+  start: number,
+  end: number,
+  field: string,
+): string | null => {
   const pattern = new RegExp(`^\\s*${field}\\s*=\\s*"([\\s\\S]*)"\\s*$`, "u");
-  for (const line of lines) {
-    const match = pattern.exec(line);
+  for (let index = start; index < end; index += 1) {
+    const match = pattern.exec(lines[index] ?? "");
     if (match?.[1] !== undefined) {
       return match[1];
     }
@@ -41,86 +74,243 @@ const quotedField = (lines: readonly string[], field: string): string | null => 
   return null;
 };
 
-const parseIntervalBlock = (
+const declaredCountInRange = (
   lines: readonly string[],
   start: number,
   end: number,
-  tierIndex: number,
-  issues: DiagnosticIssue[],
-): void => {
-  const intervals: { start: number; end: number; index: number }[] = [];
+  pattern: RegExp,
+): DeclaredCount => {
   for (let index = start; index < end; index += 1) {
-    const header = /^\s*intervals\s*\[(\d+)\]\s*:\s*$/u.exec(lines[index] ?? "");
-    if (header === null) {
+    const match = pattern.exec(lines[index] ?? "");
+    if (match?.[1] === undefined) {
       continue;
     }
-    const nextHeader = lines.findIndex((line, candidateIndex) =>
-      candidateIndex > index &&
-      candidateIndex < end &&
-      /^\s*intervals\s*\[\d+\]\s*:\s*$/u.test(line),
-    );
-    const blockEnd = nextHeader === -1 ? end : nextHeader;
-    const block = lines.slice(index + 1, blockEnd);
-    const startValue = numberField(block, "xmin");
-    const endValue = numberField(block, "xmax");
-    if (startValue === null || endValue === null) {
-      issues.push(
-        issue(
-          "invalid_interval_bounds",
-          "severe",
-          `TextGrid tier ${tierIndex} has an interval without finite xmin/xmax.`,
-        ),
-      );
-    } else {
-      intervals.push({ start: startValue, end: endValue, index: Number(header[1]) });
-      if (startValue > endValue) {
-        issues.push(
-          issue(
-            "interval_bounds_reversed",
-            "severe",
-            `TextGrid tier ${tierIndex} interval ${header[1]} has xmin greater than xmax.`,
-          ),
-        );
-      }
-    }
-    if (quotedField(block, "text") === null) {
-      issues.push(
-        issue(
-          "missing_interval_label",
-          "moderate",
-          `TextGrid tier ${tierIndex} interval ${header[1]} has no text label.`,
-        ),
-      );
-    }
-    index = blockEnd - 1;
+    const value = Number(match[1]);
+    return {
+      found: true,
+      value: Number.isSafeInteger(value) && value >= 0 ? value : null,
+    };
   }
+  return { found: false, value: null };
+};
 
-  for (let index = 1; index < intervals.length; index += 1) {
-    const previous = intervals[index - 1];
-    const current = intervals[index];
-    if (current.start < previous.start) {
+const collectHeaders = (
+  lines: readonly string[],
+  start: number,
+  end: number,
+  pattern: RegExp,
+): IndexedHeader[] => {
+  const headers: IndexedHeader[] = [];
+  for (let lineIndex = start; lineIndex < end; lineIndex += 1) {
+    const match = pattern.exec(lines[lineIndex] ?? "");
+    if (match?.[1] !== undefined) {
+      headers.push({ lineIndex, declaredIndex: Number(match[1]) });
+    }
+  }
+  return headers;
+};
+
+const validateHeaderIndices = (
+  headers: readonly IndexedHeader[],
+  entity: "tier" | "interval",
+  tierPosition: number | null,
+  issues: DiagnosticIssue[],
+): void => {
+  const seen = new Set<number>();
+  for (const [position, header] of headers.entries()) {
+    const context = tierPosition === null ? "TextGrid" : `TextGrid tier ${tierPosition}`;
+    if (!Number.isSafeInteger(header.declaredIndex) || header.declaredIndex <= 0) {
       issues.push(
         issue(
-          "interval_out_of_order",
-          "moderate",
-          `TextGrid tier ${tierIndex} intervals are not ordered by xmin.`,
+          `invalid_${entity}_index`,
+          "severe",
+          `${context} has an invalid ${entity} index.`,
+        ),
+      );
+      continue;
+    }
+    if (seen.has(header.declaredIndex)) {
+      issues.push(
+        issue(
+          `duplicate_${entity}_index`,
+          "severe",
+          `${context} repeats ${entity} index ${header.declaredIndex}.`,
         ),
       );
     }
-    // Equality is intentionally allowed: adjacent intervals are not overlap.
-    if (current.start < previous.end) {
+    seen.add(header.declaredIndex);
+    if (header.declaredIndex !== position + 1) {
       issues.push(
         issue(
-          "interval_overlap",
-          "severe",
-          `TextGrid tier ${tierIndex} intervals ${previous.index} and ${current.index} overlap.`,
+          `non_sequential_${entity}_index`,
+          "moderate",
+          `${context} ${entity} indices must be sequential from 1.`,
         ),
       );
     }
   }
 };
 
-/** Validate Praat's long text TextGrid format without evaluating label meaning. */
+const validateDeclaredCount = (
+  declared: DeclaredCount,
+  observed: number,
+  entity: "tier" | "interval",
+  tierPosition: number | null,
+  issues: DiagnosticIssue[],
+): void => {
+  const context = tierPosition === null ? "TextGrid" : `TextGrid tier ${tierPosition}`;
+  if (!declared.found) {
+    issues.push(
+      issue(
+        `missing_${entity}_count`,
+        "moderate",
+        `${context} must declare its ${entity} count.`,
+      ),
+    );
+    return;
+  }
+  if (declared.value === null) {
+    issues.push(
+      issue(
+        `invalid_${entity}_count`,
+        "severe",
+        `${context} ${entity} count must be a non-negative integer.`,
+      ),
+    );
+    return;
+  }
+  if (declared.value !== observed) {
+    issues.push(
+      issue(
+        `${entity}_count_mismatch`,
+        "severe",
+        `${context} declares ${declared.value} ${entity}(s) but contains ${observed}.`,
+      ),
+    );
+  }
+};
+
+const parseIntervalFields = (
+  lines: readonly string[],
+  start: number,
+  end: number,
+): IntervalFields => {
+  let intervalStart: number | null = null;
+  let intervalEnd: number | null = null;
+  let hasLabel = false;
+  for (let index = start; index < end; index += 1) {
+    const line = lines[index] ?? "";
+    if (intervalStart === null) {
+      const match = /^\s*xmin\s*=\s*([^\s]+)/u.exec(line);
+      if (match?.[1] !== undefined) {
+        const value = Number(match[1]);
+        intervalStart = Number.isFinite(value) ? value : null;
+        continue;
+      }
+    }
+    if (intervalEnd === null) {
+      const match = /^\s*xmax\s*=\s*([^\s]+)/u.exec(line);
+      if (match?.[1] !== undefined) {
+        const value = Number(match[1]);
+        intervalEnd = Number.isFinite(value) ? value : null;
+        continue;
+      }
+    }
+    if (/^\s*text\s*=\s*"[\s\S]*"\s*$/u.test(line)) {
+      hasLabel = true;
+    }
+  }
+  return { start: intervalStart, end: intervalEnd, hasLabel };
+};
+
+const validateIntervals = (
+  lines: readonly string[],
+  headers: readonly IndexedHeader[],
+  tierEndLine: number,
+  tierPosition: number,
+  tierStart: number | null,
+  tierEnd: number | null,
+  globalStart: number | null,
+  globalEnd: number | null,
+  issues: DiagnosticIssue[],
+): void => {
+  let previous: { readonly start: number; readonly end: number; readonly index: number } | null = null;
+
+  for (const [position, header] of headers.entries()) {
+    const blockEnd = headers[position + 1]?.lineIndex ?? tierEndLine;
+    const parsed = parseIntervalFields(lines, header.lineIndex + 1, blockEnd);
+    if (parsed.start === null || parsed.end === null) {
+      issues.push(
+        issue(
+          "invalid_interval_bounds",
+          "severe",
+          `TextGrid tier ${tierPosition} interval ${header.declaredIndex} needs finite xmin/xmax.`,
+        ),
+      );
+    } else {
+      if (parsed.start > parsed.end) {
+        issues.push(
+          issue(
+            "interval_bounds_reversed",
+            "severe",
+            `TextGrid tier ${tierPosition} interval ${header.declaredIndex} has xmin greater than xmax.`,
+          ),
+        );
+      }
+      if (
+        (tierStart !== null && parsed.start < tierStart) ||
+        (tierEnd !== null && parsed.end > tierEnd) ||
+        (globalStart !== null && parsed.start < globalStart) ||
+        (globalEnd !== null && parsed.end > globalEnd)
+      ) {
+        issues.push(
+          issue(
+            "interval_out_of_bounds",
+            "severe",
+            `TextGrid tier ${tierPosition} interval ${header.declaredIndex} lies outside declared bounds.`,
+          ),
+        );
+      }
+      if (previous !== null) {
+        if (parsed.start < previous.start) {
+          issues.push(
+            issue(
+              "interval_out_of_order",
+              "moderate",
+              `TextGrid tier ${tierPosition} intervals are not ordered by xmin.`,
+            ),
+          );
+        }
+        // Equality is intentionally allowed: adjacent intervals are not overlap.
+        if (parsed.start < previous.end) {
+          issues.push(
+            issue(
+              "interval_overlap",
+              "severe",
+              `TextGrid tier ${tierPosition} intervals ${previous.index} and ${header.declaredIndex} overlap.`,
+            ),
+          );
+        }
+      }
+      previous = {
+        start: parsed.start,
+        end: parsed.end,
+        index: header.declaredIndex,
+      };
+    }
+    if (!parsed.hasLabel) {
+      issues.push(
+        issue(
+          "missing_interval_label",
+          "moderate",
+          `TextGrid tier ${tierPosition} interval ${header.declaredIndex} has no text label.`,
+        ),
+      );
+    }
+  }
+};
+
+/** Validate Praat's long text TextGrid format in time linear to its line count. */
 export const inspectTextGrid = (text: string): TextGridInspection => {
   if (text.includes("\u0000")) {
     return {
@@ -136,15 +326,19 @@ export const inspectTextGrid = (text: string): TextGridInspection => {
   }
 
   const lines = text.replace(/^\uFEFF/u, "").split(/\r?\n/u);
-  const hasLongHeader =
-    lines.some((line) => /^\s*File type\s*=\s*"ooTextFile"/u.test(line)) &&
-    lines.some((line) => /^\s*Object class\s*=\s*"TextGrid"/u.test(line));
-  const tierStarts = lines
-    .map((line, index) => ({ line, index }))
-    .filter(({ line }) => /^\s*item\s*\[\d+\]\s*:\s*$/u.test(line));
-  const hasIntervals = lines.some((line) => /^\s*intervals\s*\[\d+\]\s*:\s*$/u.test(line));
+  let hasLongHeader = false;
+  let hasTextGridClass = false;
+  const tierHeaders: IndexedHeader[] = [];
+  for (const [lineIndex, line] of lines.entries()) {
+    hasLongHeader ||= LONG_FILE_HEADER.test(line);
+    hasTextGridClass ||= TEXTGRID_CLASS_HEADER.test(line);
+    const match = TIER_HEADER.exec(line);
+    if (match?.[1] !== undefined) {
+      tierHeaders.push({ lineIndex, declaredIndex: Number(match[1]) });
+    }
+  }
 
-  if (!hasLongHeader || tierStarts.length === 0 || !hasIntervals) {
+  if (!hasLongHeader || !hasTextGridClass || tierHeaders.length === 0) {
     return {
       supported: false,
       issues: [
@@ -158,8 +352,9 @@ export const inspectTextGrid = (text: string): TextGridInspection => {
   }
 
   const issues: DiagnosticIssue[] = [];
-  const globalStart = numberField(lines.slice(0, tierStarts[0].index), "xmin");
-  const globalEnd = numberField(lines.slice(0, tierStarts[0].index), "xmax");
+  const globalEndLine = tierHeaders[0].lineIndex;
+  const globalStart = numberFieldInRange(lines, 0, globalEndLine, "xmin");
+  const globalEnd = numberFieldInRange(lines, 0, globalEndLine, "xmax");
   if (globalStart === null || globalEnd === null) {
     issues.push(
       issue(
@@ -178,103 +373,111 @@ export const inspectTextGrid = (text: string): TextGridInspection => {
     );
   }
 
-  for (let tierIndex = 0; tierIndex < tierStarts.length; tierIndex += 1) {
-    const tierStart = tierStarts[tierIndex].index;
-    const tierEnd = tierStarts[tierIndex + 1]?.index ?? lines.length;
-    const tierLines = lines.slice(tierStart, tierEnd);
-    const className = quotedField(tierLines, "class");
+  validateDeclaredCount(
+    declaredCountInRange(lines, 0, globalEndLine, GLOBAL_SIZE),
+    tierHeaders.length,
+    "tier",
+    null,
+    issues,
+  );
+  validateHeaderIndices(tierHeaders, "tier", null, issues);
+
+  for (const [position, tierHeader] of tierHeaders.entries()) {
+    const tierPosition = position + 1;
+    const tierEndLine = tierHeaders[position + 1]?.lineIndex ?? lines.length;
+    const intervalHeaders = collectHeaders(
+      lines,
+      tierHeader.lineIndex + 1,
+      tierEndLine,
+      INTERVAL_HEADER,
+    );
+    const metadataEnd = intervalHeaders[0]?.lineIndex ?? tierEndLine;
+    const className = quotedFieldInRange(
+      lines,
+      tierHeader.lineIndex + 1,
+      metadataEnd,
+      "class",
+    );
     if (className !== "IntervalTier") {
       issues.push(
         issue(
           "unsupported_textgrid_tier",
           "moderate",
-          `TextGrid tier ${tierIndex + 1} is not an IntervalTier.`,
+          `TextGrid tier ${tierPosition} is not an IntervalTier.`,
         ),
       );
       continue;
     }
-    const tierStartValue = numberField(tierLines, "xmin");
-    const tierEndValue = numberField(tierLines, "xmax");
-    if (tierStartValue === null || tierEndValue === null) {
+
+    const tierStart = numberFieldInRange(
+      lines,
+      tierHeader.lineIndex + 1,
+      metadataEnd,
+      "xmin",
+    );
+    const tierEnd = numberFieldInRange(
+      lines,
+      tierHeader.lineIndex + 1,
+      metadataEnd,
+      "xmax",
+    );
+    if (tierStart === null || tierEnd === null) {
       issues.push(
         issue(
           "invalid_tier_bounds",
           "severe",
-          `TextGrid tier ${tierIndex + 1} must declare finite xmin/xmax.`,
+          `TextGrid tier ${tierPosition} must declare finite xmin/xmax.`,
         ),
       );
     } else {
-      if (tierStartValue > tierEndValue) {
+      if (tierStart > tierEnd) {
         issues.push(
           issue(
             "tier_bounds_reversed",
             "severe",
-            `TextGrid tier ${tierIndex + 1} xmin must not exceed xmax.`,
+            `TextGrid tier ${tierPosition} xmin must not exceed xmax.`,
           ),
         );
       }
       if (
         globalStart !== null &&
         globalEnd !== null &&
-        (tierStartValue < globalStart || tierEndValue > globalEnd)
+        (tierStart < globalStart || tierEnd > globalEnd)
       ) {
         issues.push(
           issue(
             "tier_out_of_bounds",
             "severe",
-            `TextGrid tier ${tierIndex + 1} lies outside global bounds.`,
+            `TextGrid tier ${tierPosition} lies outside global bounds.`,
           ),
         );
       }
     }
-    const intervalStart = tierLines.findIndex((line) =>
-      /^\s*intervals\s*\[\d+\]\s*:\s*$/u.test(line),
-    );
-    if (intervalStart === -1) {
-      issues.push(
-        issue(
-          "missing_intervals",
-          "moderate",
-          `TextGrid tier ${tierIndex + 1} has no intervals.`,
-        ),
-      );
-      continue;
-    }
-    parseIntervalBlock(
-      tierLines,
-      intervalStart,
-      tierLines.length,
-      tierIndex + 1,
+
+    validateDeclaredCount(
+      declaredCountInRange(
+        lines,
+        tierHeader.lineIndex + 1,
+        metadataEnd,
+        INTERVAL_SIZE,
+      ),
+      intervalHeaders.length,
+      "interval",
+      tierPosition,
       issues,
     );
-
-    // Check each interval against both tier and global bounds.
-    const intervalHeaders = tierLines
-      .map((line, index) => ({ line, index }))
-      .filter(({ line }) => /^\s*intervals\s*\[\d+\]\s*:\s*$/u.test(line));
-    for (const [intervalIndex, header] of intervalHeaders.entries()) {
-      const end = intervalHeaders[intervalIndex + 1]?.index ?? tierLines.length;
-      const bounds = tierLines.slice(header.index + 1, end);
-      const startValue = numberField(bounds, "xmin");
-      const endValue = numberField(bounds, "xmax");
-      if (startValue === null || endValue === null) {
-        continue;
-      }
-      if (
-        (tierStartValue !== null && startValue < tierStartValue) ||
-        (tierEndValue !== null && endValue > tierEndValue) ||
-        (globalStart !== null && startValue < globalStart) ||
-        (globalEnd !== null && endValue > globalEnd)
-      ) {
-        issues.push(
-          issue(
-            "interval_out_of_bounds",
-            "severe",
-            `TextGrid tier ${tierIndex + 1} interval lies outside declared bounds.`,
-          ),
-        );
-      }
-    }
+    validateHeaderIndices(intervalHeaders, "interval", tierPosition, issues);
+    validateIntervals(
+      lines,
+      intervalHeaders,
+      tierEndLine,
+      tierPosition,
+      tierStart,
+      tierEnd,
+      globalStart,
+      globalEnd,
+      issues,
+    );
   }
 
   return { supported: true, issues };

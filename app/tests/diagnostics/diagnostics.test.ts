@@ -1,5 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
-import { diagnoseFile } from "../../src/diagnostics/diagnose";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  diagnoseFile,
+  MAX_DIAGNOSTIC_FILE_BYTES,
+} from "../../src/diagnostics/diagnose";
 import { detectFormat } from "../../src/diagnostics/detectFormat";
 import { inspectJsonText } from "../../src/diagnostics/json";
 import { inspectTextGrid } from "../../src/diagnostics/textGrid";
@@ -36,6 +39,110 @@ const passEvaluator = () => ({
   dataVersion: "1.0.0",
   evaluationVersion: "1.0.0",
   manualReviewRequired: false,
+});
+
+const intervalTier = (
+  tierIndex: number,
+  intervalIndices: readonly number[],
+  declaredIntervalCount = intervalIndices.length,
+): string => {
+  const intervals = intervalIndices.map((intervalIndex, position) => `
+        intervals [${intervalIndex}]:
+            xmin = ${position}
+            xmax = ${position + 1}
+            text = "segment-${position + 1}"`).join("");
+  return `    item [${tierIndex}]:
+        class = "IntervalTier"
+        name = "tier-${tierIndex}"
+        xmin = 0
+        xmax = ${Math.max(1, intervalIndices.length)}
+        intervals: size = ${declaredIntervalCount}${intervals}`;
+};
+
+const textGridDocument = (
+  tiers: readonly string[],
+  declaredTierCount = tiers.length,
+  xmax = 10,
+): string => `File type = "ooTextFile"
+Object class = "TextGrid"
+xmin = 0
+xmax = ${xmax}
+tiers? <exists>
+size = ${declaredTierCount}
+item []:
+${tiers.join("\n")}`;
+
+const largeTextGrid = (intervalCount: number): string =>
+  textGridDocument(
+    [intervalTier(1, Array.from({ length: intervalCount }, (_, index) => index + 1))],
+    1,
+    intervalCount,
+  );
+
+const textGridStructureCases = [
+  {
+    name: "declared tier count",
+    text: textGridDocument([intervalTier(1, [1])], 2),
+    code: "tier_count_mismatch",
+  },
+  {
+    name: "declared interval count",
+    text: textGridDocument([intervalTier(1, [1], 2)]),
+    code: "interval_count_mismatch",
+  },
+  {
+    name: "duplicate tier index",
+    text: textGridDocument([intervalTier(1, [1]), intervalTier(1, [1])]),
+    code: "duplicate_tier_index",
+  },
+  {
+    name: "skipped tier index",
+    text: textGridDocument([intervalTier(1, [1]), intervalTier(3, [1])]),
+    code: "non_sequential_tier_index",
+  },
+  {
+    name: "duplicate interval index",
+    text: textGridDocument([intervalTier(1, [1, 1])]),
+    code: "duplicate_interval_index",
+  },
+  {
+    name: "skipped interval index",
+    text: textGridDocument([intervalTier(1, [1, 3])]),
+    code: "non_sequential_interval_index",
+  },
+] as const;
+
+const invalidEvaluationCases: readonly {
+  readonly name: string;
+  readonly fields: Readonly<Record<string, unknown>>;
+}[] = [
+  { name: "out-of-range score", fields: { score: 2 } },
+  { name: "non-boolean passed", fields: { passed: "yes" } },
+  { name: "unknown match", fields: { matched: "bogus" } },
+  { name: "non-string error type", fields: { errorType: 7 } },
+  { name: "non-string feedback", fields: { feedback: null } },
+  { name: "invalid remediation list", fields: { remediation: [1] } },
+  { name: "invalid rule refs", fields: { ruleRefs: "RULE" } },
+  { name: "invalid capability refs", fields: { capabilityRefs: [null] } },
+  { name: "invalid data version", fields: { dataVersion: 1 } },
+  { name: "invalid evaluation version", fields: { evaluationVersion: null } },
+  {
+    name: "non-boolean manual review flag",
+    fields: { manualReviewRequired: "false" },
+  },
+  {
+    name: "passed unclassified result",
+    fields: { matched: "unclassified", passed: true },
+  },
+  {
+    name: "passed diagnostic rule",
+    fields: { matched: "diagnostic_rule", passed: true },
+  },
+];
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("local diagnostics", () => {
@@ -84,18 +191,22 @@ describe("local diagnostics", () => {
     );
   });
 
-  it("allows exactly five MiB and reads a file body once", async () => {
-    const body = "{}";
+  it("allows an actual JSON body of exactly five MiB and reads it once", async () => {
+    const prefix = '{"payload":"';
+    const suffix = '"}';
+    const body = `${prefix}${"x".repeat(
+      MAX_DIAGNOSTIC_FILE_BYTES - prefix.length - suffix.length,
+    )}${suffix}`;
     let reads = 0;
+    const base = fileFromText(body, "exact.json", "application/json");
     const file = {
-      name: "exact.json",
-      type: "application/json",
-      size: 5 * 1024 * 1024,
+      ...base,
       text: async () => {
         reads += 1;
         return body;
       },
     };
+    expect(file.size).toBe(MAX_DIAGNOSTIC_FILE_BYTES);
     const result = await diagnoseFile(file, { dataType: "text", targetUnitId: null });
     expect(result.status).toBe("manual_review");
     expect(reads).toBe(1);
@@ -270,6 +381,85 @@ describe("local diagnostics", () => {
     expect(missing.issues.every((candidate) => !candidate.message.includes("negative"))).toBe(true);
   });
 
+  it("bounds deeply nested generic JSON without throwing or affecting mastery", async () => {
+    const depth = 10_000;
+    const body = `{"labels":${"[".repeat(depth)}"negative"${"]".repeat(depth)}}`;
+    expect(new TextEncoder().encode(body).byteLength).toBeLessThan(40 * 1024);
+    const report = await diagnoseFile(
+      fileFromText(body, "deep.json", "application/json"),
+      { dataType: "text", targetUnitId: "TU-TEXT-LABEL-VOCAB-001" },
+      { evaluator: passEvaluator },
+    );
+    expect(["manual_review", "rejected"]).toContain(report.status);
+    expect(report.score).toBeNull();
+    expect(report.masteryImpact).toBe(false);
+    expect(report.issues).toContainEqual(
+      expect.objectContaining({ code: "response_structure_too_deep" }),
+    );
+  });
+
+  it.each(invalidEvaluationCases)(
+    "rejects evaluator contract violation: $name",
+    async ({ fields }) => {
+      const evaluator = () => {
+        const result = passEvaluator();
+        for (const [field, value] of Object.entries(fields)) {
+          Object.defineProperty(result, field, { value, enumerable: true });
+        }
+        return result;
+      };
+      const report = await diagnoseFile(
+        fileFromText(
+          JSON.stringify({ labels: ["negative"] }),
+          "response.json",
+          "application/json",
+        ),
+        { dataType: "text", targetUnitId: "TU-TEXT-LABEL-VOCAB-001" },
+        { evaluator },
+      );
+      expect(report.status).toBe("manual_review");
+      expect(report.score).toBeNull();
+      expect(report.masteryImpact).toBe(false);
+      expect(report.issues).toContainEqual(
+        expect.objectContaining({ code: "evaluation_failed" }),
+      );
+    },
+  );
+
+  it("preserves a valid deterministic diagnostic-rule result", async () => {
+    const report = await diagnoseFile(
+      fileFromText(
+        JSON.stringify({ labels: ["wrong"] }),
+        "response.json",
+        "application/json",
+      ),
+      { dataType: "text", targetUnitId: "TU-TEXT-LABEL-VOCAB-001" },
+      {
+        evaluator: () => ({
+          score: 0,
+          passed: false,
+          matched: "diagnostic_rule",
+          errorType: "label_error",
+          feedback: "Review the label rule.",
+          remediation: ["Retry the exercise."],
+          ruleRefs: ["RULE-1"],
+          capabilityRefs: ["CAP-1"],
+          dataVersion: "1.0.0",
+          evaluationVersion: "1.0.0",
+          manualReviewRequired: false,
+        }),
+      },
+    );
+    expect(report).toMatchObject({
+      status: "complete",
+      score: 0,
+      masteryImpact: true,
+    });
+    expect(report.issues).toContainEqual(
+      expect.objectContaining({ code: "label_error", severity: "severe" }),
+    );
+  });
+
   it("keeps an annotations-only generic image answer as JSON and scores its published unit", async () => {
     const unit = teachingUnits.units.find(
       (candidate) => candidate.id === "TU-IMAGE-KEYPOINT-VISIBILITY-001",
@@ -344,6 +534,35 @@ item []:
     expect(inspectTextGrid("File type = \\\"ooTextFile\\\"\\nObject class = \\\"TextGrid\\\"\\n1 2").supported).toBe(false);
   });
 
+  it.each(textGridStructureCases)(
+    "keeps TextGrid $name failures out of mastery",
+    async ({ text, code }) => {
+      const report = await diagnoseFile(
+        fileFromText(text, "structure.TextGrid", "text/x-textgrid"),
+        {
+          dataType: "audio",
+          targetUnitId: "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001",
+        },
+        { evaluator: passEvaluator },
+      );
+      expect(report.status).toBe("manual_review");
+      expect(report.score).toBeNull();
+      expect(report.masteryImpact).toBe(false);
+      expect(report.issues).toContainEqual(expect.objectContaining({ code }));
+    },
+  );
+
+  it("parses a large valid TextGrid without structural findings", () => {
+    const intervalCount = 4_000;
+    const text = largeTextGrid(intervalCount);
+    expect(new TextEncoder().encode(text).byteLength).toBeLessThan(
+      MAX_DIAGNOSTIC_FILE_BYTES,
+    );
+    const result = inspectTextGrid(text);
+    expect(result.supported).toBe(true);
+    expect(result.issues).toEqual([]);
+  }, 30_000);
+
   it("reports screenshots as explanation-only for PNG and JPEG and calls no storage/network API", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
@@ -354,8 +573,6 @@ item []:
     expect(jpg).toMatchObject({ format: "image", status: "explanation_only", score: null, masteryImpact: false });
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(storageSet).not.toHaveBeenCalled();
-    storageSet.mockRestore();
-    vi.unstubAllGlobals();
   });
 
   it("keeps context and parser output isolated", async () => {
@@ -395,5 +612,19 @@ item []:
       text: async () => "{}",
     });
     expect(detected).toMatchObject({ format: "json", conflict: false });
+  });
+
+  it("does not let a supported MIME override an explicit unsupported extension", () => {
+    const detected = detectFormat({
+      name: "annotation-export.csv",
+      type: "application/json",
+      size: 2,
+      text: async () => "{}",
+    });
+    expect(detected).toMatchObject({
+      format: "unknown",
+      conflict: false,
+      code: "unsupported_extension",
+    });
   });
 });

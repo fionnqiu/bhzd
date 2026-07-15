@@ -309,6 +309,44 @@ const evaluationIssue = (
 const isValidScore = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
 
+const isEvaluationMatch = (
+  value: unknown,
+): value is EvaluationResult["matched"] =>
+  value === "diagnostic_rule" ||
+  value === "allowed_answer" ||
+  value === "answer" ||
+  value === "unclassified";
+
+const isStrictStringList = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === "string");
+
+const isEvaluationResult = (value: unknown): value is EvaluationResult => {
+  if (!isRecord(value)) {
+    return false;
+  }
+  if (
+    !isValidScore(value.score) ||
+    typeof value.passed !== "boolean" ||
+    !isEvaluationMatch(value.matched) ||
+    (value.errorType !== null && typeof value.errorType !== "string") ||
+    typeof value.feedback !== "string" ||
+    !isStrictStringList(value.remediation) ||
+    !isStrictStringList(value.ruleRefs) ||
+    !isStrictStringList(value.capabilityRefs) ||
+    typeof value.dataVersion !== "string" ||
+    typeof value.evaluationVersion !== "string" ||
+    typeof value.manualReviewRequired !== "boolean"
+  ) {
+    return false;
+  }
+  return !(
+    value.passed &&
+    (value.matched === "diagnostic_rule" ||
+      value.matched === "unclassified" ||
+      value.manualReviewRequired)
+  );
+};
+
 const readFileText = (file: DiagnosticFileLike): Promise<string> => {
   const textMethod = file.text;
   if (typeof textMethod === "function") {
@@ -566,7 +604,18 @@ export const diagnoseFile = async (
   }
 
   if (outputFormat === "json" && resolution.unit !== undefined) {
-    const shapeIssues = validateJsonResponseShape(resolution.unit, parsedValue);
+    let shapeIssues: readonly DiagnosticIssue[];
+    try {
+      shapeIssues = validateJsonResponseShape(resolution.unit, parsedValue);
+    } catch {
+      shapeIssues = [
+        issue(
+          "response_structure_validation_failed",
+          "moderate",
+          "The JSON response structure could not be validated safely.",
+        ),
+      ];
+    }
     if (shapeIssues.length > 0) {
       return freezeReport(
         "manual_review",
@@ -618,10 +667,11 @@ export const diagnoseFile = async (
 
   let result: EvaluationResult;
   try {
-    result = evaluator(evaluatorInput, parsedValue);
-    if (!isRecord(result)) {
-      throw new TypeError("Evaluator returned a non-object result.");
+    const candidate = evaluator(evaluatorInput, parsedValue);
+    if (!isEvaluationResult(candidate)) {
+      throw new TypeError("Evaluator returned an invalid result contract.");
     }
+    result = candidate;
   } catch {
     return freezeReport(
       "manual_review",

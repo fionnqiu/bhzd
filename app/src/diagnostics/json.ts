@@ -309,6 +309,106 @@ type JsonShape =
   | { readonly kind: "array"; readonly items: readonly JsonShape[] }
   | { readonly kind: "object"; readonly fields: ReadonlyMap<string, JsonShape> };
 
+export const MAX_JSON_RESPONSE_DEPTH = 128;
+export const MAX_JSON_RESPONSE_NODES = 100_000;
+
+interface JsonTraversalFrame {
+  readonly value: unknown;
+  readonly depth: number;
+}
+
+/** Bound untrusted JSON before any recursive response-shape comparison. */
+export const validateJsonResponseComplexity = (
+  value: unknown,
+): readonly DiagnosticIssue[] => {
+  const stack: JsonTraversalFrame[] = [{ value, depth: 0 }];
+  const seen = new WeakSet<object>();
+  let visited = 0;
+
+  while (stack.length > 0) {
+    const frame = stack.pop();
+    if (frame === undefined) {
+      break;
+    }
+    visited += 1;
+    if (visited > MAX_JSON_RESPONSE_NODES) {
+      return [
+        issue(
+          "response_structure_too_large",
+          "moderate",
+          "The JSON response contains too many nested values for local diagnosis.",
+        ),
+      ];
+    }
+    if (frame.depth > MAX_JSON_RESPONSE_DEPTH) {
+      return [
+        issue(
+          "response_structure_too_deep",
+          "moderate",
+          "The JSON response nesting depth exceeds the local diagnosis limit.",
+        ),
+      ];
+    }
+
+    const candidate = frame.value;
+    if (
+      candidate === null ||
+      typeof candidate === "string" ||
+      typeof candidate === "boolean" ||
+      (typeof candidate === "number" && Number.isFinite(candidate))
+    ) {
+      continue;
+    }
+    if (typeof candidate !== "object") {
+      return [
+        issue(
+          "response_structure_not_json",
+          "moderate",
+          "The response structure contains a non-JSON value.",
+        ),
+      ];
+    }
+    if (seen.has(candidate)) {
+      return [
+        issue(
+          "response_structure_not_json",
+          "moderate",
+          "The response structure contains a repeated object reference.",
+        ),
+      ];
+    }
+    seen.add(candidate);
+    const children = Array.isArray(candidate)
+      ? candidate
+      : isPlainObject(candidate)
+        ? Object.values(candidate)
+        : null;
+    if (children === null) {
+      return [
+        issue(
+          "response_structure_not_json",
+          "moderate",
+          "The response structure contains a non-plain object.",
+        ),
+      ];
+    }
+    if (visited + stack.length + children.length > MAX_JSON_RESPONSE_NODES) {
+      return [
+        issue(
+          "response_structure_too_large",
+          "moderate",
+          "The JSON response contains too many nested values for local diagnosis.",
+        ),
+      ];
+    }
+    for (let index = children.length - 1; index >= 0; index -= 1) {
+      stack.push({ value: children[index], depth: frame.depth + 1 });
+    }
+  }
+
+  return [];
+};
+
 const shapeOf = (value: unknown, ancestors = new WeakSet<object>()): JsonShape | null => {
   if (value === null) {
     return { kind: "null" };
@@ -490,6 +590,10 @@ export const validateJsonResponseShape = (
   unit: unknown,
   submission: unknown,
 ): readonly DiagnosticIssue[] => {
+  const complexityIssues = validateJsonResponseComplexity(submission);
+  if (complexityIssues.length > 0) {
+    return complexityIssues;
+  }
   const shapes = responseCandidates(unit)
     .map((candidate) => shapeOf(candidate))
     .filter((shape): shape is JsonShape => shape !== null);

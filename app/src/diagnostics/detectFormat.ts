@@ -58,6 +58,7 @@ export const detectFormat = (file: DiagnosticFileLike): DetectedFormat => {
   const rawMime = file.type ?? "";
   const byExtension = extensionFormat(name ?? "");
   const byMime = mimeFormat(rawMime);
+  const hasExtension = /\.[^./\\]+$/u.test(name ?? "");
 
   if (byExtension !== null && byMime !== null && byExtension !== byMime) {
     return {
@@ -74,10 +75,11 @@ export const detectFormat = (file: DiagnosticFileLike): DetectedFormat => {
   if (byMime !== null) {
     // A MIME type is sufficient when no recognized extension is present. An
     // explicit conflict is reserved for two recognized, disagreeing signals.
-    return { format: byMime, conflict: false };
+    return hasExtension
+      ? { format: "unknown", conflict: false, code: "unsupported_extension" }
+      : { format: byMime, conflict: false };
   }
 
-  const hasExtension = /\.[^./\\]+$/u.test(name ?? "");
   return hasExtension
     ? { format: "unknown", conflict: false, code: "unsupported_extension" }
     : { format: "unknown", conflict: false };
