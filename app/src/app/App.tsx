@@ -89,6 +89,23 @@ const MODE_INDEX = new Map(
   MODE_DETAILS.map(({ id }, index) => [id, index] as const),
 );
 
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
+
+const listFocusableElements = (container: HTMLElement): HTMLElement[] =>
+  Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (element) =>
+      element.tabIndex >= 0 &&
+      !element.hidden &&
+      element.getAttribute("aria-hidden") !== "true",
+  );
+
 export interface AppProps {
   repository?: ConsumableUnitSource;
   profileStore?: AppProfileStore;
@@ -112,6 +129,8 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
   const [resetNotice, setResetNotice] = useState<string | null>(null);
   const resetButtonRef = useRef<HTMLButtonElement>(null);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const resetDialogRef = useRef<HTMLDivElement>(null);
+  const resetWasOpenRef = useRef(false);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const counts = useMemo(
     () => countConsumableUnitsByDomain(repository.listConsumableUnits()),
@@ -124,23 +143,87 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
     MODE_DETAILS[MODE_INDEX.get(selectedWorkMode) ?? 0] ?? MODE_DETAILS[0];
 
   useEffect(() => {
-    if (!resetOpen) {
+    if (resetOpen) {
+      resetWasOpenRef.current = true;
+      cancelButtonRef.current?.focus();
+
+      const containFocus = (event: FocusEvent) => {
+        const dialog = resetDialogRef.current;
+        const target = event.target;
+        if (
+          dialog !== null &&
+          target instanceof Node &&
+          !dialog.contains(target)
+        ) {
+          (listFocusableElements(dialog)[0] ?? dialog).focus();
+        }
+      };
+
+      document.addEventListener("focusin", containFocus);
+      return () => document.removeEventListener("focusin", containFocus);
+    }
+
+    if (!resetWasOpenRef.current) {
       return;
     }
 
-    cancelButtonRef.current?.focus();
+    resetWasOpenRef.current = false;
+    resetButtonRef.current?.focus();
   }, [resetOpen]);
 
   const closeResetDialog = () => {
     setResetOpen(false);
-    resetButtonRef.current?.focus();
   };
 
   const confirmReset = () => {
     const reset = resetLearningProfile();
     setResetOpen(false);
     setResetNotice(reset ? "学习档案已重置，航线已返回文本课程。" : null);
-    resetButtonRef.current?.focus();
+  };
+
+  const handleResetDialogKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeResetDialog();
+      return;
+    }
+
+    if (event.key !== "Tab") {
+      return;
+    }
+
+    const dialog = resetDialogRef.current;
+    if (dialog === null) {
+      return;
+    }
+
+    const focusableElements = listFocusableElements(dialog);
+    const firstFocusable = focusableElements[0];
+    const lastFocusable = focusableElements.at(-1);
+    const activeElement = document.activeElement;
+
+    if (firstFocusable === undefined || lastFocusable === undefined) {
+      event.preventDefault();
+      dialog.focus();
+      return;
+    }
+
+    if (
+      event.shiftKey &&
+      (activeElement === firstFocusable || !dialog.contains(activeElement))
+    ) {
+      event.preventDefault();
+      lastFocusable.focus();
+      return;
+    }
+
+    if (
+      !event.shiftKey &&
+      (activeElement === lastFocusable || !dialog.contains(activeElement))
+    ) {
+      event.preventDefault();
+      firstFocusable.focus();
+    }
   };
 
   const activateMode = (index: number) => {
@@ -182,11 +265,16 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
 
   return (
     <div className="app-shell">
-      <a className="skip-link" href="#main-content">
-        跳到主要内容
-      </a>
+      <div
+        className="app-content"
+        inert={resetOpen ? true : undefined}
+        aria-hidden={resetOpen ? true : undefined}
+      >
+        <a className="skip-link" href="#main-content">
+          跳到主要内容
+        </a>
 
-      <header className="app-header">
+        <header className="app-header">
         <div className="brand-lockup" aria-label="标航智导">
           <span className="brand-lockup__mark" aria-hidden="true">
             <span />
@@ -236,9 +324,9 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
             <dd>{scenarioLabel}</dd>
           </div>
         </dl>
-      </header>
+        </header>
 
-      <div className="workspace">
+        <div className="workspace">
         <aside className="workspace__domains" aria-label="课程域导航">
           <Dashboard
             counts={counts}
@@ -378,22 +466,20 @@ function ApplicationShell({ repository }: ApplicationShellProps) {
             <p className="reset-note">仅清除本应用保存在此浏览器中的学习档案。</p>
           </Panel>
         </aside>
+        </div>
       </div>
 
       {resetOpen ? (
         <div className="dialog-backdrop">
           <div
+            ref={resetDialogRef}
             className="reset-dialog"
             role="alertdialog"
+            tabIndex={-1}
             aria-modal="true"
             aria-labelledby="reset-dialog-title"
             aria-describedby="reset-dialog-description"
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                closeResetDialog();
-              }
-            }}
+            onKeyDown={handleResetDialogKeyDown}
           >
             <p className="eyebrow eyebrow--ink">PROFILE RESET</p>
             <h2 id="reset-dialog-title">确认重置学习档案</h2>

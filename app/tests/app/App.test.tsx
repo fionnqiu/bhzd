@@ -1,5 +1,8 @@
 import "@testing-library/jest-dom/vitest";
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import {
   cleanup,
   fireEvent,
@@ -161,6 +164,84 @@ describe("application shell", () => {
     expect(modeTabs.filter((tab) => tab.tabIndex === 0)).toHaveLength(1);
   });
 
+  it("wraps forward Tab from the last reset action to the first", () => {
+    render(<App profileStore={createTestStore()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "重置学习档案" }));
+    const dialog = screen.getByRole("alertdialog", {
+      name: "确认重置学习档案",
+    });
+    const cancelButton = within(dialog).getByRole("button", { name: "取消" });
+    const confirmButton = within(dialog).getByRole("button", {
+      name: "确认重置",
+    });
+
+    expect(cancelButton).toHaveFocus();
+    confirmButton.focus();
+    fireEvent.keyDown(confirmButton, { key: "Tab" });
+
+    expect(cancelButton).toHaveFocus();
+  });
+
+  it("wraps reverse Shift+Tab from the first reset action to the last", () => {
+    render(<App profileStore={createTestStore()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "重置学习档案" }));
+    const dialog = screen.getByRole("alertdialog", {
+      name: "确认重置学习档案",
+    });
+    const cancelButton = within(dialog).getByRole("button", { name: "取消" });
+    const confirmButton = within(dialog).getByRole("button", {
+      name: "确认重置",
+    });
+
+    expect(cancelButton).toHaveFocus();
+    fireEvent.keyDown(cancelButton, { key: "Tab", shiftKey: true });
+
+    expect(confirmButton).toHaveFocus();
+  });
+
+  it("makes background content inert and restores it with opener focus on Escape", () => {
+    render(<App profileStore={createTestStore()} />);
+
+    const resetButton = screen.getByRole("button", {
+      name: "重置学习档案",
+    });
+    fireEvent.click(resetButton);
+
+    const applicationContent = resetButton.closest(".app-content");
+    expect(applicationContent).not.toBeNull();
+    expect(applicationContent).toHaveAttribute("inert");
+    expect(applicationContent).toHaveAttribute("aria-hidden", "true");
+    expect(
+      screen.queryByRole("button", { name: "重置学习档案" }),
+    ).not.toBeInTheDocument();
+
+    const dialog = screen.getByRole("alertdialog", {
+      name: "确认重置学习档案",
+    });
+    fireEvent.keyDown(dialog, { key: "Escape" });
+
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(applicationContent).not.toHaveAttribute("inert");
+    expect(applicationContent).not.toHaveAttribute("aria-hidden");
+    expect(resetButton).toHaveFocus();
+  });
+
+  it("keeps reset confirmation reachable in constrained-height viewports", () => {
+    const appCss = readFileSync(
+      resolve(process.cwd(), "src/app/app.css"),
+      "utf8",
+    );
+    const backdropRule = appCss.match(/\.dialog-backdrop\s*{([^}]*)}/)?.[1];
+    const dialogRule = appCss.match(/\.reset-dialog\s*{([^}]*)}/)?.[1];
+
+    expect(backdropRule).toContain("overflow-y: auto;");
+    expect(backdropRule).toContain("align-items: flex-start;");
+    expect(dialogRule).toContain("max-height: calc(100dvh - 2rem);");
+    expect(dialogRule).toContain("overflow-y: auto;");
+  });
+
   it("requires confirmation, keeps state on cancel, and resets context on confirm", () => {
     const reset = vi.fn();
     const store = createTestStore({ reset });
@@ -172,7 +253,10 @@ describe("application shell", () => {
       }),
     );
     fireEvent.click(screen.getByRole("tab", { name: "图谱" }));
-    fireEvent.click(screen.getByRole("button", { name: "重置学习档案" }));
+    const resetButton = screen.getByRole("button", {
+      name: "重置学习档案",
+    });
+    fireEvent.click(resetButton);
 
     const dialog = screen.getByRole("alertdialog", {
       name: "确认重置学习档案",
@@ -181,6 +265,7 @@ describe("application shell", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
 
     expect(reset).not.toHaveBeenCalled();
+    expect(resetButton).toHaveFocus();
     expect(screen.getByRole("main")).toHaveTextContent("图谱");
     expect(screen.getByRole("main")).toHaveTextContent("语音");
 
@@ -193,6 +278,7 @@ describe("application shell", () => {
 
     expect(reset).toHaveBeenCalledOnce();
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(resetButton).toHaveFocus();
     expect(screen.getByRole("main")).toHaveTextContent("课程");
     expect(screen.getByRole("main")).toHaveTextContent("文本");
   });
