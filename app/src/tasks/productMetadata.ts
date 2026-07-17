@@ -23,7 +23,7 @@ const ROLE = Object.freeze({
 const DEFAULT_SCENE = Object.freeze({
   value: "通用标注规则",
   sourceRef:
-    "docs/superpowers/specs/2026-07-14-task6-teaching-application-design.md#6.4-场景切换",
+    "docs/教学内容与图谱数据规范.md#4-场景扩展规范",
 });
 
 const STRUCTURE_STEP_VALUES = Object.freeze([
@@ -34,7 +34,7 @@ const STRUCTURE_STEP_VALUES = Object.freeze([
 
 const STRUCTURE_STEPS = Object.freeze({
   values: STRUCTURE_STEP_VALUES,
-  sourceRef: "docs/标航智导.md#5.4-模块二-标注任务转化器",
+  sourceRef: "docs/标航智导.md#54-工具二标注任务转化",
 });
 
 const SCENARIO_DOCUMENTS: Readonly<Record<string, string>> = Object.freeze({

@@ -652,7 +652,7 @@ describe("approved product metadata", () => {
         defaultScene: {
           value: "通用标注规则",
           sourceRef:
-            "docs/superpowers/specs/2026-07-14-task6-teaching-application-design.md#6.4-场景切换",
+            "docs/教学内容与图谱数据规范.md#4-场景扩展规范",
         },
       }),
     );
@@ -671,7 +671,7 @@ describe("approved product metadata", () => {
         "阅读已发布规则或当前开发态结构节点说明",
         "完成任务卡自检并确认下一学习步骤",
       ],
-      sourceRef: "docs/标航智导.md#5.4-模块二-标注任务转化器",
+      sourceRef: "docs/标航智导.md#54-工具二标注任务转化",
     });
     expect(Object.isFrozen(APPROVED_PRODUCT_METADATA.structureSteps)).toBe(
       true,

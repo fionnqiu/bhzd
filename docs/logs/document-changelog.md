@@ -486,3 +486,35 @@
 
 **Remaining verification:**
 - A human domain-release decision and 2-3 genuine participant records, feedback, revisions, and retest outcomes are still required before Task 6 Step 3 can be checked or external trial/release claims can be made.
+
+## [2026-07-17 22:56] Rebuild the Agent platform documentation baseline
+
+**Changed files:**
+- Added `docs/superpowers/specs/2026-07-17-agent-platform-design.md`.
+- Updated `docs/标航智导.md`.
+- Rebuilt `docs/开发流程与里程碑.md`.
+- Rebuilt `docs/功能验收与赛事提交清单.md`.
+- Deleted the superseded `docs/superpowers/plans/2026-07-12-annotation-teaching-agent.md` and `docs/superpowers/plans/2026-07-14-task6-teaching-application.md`.
+- Deleted the superseded `docs/superpowers/specs/2026-07-12-annotation-teaching-agent-design.md` and `docs/superpowers/specs/2026-07-14-task6-teaching-application-design.md`.
+- Deleted the one-time `docs/文档评审报告.md` and `docs/文档评审修复记录.md`.
+- Updated `app/src/tasks/productMetadata.ts` and `app/tests/tasks/taskConverter.test.ts` to replace source anchors that pointed at deleted specifications.
+- Updated `docs/logs/document-changelog.md`.
+
+**Reason:**
+- Replace the obsolete deterministic-application planning set with one Windows-first real-Agent design covering authenticated users, a single hidden-route administrator, encrypted multi-provider configuration, native Xunfei Xingchen/Spark adapters, Chat Completions, Anthropic Messages, typed teaching tools, streaming execution, and user confirmation gates.
+- Align the product definition, milestones, acceptance gates, and competition narrative with the approved “weak navigation, strong Agent, embedded tools” interaction model.
+
+**Verification:**
+- Confirmed the new design explicitly distinguishes the verified current React teaching baseline from the unimplemented authentication, backend, LLM, admin, and Agent target state.
+- Confirmed the new milestone and acceptance documents preserve deterministic scoring, diagnostics, mastery, PRE planning, source, privacy, and real-trial boundaries.
+- Searched the remaining documentation for deleted planning filenames and legacy four-mode/LLM claims.
+- Followed TDD for product-metadata source anchors: the focused task-converter suite first failed exactly 2 provenance assertions, then passed all 47 tests after the minimal source-reference update.
+- Confirmed no remaining application or documentation references point to the deleted Task 1-7 or Task 6 planning files.
+- Documentation and requirement scans passed with no placeholders, deleted references, legacy four-mode claims, or obsolete shortest-path/platform-completion wording.
+- `git diff --check` passed; Git reported only the existing Windows line-ending conversion notices.
+- `npm --prefix app test -- --run` passed: 19 files and 418 tests.
+- `npm --prefix app run build` passed, including graph-chunk isolation verification; the existing Vite chunk-size advisory remains non-blocking.
+
+**Remaining verification:**
+- The new implementation plan must not be generated until the user reviews and approves the written design specification.
+- Actual provider request fields, account permissions and live connectivity remain implementation-time verification items that require current official documentation and valid credentials.
