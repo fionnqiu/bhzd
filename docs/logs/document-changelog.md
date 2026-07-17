@@ -518,3 +518,25 @@
 **Remaining verification:**
 - The new implementation plan must not be generated until the user reviews and approves the written design specification.
 - Actual provider request fields, account permissions and live connectivity remain implementation-time verification items that require current official documentation and valid credentials.
+
+## [2026-07-17 23:26] Add the reviewed Agent platform implementation plan
+
+**Changed files:**
+- Added `docs/superpowers/plans/2026-07-17-agent-platform-implementation.md`.
+- Updated `docs/superpowers/specs/2026-07-17-agent-platform-design.md`.
+- Updated `docs/开发流程与里程碑.md`.
+- Updated `docs/logs/document-changelog.md`.
+
+**Reason:**
+- Convert the user-reviewed Windows-first Agent platform design into a single executable plan with explicit files, TDD-sized steps, RED/GREEN commands, security boundaries, provider gates, verification commands, and commit checkpoints.
+- Keep the existing deterministic teaching capabilities as the baseline while sequencing authentication, administrator configuration, four model protocols, typed tools, Agent orchestration, embedded UI, Windows verification, and genuine trials.
+
+**Verification:**
+- Plan structure scan passed: 16 tasks, 16 file sections, and 16 commit checkpoints.
+- Placeholder scan found no `TODO`, `TBD`, incomplete implementation instruction, or cross-task shorthand.
+- Coverage scan confirmed Windows, SQLite, email/SMTP, single `/admin`, AES-256-GCM, all four provider protocols, primary/fallback roles, all eight typed tools, confirmation events, Agent Cockpit, later Linux/Docker, and genuine trials each map to plan steps.
+- Checked provider event names, tool names, Cookie names, confirmation semantics, and the design/plan links for consistency.
+
+**Remaining verification:**
+- Implementation has not started; every task still requires its own reviewed brief or execution checkpoint and fresh RED/GREEN evidence.
+- Xunfei Xingchen/Spark request fields, signatures, account permissions, and live connectivity remain behind the explicit official-contract hard gate in Task 9.
