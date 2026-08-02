@@ -6,3 +6,12 @@ app/node_modules/
 app/dist/
 test-results/
 playwright-report/
+# 本地环境变量含 SMTP/管理口令等敏感信息，永不入库
+.env.local
+# 运行时产物（SQLite/上传/邮件发件箱）
+var/
+# Local dependency metadata and browser diagnostics are reproducible, not source artifacts.
+.venv/
+*.egg-info/
+.playwright-mcp/
+search-build.txt

@@ -370,7 +370,7 @@
 - `docs/教学内容与图谱数据规范.md`
 - `docs/superpowers/plans/2026-07-12-annotation-teaching-agent.md`
 - `docs/logs/document-changelog.md`
-- `E:\\ObsidianWorkSpace\\codex\\Work Log 2026-07-13.md`
+- `E:\\ObsidianWorkSpace\\logs\\codex\\Work Log 2026-07-13.md`
 
 **Reason:**
 - Complete the six-capability audio learning chain, authorized WAV and recorded learning-practice-feedback-remediation evidence, including the reviewed language, ambiguity, timestamp, asset, and remediation corrections.
@@ -540,3 +540,494 @@
 **Remaining verification:**
 - Implementation has not started; every task still requires its own reviewed brief or execution checkpoint and fresh RED/GREEN evidence.
 - Xunfei Xingchen/Spark request fields, signatures, account permissions, and live connectivity remain behind the explicit official-contract hard gate in Task 9.
+
+## [2026-07-20 20:53] Add the Kimi-layout Agent Cockpit Pencil design
+
+**Changed files:**
+- Added `designs/APP.pen`.
+- Updated `docs/logs/document-changelog.md`.
+
+**Reason:**
+- Create the user-approved frontend design draft before implementation, using Kimi only for layout, whitespace, collapsed navigation and progressive disclosure while strictly applying the `designs` directory's Pinguo/Apple tokens and component language.
+- Cover the design foundation, minimal first-run entry, active Agent run with an on-demand execution drawer, write-action confirmation, and the 390 x 844 mobile adaptation in one Pencil source file.
+
+**Verification:**
+- Confirmed `designs/APP.pen` was saved to disk at 331,138 bytes and the editor's unsaved marker cleared.
+- Pencil returned exactly five top-level frames: design foundation, first-run entry, active run, write confirmation, and mobile run.
+- Fresh full-document `snapshot_layout` verification at depth 8 reported `No layout problems.`
+- Individually reviewed screenshots for all four product screens; the confirmation overlay was repaired after an initial hierarchy issue and then revalidated with no clipping.
+
+**Remaining verification:**
+- The user must visually approve the Pencil draft before any frontend implementation or refactor begins.
+- No PNG, PDF, HTML, or additional `.pen` file was exported, as requested.
+
+## [2026-07-20 21:24] Add light and dark color systems to the Agent Cockpit design
+
+**Changed files:**
+- Updated `designs/APP.pen`.
+- Updated `docs/logs/document-changelog.md`.
+
+**Reason:**
+- Preserve the approved Kimi-inspired layout while applying a richer Apple/Pinguo semantic color system in paired light and dark themes.
+- Improve the readability of success, warning, and indigo content on tinted surfaces without changing screen structure, copy, dimensions, or frontend code.
+
+**Verification:**
+- Confirmed `designs/APP.pen` contains the `mode: light/dark` theme axis and ten paired top-level boards covering foundations, first-run, Agent run, write confirmation, and mobile run.
+- Recalculated six foreground/surface pairs; all pass WCAG AA at or above `4.5:1`, including light success `5.20:1`, light warning `5.01:1`, and dark indigo `6.70:1`.
+- Reviewed light and dark screenshots for the first-run capability states and write-confirmation states.
+- Saved the Pencil document to disk, confirmed the editor dirty marker cleared, and reran a depth-8 full-document layout scan with `No layout problems.`
+
+**Remaining verification:**
+- The user must approve the final dual-theme Pencil design before frontend implementation begins.
+- No PNG, PDF, HTML, additional `.pen` file, or frontend code was created or modified.
+
+## [2026-07-20 21:30] Optimize the light-mode Agent Cockpit sidebar
+
+**Changed files:**
+- Updated `designs/APP.pen`.
+- Updated `docs/logs/document-changelog.md`.
+
+**Reason:**
+- Replace the near-black sidebar in the light desktop boards with an Apple/Pinguo system-gray navigation surface that visually belongs to the light theme.
+- Establish reusable sidebar semantic tokens for background, surfaces, borders, text hierarchy, active navigation, and progress states instead of continuing with hardcoded dark colors.
+
+**Verification:**
+- Reviewed the updated `02L Agent 运行` and `03L 写操作确认` screenshots; both now use the same light sidebar hierarchy while preserving layout, copy, and dimensions.
+- Confirmed the dark confirmation board remains visually unchanged.
+- Recalculated six key sidebar foreground/background pairs; all pass WCAG AA, with the lowest contrast at `4.54:1`.
+- Saved `designs/APP.pen` to disk at 676,630 bytes, confirmed the editor dirty marker cleared, and reran a depth-8 full-document layout scan with `No layout problems.`
+
+**Remaining verification:**
+- The user must visually approve the revised light sidebar before frontend implementation begins.
+- No additional design files, exported assets, or frontend code were created or modified.
+
+## [2026-07-20 21:43] Remove reverse-theme component surfaces
+
+**Changed files:**
+- Updated `designs/APP.pen`.
+- Updated `docs/logs/document-changelog.md`.
+
+**Reason:**
+- Remove pure-black component backgrounds from light product boards and pure-white component backgrounds from dark product boards.
+- Replace reverse-theme surfaces with semantic brand-blue and emphasis-surface tokens so brand, primary actions, task summaries, and next-step cards remain prominent without breaking theme continuity.
+
+**Verification:**
+- Reviewed screenshots for all eight light and dark product boards covering first-run, Agent run, write confirmation, and mobile states.
+- Confirmed light boards no longer contain pure-black product component surfaces and dark boards no longer contain pure-white product component surfaces; overlay scrims and the foundation color swatches remain intentional exceptions.
+- Recalculated eight key brand and emphasis foreground/background pairs; all pass WCAG AA, with the lowest contrast at `4.90:1`.
+- Saved `designs/APP.pen` to disk at 678,892 bytes, confirmed the editor dirty marker cleared, and reran a depth-8 full-document layout scan with `No layout problems.`
+
+**Remaining verification:**
+- The user must visually approve the cross-theme surface update before frontend implementation begins.
+- No additional design files, exported assets, or frontend code were created or modified.
+
+## [2026-07-22 22:46] Add administrator console boards to the Pencil design
+
+**Changed files:**
+- Updated `designs/APP.pen`.
+- Added `designs/exports/W3ZMrC.png`.
+- Added `designs/exports/rzhla.png`.
+- Updated `docs/logs/document-changelog.md`.
+
+**Reason:**
+- Continue the approved Pencil canvas design with an administrator console surface.
+- Cover model configuration gateway, model token usage, supplier token usage, platform account management, and account token usage in both light and dark modes.
+
+**Verification:**
+- Confirmed the active Pencil editor was `/e:/AgentWorkspaces/bhzd/designs/APP.pen`.
+- Added two top-level frames: `05L 管理员 · Light` and `05D 管理员 · Dark`.
+- Ran `snapshot_layout` checks on both new frames after height repairs; both returned `No layout problems.`
+- Exported and visually reviewed both PNG previews for nonblank rendering and expected light/dark theme application.
+
+**Remaining verification:**
+- The user should visually approve the administrator console boards before frontend implementation begins.
+
+## [2026-07-22 23:25] Implement the administrator console at /amdin
+
+**Changed files:**
+- Updated `app/src/app/router.tsx`.
+- Updated `app/src/app/App.tsx`.
+- Updated `app/src/admin/AdminPage.tsx`.
+- Updated `app/src/app/app.css`.
+- Added `app/tests/admin/AdminPage.test.tsx`.
+- Added `app/tests/app/router.test.tsx`.
+- Added `bhzd-amdin-light.png`.
+- Added `bhzd-amdin-dark.png`.
+- Updated `docs/logs/document-changelog.md`.
+
+**Reason:**
+- Restore the administrator console from the approved Pencil boards as a real frontend route.
+- Use the user-specified `/amdin` route spelling while preserving the existing administrator login and provider-management API behavior.
+- Keep the first viewport aligned with the Pencil light/dark administrator boards and move the live provider CRUD surface below the matched dashboard viewport.
+
+**Verification:**
+- `npx tsc --noEmit` passed after the final code adjustment.
+- `npm run test:run -- tests/admin/AdminPage.test.tsx tests/app/router.test.tsx` passed with 3 tests.
+- `npm run test:run` passed with 27 tests after the final code adjustment.
+- Browser-verified `http://127.0.0.1:5174/amdin` at a 1440 x 960 viewport with mocked admin APIs; all five requested modules were visible.
+- Browser-verified `http://127.0.0.1:5174/amdin?theme=dark`; `data-theme="dark"` was applied and the account token usage module was visible.
+- Saved runtime screenshots as `bhzd-amdin-light.png` and `bhzd-amdin-dark.png`.
+
+**Remaining verification:**
+- `npm run build` still fails at the existing `verify:graph-chunk` step because the built manifest has no `GraphWorkspace` entry; `tsc` and `vite build` completed before that verifier failed.
+- The user should visually approve the runtime `/amdin` page against the Pencil board before further admin data wiring.
+
+## [2026-07-23 00:20] Remove obsolete Node backend remnants
+
+**Changed files:**
+- Updated `.env.example`.
+- Updated `docs/标航智导.md`.
+- Updated `docs/开发流程与里程碑.md`.
+- Deleted `docs/superpowers/plans/2026-07-17-agent-platform-implementation.md`.
+- Deleted `docs/superpowers/specs/2026-07-17-agent-platform-design.md`.
+- Updated `docs/logs/document-changelog.md`.
+
+**Reason:**
+- Remove obsolete Node.js/Fastify/better-sqlite3 backend guidance after the active server moved to Python/FastAPI/SQLite.
+- Keep front-end Node.js usage scoped to the React/Vite toolchain while preventing stale server startup and test commands from guiding future work.
+
+**Verification:**
+- Removed the old registered worktrees `agent-platform-task1` and `task6-teaching-application`, including their stale Node backend directories and references.
+- Verified `git worktree list` now shows only `E:/AgentWorkspaces/bhzd`.
+- Ran `rg -n "Fastify|better-sqlite3|npm --prefix server|npm.cmd --prefix server|Node.js/TypeScript|TypeScript 服务|Nodemailer|Zod|tsx watch|hash-admin-password|app/server|app\\server" . -S --glob '!app/node_modules/**' --glob '!app/dist/**' --glob '!app/package-lock.json' --glob '!designs/**' --glob '!.git/**' --glob '!docs/logs/document-changelog.md'`; no matches.
+- Ran `python -m pytest server/tests -q`; 20 tests passed.
+
+**Remaining verification:**
+- None.
+
+## [2026-07-23 00:26] Redraw administrator console Pencil boards
+
+**Changed files:**
+- Updated `designs/APP.pen`.
+- Added `designs/exports/FOhpj.png`.
+- Added `designs/exports/tB3BV.png`.
+- Updated `docs/logs/document-changelog.md`.
+
+**Reason:**
+- Recreate the administrator console boards in the active Pencil canvas after the current file no longer contained admin boards.
+- Cover model configuration gateway, model token usage, supplier token usage, platform account management, and account token usage in both light and dark modes.
+
+**Verification:**
+- Confirmed the active Pencil editor was `/e:/AgentWorkspaces/bhzd/designs/APP.pen`.
+- Added two top-level frames: `05L 管理员 · Light` and `05D 管理员 · Dark`.
+- Ran `snapshot_layout` checks for both frames; both returned `No layout problems.`
+- Exported and visually reviewed the light and dark PNG previews, then repaired an initial horizontal overflow so the supplier and account token modules fit within the 1440 x 960 boards.
+
+**Remaining verification:**
+- The user should visually approve the redrawn administrator console boards before any further frontend alignment work.
+
+## [2026-07-23 00:42] Pixel-update the runtime administrator page
+
+**Changed files:**
+- Updated `app/src/admin/AdminPage.tsx`.
+- Updated `app/src/app/app.css`.
+- Updated `app/tests/admin/AdminPage.test.tsx`.
+- Updated `bhzd-amdin-light.png`.
+- Updated `bhzd-amdin-dark.png`.
+- Updated `docs/logs/document-changelog.md`.
+
+**Reason:**
+- Align the runtime `/amdin` administrator page with the newly redrawn Pencil administrator boards.
+- Preserve the existing administrator login and provider CRUD surface while replacing the first viewport with the new model gateway, token usage, supplier usage, platform account, and account token layout.
+
+**Verification:**
+- `npx tsc --noEmit` passed.
+- `npm run test:run` passed with 27 tests across 4 files.
+- Browser-verified `http://127.0.0.1:5174/amdin` and `http://127.0.0.1:5174/amdin?theme=dark` at 1440 x 960 with mocked admin APIs; both rendered the expected theme, no horizontal overflow, right modules ended at x=1408, and the alert bar ended at y=942.
+- `npm run build` completed `tsc --noEmit` and `vite build`, then failed at the existing `verify:graph-chunk` gate because the manifest has no `GraphWorkspace` entry.
+
+**Remaining verification:**
+- The `verify:graph-chunk` build gate remains unresolved and is outside this administrator-page visual update.
+
+## [2026-07-24 00:30] Add Agent orchestration, tool gateway and model protocol design docs; trim completed milestones
+
+**Changed files:**
+- `docs/Agent编排实现方案.md` (new)
+- `docs/工具网关封装方案.md` (new)
+- `docs/模型协议适配方案.md` (new)
+- `docs/开发流程与里程碑.md` (edited)
+- `docs/logs/document-changelog.md` (appended)
+
+**Reason:**
+- User requested a complete plan to finish Agent orchestration (A6), tool gateway encapsulation (A5) and the four model protocol adapters (A4), placed under `docs/`.
+- User also requested removing obsolete already-implemented plan docs. Investigation found `docs/superpowers/` (referenced by the dev-flow doc) had already been deleted earlier; the four remaining md docs all still hold value. User chose to trim the dev-flow doc instead: collapse completed B0/A1/A2/A3 milestones into a "done" summary and keep the unimplemented A4-A8/D1-D2 detail.
+
+**Verification:**
+- Confirmed the three new design docs align with current code state: reuse existing `agent_runs`/`tool_calls`/`pending_confirmations`/`learning_profiles`/`provider_configs` tables, mirror the 8 event types in `app/src/agent/agentEvents.ts`, and reference concrete files (`agent/graph.py`, `repositories.py::_execute_confirmed_tool`, `security.py::decrypt_secret`).
+- Confirmed the trimmed dev-flow doc preserves the unimplemented A4-A8/D1-D2 milestones and the technical interface boundary table; only the completed B0/A1/A2/A3 rows were condensed.
+- Confirmed the broken `docs/superpowers/specs|plans` references were replaced with pointers to the three new design docs.
+
+**Remaining verification:**
+- The three design docs are plans only; no implementation code was written this round. A4/A5/A6 implementation must follow their step/file lists and pass the acceptance criteria stated in each doc.
+- `plan.updated` event is defined in the orchestration doc but not yet in frontend `agentEvents.ts`; needs synchronized addition during A6 implementation.
+- A2 email verification / password reset and A3 `test_provider` remain stubs pending real SMTP and model connectivity.
+
+## [2026-07-27 20:52] A4 provider adapter contract hardening
+
+**Changed files:**
+- `server/bhzd_py/providers/chat_completions.py`
+- `server/bhzd_py/providers/anthropic_messages.py`
+- `server/bhzd_py/providers/xunfei_xingchen.py`
+- `server/bhzd_py/providers/xunfei_spark.py`
+- `server/tests/test_providers_contract.py`
+- `docs/logs/document-changelog.md`
+
+**Reason:**
+- Complete A4 offline contract: unified ModelEvent parsing, tool-call aggregation, error classes, Spark route separation, and mockable connection tests.
+
+**Verification:**
+- `python -m pytest tests/test_providers_contract.py tests/test_auth_admin_provider.py tests/test_conversations_agent.py tests/test_agent_graph.py -q` → 21 passed
+
+**Remaining verification:**
+- Real-network desensitized smoke tests still require admin-configured credentials per protocol.
+
+## [2026-07-27 21:20] Add XingChen platform deployment architecture section
+
+**Changed files:**
+- `docs/标航智导.md` (added §13.5)
+- `docs/logs/document-changelog.md` (appended)
+
+**Reason:**
+- User requested documenting the architecture for publishing the 标航智导 agent to the 讯飞星辰 (iFlytek XingChen) Agent platform, based on actual screenshots of the workflow canvas node palette (workflow ID 652929, custom ID 07e522).
+- The new section covers platform paradigm constraints, three deployment topology comparisons, tool exposure layer positioning, platform-side build checklist, API publish format, and retained/lost capability mapping.
+- Explicitly distinguishes "using iFlytek model as LLM brain" (Phase 3 A4) from "publishing agent to platform" (this section), a recurring point of confusion.
+
+**Verification:**
+- Confirmed insertion point between Phase 4 (line 849) and 十四 (line 853); new section numbered 13.5 with 6 subsections.
+- Node palette categories verified against 3 user-provided screenshots: 基础节点(3), 工具(4), 知识&数据(5), 逻辑(4), 转换(3), 其他(1).
+- Canvas state confirmed as empty skeleton (Start → End only).
+- Cross-references to existing docs (第五章 prompt, Phase 3 A4/A5/A6, 第十章 knowledge base, `chat_completions.py`) are consistent with current file contents.
+
+**Remaining verification:**
+- Agent智能决策 node's exact configuration fields (role setting, knowledge base binding, tool binding) require screenshot of the node's detail panel — not yet provided.
+- Publish tab details (API key generation, channel selection checkboxes) require screenshot of the 发布 tab — not yet provided.
+- Tool HTTP interface signatures are design-stage proposals; final contracts depend on A5/A6 implementation.
+
+## [2026-07-30 00:26] Add product requirements document (PRD)
+
+**Changed files:**
+- `docs/标航智导-PRD.md` (new)
+- `docs/logs/document-changelog.md` (appended)
+
+**Reason:**
+- User requested a product requirements document that consolidates existing architecture, features, content, and roadmap.
+- The new PRD is positioned as an internal development/product counterpart to the existing competition-facing `docs/标航智导.md`.
+- It explicitly separates the already-verified deterministic teaching baseline from the still-to-be-implemented Agent platform capabilities (A4–A8, D1–D2), avoiding the common risk of describing planned features as completed.
+- Includes reasoning for key design choices (graph-driven architecture, deterministic tool vs. LLM split, scenario overlay model, confirmation gate) and a phased roadmap.
+
+**Verification:**
+- `docs/标航智导-PRD.md` created with 12 sections covering product overview, user profiles, core concepts, functional/non-functional requirements, data/content architecture, technical architecture, user journeys, roadmap, risks, and appendix.
+- Cross-references to existing docs (`docs/标航智导.md`, implementation plans, content spec) are consistent with current repository contents.
+- Current baseline commands and test counts copied from latest known passing state (2026-07-27).
+
+**Remaining verification:**
+- PRD should be reviewed by the product/team lead for accuracy of user needs and priority assignments.
+- Update PRD after each major milestone (A5/A6/A7 completion) to keep baseline/status statements accurate.
+
+## [2026-07-30 00:30] Rewrite PRD in professional product-manager style
+
+**Changed files:**
+- `docs/标航智导-PRD.md` (rewritten)
+- `docs/logs/document-changelog.md` (appended)
+
+**Reason:**
+- User requested a professional product-management-style PRD with direct content rather than file references.
+- Rewrote the document from a development-oriented summary into a full PRD including: document control, market background, user personas, value proposition, product goals and success metrics, user story matrix, detailed functional requirements with acceptance criteria, non-functional requirements, information architecture, user journeys, data model, API requirements, data tracking/analytics, competitive analysis, risk/dependency matrix, and phased go-to-market milestones.
+- Removed in-document references to other markdown files; all required content is now self-contained.
+- Maintained strict separation between verified baseline and still-to-be-implemented capabilities.
+
+**Verification:**
+- `docs/标航智导-PRD.md` rewritten to ~43 KB, 17 sections, with consistent internal cross-references only.
+- All functional requirements include priority (P0/P1/P2) and acceptance criteria.
+- Data model, API overview, event stream, and tool-call permission table align with existing implementation plans.
+
+**Remaining verification:**
+- Success metric target values should be validated against actual pilot data once A8 user trials begin.
+- Data tracking event schema should be reviewed against frontend instrumentation capabilities before A7 implementation.
+
+## [2026-08-01 05:55] 按 PRD v3.1 全权重构前后端（蓝图 + 配套文档与配置）
+
+**Changed files:**
+- `docs/dev/rewrite-blueprint.md`（新建：全权重构单一事实来源——技术决策、目录布局、DB schema、API/DTO 契约、SSE 事件、工具契约、Agent 编排规则、诊断/掌握度规则、种子数据、前端信息架构、权限矩阵、测试计划、实施波次）
+- `.env.example`（重写：匹配新配置项 BHZD_*，保留兼容旧名，中文注释）
+- `.gitignore`（新增 `.env.local`、`var/` 忽略项——本地敏感配置与运行时产物不再入库）
+- `tests/e2e/smoke.spec.ts`（新建：PRD 主线 e2e 冒烟，替换全部面向旧页面的 6 个旧 spec 与 helpers）
+- `tests/e2e/playwright-runtime.ts`（补导出 `request`，供 API 登录注入会话）
+- `tests/content/test_teaching_units.py`（单个命名空间契约测试改验数据本体，原校验文档已随重构移除）
+- `scripts/integration_smoke.py`（新建：AC1–AC13 端到端验收冒烟脚本，临时库可重复执行）
+
+**Reason:**
+- 用户要求以 `docs/标航智导-PRD/`（v3.1 六份子 PRD + v3.0 完整版独有内容）为唯一准绳，不参考旧项目结构与旧页面，完全重构前后端。
+- 旧前后端代码全部重写：`server/bhzd_py/`（FastAPI + SQLite，13 路由模块 + Agent 编排 + 15 工具契约 + RAG 全链路 + 确定性诊断 + 图谱/掌握度/教师/系统管理域）；`app/src/`（React 19 + react-router v7，学生/教师/RAG 管理/系统管理四端 27 页）。旧实现移至 `server/_legacy/` 备查，待用户确认后删除。
+- v3.0 完整版独有内容已并入实现：14 个埋点事件、SourceLedger 字段级 schema、图谱掌握度配色（绿/橙/红）、欢迎态契约占位文案、"内容安全文本审核"预设路径、演示模式种子。
+
+**Verification:**
+- 后端：`python -m pytest server/tests -q` → 172 passed。
+- 前端：`cd app && npx vitest run` → 77 passed；`npx tsc --noEmit` 零错误；`npm run build` 通过。
+- 数据契约：`python -m pytest tests/content tests/graph -q` → 234 passed。
+- 端到端：`python scripts/integration_smoke.py` → 23/23（覆盖 AC1–AC13：目标→计划→确认门→任务、预设建任务、RAG 上传→审核→发布→引用、未审核不可召回、拒答、PRE 路径、企业任务发布、诊断+补强+掌握度、密钥不回显、NF9 校验、诊断原文件不落盘、发布写审计）。
+- 浏览器：`cd app && npx playwright test --project=chromium` → 6/6（登录→指挥舱 8 入口、AC1 全链、预设、引用/拒答、图谱、教师工作台；后端 8787 + 前端 4173 真实双端）。
+
+**Remaining verification:**
+- 讯飞星辰/星火协议适配器经单测验证签名与载荷，未做真实外部调用（无赛事平台凭据）。
+- 演示模式的完整比赛演示主线（PRD-05 §9）需人工按脚本过一遍验收。
+- `server/_legacy/` 旧代码目录待用户确认后物理删除；`var/bhzd.sqlite.pre-rewrite.bak` 为重构前空库备份，可自行清理。
+
+## [2026-08-01 13:23] 学习/个人中心域增强（A2：入学测评闭环 + 收藏 + CSRF 稳定化 + 诊断缓存 DB 化 + 批量归档 + 掌握度趋势）
+
+**Changed files:**
+- `server/bhzd_py/migrations/008_learning_social.sql`（新建：`favorites` 表、`diagnostic_cache` 表、`user_sessions`/`admin_sessions` 增 `csrf_token` 可空列；ALTER ADD COLUMN 对存量库平滑）
+- `server/bhzd_py/seed/assessment.py`（新建：8 道中文入学测评题，cap_id 全部为图谱真实 CAP 节点，含下发脱敏/确定性评分/图谱校验）
+- `server/bhzd_py/routers/profile.py`（新增 `GET/POST /api/onboarding/assessment`、`POST /api/onboarding/skip`、`GET/POST/DELETE /api/profile/favorites[/{id}]`、`GET /api/profile/mastery/trend`；`GET /api/profile` 收藏桩替换为真实数据）
+- `server/bhzd_py/routers/auth.py`（登录把原始 CSRF 令牌落会话行；`GET /api/auth/session` 不再轮换，legacy 会话首次读取时补发升级）
+- `server/bhzd_py/deps.py`（`CurrentUser` 增 `csrf_token_raw`；`csrf_protect` 优先比对原始令牌，NULL 回退旧哈希列保持向后兼容）
+- `server/bhzd_py/routers/diagnostics.py`（报告缓存由进程内 dict 改为 `diagnostic_cache` 表，30 分钟过期语义不变、读取惰性删除；`get_cached_report(token)` 签名不变，上传原文件仍不落盘）
+- `server/bhzd_py/routers/tasks.py`（新增 `POST /api/tasks/batch` 批量归档，逐条部分成功回报）
+- `server/tests/test_learning_enhancements.py`（新建 12 测试）、`server/tests/test_auth.py`（轮换期断言更新为稳定令牌契约 + legacy 升级路径，13 测试）、`server/tests/test_migrations.py`（清单含 007/008/009，新增 csrf_token 列断言）
+
+**Reason:**
+- PRD v3.0 §11.1 首次使用流程缺"入学测评→初始能力地图"闭环；PRD-01 §9 收藏资料原为 P1 桩；`GET /api/auth/session` 每次轮换 CSRF 导致多标签页互顶；诊断报告进程内缓存多实例/重启即失效；PRD-01 §6.1 批量操作缺实现；成长趋势图缺时间序列端点。
+
+**Verification:**
+- `python -m pytest server/tests -q` → 188 passed（原 174 全绿 + 新增 14）。
+- 迁移在含 001-007 数据的库上顺序应用 008/009 无冲突；`test_rerun_is_idempotent` 验证执行器重跑零副作用。
+- 测评 mastery 落库核对：8 行 source='assessment'、答对 0.4/答错 0.1、clamp[0,1]；下发题目不含 answer_index。
+- 诊断缓存：上传后 `diagnostic_cache` 有行、过期 410 中文提示 + 惰性删除、他人 token 403。
+
+**Remaining verification:**
+- 前端 onboarding/收藏/批量归档界面尚未接入（本批仅后端契约；前端属其它任务书范围）。
+- 批量操作目前仅实现 archive；PRD-01 §6.1 的"标记"动作待后续批次。
+
+## [2026-08-01 18:30] PRD 全量补齐：增强包（后端三包 + 前端三包 + 验证扩展）
+
+**Changed files:**
+- 后端增强（代码，经蓝图既定归属实施）：migrations 007_recall_logs/008_learning_social/009_notifications；`rag/`（provider 嵌入经 run_coro_sync 真实接入、重排接入、表格策略、CSV/XLSX 解析、批量操作、召回记录、评测历史端点）；`routers/profile.py`（入学测评、收藏、掌握度趋势、诊断分享开关 PATCH /api/profile）；`routers/notifications.py`（站内通知）；`routers/teacher.py`（发布/改期通知、诊断授权查看、AI 任务卡生成、逐学生学情明细）；`alerts.py`（PRD-06 §13.2 五项告警评估）+ `GET /api/admin/alerts`；诊断缓存 DB 化；CSRF 令牌稳定化（不再每次轮换）
+- 前端增强（代码）：`pages/student/OnboardingPage.tsx`（三步向导+测评门禁）、StudentLayout 通知铃铛、TasksPage 批量归档、ProfilePage 收藏/授权开关/掌握度趋势、RagQaPage 引用收藏；`pages/teacher/`（AI 生成任务卡回填、已发布任务改期、学情逐学生明细、班级诊断授权查看）；`pages/rag/`（资料批量操作、召回记录、评测历史 API 化、CSV/XLSX 上传）；`pages/admin/SecurityPage.tsx`（系统告警卡）
+- `scripts/load_test.py`（新建：NF9/NF10/NF11/NF14 压测）、`scripts/demo_walkthrough.py`（新建：AC14 演示主线彩排）、`scripts/integration_smoke.py`（扩展新特性链路至 38 项）
+- `tests/e2e/enhancements.spec.ts`（新建：入学测评/通知/RAG 治理/批量归档 4 条浏览器链路）
+- `.env.example`（追加 BHZD_LOGIN_RATE_LIMIT_PER_MINUTE 说明）
+- 邮件韧性改造：`routers/auth.py` SMTP 故障不再 500（三态投递：smtp/outbox/failed，失败写 outbox 存档 + mail_delivered=false，不泄露令牌）；`security.py` 登录限流阈值支持环境变量覆盖（默认 5 不变）
+
+**Reason:**
+- 用户要求"全量完成"上一轮差距清单：入学测评、批量操作、收藏、召回记录、教师 Agent 生成、学情明细、通知与诊断授权、告警、表格策略、CSV/XLSX、provider 嵌入真实接入、CSRF 稳定化、诊断缓存 DB 化，以及性能压测、e2e 扩展、AC14 彩排。PRD 自划 P2（OCR/音视频/网页抓取/多校区/Docker）按 PRD 不做。
+- e2e 联调暴露的两个真实缺陷已修：SMTP 配置但不可达导致注册 500（改韧性降级）；e2e 高频登录触发 NF5 限流（阈值环境变量化，测试环境放宽）。
+
+**Verification:**
+- `python -m pytest server/tests -q` → 228 passed（含新增 54 项增强测试）。
+- `cd app && npx vitest run` → 100 passed；`npm run build` 通过；tsc 零错误。
+- `python -m pytest tests/content tests/graph -q` → 234 passed。
+- `python scripts/integration_smoke.py` → 38/38（AC1-AC13 + 测评/收藏/通知/批量/AI 生成/授权/召回记录/CSV/评测历史/告警）。
+- `python scripts/load_test.py` → 全部达标：NF9 p95≤0.057s（阈 3s）、NF10 p95 0.29s（阈 2s）、NF11 p95 0.12s（阈 1s）、NF14 12/12 并发会话零异常。
+- `python scripts/demo_walkthrough.py` → AC14 演示主线 9/9 步通过。
+- `cd app && npx playwright test --project=msedge` → 10/10（smoke 6 + enhancements 4）。
+
+**Remaining verification:**
+- provider 嵌入/重排的真实外部调用仍依赖用户在系统管理端配置有效供应商后回归；讯飞协议同理。
+- NF10 在接入真实 LLM 后取决于供应商延迟，压测数字为离线模板合成口径。
+
+## [2026-08-01 20:55] Agent 指挥舱布局优化：方案对比稿 + 方案 A（三栏精修）实施
+
+**Changed files:**
+- `docs/dev/cockpit-layout-options.html`（新建：A 三栏精修 / B 沉浸单栏+抽屉 / C 指挥台双栏 三版高保真对比稿，经用户评审选定 A）
+- `app/src/pages/student/cockpit/cockpit.css`（网格 200/自适应/250、对话区 920px 居中、对话流整页滚动、折叠竖条与折叠按钮样式、确认门脉冲圆点、响应式适配）
+- `app/src/pages/student/CockpitPage.tsx`（折叠状态 localStorage 持久化、确认门出现自动展开右栏）
+- `app/src/pages/student/cockpit/LeftRail.tsx`、`RightRail.tsx`（可折叠：48px 竖条 + 展开按钮；右栏竖条带确认门提醒圆点）
+
+**Reason:**
+- 用户要求优化指挥舱排版布局并先要对比方案选择；原三栏（250/290）挤压对话区、对话流内嵌滚动条、确认门不够抢眼。方案 A 为用户在 A/B/C 对比稿中的选定项：保留 PRD-01 §3.2 三栏骨架、改动最小、回归风险最低。
+
+**Verification:**
+- `cd app && npx tsc --noEmit` 零错误；`npx vitest run` 100/100（含 cockpit 16 例全过）。
+- 真实浏览器（Edge + 双端）截图验证三态：欢迎态（左右栏收窄、对话区居中）、左栏折叠态（48px 竖条、对话区变宽）、运行态+确认门（右栏置顶确认卡、执行轨迹、整页滚动）。
+
+**Remaining verification:**
+- 窄屏（<900px）实机手感建议演示前过一遍；方案 B/C 的对比稿保留在案，后续若改方向可直接复用。
+
+## [2026-08-01 21:10] 指挥舱左右栏重组（用户指定）
+
+**Changed files:**
+- `app/src/pages/student/cockpit/LeftRail.tsx`（移除「正在学习/教师发布任务」区块与相关 props；「最近会话」列表迁入 rail-scroll-box 盒内滚动；顶部注释同步）
+- `app/src/pages/student/cockpit/RightRail.tsx`（承接「正在学习/教师发布任务」两区块，位于引用来源之后、当前能力定位之前；新增 learning/teacherTasks props）
+- `app/src/pages/student/CockpitPage.tsx`（learning/teacherTasks 数据传递由 LeftRail 改接 RightRail）
+- `app/src/pages/student/cockpit/cockpit.css`（新增 .rail-scroll-box：限高 260px + 盒内滚动 + 边框）
+
+**Reason:**
+- 用户指定：左栏聚焦"今日推荐 + 最近会话"，任务类信息并入右栏状态区；会话列表限高盒内滚动，避免把左栏顶长。
+
+**Verification:**
+- `npx tsc --noEmit` 零错误；`npx vitest run` 100/100。
+- 真实浏览器截图核对：左栏今日推荐+会话滚动盒，右栏正在学习（进行中徽标）/教师发布任务/能力定位，均正确渲染。
+
+**Remaining verification:** 无。
+
+## [2026-08-01 21:25] 指挥舱固定为视口高度
+
+**Changed files:**
+- `app/src/pages/student/cockpit/cockpit.css`（.cockpit 高度 = 100vh − 顶栏 − 主区留白、overflow hidden；左右栏栏内滚动；中栏栏内滚动；.composer margin-top:auto 短内容时顶到栏底、长内容时 sticky 吸附；≤1200px 回落自然流；文件头注释同步）
+
+**Reason:**
+- 用户指定：固定 Agent 指挥舱高度为视口高度（应用式满屏框架，页面本身不滚动）。
+
+**Verification:**
+- `npx tsc --noEmit` 零错误；`npx vitest run` 100/100。
+- 真实浏览器断言：documentElement 无页面级滚动（page-scrollable=false）、中栏内部滚动（center-scrollable=true）；截图核对欢迎态/运行态：框架恰好满屏、输入区钉在栏底、确认门右栏置顶。
+
+**Remaining verification:** ≤1200px/≤900px 回落自然流的实机表现建议演示前过一遍。
+
+## [2026-08-01 21:40] 指挥舱整体背景卡片
+
+**Changed files:**
+- `app/src/pages/student/cockpit/cockpit.css`（.cockpit 增加浅灰面板背景 + 边框 + 圆角 + 内边距：三栏统一收纳进一张背景卡片，内部白色卡片仍保持对比）
+
+**Reason:**
+- 用户指定：给指挥舱中间整个区域加背景卡片，提升整体感与层次。
+
+**Verification:**
+- 真实浏览器截图核对：整舱收纳于一张圆角面板内，左右栏与中部层次清晰，视口固定高度与钉底输入区不受影响。
+
+**Remaining verification:** 无。
+
+## [2026-08-01 21:48] 撤销指挥舱整体背景卡片
+
+**Changed files:**
+- `app/src/pages/student/cockpit/cockpit.css`（回退上一条背景卡片改动：.cockpit 恢复透明底，无面板边框/内边距）
+
+**Reason:**
+- 用户要求取消刚加的整体背景卡片，恢复无背景面板的三栏布局。
+
+**Verification:**
+- CSS 回退至上一条之前的状态，视口固定高度/栏内滚动/钉底输入区保持。
+
+**Remaining verification:** 无。
+
+## [2026-08-02 14:12] 同步重构蓝图的 P0 安全与状态契约
+
+**Changed files:**
+- `docs/dev/rewrite-blueprint.md`（认证 DTO、密码信封协议、确认过期语义、Provider 角色化最小测试与生产配置约束）
+- `docs/logs/document-changelog.md`（本次记录）
+
+**Reason:**
+- 旧蓝图仍以明文 `password` 描述注册、登录和重置密码，且未覆盖密码公钥、确认倒计时收敛与角色化 Provider 测试的已实现契约。
+- 补充生产 fail-closed 配置边界，避免将仅限开发环境的临时密钥、邮件 outbox 和 token 回显误读为生产行为。
+
+**Verification:**
+- 对照 `server/bhzd_py/routers/auth.py`、`security.py`、`config.py`、`routers/confirmations.py`、`agent/confirmation_state.py`、`routers/admin.py` 与 `agent/providers.py` 核对端点、DTO 字段、状态码、事务终态、角色映射和安全结果字段。
+- 复核 `docs/dev/rewrite-blueprint.md`，确认不再出现认证请求的明文 `{email,password}` 或 `{token,password}` DTO 描述。
+
+**Remaining verification:**
+- 最终集成测试应复核文档中的端点响应与当前实现一致；真实 Provider smoke 仍须在已启用且已分配角色的有效配置上执行，且只保留脱敏结果。
+
+## [2026-08-02 14:37] 完成 P0 文档验证闭环
+
+**Changed files:**
+- `docs/logs/document-changelog.md`（补记上一条 P0 契约同步的最终验证结果）
+
+**Reason:**
+- 将已完成的集成、浏览器和 Provider 验证固化为可审计证据，避免上一条记录继续显示为待验证。
+
+**Verification:**
+- 隔离后端回归 `258 passed`；内容与图谱测试分别 `8 passed`、`37 passed`；集成冒烟 `39/39`。
+- `pnpm --dir app install --frozen-lockfile`、前端测试 `104 passed`、生产构建及隔离 Chromium E2E `10 passed` 均通过。
+- 已启用的 `primary` Provider 角色化最小冒烟成功；结果只保留角色、模型、耗时与成功状态，未记录敏感配置或响应内容。
+
+**Remaining verification:** 无。

@@ -1,0 +1,3 @@
+# Vite relies on esbuild's package build step; keep the allowlist limited to that dependency.
+allowBuilds:
+  esbuild: true

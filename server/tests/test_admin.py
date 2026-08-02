@@ -1,0 +1,474 @@
+"""系统管理域测试（蓝图 §6.6）：provider 管理、RAG 参数、用户权限、审计、指标。
+
+夹具策略（为什么）：system_admin 直接 INSERT 进库（argon2 哈希），不依赖
+seed 链路（seed 会牵到并行开发中的 rag/ 模块）；加密密钥每测试随机生成，
+加解密都在同进程内完成，互不影响。
+"""
+
+from __future__ import annotations
+
+import secrets
+import uuid
+from base64 import b64encode
+
+import pytest
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from bhzd_py.agent import providers
+from bhzd_py.config import get_config, reset_config_cache
+from bhzd_py.db import apply_migrations, connect, utc_now_iso
+from bhzd_py.errors import register_error_handlers
+from bhzd_py.routers import admin, auth
+from bhzd_py.security import hash_password
+
+ADMIN_EMAIL = "admin@example.com"
+ADMIN_PASSWORD = "AdminPass123"
+STUDENT_EMAIL = "student@example.com"
+STUDENT_PASSWORD = "Student123"
+
+
+def _build_app() -> FastAPI:
+    """只挂 auth + admin 的最小应用（理由见 test_auth._build_app：与并行开发的
+    兄弟 router 解耦，Wave4 再测全量 create_app 装配）。"""
+    app = FastAPI()
+    register_error_handlers(app)
+    app.include_router(auth.router)
+    app.include_router(admin.router)
+    return app
+
+
+def _password_envelope(client: TestClient, password: str) -> dict[str, str]:
+    """Use the public endpoint so admin callers exercise the browser wire contract."""
+    key_response = client.get("/api/auth/password-key")
+    assert key_response.status_code == 200
+    key = key_response.json()
+    public_key = serialization.load_pem_public_key(key["publicKeyPem"].encode("ascii"))
+    aes_key = secrets.token_bytes(32)
+    iv = secrets.token_bytes(12)
+    encrypted_key = public_key.encrypt(
+        aes_key,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None,
+        ),
+    )
+    ciphertext = AESGCM(aes_key).encrypt(iv, password.encode("utf-8"), None)
+    return {
+        "keyId": key["keyId"],
+        "encryptedKey": b64encode(encrypted_key).decode("ascii"),
+        "iv": b64encode(iv).decode("ascii"),
+        "ciphertext": b64encode(ciphertext).decode("ascii"),
+    }
+
+
+def _login(client: TestClient, email: str, password: str):
+    """Keep every admin-domain login aligned with the plaintext-free auth API."""
+    return client.post(
+        "/api/auth/login",
+        json={"email": email, "passwordEnvelope": _password_envelope(client, password)},
+    )
+
+
+def _db():
+    return connect(get_config().resolved_database_path)
+
+
+def _insert_user(email: str, name: str, role: str, password: str) -> str:
+    conn = _db()
+    try:
+        user_id = uuid.uuid4().hex
+        now = utc_now_iso()
+        conn.execute(
+            "INSERT INTO users (id, email, name, role, status, email_verified_at,"
+            " created_at, updated_at) VALUES (?, ?, ?, ?, 'active', ?, ?, ?)",
+            (user_id, email, name, role, now, now, now),
+        )
+        conn.execute(
+            "INSERT INTO user_credentials (user_id, password_hash, algo, updated_at)"
+            " VALUES (?, ?, 'argon2id', ?)",
+            (user_id, hash_password(password), now),
+        )
+        conn.commit()
+        return user_id
+    finally:
+        conn.close()
+
+
+@pytest.fixture()
+def app_and_admin(tmp_db_path, monkeypatch):
+    """全新应用 + 临时库 + 已登录的管理员客户端（含 CSRF 头）。"""
+    monkeypatch.setenv("BHZD_SMTP_HOST", "")
+    monkeypatch.setenv("BHZD_CONFIG_ENCRYPTION_KEY", secrets.token_hex(32))
+    reset_config_cache()
+    conn = _db()
+    try:
+        apply_migrations(conn)
+        conn.execute(
+            "INSERT OR IGNORE INTO rag_settings (id, updated_at) VALUES (1, ?)",
+            (utc_now_iso(),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    admin_id = _insert_user(ADMIN_EMAIL, "系统管理员", "system_admin", ADMIN_PASSWORD)
+    app = _build_app()
+    with TestClient(app) as client:
+        resp = _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
+        assert resp.status_code == 200, resp.text
+        # 系统管理员登录必须同时拿到两种 cookie（蓝图 §6.1 矩阵）
+        assert "bhzd_admin_session" in resp.cookies
+        assert "bhzd_session" in resp.cookies
+        client.headers["x-csrf-token"] = resp.json()["csrf_token"]
+        yield app, client, admin_id
+    reset_config_cache()
+
+
+@pytest.fixture()
+def admin_client(app_and_admin):
+    return app_and_admin[1]
+
+
+def _create_provider(client: TestClient, name: str = "主模型", **overrides):
+    payload = {
+        "name": name,
+        "protocol": "chat_completions",
+        "base_url": "https://api.example.com/v1",
+        "model": "demo-model",
+        "api_key": "sk-test-key-123",
+    }
+    payload.update(overrides)
+    return client.post("/api/admin/providers", json=payload)
+
+
+# ---------------------------------------------------------------- provider 管理
+
+def test_provider_create_rejects_forbidden_base_url(admin_client):
+    # NF9：云元数据地址与 localhost 必须被拒绝
+    resp = _create_provider(admin_client, base_url="http://169.254.169.254/latest")
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "INVALID_BASE_URL"
+    resp = _create_provider(admin_client, base_url="http://localhost:8080/v1")
+    assert resp.status_code == 400
+    resp = _create_provider(admin_client, base_url="http://192.168.1.10:9000/v1")
+    assert resp.status_code == 400
+
+
+def test_provider_crud_and_key_never_echoed(admin_client):
+    resp = _create_provider(admin_client)
+    assert resp.status_code == 201, resp.text
+    created = resp.json()
+    assert created["api_key_set"] is True
+    assert "api_key" not in created
+    assert created["role"] == "none"
+
+    resp = admin_client.get("/api/admin/providers")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 1
+    assert "api_key" not in body["items"][0]
+    # 整个响应体的序列化里也不得出现密钥明文
+    assert "sk-test-key-123" not in resp.text
+
+    resp = admin_client.put(
+        f"/api/admin/providers/{created['id']}", json={"name": "新名字", "timeout_seconds": 15}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "新名字"
+    assert resp.json()["timeout_seconds"] == 15
+
+    resp = admin_client.delete(f"/api/admin/providers/{created['id']}")
+    assert resp.status_code == 200
+    assert admin_client.get("/api/admin/providers").json()["total"] == 0
+
+    # 每个变更都应有审计行
+    conn = _db()
+    try:
+        actions = [
+            row["action"]
+            for row in conn.execute(
+                "SELECT action FROM audit_logs WHERE target_type = 'provider'"
+            )
+        ]
+    finally:
+        conn.close()
+    assert actions == ["provider.create", "provider.update", "provider.delete"]
+
+
+def test_provider_set_role_uniqueness(admin_client):
+    first = _create_provider(admin_client, name="A").json()
+    second = _create_provider(admin_client, name="B").json()
+
+    resp = admin_client.post(f"/api/admin/providers/{first['id']}/set-role", json={"role": "primary"})
+    assert resp.status_code == 200
+    assert resp.json()["role"] == "primary"
+
+    # B 设为 primary 后，A 必须被清成 none（至多一个主模型）
+    resp = admin_client.post(f"/api/admin/providers/{second['id']}/set-role", json={"role": "primary"})
+    assert resp.status_code == 200
+    roles = {p["name"]: p["role"] for p in admin_client.get("/api/admin/providers").json()["items"]}
+    assert roles == {"A": "none", "B": "primary"}
+
+    # none 仅清除自身角色
+    resp = admin_client.post(f"/api/admin/providers/{second['id']}/set-role", json={"role": "none"})
+    assert resp.json()["role"] == "none"
+    # 非法角色被拒绝
+    assert admin_client.post(
+        f"/api/admin/providers/{second['id']}/set-role", json={"role": "super"}
+    ).status_code == 400
+
+
+def test_provider_test_endpoint_records_last_test(admin_client, monkeypatch):
+    # 真实网络出口由 providers 单测覆盖；这里替换为可控实现，验证端点接线与落库
+    async def fake_test(row):
+        return {
+            "ok": True,
+            "role": row["role"],
+            "latency_ms": 12,
+            "model": row["model"],
+            "error": None,
+            "tested_at": "2026-07-31T00:00:00+00:00",
+        }
+
+    monkeypatch.setattr(providers, "test_provider", fake_test)
+    created = _create_provider(admin_client, role="primary").json()
+    resp = admin_client.post(f"/api/admin/providers/{created['id']}/test")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["ok"] is True
+    assert resp.json()["role"] == "primary"
+    assert resp.json()["latency_ms"] == 12
+    listed = admin_client.get("/api/admin/providers").json()["items"][0]
+    assert listed["last_test"]["ok"] is True
+    assert listed["last_test"]["role"] == "primary"
+
+
+def test_provider_test_requires_enabled_assigned_role(admin_client, monkeypatch):
+    """A disabled or unassigned credential must not trigger an outbound test."""
+    called = False
+
+    async def fake_test(_row):
+        nonlocal called
+        called = True
+        return {"ok": True}
+
+    monkeypatch.setattr(providers, "test_provider", fake_test)
+    unassigned = _create_provider(admin_client).json()
+    response = admin_client.post(f"/api/admin/providers/{unassigned['id']}/test")
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "PROVIDER_NOT_TESTABLE"
+
+    disabled = _create_provider(admin_client, name="disabled", role="primary", enabled=False).json()
+    response = admin_client.post(f"/api/admin/providers/{disabled['id']}/test")
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "PROVIDER_NOT_TESTABLE"
+    assert called is False
+
+
+def test_admin_mutations_require_csrf(app_and_admin):
+    _, client, _ = app_and_admin
+    del client.headers["x-csrf-token"]
+    resp = _create_provider(client)
+    assert resp.status_code == 403
+    assert resp.json()["error"]["code"] == "CSRF_TOKEN_INVALID"
+
+
+def test_admin_endpoints_reject_non_admin(tmp_db_path, monkeypatch):
+    # 学生会话访问 /api/admin/* 必须 401（无管理端 cookie）
+    monkeypatch.setenv("BHZD_SMTP_HOST", "")
+    monkeypatch.setenv("BHZD_CONFIG_ENCRYPTION_KEY", secrets.token_hex(32))
+    reset_config_cache()
+    conn = _db()
+    try:
+        apply_migrations(conn)
+    finally:
+        conn.close()
+    _insert_user(STUDENT_EMAIL, "学生", "student", STUDENT_PASSWORD)
+    with TestClient(_build_app()) as client:
+        resp = _login(client, STUDENT_EMAIL, STUDENT_PASSWORD)
+        assert resp.status_code == 200
+        assert client.get("/api/admin/providers").status_code == 401
+    reset_config_cache()
+
+
+# ---------------------------------------------------------------- RAG 参数
+
+def test_rag_settings_get_and_patch_with_audit(admin_client):
+    resp = admin_client.get("/api/admin/rag-settings")
+    assert resp.status_code == 200
+    defaults = resp.json()
+    assert defaults["chunk_size"] == 500
+    assert defaults["title_inherit"] is True  # 0/1 折成布尔
+
+    resp = admin_client.patch(
+        "/api/admin/rag-settings", json={"chunk_size": 800, "top_k": 10, "score_threshold": 0.5}
+    )
+    assert resp.status_code == 200, resp.text
+    updated = resp.json()
+    assert updated["chunk_size"] == 800
+    assert updated["top_k"] == 10
+
+    conn = _db()
+    try:
+        row = conn.execute(
+            "SELECT before_json, after_json FROM audit_logs WHERE action = 'rag_settings.update'"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row is not None
+    assert '"chunk_size": 500' in row["before_json"]
+    assert '"chunk_size": 800' in row["after_json"]
+
+
+def test_rag_settings_patch_range_validation(admin_client):
+    assert admin_client.patch("/api/admin/rag-settings", json={"chunk_size": 50}).status_code == 400
+    assert admin_client.patch("/api/admin/rag-settings", json={"chunk_size": 5000}).status_code == 400
+    assert admin_client.patch("/api/admin/rag-settings", json={"top_k": 0}).status_code == 400
+    assert admin_client.patch("/api/admin/rag-settings", json={"score_threshold": 1.5}).status_code == 400
+    assert admin_client.patch(
+        "/api/admin/rag-settings", json={"refusal_policy": "always_answer"}
+    ).status_code == 400
+    # 重叠区不得大于等于切片长度（否则切片器死循环）
+    assert admin_client.patch(
+        "/api/admin/rag-settings", json={"chunk_size": 200, "chunk_overlap": 200}
+    ).status_code == 400
+    # 未知字段直接拒绝
+    assert admin_client.patch("/api/admin/rag-settings", json={"unknown_field": 1}).status_code == 422
+
+
+# ---------------------------------------------------------------- 用户与权限
+
+def test_users_list_filter_and_patch_disable_revokes_sessions(app_and_admin):
+    app, admin_client, _ = app_and_admin
+    student_id = _insert_user(STUDENT_EMAIL, "学生一", "student", STUDENT_PASSWORD)
+
+    # 学生先在独立客户端登录（持有有效会话）
+    with TestClient(app) as student_client:
+        resp = _login(student_client, STUDENT_EMAIL, STUDENT_PASSWORD)
+        assert resp.status_code == 200
+        assert student_client.get("/api/auth/session").status_code == 200
+
+        # 管理员禁用该学生 → 学生会话立即失效（PRD-06 §3.4）
+        resp = admin_client.patch(f"/api/admin/users/{student_id}", json={"status": "disabled"})
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "disabled"
+        assert student_client.get("/api/auth/session").status_code == 401
+
+    # 列表过滤：role + q
+    resp = admin_client.get("/api/admin/users", params={"role": "student", "q": "student@"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 1
+    assert body["items"][0]["email"] == STUDENT_EMAIL
+
+    # 禁用动作写入审计
+    resp = admin_client.get("/api/admin/audit-logs", params={"action": "user.update"})
+    assert resp.json()["total"] >= 1
+
+
+def test_admin_cannot_disable_or_demote_self(app_and_admin):
+    _, admin_client, admin_id = app_and_admin
+    resp = admin_client.patch(f"/api/admin/users/{admin_id}", json={"status": "disabled"})
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "SELF_OPERATION_FORBIDDEN"
+    resp = admin_client.patch(f"/api/admin/users/{admin_id}", json={"role": "teacher"})
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "SELF_OPERATION_FORBIDDEN"
+
+
+def test_admin_reset_password_returns_temp_once_and_revokes(app_and_admin):
+    app, admin_client, _ = app_and_admin
+    student_id = _insert_user(STUDENT_EMAIL, "学生二", "student", STUDENT_PASSWORD)
+    with TestClient(app) as student_client:
+        assert _login(student_client, STUDENT_EMAIL, STUDENT_PASSWORD).status_code == 200
+
+        resp = admin_client.post(f"/api/admin/users/{student_id}/reset-password")
+        assert resp.status_code == 200, resp.text
+        temp_password = resp.json()["temporary_password"]
+
+        # 旧会话被吊销；旧密码失效；临时密码可登录
+        assert student_client.get("/api/auth/session").status_code == 401
+        assert _login(student_client, STUDENT_EMAIL, STUDENT_PASSWORD).status_code == 401
+        resp = _login(student_client, STUDENT_EMAIL, temp_password)
+        assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------- 审计查询
+
+def test_audit_logs_filters(app_and_admin):
+    _, admin_client, admin_id = app_and_admin
+    _create_provider(admin_client)
+
+    resp = admin_client.get("/api/admin/audit-logs", params={"action": "provider.create"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 1
+    item = body["items"][0]
+    assert item["actor_id"] == admin_id
+    assert item["actor_role"] == "system_admin"
+    assert item["target_type"] == "provider"
+    assert item["after"]["name"] == "主模型"  # before/after 已解析为 JSON
+    # 审计快照不得包含密钥密文之外的任何密钥材料
+    assert "sk-test-key-123" not in resp.text
+
+    # 不匹配的条件过滤为空
+    resp = admin_client.get("/api/admin/audit-logs", params={"action": "provider.delete"})
+    assert resp.json()["total"] == 0
+    # actor_id 过滤
+    resp = admin_client.get("/api/admin/audit-logs", params={"actor_id": admin_id})
+    assert resp.json()["total"] >= 1
+
+
+# ---------------------------------------------------------------- 运营指标
+
+def test_metrics_structure_and_honest_nulls(admin_client):
+    resp = admin_client.get("/api/admin/metrics")
+    assert resp.status_code == 200
+    body = resp.json()
+    expected_keys = {
+        "tool_call_success_rate",
+        "rag_retrieval_hit_rate",
+        "rag_refusal_rate",
+        "task_creation_conversion",
+        "preset_start_rate",
+        "diagnostic_success_rate",
+        "mastery_confirm_rate",
+        "model_failure_rate_by_provider",
+    }
+    assert set(body["metrics"].keys()) == expected_keys
+    # 空库：全部指标必须为 null 且 note 如实说明，不得编造数字
+    assert all(value is None for value in body["metrics"].values())
+    assert "null" in body["note"]
+
+
+def test_metrics_computed_from_real_data(admin_client):
+    conn = _db()
+    try:
+        now = utc_now_iso()
+        events = [
+            ("task_preview_created", "{}"),
+            ("task_preview_created", "{}"),
+            ("task_created", '{"source": "preset"}'),
+            ("preset_clicked", "{}"),
+            ("rag_retrieval_completed", '{"hit_count": 3}'),
+            ("rag_retrieval_completed", '{"hit_count": 0}'),
+        ]
+        for name, props in events:
+            conn.execute(
+                "INSERT INTO analytics_events (user_id, event_name, props_json, created_at)"
+                " VALUES (NULL, ?, ?, ?)",
+                (name, props, now),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    body = admin_client.get("/api/admin/metrics").json()
+    assert body["metrics"]["task_creation_conversion"] == 0.5
+    assert body["metrics"]["preset_start_rate"] == 1.0
+    assert body["metrics"]["rag_retrieval_hit_rate"] == 0.5
+    # 无数据的指标仍为 null
+    assert body["metrics"]["mastery_confirm_rate"] is None

@@ -19,11 +19,18 @@ const hasMsEdge = edgeExecutableCandidates.some((candidate) =>
 
 export default defineConfig({
   testDir: "../tests/e2e",
+  // The suite deliberately shares one seeded SQLite database and two demo accounts.
+  // Parallel workers contend for the same write lock and can trip the global login
+  // limiter, yielding false UI timeouts instead of product-level failures.
+  workers: 1,
   use: {
     baseURL: "http://127.0.0.1:4173",
   },
   webServer: {
-    command: "npm run dev -- --mode test --port 4173",
+    // Keep the dev server on the same lockfile-backed package manager as the test runner.
+    // Invoke Vite directly: pnpm v11 forwards the separator from `run` literally,
+    // which otherwise prevents Vite from receiving the test mode and port options.
+    command: "pnpm exec vite --host 127.0.0.1 --mode test --port 4173",
     url: "http://127.0.0.1:4173",
     reuseExistingServer: false,
     timeout: 120_000,
