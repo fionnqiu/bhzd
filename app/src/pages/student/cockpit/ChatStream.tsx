@@ -18,32 +18,46 @@ import RightRail from "./RightRail";
 
 export interface ChatStreamProps {
   run: CockpitRun;
-  conversationTitle: string;
-  scenarioName: string;
   /** 下一步建议"继续提问"→ 聚焦输入框 */
   onFocusComposer: () => void;
   /** 场景切换建议确认（PRD-06 §7.3：用户点击才切，绝不自动切） */
   onAcceptSuggestion: (scenarioId: string) => void;
 }
 
+export interface ConversationInfoBarProps {
+  conversationTitle: string;
+}
+
 /**
- * The conversation no longer owns an inner scrollbar.  Resolve the shell's
- * page-level main surface so streaming can follow only when the reader is
- * already near the bottom of the actual page.
+ * 页面级会话上下文头部。它由 CockpitPage 放在 transcript 滚动区之外，
+ * 这样当前对话标题在阅读历史消息时仍固定在对话页面顶部。
+ */
+export function ConversationInfoBar({ conversationTitle }: ConversationInfoBarProps) {
+  return (
+    <div
+      className="conversation-info-bar conversation-heading"
+      role="status"
+      aria-label="当前对话信息"
+    >
+      <Sparkles size={16} aria-hidden="true" />
+      <strong>{conversationTitle}</strong>
+    </div>
+  );
+}
+
+/**
+ * The transcript owns the scroll surface while the Composer remains its sibling.
+ * This keeps the active input visible without pulling a reader through history.
  */
 function pageScrollRegion(anchor: HTMLElement | null): HTMLElement | null {
+  const transcript = anchor?.closest<HTMLElement>(".cockpit-content-scroll");
+  if (transcript) return transcript;
   const mainContent = anchor?.closest<HTMLElement>(".main-content");
   if (mainContent) return mainContent;
   return document.scrollingElement instanceof HTMLElement ? document.scrollingElement : null;
 }
 
-export default function ChatStream({
-  run,
-  conversationTitle,
-  scenarioName,
-  onFocusComposer,
-  onAcceptSuggestion,
-}: ChatStreamProps) {
+export default function ChatStream({ run, onFocusComposer, onAcceptSuggestion }: ChatStreamProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const followBottomRef = useRef(true);
 
@@ -99,12 +113,6 @@ export default function ChatStream({
 
   return (
     <div className="chat-stream" data-testid="chat-stream">
-      <div className="conversation-heading" aria-label="当前会话">
-        <Sparkles size={16} aria-hidden="true" />
-        <strong>{conversationTitle}</strong>
-        <span>· 当前场景：{scenarioName}</span>
-      </div>
-
       <div className="message-list" aria-live="polite" aria-relevant="additions text">
         {transcriptMessages.map((message) => (
           <Fragment key={message.id}>

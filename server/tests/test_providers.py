@@ -785,6 +785,57 @@ def test_xunfei_frame_uses_short_override_without_changing_runtime_default(db):
     assert smoke_frame["parameter"]["chat"]["max_tokens"] == 16
 
 
+def test_chat_completion_reasoning_content_is_ignored(db):
+    """Explicit reasoning fields never become the provider text contract."""
+
+    _add_provider(role="primary")
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": "visible answer",
+                            "reasoning_content": "private reasoning",
+                            "analysis": "private analysis",
+                        }
+                    }
+                ]
+            },
+        )
+
+    _use_transport(handler)
+    result = asyncio.run(providers.complete(MESSAGES))
+    assert result is not None
+    assert result["text"] == "visible answer"
+
+
+def test_chat_stream_reasoning_deltas_are_ignored(db):
+    """Streaming adapters forward content deltas but drop reasoning-only frames."""
+
+    _add_provider(role="primary")
+    sse_body = (
+        'data: {"choices": [{"delta": {"reasoning_content": "private"}}]}\n\n'
+        'data: {"choices": [{"delta": {"content": "visible"}}]}\n\n'
+        'data: [DONE]\n\n'
+    )
+    _use_transport(
+        lambda request: httpx.Response(
+            200,
+            content=sse_body.encode("utf-8"),
+            headers={"content-type": "text/event-stream"},
+        )
+    )
+
+    async def collect():
+        return [event async for event in providers.stream_deltas(MESSAGES)]
+
+    events = asyncio.run(collect())
+    assert events[0] == {"delta": "visible"}
+
+
 def test_xunfei_signed_ws_url_signature(db):
     url = providers._signed_ws_url(
         "https://spark-api.xf-yun.com", "/v3.5/chat", "mykey:mysecret"

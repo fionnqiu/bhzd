@@ -13,12 +13,96 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any, AsyncIterator
 
 from . import prompts
 
 logger = logging.getLogger(__name__)
+
+_HIDDEN_OPEN_RE = re.compile(r"<\s*(?:think|analysis|reasoning)(?:\s+[^>]*)?>", re.I)
+_HIDDEN_CLOSE_RE = re.compile(r"<\s*/\s*(?:think|analysis|reasoning)\s*>", re.I)
+_HIDDEN_OPEN_TAGS = ("<think>", "<analysis>", "<reasoning>")
+_HIDDEN_CLOSE_TAGS = ("</think>", "</analysis>", "</reasoning>")
+_LEADING_REASONING_RE = re.compile(
+    r"^\s*(?:analysis|reasoning|chain[- ]of[- ]thought|思考过程|推理过程)\s*[:：]\s*",
+    re.I,
+)
+
+
+class _VisibleTextFilter:
+    """Stream only final-answer text while dropping explicit reasoning blocks.
+
+    Provider chunks can split an XML-like marker across tokens, so filtering
+    each chunk independently would leak half a marker or hidden text. This
+    state machine retains only the short suffix needed to detect a split
+    marker and never exposes the contents of a hidden block.
+    """
+
+    def __init__(self) -> None:
+        self._buffer = ""
+        self._hidden = False
+
+    @staticmethod
+    def _partial_marker_length(value: str, markers: tuple[str, ...]) -> int:
+        """Return only a suffix that could be a split marker prefix."""
+
+        lowered = value.lower()
+        for length in range(min(len(value), max(map(len, markers))), 0, -1):
+            suffix = lowered[-length:]
+            if any(marker.startswith(suffix) for marker in markers):
+                return length
+        return 0
+
+    def feed(self, chunk: str) -> list[str]:
+        self._buffer += chunk
+        visible: list[str] = []
+        while self._buffer:
+            if self._hidden:
+                closing = _HIDDEN_CLOSE_RE.search(self._buffer)
+                if closing is None:
+                    keep = self._partial_marker_length(self._buffer, _HIDDEN_CLOSE_TAGS)
+                    self._buffer = self._buffer[-keep:] if keep else ""
+                    break
+                self._buffer = self._buffer[closing.end() :]
+                self._hidden = False
+                continue
+
+            opening = _HIDDEN_OPEN_RE.search(self._buffer)
+            if opening is not None:
+                visible.append(self._buffer[: opening.start()])
+                self._buffer = self._buffer[opening.end() :]
+                self._hidden = True
+                continue
+
+            partial = self._partial_marker_length(self._buffer, _HIDDEN_OPEN_TAGS)
+            safe_length = len(self._buffer) - partial
+            if safe_length <= 0:
+                break
+            visible.append(self._buffer[:safe_length])
+            self._buffer = self._buffer[safe_length:]
+        return [part for part in visible if part]
+
+    def finish(self) -> str:
+        """Flush visible text; unfinished hidden blocks are discarded."""
+
+        if self._hidden:
+            self._buffer = ""
+            return ""
+        result = self._buffer
+        self._buffer = ""
+        return result
+
+
+def sanitize_model_text(text: str) -> str:
+    """Normalize a complete provider answer before persistence or summaries."""
+
+    filtered = _VisibleTextFilter()
+    parts = filtered.feed(text)
+    tail = filtered.finish()
+    value = "".join(parts) + tail
+    return _LEADING_REASONING_RE.sub("", value).strip()
 
 @dataclass
 class UsageCapture:
@@ -78,7 +162,9 @@ async def compose_text(
         if result and result.get("text"):
             if usage_capture is not None:
                 usage_capture.record(result)
-            return str(result["text"])
+            # Non-stream responses use the same answer-only normalization as
+            # live deltas so persistence and recovery cannot disagree.
+            return sanitize_model_text(str(result["text"]))
     return None
 
 
@@ -98,14 +184,20 @@ async def stream_text(
         return
     for role in ("primary", "fallback"):
         produced = False
+        text_filter = _VisibleTextFilter()
         try:
             async for event in providers.stream_deltas(messages, role=role):
                 if event.get("delta"):
-                    produced = True
-                    yield str(event["delta"])
+                    for visible in text_filter.feed(str(event["delta"])):
+                        produced = True
+                        yield visible
                 elif event.get("done") is not None or "done" in event:
                     if usage_capture is not None:
                         usage_capture.record(event)
+            tail = text_filter.finish()
+            if tail:
+                produced = True
+                yield _LEADING_REASONING_RE.sub("", tail)
         except Exception:
             logger.warning("LLM 流式合成失败（role=%s）", role, exc_info=True)
             # A mid-answer provider switch would splice two models into one

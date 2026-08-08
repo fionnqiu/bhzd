@@ -220,7 +220,7 @@ describe("TaskPublishPage（PRD-02 §5）", () => {
         }),
       ),
     );
-    expect(await screen.findByText("草稿已保存")).toBeInTheDocument();
+    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
 
     // 选择班级后发布
     fireEvent.change(screen.getByDisplayValue("请选择班级"), {
@@ -242,7 +242,7 @@ describe("TaskPublishPage（PRD-02 §5）", () => {
         counts_toward_mastery: true,
       }),
     );
-    expect(await screen.findByText("已发布给 5 名学生")).toBeInTheDocument();
+    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
   });
 
   it("未选班级时发布被客户端拦截", async () => {

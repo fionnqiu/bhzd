@@ -233,16 +233,15 @@ export default function ProvidersPage() {
     setDiscoveringModels(true);
     setModelDiscoveryError(null);
     try {
-      const result =
-        usesTransientFormConnection
-          ? await api.post<ProviderModelDiscoveryResult>("/api/admin/providers/discover-models", {
-              protocol: form.protocol,
-              base_url: form.base_url.trim(),
-              api_key: form.api_key,
-            })
-          : await api.post<ProviderModelDiscoveryResult>(
-              `/api/admin/providers/${editor.id}/discover-models`,
-            );
+      const result = usesTransientFormConnection
+        ? await api.post<ProviderModelDiscoveryResult>("/api/admin/providers/discover-models", {
+            protocol: form.protocol,
+            base_url: form.base_url.trim(),
+            api_key: form.api_key,
+          })
+        : await api.post<ProviderModelDiscoveryResult>(
+            `/api/admin/providers/${editor.id}/discover-models`,
+          );
       const options = Array.isArray(result.models)
         ? result.models.map((model) => ({ value: model.id, label: model.label }))
         : [];
@@ -685,19 +684,25 @@ export default function ProvidersPage() {
           />
           启用该供应商
         </label>
-        <div className="provider-form-test" aria-live="polite">
-          <Button
-            type="button"
-            variant="secondary"
-            loading={testingForm}
-            aria-busy={testingForm}
-            disabled={!canTestForm}
-            title={formTestStatus ?? "测试当前连接"}
-            onClick={() => void runFormTest()}
-          >
-            测试连接
-          </Button>
-          {formTestResult ? <LastTestCell test={formTestResult} /> : null}
+        <div className="provider-form-test" role="group" aria-label="连接测试" aria-live="polite">
+          <div className="provider-form-test-button-row">
+            <Button
+              type="button"
+              className="provider-form-test-button"
+              variant="secondary"
+              loading={testingForm}
+              aria-busy={testingForm}
+              disabled={!canTestForm}
+              title={formTestStatus ?? "测试当前连接"}
+              onClick={() => void runFormTest()}
+            >
+              {/* Keep the label width stable while Button overlays its loading spinner. */}
+              <span className="provider-form-test-button-label">测试连接</span>
+            </Button>
+            <div className="provider-form-test-result">
+              {formTestResult ? <LastTestCell test={formTestResult} /> : null}
+            </div>
+          </div>
           {formTestStatus ? <p className="field-hint">{formTestStatus}</p> : null}
         </div>
         <div className="flex gap-2">

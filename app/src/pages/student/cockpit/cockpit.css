@@ -1208,7 +1208,9 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: calc(100dvh - var(--topbar-height) - var(--space-5) - var(--space-6));
+  /* The notification is fixed outside layout flow, so the Cockpit keeps the
+     full shell height instead of reserving the removed page action row. */
+  height: calc(100dvh - var(--space-5) - var(--space-6));
   min-height: 0;
   overflow: hidden;
 }
@@ -1602,7 +1604,6 @@
   .cockpit-workbench .welcome {
     padding-inline: 0;
   }
-
 }
 
 @media (max-width: 560px) {
@@ -1642,7 +1643,6 @@
   .cockpit-workbench .bubble-content {
     max-width: 90%;
   }
-
 }
 
 /* ------------------------------------------------ Student workbench v3 */
@@ -1655,7 +1655,9 @@
 }
 
 .cockpit-workbench .cockpit-center {
-  gap: 38px;
+  /* Keep the transcript and default Composer adjacent; the scroll region
+     already owns its own content spacing, so a parent gap only adds dead air. */
+  gap: 0;
   width: min(900px, 100%);
   max-width: 900px;
 }
@@ -1770,14 +1772,18 @@
 /* ------------------------------------------------------------ Transcript */
 .cockpit-workbench .chat-stream {
   gap: 0;
-  padding: 58px 0 28px;
+  padding: 0 0 28px;
 }
 
 .conversation-heading {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 34px;
+  margin-bottom: 28px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-soft);
   color: var(--ink-soft);
   font-size: 14px;
 }
@@ -1787,10 +1793,25 @@
   font-size: 15px;
 }
 
+/* The header now sits outside the transcript. Remove the old message-heading
+   margin and leave room for the viewport-level notification on the right. */
+.cockpit-workbench .conversation-info-bar {
+  flex: 0 0 auto;
+  /* Escape only the main-content side padding; the title stays in flow at the
+     top of Cockpit so it cannot be clipped by the hidden shell overflow. */
+  width: calc(100% + 56px);
+  margin: 0 -28px 28px;
+  padding: 14px 84px 14px 28px;
+  border-radius: 0;
+  min-width: 0;
+}
+
 .message-list {
   display: grid;
   gap: 22px;
-  flex: 1;
+  /* Let short transcripts end after their last message; the outer scroll
+     region still handles overflow for long conversations. */
+  flex: 0 0 auto;
 }
 
 .cockpit-workbench .bubble {
@@ -1937,7 +1958,7 @@
 /* --------------------------------------------------------------- Composer */
 .cockpit-workbench .composer {
   width: min(900px, 100%);
-  min-height: 132px;
+  min-height: 144px;
   margin: 0 auto;
   padding: 18px 18px 12px;
   border: 1px solid var(--line-strong);
@@ -1955,25 +1976,38 @@
 }
 
 .cockpit-workbench .composer-hero {
+  height: 164px;
   min-height: 164px;
+  /* The hero controls sit directly on the lower edge to keep the landing
+     composer compact while the action row remains part of normal flow. */
+  padding-bottom: 0;
 }
 
 .cockpit-workbench .composer-input-shell {
-  min-height: 132px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .cockpit-workbench .composer-hero .composer-input-shell {
-  min-height: 132px;
+  min-height: 0;
 }
 
 .cockpit-workbench .composer-textarea,
 .cockpit-workbench .composer-hero .composer-textarea {
-  min-height: 90px;
-  padding: 0 0 44px;
+  flex: 1 1 auto;
+  /* Keep the active conversation compact while retaining two readable lines
+     above the stable scenario and send controls. */
+  min-height: 64px;
+  padding: 0;
   resize: none;
   color: var(--ink);
   font-size: 17px;
   line-height: 1.6;
+}
+
+.cockpit-workbench .composer-hero .composer-textarea {
+  min-height: 64px;
 }
 
 .cockpit-workbench .composer-textarea::placeholder {
@@ -1981,12 +2015,13 @@
 }
 
 .cockpit-workbench .composer-input-actions {
-  right: 0;
-  bottom: 0;
-  left: 0;
+  position: static;
+  flex: 0 0 auto;
   min-height: 38px;
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 12px;
+  margin-top: 12px;
+  pointer-events: auto;
 }
 
 .cockpit-workbench .composer-tool-button,
@@ -2037,6 +2072,40 @@
   cursor: not-allowed;
 }
 
+.cockpit-workbench .composer-scenario-control {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  /* The continuation selector is intentionally icon-free; keep its label
+     aligned without reserving space for the removed FolderOpen glyph. */
+  gap: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.cockpit-workbench .composer-scenario-select {
+  min-width: 0;
+  /* Four built-in scenario names fit at this cap; longer future labels still
+     use the Select component's ellipsis and title instead of widening Composer. */
+  width: min(100%, 160px);
+}
+
+.cockpit-workbench .composer-scenario-select .select-trigger {
+  min-height: 32px;
+  height: 32px;
+  padding: 4px 8px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.cockpit-workbench .composer-scenario-select .select-trigger:hover,
+.cockpit-workbench .composer-scenario-select .select-trigger[aria-expanded="true"] {
+  border-color: var(--line);
+  background: #f0f3f6;
+}
+
 .cockpit-workbench .composer-scenario {
   gap: 7px;
   color: var(--ink-soft);
@@ -2053,7 +2122,7 @@
   }
 
   .cockpit-workbench .cockpit-center {
-    gap: 28px;
+    gap: 0;
   }
 
   .cockpit-workbench .welcome {
@@ -2065,7 +2134,14 @@
   }
 
   .cockpit-workbench .chat-stream {
-    padding: 36px 0 20px;
+    padding: 0 0 20px;
+  }
+
+  /* Mobile reserves the left menu toggle and right notification floating action. */
+  .cockpit-workbench .conversation-info-bar {
+    width: calc(100% + 32px);
+    margin: 0 -16px 20px;
+    padding: 12px 60px 12px 16px;
   }
 }
 
@@ -2083,24 +2159,25 @@
     font-size: 14px;
   }
 
-  .cockpit-workbench .composer,
-  .cockpit-workbench .composer-hero {
-    min-height: 150px;
+  .cockpit-workbench .composer {
+    min-height: 140px;
     padding: 14px 12px 10px;
+  }
+
+  .cockpit-workbench .composer-hero {
+    height: 164px;
+    min-height: 164px;
+    padding: 14px 12px 0;
   }
 
   .cockpit-workbench .composer-input-shell,
   .cockpit-workbench .composer-hero .composer-input-shell {
-    min-height: 126px;
+    min-height: 0;
   }
 
   .cockpit-workbench .composer-textarea,
   .cockpit-workbench .composer-hero .composer-textarea {
     font-size: 16px;
-  }
-
-  .cockpit-workbench .conversation-heading span {
-    display: none;
   }
 
   .cockpit-workbench .bubble,
@@ -2136,46 +2213,68 @@ html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] .composer
   background: #3a4955;
 }
 
-/* The shell owns the conversation page scroll surface.  Keeping this layer
-   flow-based prevents a second scrollbar inside the centered transcript while
-   leaving the Composer immediately after the current conversation. */
+/* Keep the transcript as the only scrolling surface. The Composer is a sibling
+   in the fixed-height center column, so it stays available during long reads. */
 .cockpit.cockpit-workbench,
-.cockpit-workbench .cockpit-center,
-.cockpit-workbench .cockpit-content-scroll {
-  height: auto;
+.cockpit-workbench .cockpit-center {
+  height: 100%;
   min-height: 0;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .cockpit.cockpit-workbench {
-  min-height: calc(100dvh - 2 * var(--space-6));
+  min-height: 0;
+  overflow: hidden;
 }
 
 .cockpit-workbench .cockpit-center {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
 }
 
+/* The region itself is the visible scroll boundary. Keeping the message stack
+   overflow-free prevents a second scrollbar from appearing inside the content. */
 .cockpit-workbench .cockpit-content-scroll,
 .cockpit-workbench .cockpit-center-welcome .cockpit-content-scroll {
-  flex: 0 0 auto;
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
   max-height: none;
-  overflow-y: visible;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0;
+  overscroll-behavior: contain;
+}
+
+.cockpit-workbench .cockpit-content-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  min-width: 0;
+  min-height: 100%;
+}
+
+.cockpit-workbench .conversation-info-bar {
+  /* The transcript starts directly below the title band, matching the
+     reference layout instead of reserving an empty strip above the first turn. */
+  margin-bottom: 0;
 }
 
 .cockpit-workbench .cockpit-content-scroll::-webkit-scrollbar,
 .cockpit-workbench .cockpit-content-scroll::-webkit-scrollbar-track,
 .cockpit-workbench .cockpit-content-scroll::-webkit-scrollbar-thumb {
-  display: none;
+  display: initial;
 }
 
 @media (max-width: 900px) {
   .cockpit.cockpit-workbench {
-    min-height: calc(100dvh - 2 * var(--space-4));
+    min-height: 0;
   }
 }
 
 @media (max-width: 560px) {
   .cockpit.cockpit-workbench {
-    min-height: calc(100dvh - 2 * var(--space-3));
+    min-height: 0;
   }
 }

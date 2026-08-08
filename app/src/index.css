@@ -81,15 +81,14 @@
   --font-size-2xl: 24px;
 
   /* 布局尺寸 */
-  --sidebar-width: 232px;
+  /* Keep every expanded portal rail aligned with the student workbench. */
+  --sidebar-width: 272px;
   --topbar-height: 56px;
 
   /* z-index 分层（统一登记，避免层叠战争） */
   --z-drawer: 60;
   --z-modal: 70;
-  /* Portal comboboxes must clear drawers and modals while staying below toasts. */
   --z-select: 75;
-  --z-toast: 80;
   --z-dropdown: 50;
 
   /* Motion stays short and directional so repeated work remains responsive. */
@@ -227,30 +226,6 @@
   to {
     opacity: 0;
     transform: translateY(2px) scale(0.99);
-  }
-}
-
-@keyframes motion-toast-enter {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes motion-toast-exit {
-  from {
-    opacity: 1;
-    transform: translateX(0);
-  }
-
-  to {
-    opacity: 0;
-    transform: translateX(16px);
   }
 }
 
@@ -474,7 +449,7 @@ img {
 /* This skin is deliberately opt-in so the teacher and administration portals
    retain their denser application shell. */
 .shell[data-shell-variant="student-workbench"] {
-  --student-workbench-sidebar-width: 296px;
+  --student-workbench-sidebar-width: 272px;
   background: var(--color-surface);
 }
 
@@ -1125,6 +1100,35 @@ html[data-theme="dark"]
   flex-shrink: 0;
 }
 
+/* Option B: when the rail is hidden, make its restore control the first real
+   column of the page header so titles never sit underneath a floating button. */
+.page-header-has-sidebar-expand {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: var(--space-3);
+}
+
+.page-header-copy {
+  min-width: 0;
+}
+
+.page-header-sidebar-expand {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  box-shadow: 0 4px 14px rgba(23, 33, 43, 0.1);
+}
+
+.page-header-has-sidebar-expand .page-header-actions {
+  grid-column: 3;
+  align-self: start;
+}
+
 /* -------------------------------------------------------------- 表格 */
 .table-wrap {
   width: 100%;
@@ -1132,7 +1136,9 @@ html[data-theme="dark"]
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
-  scrollbar-gutter: stable;
+  /* Tables own horizontal overflow; a stable vertical gutter would render a
+     trailing blank strip when no vertical scrollbar is present. */
+  scrollbar-gutter: auto;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-surface);
@@ -1216,12 +1222,6 @@ html[data-theme="dark"]
    group on compact screens, where the table viewport intentionally scrolls. */
 .provider-table .table {
   min-width: max(100%, 1100px);
-}
-
-/* This view only scrolls horizontally, so a reserved vertical gutter reads as
-   trailing data whitespace; keep the global stable gutter for other tables. */
-.provider-table > .table-wrap {
-  scrollbar-gutter: auto;
 }
 
 .provider-table .table td {
@@ -1356,16 +1356,61 @@ html[data-theme="dark"]
 /* Form-level testing is deliberately separate from Save: administrators can
    validate a new endpoint without creating a persistent provider row. */
 .provider-form-test {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  display: grid;
   gap: var(--space-2);
   margin: 0 0 var(--space-4);
 }
 
+.provider-form-test-button-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.provider-form-test-button {
+  position: relative;
+  min-width: 104px;
+}
+
+.provider-form-test-button[aria-busy="true"] .provider-form-test-button-label {
+  visibility: hidden;
+}
+
+.provider-form-test-button[aria-busy="true"] .spinner {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+}
+
+.provider-form-test-result {
+  /* The status may contain an endpoint error; let it consume remaining row
+     space and truncate instead of pushing the fixed-width test button. */
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.provider-form-test-result .provider-last-test {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .provider-form-test .field-hint {
-  flex-basis: 100%;
   margin: 0;
+}
+
+@media (max-width: 560px) {
+  .provider-form-test-button-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .provider-form-test-button {
+    width: 100%;
+  }
 }
 
 /* -------------------------------------------------------------- 徽章/标签 */
@@ -1654,58 +1699,18 @@ html[data-theme="dark"]
   font-weight: 600;
 }
 
-/* -------------------------------------------------------------- Toast */
-.toast-container {
-  position: fixed;
-  top: var(--space-4);
-  right: var(--space-4);
-  z-index: var(--z-toast);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  max-width: 360px;
+/* Graph mode tabs may still overflow on narrow screens, but their scrollbar is
+   visual noise in the compact filter row. Keep the rule scoped so shared Tabs
+   in teacher and RAG pages retain their existing affordance. */
+.graph-view-mode-tabs .tabs {
+  scrollbar-gutter: auto;
+  scrollbar-width: none;
 }
 
-.toast {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-left-width: 4px;
-  box-shadow: var(--shadow-md);
-  font-size: var(--font-size-sm);
-}
-
-.toast[data-motion-state="open"] {
-  animation: motion-toast-enter var(--motion-standard) var(--ease-out) both;
-}
-
-.toast[data-motion-state="closing"] {
-  animation: motion-toast-exit var(--motion-fast) var(--ease-in) both;
-  pointer-events: none;
-}
-
-.toast-success {
-  border-left-color: var(--color-success);
-}
-
-.toast-error {
-  border-left-color: var(--color-danger);
-}
-
-.toast-info {
-  border-left-color: var(--color-info);
-}
-
-.toast-body {
-  flex: 1;
-}
-
-.toast-close {
-  flex-shrink: 0;
+.graph-view-mode-tabs .tabs::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 /* -------------------------------------------------------------- 空态/错误态 */
@@ -2205,7 +2210,6 @@ html[data-theme="dark"]
   .sidebar,
   .topbar,
   .verify-banner,
-  .toast-container,
   .btn,
   .icon-btn {
     display: none !important;
@@ -2246,8 +2250,7 @@ html[data-theme="dark"]
   --teal: #159b91;
   --amber: #bf7417;
   --shadow-input: 0 18px 42px rgba(26, 39, 52, 0.08);
-  --student-workbench-sidebar-width: 296px;
-  --topbar-height: 68px;
+  --student-workbench-sidebar-width: 272px;
   --radius-control: 8px;
   --radius-input: 16px;
   --color-primary: var(--accent);
@@ -2277,7 +2280,8 @@ html[data-theme="dark"]
 }
 
 .shell.student-workbench-sidebar-collapsed .sidebar {
-  width: 68px;
+  display: none;
+  width: 0;
 }
 
 .shell[data-shell-variant="student-workbench"] .main {
@@ -2287,12 +2291,34 @@ html[data-theme="dark"]
 }
 
 .shell.student-workbench-sidebar-collapsed .main {
-  margin-left: 68px;
+  margin-left: 0;
 }
 
 .shell[data-shell-variant="student-workbench"] .main-content {
-  padding: 0 28px 28px;
+  padding: 28px;
   background: var(--canvas);
+}
+
+/* Keep the bell available on every student route without adding a toolbar or
+   reserving vertical space above the route content. */
+.shell[data-shell-variant="student-workbench"] .student-workbench-floating-actions {
+  position: fixed;
+  top: 16px;
+  right: 28px;
+  z-index: var(--z-dropdown);
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Cockpit's conversation header forms the shared top band; keep the global
+   notification trigger aligned to its right edge without adding a toolbar node. */
+.shell[data-shell-variant="student-workbench"] .student-workbench-cockpit-actions {
+  top: 12px;
+  right: 28px;
+}
+
+.student-workbench-notification-menu {
+  min-width: 320px;
 }
 
 .shell[data-shell-variant="student-workbench"] .student-workbench-sidebar-header {
@@ -2331,6 +2357,22 @@ html[data-theme="dark"]
   width: 34px;
   height: 34px;
   color: var(--ink-soft);
+}
+
+/* A fully hidden rail needs a replacement control outside the rail itself.
+   Keep it aligned to the viewport corner so the content never reserves a faux sidebar. */
+.shell[data-shell-variant="student-workbench"] .workbench-sidebar-expand,
+.shell[data-shell-variant="operations-workbench"] .workbench-sidebar-expand {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: calc(var(--z-dropdown) + 1);
+  width: 36px;
+  height: 36px;
+  color: var(--color-text-secondary);
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  box-shadow: 0 4px 14px rgba(23, 33, 43, 0.12);
 }
 
 .shell[data-shell-variant="student-workbench"] .sidebar-portal {
@@ -2514,16 +2556,10 @@ html[data-theme="dark"]
   color: var(--ink-soft);
 }
 
-.student-workbench-header-actions,
 .shell[data-shell-variant="student-workbench"] .topbar-custom-actions {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-}
-
-.shell[data-shell-variant="student-workbench"] .student-workbench-help-link {
-  width: 34px;
-  height: 34px;
 }
 
 .shell.student-workbench-sidebar-collapsed .student-workbench-sidebar-header {
@@ -2568,13 +2604,9 @@ html[data-theme="dark"]
 }
 
 @media (max-width: 900px) {
-  .shell[data-shell-variant="student-workbench"] {
-    --topbar-height: 60px;
-  }
-
   .shell[data-shell-variant="student-workbench"] .sidebar,
   .shell.student-workbench-sidebar-collapsed .sidebar {
-    width: min(296px, 84vw);
+    width: min(272px, 84vw);
   }
 
   .shell[data-shell-variant="student-workbench"] .main,
@@ -2587,7 +2619,19 @@ html[data-theme="dark"]
   }
 
   .shell[data-shell-variant="student-workbench"] .main-content {
-    padding: 0 16px 20px;
+    padding: 20px 16px;
+  }
+
+  .shell[data-shell-variant="student-workbench"] .student-workbench-floating-actions {
+    top: 12px;
+    right: 12px;
+  }
+
+  /* Keep the right-aligned notification menu inside the smallest supported
+     viewport instead of letting its desktop minimum width overflow left. */
+  .student-workbench-notification-menu {
+    width: min(320px, calc(100vw - 24px));
+    min-width: 0;
   }
 
   .shell[data-shell-variant="student-workbench"] .student-workbench-sidebar {
@@ -2651,10 +2695,6 @@ html[data-theme="dark"]
     width: min(180px, 34vw);
     flex-basis: min(180px, 34vw);
   }
-
-  .shell[data-shell-variant="student-workbench"] .student-workbench-header-actions > :last-child {
-    display: none;
-  }
 }
 
 /* Keep the approved light workbench stable by default. A future account-level
@@ -2708,7 +2748,8 @@ html[data-theme="dark"]
  * and cockpit overflow rules intentionally remain scoped to their own variant.
  */
 .shell[data-shell-variant="operations-workbench"] {
-  --operations-sidebar-width: 296px;
+  /* Operations pages use the same expanded rail width as student pages. */
+  --operations-sidebar-width: 272px;
   --operations-canvas: #f7f8fa;
   --operations-surface: #ffffff;
   --operations-surface-soft: #fbfcfd;
@@ -2757,12 +2798,13 @@ html[data-theme="dark"]
 
 .shell.operations-workbench-sidebar-collapsed .sidebar,
 .shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"] .sidebar {
-  width: 68px;
+  display: none;
+  width: 0;
 }
 
 .shell.operations-workbench-sidebar-collapsed .main,
 .shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"] .main {
-  margin-left: 68px;
+  margin-left: 0;
 }
 
 .shell[data-shell-variant="operations-workbench"] .operations-workbench-sidebar-header {
@@ -3044,7 +3086,7 @@ html[data-theme="dark"] .shell[data-shell-variant="operations-workbench"] .sideb
   .shell[data-shell-variant="operations-workbench"] .sidebar,
   .shell.operations-workbench-sidebar-collapsed .sidebar,
   .shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"] .sidebar {
-    width: min(296px, 84vw);
+    width: min(272px, 84vw);
   }
 
   .shell[data-shell-variant="operations-workbench"] .main,
@@ -3292,7 +3334,15 @@ html[data-theme="dark"] .shell[data-shell-variant="operations-workbench"] .sideb
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-gutter: stable;
+  /* Preserve wheel/touch/keyboard scrolling while removing visual chrome. */
+  scrollbar-gutter: auto;
+  scrollbar-width: none;
+}
+
+.sidebar-scroll-region::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .shell-mobile-nav-toggle {
@@ -3455,6 +3505,16 @@ html[data-theme="dark"] .shell[data-shell-variant="operations-workbench"] .sideb
   overflow-y: auto;
 }
 
+/* Cockpit keeps its own transcript scroller and fixed Composer; route pages
+   receive the shared main-content padding declared above. */
+.shell[data-shell-variant="student-workbench"]
+  .main-content.student-workbench-cockpit-main-content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-top: 0;
+}
+
 @media (max-width: 900px) {
   .shell-mobile-nav-toggle {
     display: inline-grid;
@@ -3476,6 +3536,11 @@ html[data-theme="dark"] .shell[data-shell-variant="operations-workbench"] .sideb
     padding-top: 68px;
   }
 
+  .shell[data-shell-variant="student-workbench"]
+    .main-content.student-workbench-cockpit-main-content {
+    padding-top: 0;
+  }
+
   .shell.student-workbench-sidebar-collapsed .student-workbench-sidebar-top,
   .shell.student-workbench-sidebar-collapsed .student-workbench-sidebar,
   .shell.student-workbench-sidebar-collapsed .workbench-brand-copy,
@@ -3495,7 +3560,11 @@ html[data-theme="dark"] .shell[data-shell-variant="operations-workbench"] .sideb
 }
 
 html[data-theme="dark"] .sidebar-footer.workbench-account-footer,
-html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] .student-workbench-account-footer,
-html[data-theme="dark"] .shell[data-shell-variant="operations-workbench"] .operations-workbench-account-footer {
+html[data-theme="dark"]
+  .shell[data-shell-variant="student-workbench"]
+  .student-workbench-account-footer,
+html[data-theme="dark"]
+  .shell[data-shell-variant="operations-workbench"]
+  .operations-workbench-account-footer {
   background: #182129;
 }

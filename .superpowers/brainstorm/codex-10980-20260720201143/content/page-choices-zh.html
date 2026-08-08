@@ -1,0 +1,115 @@
+﻿<h2>请选择前端页面组合方案</h2>
+<p class="subtitle">这次不只比较风格，而是比较“用户一进来先看到什么、如何理解系统、如何进入工具”。点击卡片选择你倾向的方案。</p>
+
+<div class="cards">
+  <div class="card" data-choice="A1-Agent-Cockpit" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">A1：Agent 指挥舱优先</div>
+        <div class="mockup-body">
+          <div style="display:grid;grid-template-columns:0.7fr 1.3fr 0.8fr;gap:10px;min-height:170px">
+            <div class="mock-sidebar">航线 / 课程 / 图谱 / 诊断</div>
+            <div class="mock-content">
+              <div class="placeholder">Agent 对话 + 计划 + 执行轨迹</div>
+              <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+                <button class="mock-button">打开课程</button>
+                <button class="mock-button">查看图谱</button>
+                <button class="mock-button">运行诊断</button>
+              </div>
+            </div>
+            <div class="mock-sidebar">状态 / 风险 / 下一步</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A1 Agent 指挥舱优先（推荐）</h3>
+      <p>首页就是主控台：用户直接描述目标，Agent 给计划、调工具、展示过程。最符合“真实 Agent 平台”。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>适合</h4><ul><li>突出平台差异化</li><li>让 Agent 价值一眼可见</li><li>统一承载课程、图谱、任务、诊断</li></ul></div>
+        <div class="cons"><h4>风险</h4><ul><li>信息层级必须克制</li><li>需要处理好新手引导</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" data-choice="A2-Learning-Path" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">A2：学习路径优先</div>
+        <div class="mockup-body">
+          <div style="display:grid;grid-template-columns:1fr 1.2fr;gap:10px;min-height:170px">
+            <div class="mock-content">
+              <div class="placeholder">选择数据类型 / 能力目标</div>
+              <div class="placeholder">推荐课程路线</div>
+            </div>
+            <div class="mock-sidebar">Agent 作为旁侧助手</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A2 学习路径优先</h3>
+      <p>首页先帮用户进入课程和训练路径，Agent 作为助手随时解释、推荐和纠偏。更亲和，学习用户更容易上手。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>适合</h4><ul><li>学生和教师</li><li>降低首次使用压力</li><li>已有课程模块可复用较多</li></ul></div>
+        <div class="cons"><h4>风险</h4><ul><li>Agent 可能显得不够核心</li><li>平台差异化弱一些</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" data-choice="A3-Graph-Center" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">A3：图谱指挥中心</div>
+        <div class="mockup-body">
+          <div style="display:grid;grid-template-columns:1.2fr 0.8fr;gap:10px;min-height:170px">
+            <div class="placeholder">能力图谱 / 前置关系 / 补强路径</div>
+            <div class="mock-sidebar">节点详情 / Agent 解读</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A3 图谱指挥中心</h3>
+      <p>首页围绕知识图谱展开，Agent 解释用户当前位置、能力缺口和下一步补强路径。记忆点最强。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>适合</h4><ul><li>强调专业度</li><li>突出 166 节点图谱资产</li><li>适合能力诊断和补强场景</li></ul></div>
+        <div class="cons"><h4>风险</h4><ul><li>新用户理解成本较高</li><li>视觉实现复杂度更高</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" data-choice="A4-Operations-Console" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">A4：运营控制台</div>
+        <div class="mockup-body">
+          <div style="display:grid;grid-template-columns:0.8fr 1.2fr;gap:10px;min-height:170px">
+            <div class="mock-sidebar">账号 / 模型 / 会话 / 诊断</div>
+            <div class="mock-content">
+              <div class="placeholder">供应商状态</div>
+              <div class="placeholder">任务与历史列表</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A4 运营控制台</h3>
+      <p>优先完成登录、模型配置、诊断、历史会话、管理状态。最快落地，但更像后台系统。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>适合</h4><ul><li>内部测试和运维配置</li><li>快速交付可用系统</li><li>管理功能清楚</li></ul></div>
+        <div class="cons"><h4>风险</h4><ul><li>用户端吸引力不足</li><li>不够像 Agent 产品</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">我的建议</div>
+  <div class="mockup-body">
+    <p><strong>建议选 A1，并吸收 A2 的新手引导。</strong></p>
+    <p>理由：A1 能让“真实 Agent 平台”的价值最直接；A2 的学习路径可以放进首次使用、空状态和推荐下一步里，避免新用户迷路。</p>
+  </div>
+</div>
+

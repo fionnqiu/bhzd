@@ -239,10 +239,12 @@ describe("ClassDetailPage（PRD-02 §4）", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "添加" }));
 
-    expect(await screen.findByText("未找到该学生账号，请确认学生已注册")).toBeInTheDocument();
-    expect(mockedPost).toHaveBeenCalledWith("/api/teacher/classes/c1/enroll", {
-      student_email: "ghost@demo.bhzd",
-    });
+    await waitFor(() =>
+      expect(mockedPost).toHaveBeenCalledWith("/api/teacher/classes/c1/enroll", {
+        student_email: "ghost@demo.bhzd",
+      }),
+    );
+    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
   });
 
   it("导出报表触发客户端 CSV 下载（仅聚合列）", async () => {

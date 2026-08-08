@@ -1,0 +1,36 @@
+# Universal whitespace checks run before language-specific hooks so generated
+# diffs remain portable across Windows development and Linux CI environments.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Keep the commit-time formatter aligned with the pyproject policy while
+    # limiting automatic changes to Python files that are already being touched.
+    rev: v0.12.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: frontend-eslint
+        name: frontend eslint
+        # Run the full TypeScript lint graph when frontend source changes: it
+        # catches cross-file hook and import issues that filename-only lint misses.
+        entry: pnpm --dir app lint
+        language: system
+        pass_filenames: false
+        files: ^app/(src|tests)/.*\.(ts|tsx)$
+      - id: frontend-prettier
+        name: frontend prettier
+        # Prettier receives repository-relative paths, so invoke its local Node
+        # entry point from the root instead of changing directories per filename.
+        entry: node app/node_modules/prettier/bin/prettier.cjs --write
+        language: system
+        files: ^app/.*\.(ts|tsx|js|json|css)$

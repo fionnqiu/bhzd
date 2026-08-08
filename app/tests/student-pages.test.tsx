@@ -614,7 +614,7 @@ describe("RagQaPage", () => {
         expect.objectContaining({ cap_ids: ["CAP-1"], source: "agent" }),
       );
     });
-    expect(await screen.findByText(/已创建，查看任务/)).toBeInTheDocument();
+    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
   });
 });
 
@@ -670,7 +670,7 @@ describe("ProfilePage", () => {
         invite_code: "BAD-CODE",
       });
     });
-    expect(await screen.findByText("邀请码无效，请向教师确认后再试")).toBeInTheDocument();
+    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
   });
 });
 
@@ -735,6 +735,9 @@ describe("GraphPage", () => {
     expect(screen.getByPlaceholderText("搜索能力 / 知识 / 任务")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "全图" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "路径" })).toBeInTheDocument();
+    // The scrollbar override is scoped to this graph filter group and must not
+    // require changing the shared Tabs component used by other portals.
+    expect(screen.getByRole("tablist").closest(".graph-view-mode-tabs")).not.toBeNull();
     expect(screen.getByText("已掌握")).toBeInTheDocument();
 
     // 模拟画布点击节点（真实环境中由 vis-network 派发）

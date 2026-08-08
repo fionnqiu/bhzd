@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronDown,
   LogOut,
   Menu,
-  PanelLeftClose,
-  PanelLeftOpen,
+  PanelLeft,
   UserRound,
   type LucideIcon,
 } from "lucide-react";
@@ -13,6 +12,7 @@ import { useAuth } from "../auth/AuthContext";
 import { EmailVerifyBanner } from "../components";
 import { isTopmostFocusTrap, useFocusTrap } from "../components/useFocusTrap";
 import { usePresence } from "../components/usePresence";
+import { DesktopSidebarContext } from "./DesktopSidebarContext";
 
 export interface NavItem {
   to: string;
@@ -73,16 +73,16 @@ export interface ShellLayoutProps {
   /** 侧栏顶部展示的门户名（如"教师端"） */
   portalName: string;
   navItems: NavItem[];
-  /** 侧栏上下文槽位（学生端放当前场景选择器）。 */
+  /** Optional contextual content rendered above the shared route navigation. */
   sidebarContext?: ReactNode;
-  /** 侧栏快捷操作（学生端放通知与帮助）。 */
-  sidebarActions?: ReactNode;
   /** Opt-in visual skin; default keeps the legacy portal shell unchanged. */
   variant?: "default" | "student-workbench" | "operations-workbench";
   /** Student-only content that follows the shared route navigation. */
   studentWorkbenchSidebar?: ReactNode;
   /** Student-only primary action that sits between the brand and route navigation. */
   studentWorkbenchSidebarTop?: ReactNode;
+  /** Student-only actions fixed to the viewport without reserving page layout space. */
+  studentWorkbenchFloatingActions?: ReactNode;
   /** Increments when workbench content completes an action that should dismiss the compact drawer. */
   studentWorkbenchCloseRequest?: number;
   /** Prevents student route/portal switches while Cockpit owns an active SSE run. */
@@ -99,20 +99,22 @@ export default function ShellLayout({
   portalName,
   navItems,
   sidebarContext,
-  sidebarActions,
   variant = "default",
   studentWorkbenchSidebar,
   studentWorkbenchSidebarTop,
+  studentWorkbenchFloatingActions,
   studentWorkbenchCloseRequest,
   studentWorkbenchNavigationDisabled = false,
 }: ShellLayoutProps) {
   const { user, logout } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [openMenu, setOpenMenu] = useState<"user" | null>(null);
   const [compactSidebar, setCompactSidebar] = useState(compactSidebarMatches);
   const sidebarRef = useRef<HTMLElement>(null);
   const sidebarToggleRef = useRef<HTMLButtonElement>(null);
+  const desktopSidebarExpandRef = useRef<HTMLButtonElement>(null);
   const sidebarWasOpenRef = useRef(false);
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const handledWorkbenchCloseRequestRef = useRef(studentWorkbenchCloseRequest);
@@ -186,6 +188,9 @@ export default function ShellLayout({
   const sidebarId = "shell-sidebar";
   const isStudentWorkbench = variant === "student-workbench";
   const isOperationsWorkbench = variant === "operations-workbench";
+  // Normal student routes receive shared page breathing room; Cockpit owns its
+  // own transcript/header spacing so the fixed Composer can use the full height.
+  const isStudentCockpitRoute = isStudentWorkbench && location.pathname === "/";
   const isWorkbench = isStudentWorkbench || isOperationsWorkbench;
   const hasStudentWorkbench = Boolean(studentWorkbenchSidebar || studentWorkbenchSidebarTop);
   const desktopWorkbenchSidebarCollapsed =
@@ -194,6 +199,24 @@ export default function ShellLayout({
   const desktopOperationsSidebarCollapsed =
     isOperationsWorkbench && desktopWorkbenchSidebarCollapsed;
   const portalHomePath = PORTALS.find((portal) => portal.key === portalKey)?.path ?? "/";
+  const sidebarIsHidden = (compactSidebar && !sidebarOpen) || desktopWorkbenchSidebarCollapsed;
+  const showPageHeaderSidebarExpand = desktopWorkbenchSidebarCollapsed && !isStudentCockpitRoute;
+  const desktopSidebarContextValue = useMemo(
+    () => ({
+      showExpandControl: showPageHeaderSidebarExpand,
+      sidebarId,
+      expandDesktopSidebar: () => setWorkbenchSidebarCollapsed(false),
+    }),
+    [showPageHeaderSidebarExpand, sidebarId],
+  );
+
+  useEffect(() => {
+    // The collapse trigger is removed with the rail, so preserve keyboard
+    // continuity on the session route, whose title is not a shared PageHeader.
+    if (desktopWorkbenchSidebarCollapsed && isStudentCockpitRoute) {
+      desktopSidebarExpandRef.current?.focus({ preventScroll: true });
+    }
+  }, [desktopWorkbenchSidebarCollapsed, isStudentCockpitRoute]);
 
   const closeCompactSidebar = () => {
     if (compactSidebar) setSidebarOpen(false);
@@ -291,22 +314,23 @@ export default function ShellLayout({
 
   // The variant is a styling hook only; navigation, menus, and focus behavior stay shared.
   return (
-    <div
-      className={[
-        "shell",
-        sidebarOpen ? "sidebar-open" : "",
-        isStudentWorkbench ? "student-workbench-shell" : "",
-        isOperationsWorkbench ? "operations-workbench-shell" : "",
-        desktopWorkbenchSidebarCollapsed ? "workbench-sidebar-collapsed" : "",
-        desktopStudentSidebarCollapsed ? "student-workbench-sidebar-collapsed" : "",
-        desktopOperationsSidebarCollapsed ? "operations-workbench-sidebar-collapsed" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      data-shell-variant={variant}
-      data-student-workbench-collapsed={desktopStudentSidebarCollapsed || undefined}
-      data-operations-workbench-collapsed={desktopOperationsSidebarCollapsed || undefined}
-    >
+    <DesktopSidebarContext.Provider value={desktopSidebarContextValue}>
+      <div
+        className={[
+          "shell",
+          sidebarOpen ? "sidebar-open" : "",
+          isStudentWorkbench ? "student-workbench-shell" : "",
+          isOperationsWorkbench ? "operations-workbench-shell" : "",
+          desktopWorkbenchSidebarCollapsed ? "workbench-sidebar-collapsed" : "",
+          desktopStudentSidebarCollapsed ? "student-workbench-sidebar-collapsed" : "",
+          desktopOperationsSidebarCollapsed ? "operations-workbench-sidebar-collapsed" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        data-shell-variant={variant}
+        data-student-workbench-collapsed={desktopStudentSidebarCollapsed || undefined}
+        data-operations-workbench-collapsed={desktopOperationsSidebarCollapsed || undefined}
+      >
       {sidebarPresence.isPresent ? (
         <div
           className="sidebar-overlay"
@@ -328,8 +352,8 @@ export default function ShellLayout({
           .join(" ")}
         ref={sidebarRef}
         data-focus-trap={compactSidebar && sidebarOpen ? "active" : undefined}
-        aria-hidden={compactSidebar && !sidebarOpen ? true : undefined}
-        inert={compactSidebar && !sidebarOpen}
+        aria-hidden={sidebarIsHidden || undefined}
+        inert={sidebarIsHidden}
         tabIndex={-1}
       >
         {isWorkbench ? (
@@ -367,7 +391,7 @@ export default function ShellLayout({
                 {isStudentWorkbench ? "标航智导" : portalName}
               </span>
             </Link>
-            {!compactSidebar ? (
+            {!compactSidebar && !desktopWorkbenchSidebarCollapsed ? (
               <button
                 type="button"
                 className={[
@@ -383,11 +407,7 @@ export default function ShellLayout({
                 aria-expanded={!desktopWorkbenchSidebarCollapsed}
                 onClick={() => setWorkbenchSidebarCollapsed((current) => !current)}
               >
-                {desktopWorkbenchSidebarCollapsed ? (
-                  <PanelLeftOpen size={18} aria-hidden />
-                ) : (
-                  <PanelLeftClose size={18} aria-hidden />
-                )}
+                <PanelLeft size={18} aria-hidden />
               </button>
             ) : null}
           </div>
@@ -398,10 +418,9 @@ export default function ShellLayout({
           </div>
         )}
         <div className="sidebar-portal">{portalName}</div>
-        {sidebarContext || sidebarActions ? (
+        {sidebarContext ? (
           <div className="sidebar-context">
-            {sidebarContext ? <div className="sidebar-context-main">{sidebarContext}</div> : null}
-            {sidebarActions ? <div className="sidebar-context-actions">{sidebarActions}</div> : null}
+            <div className="sidebar-context-main">{sidebarContext}</div>
           </div>
         ) : null}
         {studentWorkbenchSidebarTop ? (
@@ -509,6 +528,27 @@ export default function ShellLayout({
       </aside>
 
       <div className="main">
+        {desktopWorkbenchSidebarCollapsed && isStudentCockpitRoute ? (
+          <button
+            type="button"
+            className={[
+              "icon-btn",
+              "workbench-sidebar-expand",
+              isStudentWorkbench ? "student-workbench-sidebar-expand" : "",
+              isOperationsWorkbench ? "operations-workbench-sidebar-expand" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            aria-label="展开导航"
+            aria-controls={sidebarId}
+            aria-expanded={false}
+            title="展开导航"
+            ref={desktopSidebarExpandRef}
+            onClick={() => setWorkbenchSidebarCollapsed(false)}
+          >
+            <PanelLeft size={20} aria-hidden />
+          </button>
+        ) : null}
         <button
           className="icon-btn shell-mobile-nav-toggle"
           aria-label={sidebarOpen ? "关闭导航" : "打开导航"}
@@ -520,12 +560,27 @@ export default function ShellLayout({
           <Menu size={20} />
         </button>
         <EmailVerifyBanner />
+        {isStudentWorkbench && studentWorkbenchFloatingActions ? (
+          // The notification must remain globally reachable without creating a
+          // page-level toolbar or reducing the Cockpit's usable conversation height.
+          <div
+            className={[
+              "student-workbench-floating-actions",
+              isStudentCockpitRoute ? "student-workbench-cockpit-actions" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            {studentWorkbenchFloatingActions}
+          </div>
+        ) : null}
         <main
           className={[
             "main-content",
-            // Cockpit now shares the route-level scroll surface with every other
-            // page, so long messages never create a nested center-column scrollbar.
+            // Student routes share one main-content contract; Cockpit adds a
+            // dedicated class so its transcript can scroll beside a fixed Composer.
             isStudentWorkbench ? "student-workbench-main-content" : "",
+            isStudentCockpitRoute ? "student-workbench-cockpit-main-content" : "",
             isOperationsWorkbench ? "operations-workbench-main-content" : "",
           ]
             .filter(Boolean)
@@ -534,6 +589,7 @@ export default function ShellLayout({
           <Outlet />
         </main>
       </div>
-    </div>
+      </div>
+    </DesktopSidebarContext.Provider>
   );
 }

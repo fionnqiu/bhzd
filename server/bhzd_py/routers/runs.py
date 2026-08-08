@@ -24,6 +24,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..agent import conversation_memory
+from ..agent.composer import sanitize_model_text
 from ..agent import events as agent_events
 from ..agent.orchestrator import execute_run, spawn
 from ..audit import audit
@@ -495,7 +496,14 @@ async def get_conversation(
                 "id": m["id"],
                 "run_id": m["run_id"],
                 "role": m["role"],
-                "content": m["content"],
+                # Older assistant rows may contain a provider-emitted thinking
+                # block. Sanitize at the API projection so history never
+                # reintroduces content hidden from the live stream.
+                "content": (
+                    sanitize_model_text(m["content"])
+                    if m["role"] == "assistant"
+                    else m["content"]
+                ),
                 "created_at": m["created_at"],
             }
             for m in messages
@@ -782,7 +790,9 @@ async def get_run(
                 "id": assistant_message["id"],
                 "run_id": assistant_message["run_id"],
                 "role": assistant_message["role"],
-                "content": assistant_message["content"],
+                # Recovery is another user-visible boundary; apply the same
+                # answer-only projection used by live Composer output.
+                "content": sanitize_model_text(assistant_message["content"]),
                 "created_at": assistant_message["created_at"],
             }
             if assistant_message is not None

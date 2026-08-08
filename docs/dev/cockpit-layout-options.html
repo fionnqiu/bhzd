@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>标航智导 · Agent 指挥舱布局方案对比</title>
+<style>
+  /* 与 app/src/index.css 设计变量对齐的预览用样式（独立文件，不影响产品代码） */
+  :root {
+    --bg: #f6f7fb; --surface: #ffffff; --border: #e3e6ef;
+    --text: #1f2430; --text-2: #5a6274; --text-3: #8a91a5;
+    --primary: #4f5bd5; --primary-soft: #eef0fd; --primary-border: #b9c0f2;
+    --success: #1a9e6b; --warning: #d97706; --danger: #dc2626;
+    --radius: 12px; --shadow: 0 1px 3px rgba(20,24,40,.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "PingFang SC","Microsoft YaHei",system-ui,sans-serif; background: var(--bg); color: var(--text); }
+  .page { max-width: 1280px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { font-size: 26px; margin-bottom: 6px; }
+  .intro { color: var(--text-2); font-size: 14px; margin-bottom: 8px; }
+  .legend { display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:var(--text-3); margin-bottom:32px; }
+  .legend b { color: var(--text-2); }
+
+  .option { margin-bottom: 56px; }
+  .option-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+  .option-tag { font-size: 12px; font-weight: 700; color: #fff; background: var(--text-3); border-radius: 999px; padding: 3px 10px; }
+  .option-tag.rec { background: var(--primary); }
+  .option h2 { font-size: 20px; }
+  .option-sub { font-size: 13px; color: var(--text-2); margin-bottom: 14px; }
+  .pros-cons { display: flex; gap: 24px; font-size: 12.5px; margin-top: 10px; flex-wrap: wrap; }
+  .pros-cons div { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; }
+  .pros-cons b { display: block; margin-bottom: 4px; }
+  .pros b { color: var(--success); } .cons b { color: var(--danger); }
+
+  /* ---------------- mockup 通用 ---------------- */
+  .mock { background: var(--bg); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
+  .mock-topbar { height: 44px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 14px; padding: 0 16px; font-size: 12.5px; color: var(--text-2); }
+  .mock-topbar .logo { font-weight: 700; color: var(--text); font-size: 13.5px; }
+  .mock-topbar .pill { border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; font-size: 11px; }
+  .mock-topbar .spacer { flex: 1; }
+  .avatar { width: 22px; height: 22px; border-radius: 50%; background: var(--primary-soft); color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
+  .card-title { font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 8px; }
+  .rail-item { font-size: 12px; padding: 6px 8px; border-radius: 8px; color: var(--text); margin-bottom: 2px; }
+  .rail-item small { display: block; color: var(--text-3); font-size: 10.5px; margin-top: 1px; }
+  .rail-item.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+
+  .bubble { max-width: 76%; padding: 7px 11px; border-radius: 12px; font-size: 12.5px; line-height: 1.6; margin-bottom: 10px; }
+  .bubble.user { margin-left: auto; background: var(--primary); color: #fff; border-bottom-right-radius: 4px; }
+  .bubble.ai { background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .sys { text-align: center; font-size: 10.5px; color: var(--text-3); background: #eceef4; border-radius: 999px; padding: 2px 10px; margin: 6px auto 12px; width: fit-content; }
+
+  .plan { border: 1px solid var(--primary-border); background: var(--primary-soft); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px; font-size: 12px; }
+  .plan li { list-style: none; margin-top: 5px; display: flex; gap: 6px; align-items: center; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
+  .dot.done { background: var(--success); } .dot.run { background: var(--primary); } .dot.wait { background: var(--warning); }
+
+  .gate { border: 2px solid var(--warning); border-radius: var(--radius); background: #fffdf5; padding: 10px 12px; font-size: 12px; }
+  .gate .gate-title { font-weight: 700; color: var(--warning); font-size: 12.5px; margin-bottom: 6px; }
+  .btn { display: inline-block; border: none; border-radius: 8px; padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: default; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-ghost { background: var(--surface); border: 1px solid var(--border); color: var(--text-2); }
+
+  .trace-row { display: flex; justify-content: space-between; font-size: 11.5px; padding: 4px 0; border-bottom: 1px dashed var(--border); }
+  .badge { font-size: 10px; border-radius: 4px; padding: 1px 6px; }
+  .badge.ok { background: #e6f6ee; color: var(--success); }
+  .badge.write { background: #fdf0e4; color: var(--warning); }
+  .cite { font-size: 11px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; margin-bottom: 6px; color: var(--text-2); }
+  .cite b { color: var(--text); font-size: 11.5px; display: block; }
+
+  .composer { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; display: flex; gap: 8px; align-items: flex-end; }
+  .composer .input { flex: 1; border: 1px solid var(--border); border-radius: 8px; min-height: 40px; padding: 8px 10px; font-size: 12px; color: var(--text-3); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  .chip { font-size: 10.5px; border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 3px 9px; color: var(--text-2); }
+
+  .welcome-hero { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  .quick-grid { display: grid; gap: 10px; margin-top: 14px; }
+  .quick { border: 1px solid var(--border); border-radius: 10px; padding: 10px; font-size: 12px; background: var(--surface); }
+  .quick b { display: block; font-size: 12.5px; margin-bottom: 2px; }
+  .quick small { color: var(--text-3); font-size: 10.5px; }
+  .quick .ic { color: var(--primary); font-size: 15px; }
+
+  .anno { font-size: 11px; color: var(--primary); background: var(--primary-soft); border: 1px dashed var(--primary-border); border-radius: 6px; padding: 2px 7px; }
+  .anno-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+
+  .mb8 { margin-bottom: 8px; } .mb12 { margin-bottom: 12px; }
+  .muted { color: var(--text-3); font-size: 11px; }
+  .sect { font-size: 11.5px; font-weight: 600; color: var(--text-2); margin: 10px 0 6px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Agent 指挥舱 · 布局优化方案对比</h1>
+  <p class="intro">三版候选布局，均基于现有设计体系（配色/圆角/组件不变，只动信息架构）。请挑一版作为实施目标。当前版本问题：三栏挤压对话区、双栏信息密度低且平权、对话区内置滚动条、确认门不够抢眼。</p>
+  <div class="legend">
+    <span><b>对比维度</b></span><span>对话可读性</span><span>智能体闭环展示（赛事卖点）</span><span>改动量/风险</span><span>PRD-01 §3.2 贴合度</span>
+  </div>
+
+  <!-- ================================================== 方案 A -->
+  <section class="option">
+    <div class="option-head">
+      <span class="option-tag">方案 A</span>
+      <h2>三栏精修 · 演进式</h2>
+    </div>
+    <p class="option-sub">保留 PRD-01 §3.2 原版三栏骨架：左右栏收窄并可一键折叠，对话区放宽并居中（上限 920px），对话流改为整页滚动（消灭内嵌滚动条），确认门上移置顶右栏并加大警示。改动最小、回归风险最低。</p>
+
+    <div class="mock">
+      <div class="mock-topbar">
+        <span class="logo">标航智导</span><span class="pill">智能客服</span>
+        <span class="spacer"></span><span class="pill">模板模型</span><span class="avatar">演</span>
+      </div>
+      <div style="display:grid; grid-template-columns: 200px minmax(0,1fr) 250px; gap:12px; padding:12px;">
+        <!-- 左栏 200px 可折叠 -->
+        <div>
+          <div class="card mb8">
+            <div class="card-title">今日推荐 <span class="muted">⟨⟨</span></div>
+            <div class="rail-item">NER 实体标注入门<small>薄弱 3 项</small></div>
+            <div class="rail-item">车载唤醒词标注<small>考证路径</small></div>
+          </div>
+          <div class="card mb8">
+            <div class="card-title">正在学习</div>
+            <div class="rail-item active">语音标注练习任务<small>进行中</small></div>
+          </div>
+          <div class="card">
+            <div class="card-title">最近会话</div>
+            <div class="rail-item">车载唤醒词学习<small>10:21</small></div>
+            <div class="rail-item">TextGrid 诊断<small>昨天</small></div>
+          </div>
+        </div>
+        <!-- 中栏 920 居中、整页滚动 -->
+        <div>
+          <div class="bubble user">我想学车载唤醒词标注</div>
+          <div class="bubble ai">好的，已为你定位到「语音标注 · 车载语音助手」场景。我先给出学习计划：</div>
+          <div class="plan">
+            <b>学习计划（4 步）</b>
+            <li><span class="dot done"></span>召回《车载唤醒词标注指南》</li>
+            <li><span class="dot done"></span>图谱定位关联能力</li>
+            <li><span class="dot wait"></span>生成任务卡（待你确认）</li>
+            <li><span class="dot"></span>练习反馈与掌握度更新</li>
+          </div>
+          <div class="bubble ai">已完成规范召回：唤醒词边界容差 ±50ms，负例需覆盖近音词与车内噪声…</div>
+          <div class="composer">
+            <div class="input">说说你想学什么，比如：我想学客服语音情感标注</div>
+            <span class="btn btn-primary">发送</span>
+          </div>
+        </div>
+        <!-- 右栏 250px：确认门置顶 -->
+        <div>
+          <div class="gate mb8">
+            <div class="gate-title">⚠ 确认门 · 创建学习任务</div>
+            <div class="mb8">任务：车载唤醒词标注实训<br><span class="muted">关联能力 3 项 · 预计 45 分钟 · 28:41 后过期</span></div>
+            <span class="btn btn-primary">确认创建</span> <span class="btn btn-ghost">取消</span>
+          </div>
+          <div class="card mb8">
+            <div class="card-title">执行轨迹（3）</div>
+            <div class="trace-row"><span>rag.search</span><span class="badge ok">读 · 0.3s</span></div>
+            <div class="trace-row"><span>graph.reason</span><span class="badge ok">读 · 0.1s</span></div>
+            <div class="trace-row"><span>task.create</span><span class="badge write">写 · 待确认</span></div>
+          </div>
+          <div class="card">
+            <div class="card-title">当前能力定位</div>
+            <div class="muted">车载唤醒词 · 边界标注 40%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="anno-row">
+      <span class="anno">栏宽 200/自适应920/250</span><span class="anno">双栏可折叠</span><span class="anno">整页滚动</span><span class="anno">确认门置顶</span>
+    </div>
+    <div class="pros-cons">
+      <div class="pros"><b>优势</b>PRD 骨架不动、改动量最小；折叠后对话区可到 ~1100px；老用户无学习成本</div>
+      <div class="cons"><b>不足</b>信息层级仍偏平；演示时执行轨迹/确认门的"智能体闭环"张力一般</div>
+    </div>
+  </section>
+
+  <!-- ================================================== 方案 B -->
+  <section class="option">
+    <div class="option-head">
+      <span class="option-tag">方案 B</span>
+      <h2>沉浸对话 · 居中单栏 + 双抽屉</h2>
+    </div>
+    <p class="option-sub">对话是主角：880px 居中单栏，左"历史/任务"、右"轨迹/确认/引用/能力"全部收进两侧抽屉（确认门触发时右抽屉自动弹出）。欢迎态获得完整首屏 hero。视觉最干净、学习沉浸感最强；但辅助信息默认不可见，演示"智能体闭环"需要手动拉开抽屉。</p>
+
+    <div class="mock">
+      <div class="mock-topbar">
+        <span class="pill">☰ 会话</span><span class="logo">标航智导</span>
+        <span class="spacer"></span><span class="pill">智能客服</span><span class="pill">⚙ 状态</span><span class="avatar">演</span>
+      </div>
+      <div style="max-width: 860px; margin: 0 auto; padding: 28px 20px 20px;">
+        <div class="welcome-hero" style="text-align:center; padding: 28px 24px;">
+          <div style="font-size:20px; font-weight:700;">今天想学点什么？</div>
+          <div class="muted" style="margin:6px 0 14px;">说目标、选路径、传文件，剩下的交给智能体</div>
+          <div class="composer" style="max-width:560px; margin:0 auto;">
+            <div class="input">说说你想学什么，比如：我想学客服语音情感标注</div>
+            <span class="btn btn-primary">开始</span>
+          </div>
+          <div class="chips" style="justify-content:center; margin-top:12px;">
+            <span class="chip">NER 的 BIO 边界怎么划分？</span><span class="chip">唤醒词正负例怎么判？</span><span class="chip">COCO IOU 合格线？</span>
+          </div>
+        </div>
+        <div class="quick-grid" style="grid-template-columns: repeat(4,1fr);">
+          <div class="quick"><span class="ic">📝</span><b>文本标注入门</b><small>NER / 分类 / 情感</small></div>
+          <div class="quick"><span class="ic">🖼️</span><b>图像标注入门</b><small>检测 / 框选规范</small></div>
+          <div class="quick"><span class="ic">🎙️</span><b>语音标注入门</b><small>转写 / 情感副语言</small></div>
+          <div class="quick"><span class="ic">🎬</span><b>视频标注入门</b><small>片段 / 目标跟踪</small></div>
+          <div class="quick"><span class="ic">💼</span><b>岗位任务训练</b><small>企业任务模板</small></div>
+          <div class="quick"><span class="ic">📤</span><b>上传结果诊断</b><small>JSON / TextGrid</small></div>
+          <div class="quick"><span class="ic">🎓</span><b>考证路径</b><small>1+X 数据标注</small></div>
+          <div class="quick"><span class="ic">💪</span><b>今日薄弱补强</b><small>为你推荐</small></div>
+        </div>
+      </div>
+      <!-- 右抽屉（确认门触发自动弹出） -->
+      <div style="position:relative;">
+        <div style="position:absolute; right:0; top:-40px; transform:translateY(-100%); width:300px; background:var(--surface); border:1px solid var(--border); border-radius:12px 0 0 0; padding:12px; box-shadow:-4px 0 16px rgba(20,24,40,.10);">
+          <div class="card-title">状态抽屉 · 自动弹出</div>
+          <div class="gate">
+            <div class="gate-title">⚠ 确认门 · 创建学习任务</div>
+            <span class="btn btn-primary">确认创建</span> <span class="btn btn-ghost">取消</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="anno-row">
+      <span class="anno">880px 居中单栏</span><span class="anno">左右抽屉</span><span class="anno">确认门自动弹出</span><span class="anno">hero 欢迎态</span>
+    </div>
+    <div class="pros-cons">
+      <div class="pros"><b>优势</b>阅读与输入体验最佳；欢迎态最有"产品感"；窄屏天然适配</div>
+      <div class="cons"><b>不足</b>偏离 PRD-01 §3.2 三栏结构最远；执行轨迹默认隐藏，赛事演示"智能体闭环"需要额外操作</div>
+    </div>
+  </section>
+
+  <!-- ================================================== 方案 C（推荐） -->
+  <section class="option">
+    <div class="option-head">
+      <span class="option-tag rec">方案 C · 推荐</span>
+      <h2>指挥台 · 左对话 + 右宽坞（Tab 化）</h2>
+    </div>
+    <p class="option-sub">为"智能体闭环"演示而生：左栏对话（1.6fr），右栏 420px 宽坞以 Tab 收纳 <b>确认门 / 执行轨迹 / 引用来源 / 能力定位</b>，有确认时自动切到确认 Tab 并红色呼吸强调；原左栏的"今日推荐/最近会话"下移为欢迎态下方的横向卡片条。执行轨迹成为一等公民——工具调用、耗时、写操作全程可见，最契合赛事评分点。</p>
+
+    <div class="mock">
+      <div class="mock-topbar">
+        <span class="logo">标航智导</span><span class="pill">智能客服</span>
+        <span class="spacer"></span><span class="pill">模板模型</span><span class="avatar">演</span>
+      </div>
+      <div style="display:grid; grid-template-columns: minmax(0,1.55fr) 400px; gap:12px; padding:12px;">
+        <!-- 左：对话 -->
+        <div>
+          <div class="bubble user">我想学车载唤醒词标注</div>
+          <div class="bubble ai">好的，已定位「语音标注 · 车载语音助手」。学习计划如下：</div>
+          <div class="plan">
+            <b>学习计划（4 步）</b>
+            <li><span class="dot done"></span>召回《车载唤醒词标注指南》</li>
+            <li><span class="dot done"></span>图谱定位关联能力</li>
+            <li><span class="dot wait"></span>生成任务卡（待确认）</li>
+            <li><span class="dot"></span>练习反馈与掌握度更新</li>
+          </div>
+          <div class="bubble ai">任务卡已生成：车载唤醒词标注实训（3 能力 · 45 分钟）…</div>
+          <div class="chips"><span class="chip">查看任务</span><span class="chip">继续提问</span><span class="chip">生成补强</span></div>
+          <div class="composer">
+            <div class="input">说说你想学什么…</div>
+            <span class="btn btn-primary">发送</span>
+          </div>
+        </div>
+        <!-- 右：420px 宽坞 Tab -->
+        <div class="card" style="padding:0; overflow:hidden;">
+          <div style="display:flex; border-bottom:1px solid var(--border); font-size:12px;">
+            <span style="padding:9px 12px; font-weight:700; color:var(--warning); border-bottom:2px solid var(--warning); animation: none;">确认门 ●</span>
+            <span style="padding:9px 12px; color:var(--text-2);">执行轨迹</span>
+            <span style="padding:9px 12px; color:var(--text-2);">引用 2</span>
+            <span style="padding:9px 12px; color:var(--text-2);">能力</span>
+          </div>
+          <div style="padding:12px;">
+            <div class="gate mb8">
+              <div class="gate-title">⚠ 创建学习任务</div>
+              <div class="mb8">车载唤醒词标注实训<br><span class="muted">3 能力 · 45 分钟 · 28:41 后过期</span></div>
+              <span class="btn btn-primary">确认创建</span> <span class="btn btn-ghost">取消</span>
+            </div>
+            <div class="sect">本步调用的证据</div>
+            <div class="cite"><b>车载唤醒词标注指南 v1.4</b>§正例与负例判定 · 相似度 0.87</div>
+            <div class="cite"><b>车载唤醒词标注指南 v1.4</b>§边界容差 · 相似度 0.82</div>
+          </div>
+        </div>
+      </div>
+      <!-- 欢迎态时的横向推荐条 -->
+      <div style="padding: 0 12px 12px;">
+        <div class="card" style="display:flex; gap:10px; align-items:center; overflow-x:auto;">
+          <span class="muted" style="white-space:nowrap;">今日推荐</span>
+          <span class="chip" style="white-space:nowrap;">NER 入门 · 薄弱3项</span>
+          <span class="chip" style="white-space:nowrap;">车载唤醒词 · 考证</span>
+          <span class="chip" style="white-space:nowrap;">正在学习：语音标注练习</span>
+          <span class="chip" style="white-space:nowrap;">最近会话：TextGrid 诊断</span>
+        </div>
+      </div>
+    </div>
+    <div class="anno-row">
+      <span class="anno">1.6fr / 420px 双栏</span><span class="anno">右坞 Tab 化</span><span class="anno">确认自动切 Tab</span><span class="anno">推荐横条</span>
+    </div>
+    <div class="pros-cons">
+      <div class="pros"><b>优势</b>智能体闭环（工具/轨迹/确认门）全程高亮，赛事演示最强；确认门不可错过；对话区仍宽敞</div>
+      <div class="cons"><b>不足</b>左栏历史/任务入口降为一行横条，会话切换效率略低于 A；改动量中等</div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

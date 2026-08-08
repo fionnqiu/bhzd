@@ -225,7 +225,7 @@ describe("DocumentsPage（PRD-03 §4）", () => {
     fireEvent.click(within(draftRow).getByRole("button", { name: "删除" }));
     fireEvent.click(await screen.findByRole("button", { name: "确认删除" }));
     await waitFor(() => expect(mockedDelete).toHaveBeenCalledWith("/api/rag/documents/doc-draft"));
-    expect(await screen.findByText("已发布资料只能归档，不能物理删除")).toBeInTheDocument();
+    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
   });
 });
 
@@ -389,7 +389,7 @@ describe("ChunkEditorPage（PRD-03 §8）", () => {
         content: "改写后的切片内容",
       }),
     );
-    expect(await screen.findByText("切片已保存（内容变更已自动重新嵌入）")).toBeInTheDocument();
+    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
   });
 });
 
@@ -439,7 +439,7 @@ describe("JobsPage（PRD-03 §7）", () => {
     expect(screen.getByText(/PARSE_EMPTY_TEXT：未解析出文本/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     await waitFor(() => expect(mockedPost).toHaveBeenCalledWith("/api/rag/jobs/job-1/retry"));
-    expect(await screen.findByText("已从失败阶段重新触发")).toBeInTheDocument();
+    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
   });
 });
 
@@ -567,7 +567,7 @@ describe("SearchTestPage（PRD-03 §10）", () => {
         }),
       ),
     );
-    expect(await screen.findByText("已保存为评测用例")).toBeInTheDocument();
+    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
   });
 });
 
@@ -697,7 +697,7 @@ describe("PublishReviewPage（PRD-03 §2 发布审核）", () => {
         scope: "teacher",
       }),
     );
-    expect(await screen.findByText("已发布（仅教师可见）")).toBeInTheDocument();
+    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
   });
 
   it("驳回必须填审核意见", async () => {
@@ -705,7 +705,7 @@ describe("PublishReviewPage（PRD-03 §2 发布审核）", () => {
     fireEvent.click(await screen.findByRole("button", { name: "审核" }));
     await screen.findByText("切片抽样（前 3 条）");
     fireEvent.click(screen.getByRole("button", { name: "驳回" }));
-    expect(await screen.findByText("驳回必须填写审核意见")).toBeInTheDocument();
+    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
     expect(mockedPost).not.toHaveBeenCalledWith("/api/rag/documents/d1/reject", expect.anything());
     fireEvent.change(screen.getByPlaceholderText("例如：第 3 章缺少标注示例，请补充后重新送审"), {
       target: { value: "请补充示例后重报" },

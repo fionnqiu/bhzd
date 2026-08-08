@@ -238,7 +238,7 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     fireEvent.click(within(row).getByRole("button", { name: "删除" }));
     fireEvent.click(await screen.findByRole("button", { name: "确认删除" }));
     await waitFor(() => expect(mockedDelete).toHaveBeenCalledWith("/api/admin/providers/p1"));
-    expect(await screen.findByText("供应商「星辰主模型」已删除")).toBeInTheDocument();
+    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
     expect(screen.queryByText("星辰主模型")).not.toBeInTheDocument();
   });
 
@@ -248,7 +248,8 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     const row = (await screen.findByText("星辰主模型")).closest("tr")!;
     fireEvent.click(within(row).getByRole("button", { name: "删除" }));
     fireEvent.click(await screen.findByRole("button", { name: "确认删除" }));
-    expect(await screen.findByText("删除失败")).toBeInTheDocument();
+    await waitFor(() => expect(mockedDelete).toHaveBeenCalledWith("/api/admin/providers/p1"));
+    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
     expect(screen.getByText("星辰主模型")).toBeInTheDocument();
   });
 
@@ -452,8 +453,10 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     fireEvent.change(screen.getByPlaceholderText("例如：spark-x1 / gpt-4o-mini"), {
       target: { value: "manual-model" },
     });
-    const testButton = screen.getByRole("button", { name: "测试连接" });
+    const testGroup = screen.getByRole("group", { name: "连接测试" });
+    const testButton = within(testGroup).getByRole("button", { name: "测试连接" });
     expect(testButton).toBeEnabled();
+    expect(testButton).toHaveClass("provider-form-test-button");
     fireEvent.click(testButton);
     await waitFor(() =>
       expect(mockedPost).toHaveBeenCalledWith(
@@ -468,7 +471,7 @@ describe("ProvidersPage（PRD-04 §3）", () => {
         { timeoutMs: 9_000 },
       ),
     );
-    expect(await screen.findByText(/连接 · ✓ 42ms/)).toBeInTheDocument();
+    expect(await within(testGroup).findByText(/连接 · ✓ 42ms/)).toBeInTheDocument();
   });
 
   it("发现模型失败后仍允许手工填写模型名", async () => {
@@ -536,7 +539,7 @@ describe("RagSettingsPage（PRD-04 §4）", () => {
       // 只提交变更字段：审计 before/after 精确（PRD-04 §4.2）
       expect(mockedPatch).toHaveBeenCalledWith("/api/admin/rag-settings", { chunk_size: 800 }),
     );
-    expect(await screen.findByText("已保存并记录审计日志")).toBeInTheDocument();
+    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
   });
 
   it("chunk_overlap ≥ chunk_size 时客户端拦截", async () => {
@@ -593,7 +596,10 @@ describe("UsersPage（PRD-04 §5）", () => {
     const row2 = screen.getByText("管理员乙").closest("tr")!;
     fireEvent.click(within(row2).getByRole("button", { name: "禁用" }));
     fireEvent.click(await screen.findByRole("button", { name: "确认禁用" }));
-    expect(await screen.findByText("不能禁用当前登录的管理员账号")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(mockedPatch).toHaveBeenCalledWith("/api/admin/users/u2", { status: "disabled" }),
+    );
+    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
   });
 
   it("重置密码：确认后临时密码仅展示一次", async () => {

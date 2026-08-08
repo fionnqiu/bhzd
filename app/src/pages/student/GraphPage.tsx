@@ -13,14 +13,7 @@
  *   学生跨页看到的颜色语义必须一致。
  * - 支持 ?node= 深链（指挥舱/诊断页跳转）：图数据就绪后自动打开节点抽屉。
  */
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Network } from "vis-network/standalone";
 import { api } from "../../api/client";
@@ -131,7 +124,9 @@ function toVisData(
   const visEdges = edges.map((edge) => {
     // 路径模式只强调路径上的 PRE 边（前置链才是学习顺序的依据）
     const isHl =
-      highlight !== null && highlight.has(edge.source) && highlight.has(edge.target) &&
+      highlight !== null &&
+      highlight.has(edge.source) &&
+      highlight.has(edge.target) &&
       edge.relation === "PRE";
     return {
       id: edge.id,
@@ -218,7 +213,9 @@ export default function GraphPage() {
       setDrawerNodeId(nodeId);
       setDetail(null);
       try {
-        const response = await api.get<GraphNodeDetail>(`/api/graph/nodes/${nodeId}`, undefined, { signal });
+        const response = await api.get<GraphNodeDetail>(`/api/graph/nodes/${nodeId}`, undefined, {
+          signal,
+        });
         if (!signal?.aborted) setDetail(response);
       } catch (err) {
         if (!signal?.aborted) {
@@ -274,9 +271,7 @@ export default function GraphPage() {
     const keyword = q.trim().toLowerCase();
     if (keyword) {
       nodes = nodes.filter((node) =>
-        `${node.id} ${nodeLabel(node)} ${node.description ?? ""}`
-          .toLowerCase()
-          .includes(keyword),
+        `${node.id} ${nodeLabel(node)} ${node.description ?? ""}`.toLowerCase().includes(keyword),
       );
     }
     if (dataType) {
@@ -303,7 +298,11 @@ export default function GraphPage() {
     if (mode !== "local" || !centerId) return;
     const controller = new AbortController();
     api
-      .get<GraphOverview>("/api/graph/subgraph", { node_id: centerId, depth: 2 }, { signal: controller.signal })
+      .get<GraphOverview>(
+        "/api/graph/subgraph",
+        { node_id: centerId, depth: 2 },
+        { signal: controller.signal },
+      )
       .then((res) => {
         if (!controller.signal.aborted) setSubgraphData(res);
       })
@@ -322,10 +321,14 @@ export default function GraphPage() {
     const controller = new AbortController();
     setPathLoading(true);
     api
-      .get<PrePathResponse>("/api/graph/pre-path", {
-        target_id: targetId,
-        skip_mastered: skipMastered ? 1 : 0,
-      }, { signal: controller.signal })
+      .get<PrePathResponse>(
+        "/api/graph/pre-path",
+        {
+          target_id: targetId,
+          skip_mastered: skipMastered ? 1 : 0,
+        },
+        { signal: controller.signal },
+      )
       .then((res) => {
         if (!controller.signal.aborted) setPathData(res);
       })
@@ -463,15 +466,19 @@ export default function GraphPage() {
             />
           </div>
           <div className="flex items-center justify-between flex-wrap gap-3">
-            <Tabs
-              tabs={[
-                { key: "full", label: "全图" },
-                { key: "local", label: "局部" },
-                { key: "path", label: "路径" },
-              ]}
-              active={mode}
-              onChange={(key) => setMode(key as ViewMode)}
-            />
+            {/* Scope the scrollbar treatment to graph view tabs; the shared Tabs
+                component is also used by teacher and RAG workflows. */}
+            <div className="graph-view-mode-tabs">
+              <Tabs
+                tabs={[
+                  { key: "full", label: "全图" },
+                  { key: "local", label: "局部" },
+                  { key: "path", label: "路径" },
+                ]}
+                active={mode}
+                onChange={(key) => setMode(key as ViewMode)}
+              />
+            </div>
             {mode === "local" ? (
               <Select
                 aria-label="局部中心节点"
@@ -545,10 +552,7 @@ export default function GraphPage() {
             aria-label="能力图谱画布"
           />
           {canvasData.nodes.length === 0 ? (
-            <EmptyState
-              title="没有匹配的节点"
-              hint="试试更换关键词或放宽筛选条件"
-            />
+            <EmptyState title="没有匹配的节点" hint="试试更换关键词或放宽筛选条件" />
           ) : null}
         </>
       )}
@@ -561,7 +565,9 @@ export default function GraphPage() {
               <Spinner /> 正在计算路径…
             </div>
           ) : !targetId ? (
-            <p className="text-sm text-secondary">先选择一个目标能力，系统会给出从基础到目标的学习顺序。</p>
+            <p className="text-sm text-secondary">
+              先选择一个目标能力，系统会给出从基础到目标的学习顺序。
+            </p>
           ) : !pathData || pathData.path.length === 0 ? (
             <EmptyState title="暂无可展示的路径" hint="该能力可能没有前置要求，或已全部被跳过" />
           ) : (
@@ -575,7 +581,12 @@ export default function GraphPage() {
                       <button
                         type="button"
                         className="text-sm"
-                        style={{ background: "none", border: "none", padding: 0, color: "var(--color-primary)" }}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          padding: 0,
+                          color: "var(--color-primary)",
+                        }}
                         onClick={() => openNode(step.id)}
                       >
                         {step.name}

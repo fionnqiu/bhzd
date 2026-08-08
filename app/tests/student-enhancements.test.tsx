@@ -289,7 +289,7 @@ function renderLockedLayout() {
 const STUDENT_SESSION = {
   id: "c9",
   title: "跨页面学习会话",
-  scenario_id: null,
+  scenario_id: "SCN-IN-VEHICLE-001",
   data_type: null,
   created_at: "2026-07-01T00:00:00Z",
   updated_at: "2026-07-02T00:00:00Z",
@@ -354,6 +354,14 @@ describe("学生工作台全局会话栏", () => {
     fireEvent.click(screen.getByText("跨页面学习会话"));
     expect(await screen.findByText("会话已恢复")).toBeInTheDocument();
     expect(mockedGet).toHaveBeenCalledWith("/api/conversations/c9");
+    // A restored transcript must surface its saved title and continuation
+    // context before the learner sends the next message.
+    const conversationInfo = await screen.findByRole("status", { name: "当前对话信息" });
+    expect(conversationInfo).toHaveTextContent("跨页面学习会话");
+    expect(conversationInfo).not.toHaveTextContent("继续场景：");
+    expect(
+      within(screen.getByTestId("composer")).getByRole("combobox", { name: "继续场景" }),
+    ).toHaveTextContent("车载语音标注");
 
     fireEvent.click(screen.getByRole("link", { name: "标注诊断" }));
     expect(await screen.findByText("标注诊断页面")).toBeInTheDocument();
@@ -396,6 +404,14 @@ describe("StudentLayout 通知铃铛", () => {
 
     // 角标来自 unread-count 轮询首刷
     const bell = await screen.findByRole("button", { name: "通知（2 条未读）" });
+    // The viewport-level slot keeps this persistent control outside both the
+    // sidebar and normal page flow across every student workbench route.
+    expect(bell.closest(".student-workbench-floating-actions")).not.toBeNull();
+    expect(document.querySelector(".student-workbench-page-actions")).toBeNull();
+    const sidebar = document.querySelector<HTMLElement>("#shell-sidebar");
+    expect(sidebar).not.toBeNull();
+    expect(sidebar!).not.toContainElement(bell);
+    expect(bell).toHaveAttribute("title", "通知");
     expect(within(bell).getByText("2")).toBeInTheDocument();
 
     // 打开面板：最近通知（类型中文徽标 + 标题）
@@ -410,20 +426,26 @@ describe("StudentLayout 通知铃铛", () => {
       expect(mockedPost).toHaveBeenCalledWith("/api/notifications/n1/read");
     });
     expect(await screen.findByText("任务详情标记")).toBeInTheDocument();
+    // Route changes can refresh the unread count, so persistence matters here
+    // rather than preserving the transient post-click badge value.
+    const taskPageBell = await screen.findByRole("button", { name: /^通知/ });
+    expect(taskPageBell.closest(".student-workbench-floating-actions")).not.toBeNull();
+    expect(taskPageBell.closest(".student-workbench-cockpit-actions")).toBeNull();
+    expect(document.querySelector(".student-workbench-page-actions")).toBeNull();
   });
 
-  it("keeps route-bearing help and notifications inside the active Cockpit run", async () => {
+  it("keeps notifications inside the active Cockpit run while the help entry stays removed", async () => {
     installNotificationGet();
     renderLockedLayout();
 
     expect(await screen.findByTestId("locked-student-cockpit")).toBeInTheDocument();
-    const helpLink = document.querySelector<HTMLAnchorElement>(".student-workbench-help-link");
-    expect(helpLink).toHaveAttribute("aria-disabled", "true");
-    expect(helpLink).toHaveAttribute("tabindex", "-1");
-    fireEvent.click(helpLink!);
+    expect(document.querySelector(".student-workbench-help-link")).toBeNull();
     expect(screen.getByTestId("locked-student-cockpit")).toBeInTheDocument();
 
     const bell = await screen.findByRole("button", { name: "通知（2 条未读）" });
+    // The Cockpit route keeps the global bell in the shared top-band slot,
+    // while the active run still governs which notification actions are safe.
+    expect(bell.closest(".student-workbench-cockpit-actions")).not.toBeNull();
     fireEvent.click(bell);
     const taskTitle = await screen.findByText(NOTIFICATIONS[0].title);
     const taskButton = taskTitle.closest("button");
@@ -524,7 +546,7 @@ describe("TasksPage 批量归档", () => {
         action: "archive",
       });
     });
-    expect(await screen.findByText("已批量归档 2 项任务")).toBeInTheDocument();
+    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
     // 批量完成后重新拉取列表（首次加载 + 归档后刷新 = ≥2 次）
     await waitFor(() => {
       const calls = mockedGet.mock.calls.filter((c) => c[0] === "/api/tasks");
@@ -555,9 +577,13 @@ describe("TasksPage 批量归档", () => {
     fireEvent.click(screen.getByRole("button", { name: "批量归档" }));
     fireEvent.click(await screen.findByRole("button", { name: "确认批量归档" }));
 
-    expect(
-      await screen.findByText(/1 项失败：「任务乙」任务不存在或无权限操作/),
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(mockedPost).toHaveBeenCalledWith("/api/tasks/batch", {
+        ids: ["t1", "t2"],
+        action: "archive",
+      }),
+    );
+    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
   });
 });
 

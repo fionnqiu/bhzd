@@ -274,7 +274,7 @@ describe("TaskPublishPage：已发布任务截止时间调整（PRD-06 §10.1）
         due_at: new Date("2026-08-10T12:00").toISOString(),
       }),
     );
-    expect(await screen.findByText("截止时间已更新，本班学生将收到调整通知")).toBeInTheDocument();
+    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
   });
 });
 

@@ -1,17 +1,7 @@
-import {
-  FileSearch,
-  ListTodo,
-  Map,
-  MessageCircleQuestion,
-  CircleHelp,
-  Route,
-  Bell,
-} from "lucide-react";
+import { FileSearch, ListTodo, Map, MessageCircleQuestion, Route, Bell } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
-import { useScenario } from "../app/ScenarioContext";
-import { Select } from "../components";
 import { usePresence } from "../components/usePresence";
 import { WorkbenchNewSession, WorkbenchRecentSessions } from "../pages/student/cockpit/LeftRail";
 import ShellLayout, { type NavItem } from "./ShellLayout";
@@ -68,7 +58,7 @@ const UNREAD_POLL_MS = 30_000;
 const RECENT_LIMIT = 10;
 
 /**
- * 顶栏通知铃铛：未读角标 30s 轮询 + 最近 10 条下拉。
+ * 全局通知铃铛：未读角标 30s 轮询 + 最近 10 条下拉。
  *
  * 为什么轮询而非推送：平台没有 WebSocket/SSE 通道，30s 轮询 unread-count
  * （极轻 COUNT 查询）是当前架构下成本最低的准实时方案；面板打开时立即拉
@@ -90,7 +80,7 @@ function NotificationBell({ navigationDisabled = false }: { navigationDisabled?:
         if (!signal?.aborted) setUnread(res.unread);
       })
       .catch(() => {
-        /* 角标失败静默：下一轮轮询自愈，绝不影响顶栏可用性 */
+        /* 角标失败静默：下一轮轮询自愈，绝不影响固定入口可用性 */
       });
   }, []);
 
@@ -169,6 +159,7 @@ function NotificationBell({ navigationDisabled = false }: { navigationDisabled?:
         type="button"
         className="icon-btn"
         aria-label={`通知${unread > 0 ? `（${unread} 条未读）` : ""}`}
+        title="通知"
         onClick={toggleOpen}
         style={{ position: "relative" }}
       >
@@ -192,9 +183,9 @@ function NotificationBell({ navigationDisabled = false }: { navigationDisabled?:
       </button>
       {notificationPresence.isPresent ? (
         <div
-          className="dropdown-menu"
+          className="dropdown-menu student-workbench-notification-menu"
           data-motion-state={notificationPresence.motionState}
-          style={{ minWidth: 320, right: 0, left: "auto" }}
+          style={{ right: 0, left: "auto" }}
         >
           <div
             className="dropdown-item"
@@ -247,14 +238,10 @@ function NotificationBell({ navigationDisabled = false }: { navigationDisabled?:
 }
 
 /**
- * 学生端壳。
- * 侧栏上下文含"当前场景选择器"（PRD-01 §3.2）：场景存入 ScenarioContext +
- * localStorage，Agent 运行/RAG 问答/诊断默认携带该场景。
- * 通知铃铛与场景选择器同排，和帮助按钮一起放在侧栏上下文区域；
- * 页面不再渲染共享 top bar，避免固定工具条与主内容争夺垂直空间。
+ * Student shell: the notification stays globally reachable as a fixed action,
+ * while the Composer owns the ScenarioContext control next to the message it affects.
  */
 function StudentLayoutContent() {
-  const { scenarioId, scenarios, setScenarioId } = useScenario();
   const {
     studentWorkbenchSidebar,
     studentWorkbenchSidebarTop,
@@ -301,34 +288,9 @@ function StudentLayoutContent() {
       studentWorkbenchNavigationDisabled={sessionActionsDisabled}
       portalName="学生端"
       navItems={NAV_ITEMS}
-      sidebarContext={
-        <div className="student-workbench-context">
-          <span className="student-workbench-context-label">当前场景</span>
-          <Select
-            className="student-workbench-scenario"
-            aria-label="当前场景"
-            value={scenarioId}
-            options={scenarios.map((s) => ({ value: s.id, label: s.name }))}
-            onChange={(e) => setScenarioId(e.target.value)}
-          />
-        </div>
-      }
-      sidebarActions={
-        <div className="student-workbench-header-actions">
-          <NotificationBell navigationDisabled={sessionActionsDisabled} />
-          <Link
-            className="icon-btn student-workbench-help-link"
-            to="/rag-qa"
-            aria-label="打开帮助"
-            aria-disabled={sessionActionsDisabled || undefined}
-            tabIndex={sessionActionsDisabled ? -1 : undefined}
-            onClick={(event) => {
-              if (sessionActionsDisabled) event.preventDefault();
-            }}
-          >
-            <CircleHelp size={18} aria-hidden />
-          </Link>
-        </div>
+      // Keep notifications outside the document flow so route content does not need a toolbar.
+      studentWorkbenchFloatingActions={
+        <NotificationBell navigationDisabled={sessionActionsDisabled} />
       }
     />
   );

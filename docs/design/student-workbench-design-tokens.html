@@ -1,0 +1,2196 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>标航智导 · 学生工作台 · 设计 Token 速查</title>
+    <style>
+      :root {
+        /* ===== 画布与表面 ===== */
+        --canvas: #f7f8fa;
+        --surface: #ffffff;
+        --surface-soft: #fbfcfd;
+
+        /* ===== 描边 ===== */
+        --line: #e5e8ec;
+        --line-strong: #d4d9e0;
+
+        /* ===== 文字 ===== */
+        --ink: #17212b;
+        --ink-soft: #5f6b76;
+        --ink-faint: #98a2ad;
+
+        /* ===== 品牌主色 ===== */
+        --accent: #2477d6;
+        --accent-strong: #1d65bd;
+        --accent-soft: #edf5ff;
+        --teal: #159b91;
+        --teal-soft: #cde5e0;
+        --amber: #bf7417;
+
+        /* ===== 状态色（主 + soft） ===== */
+        --success: #2f9b58;
+        --success-soft: #e3f4ea;
+        --warn: #d08a17;
+        --warn-soft: #fcf1dc;
+        --error: #d8453d;
+        --error-soft: #fbe5e3;
+        --info: #2477d6;
+        --info-soft: #edf5ff;
+
+        /* ===== 控件 / 用户气泡 ===== */
+        --user-bubble: #edf5ff;
+        --user-ink: #235f9f;
+        --nav-hover: #eef2f6;
+        --prompt-btn-hover: #f0f3f6;
+        --placeholder: #a7afb8;
+        --hover-border: #b8c9dc;
+        --focus-border: #9dbde2;
+        --send-idle: #d9dde2;
+        --avatar-bg: #dcefe9;
+        --avatar-ink: #126f68;
+
+        /* ===== 尺寸 ===== */
+        --sidebar-width: 272px;
+        --sidebar-collapsed: 68px;
+
+        /* ===== 圆角 ===== */
+        --radius-control: 8px;
+        --radius-input: 16px;
+        --radius-card: 10px;
+
+        /* ===== 动效 ===== */
+        --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+        /* ===== 阴影 ===== */
+        --shadow-input: 0 18px 42px rgba(26, 39, 52, 0.08);
+        --shadow-input-focus: 0 18px 42px rgba(36, 119, 214, 0.12);
+        --shadow-toast: 0 12px 30px rgba(20, 29, 38, 0.17);
+        --shadow-card: 0 1px 2px rgba(26, 39, 52, 0.03);
+      }
+
+      /* ===== 深色模式映射 ===== */
+      :root[data-theme="dark"] {
+        --canvas: #0e1419;
+        --surface: #161d24;
+        --surface-soft: #1b232b;
+        --line: #2a333d;
+        --line-strong: #38424e;
+        --ink: #e6ecf2;
+        --ink-soft: #a4b0bd;
+        --ink-faint: #6b7684;
+        --accent: #4d92e3;
+        --accent-soft: #1d2c3f;
+        --teal: #3bb6ab;
+        --teal-soft: #1c2f2c;
+        --amber: #e1a14a;
+        --nav-hover: #232c35;
+        --prompt-btn-hover: #202a32;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        min-height: 100%;
+      }
+      body {
+        margin: 0;
+        background: var(--canvas);
+        color: var(--ink);
+        font-family:
+          Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        font-size: 14px;
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+      }
+      button,
+      textarea,
+      input {
+        font: inherit;
+        color: inherit;
+      }
+      button {
+        border: 0;
+        cursor: pointer;
+        background: transparent;
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+      :focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      /* ===== 页面骨架 ===== */
+      .page {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 48px 28px 120px;
+      }
+      .page-head {
+        margin-bottom: 36px;
+      }
+      .eyebrow {
+        display: inline-block;
+        margin-bottom: 10px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 32px;
+        font-weight: 720;
+        letter-spacing: -0.01em;
+      }
+      .lead {
+        margin: 0;
+        color: var(--ink-soft);
+        font-size: 15px;
+        max-width: 720px;
+      }
+      h2 {
+        margin: 56px 0 18px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--line);
+        font-size: 20px;
+        font-weight: 700;
+      }
+      h2 .num {
+        display: inline-block;
+        margin-right: 10px;
+        color: var(--ink-faint);
+        font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      h3 {
+        margin: 24px 0 10px;
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--ink-soft);
+        letter-spacing: 0.02em;
+      }
+
+      /* ===== 通用卡片 ===== */
+      .grid {
+        display: grid;
+        gap: 12px;
+      }
+      .grid-2 {
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      }
+      .grid-3 {
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      }
+      .grid-4 {
+        grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      }
+      .card {
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-control);
+        background: var(--surface);
+      }
+      .card h4 {
+        margin: 0 0 12px;
+        font-size: 13px;
+        color: var(--ink-soft);
+        font-weight: 700;
+      }
+      .stack > * + * {
+        margin-top: 8px;
+      }
+
+      /* ===== 色板 ===== */
+      .swatch {
+        border: 1px solid var(--line);
+        border-radius: var(--radius-control);
+        background: var(--surface);
+        overflow: hidden;
+      }
+      .swatch .chip {
+        height: 88px;
+        position: relative;
+      }
+      .swatch .meta {
+        padding: 10px 12px;
+      }
+      .swatch .name {
+        font-weight: 650;
+        font-size: 13px;
+      }
+      .swatch .value {
+        color: var(--ink-faint);
+        font-size: 12px;
+        font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+      }
+      .swatch .chip-text {
+        position: absolute;
+        left: 12px;
+        bottom: 10px;
+        font-size: 11px;
+        font-family: ui-monospace, monospace;
+      }
+      .chip-text-light {
+        color: rgba(255, 255, 255, 0.86);
+      }
+      .chip-text-dark {
+        color: var(--ink);
+      }
+
+      /* ===== 行格式 ===== */
+      .row {
+        display: grid;
+        grid-template-columns: 180px 1fr 160px;
+        gap: 16px;
+        align-items: center;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-control);
+        background: var(--surface);
+      }
+      .row + .row {
+        margin-top: 8px;
+      }
+      .row .label {
+        font-weight: 650;
+      }
+      .row .demo {
+        color: var(--ink-soft);
+      }
+      .row .meta {
+        color: var(--ink-faint);
+        font-size: 12px;
+        font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+        text-align: right;
+      }
+
+      /* ===== 字号阶梯 ===== */
+      .type-scale > div {
+        display: flex;
+        align-items: baseline;
+        gap: 16px;
+        padding: 12px 0;
+        border-bottom: 1px dashed var(--line);
+      }
+      .type-scale .name {
+        width: 130px;
+        color: var(--ink-faint);
+        font-size: 12px;
+        font-family: ui-monospace, monospace;
+      }
+      .type-scale .meta {
+        margin-left: auto;
+        color: var(--ink-faint);
+        font-size: 12px;
+        font-family: ui-monospace, monospace;
+      }
+
+      /* ===== 圆角 ===== */
+      .radius-cell {
+        display: grid;
+        place-items: center;
+        gap: 10px;
+        padding: 18px 8px;
+      }
+      .radius-shape {
+        width: 88px;
+        height: 88px;
+        background: var(--accent-soft);
+        border: 1px solid var(--line);
+      }
+      .radius-name {
+        color: var(--ink-soft);
+        font-size: 12px;
+      }
+      .radius-meta {
+        color: var(--ink-faint);
+        font-size: 11px;
+        font-family: ui-monospace, monospace;
+      }
+
+      /* ===== 阴影 ===== */
+      .shadow-cell {
+        display: grid;
+        place-items: center;
+        height: 140px;
+        background: var(--canvas);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-control);
+        gap: 10px;
+      }
+      .shadow-shape {
+        width: 140px;
+        height: 60px;
+        background: var(--surface);
+        border-radius: 10px;
+      }
+      .shadow-name {
+        color: var(--ink-soft);
+        font-size: 12px;
+        font-weight: 650;
+      }
+      .shadow-meta {
+        color: var(--ink-faint);
+        font-size: 11px;
+        font-family: ui-monospace, monospace;
+      }
+
+      /* ===== 动效示例 ===== */
+      .motion-cell {
+        display: grid;
+        gap: 8px;
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-control);
+        background: var(--surface);
+      }
+      .motion-target {
+        width: 56px;
+        height: 56px;
+        background: var(--accent);
+        border-radius: 12px;
+      }
+      .motion-trigger {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 6px;
+        background: var(--ink);
+        color: #fff;
+        font-size: 12px;
+      }
+      .motion-trigger:hover {
+        background: #2a3946;
+      }
+
+      /* ===== Badge ===== */
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 22px;
+        padding: 0 8px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      /* ===== 主题切换按钮 ===== */
+      .theme-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 14px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-control);
+        background: var(--surface);
+        color: var(--ink);
+        font-size: 13px;
+        font-weight: 600;
+        transition:
+          background 140ms var(--ease-out),
+          border-color 140ms var(--ease-out),
+          color 140ms var(--ease-out);
+      }
+      .theme-toggle:hover {
+        background: var(--prompt-btn-hover);
+        border-color: var(--line-strong);
+      }
+      .theme-toggle .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--accent);
+      }
+
+      /* ===== 主题映射表 ===== */
+      .theme-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      .theme-table th,
+      .theme-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: middle;
+      }
+      .theme-table th {
+        font-size: 12px;
+        color: var(--ink-soft);
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        background: var(--surface-soft);
+      }
+      .theme-table td {
+        font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+        color: var(--ink-soft);
+      }
+      .theme-table td:first-child {
+        font-weight: 650;
+        color: var(--ink);
+      }
+      .theme-table .swatch-inline {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        margin-right: 8px;
+        border-radius: 4px;
+        border: 1px solid var(--line);
+        vertical-align: middle;
+      }
+
+      /* ===== 状态矩阵 ===== */
+      .state-grid {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      }
+      .state-cell {
+        display: grid;
+        gap: 10px;
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-control);
+        background: var(--surface);
+      }
+      .state-cell .state-name {
+        color: var(--ink-faint);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        font-family: ui-monospace, monospace;
+      }
+      .state-cell .state-target {
+        min-height: 40px;
+        display: grid;
+        place-items: center;
+      }
+
+      /* 共用组件样式（仅为 07 状态矩阵示例使用） */
+      .icon-btn-demo {
+        display: inline-grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        border-radius: var(--radius-control);
+        background: transparent;
+        color: var(--ink-soft);
+        transition:
+          background 140ms var(--ease-out),
+          color 140ms var(--ease-out);
+      }
+      .icon-btn-demo:hover {
+        background: var(--line);
+        color: var(--ink);
+      }
+      .icon-btn-demo svg {
+        width: 18px;
+        height: 18px;
+      }
+
+      .nav-link-demo {
+        display: inline-flex;
+        align-items: center;
+        gap: 11px;
+        min-height: 38px;
+        padding: 0 10px;
+        border-radius: var(--radius-control);
+        color: var(--ink-soft);
+        transition:
+          background 140ms var(--ease-out),
+          color 140ms var(--ease-out);
+      }
+      .nav-link-demo:hover {
+        background: var(--nav-hover);
+        color: var(--ink);
+      }
+      .nav-link-demo.is-active {
+        background: var(--nav-hover);
+        color: var(--ink);
+        font-weight: 650;
+      }
+      .nav-link-demo.is-active::before {
+        content: "";
+        width: 2px;
+        height: 18px;
+        background: var(--accent);
+        border-radius: 1px;
+        margin-right: 4px;
+      }
+      .nav-link-demo svg {
+        width: 17px;
+        height: 17px;
+      }
+
+      .tool-btn-demo {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 32px;
+        padding: 0 9px;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--ink-soft);
+        transition:
+          background 140ms var(--ease-out),
+          color 140ms var(--ease-out);
+      }
+      .tool-btn-demo:hover {
+        background: var(--prompt-btn-hover);
+        color: var(--ink);
+      }
+      .tool-btn-demo svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      .send-btn-demo {
+        display: inline-grid;
+        width: 38px;
+        height: 38px;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--send-idle);
+        color: #fff;
+        transition:
+          background 140ms var(--ease-out),
+          transform 100ms var(--ease-out);
+      }
+      .send-btn-demo.has-value {
+        background: var(--accent);
+      }
+      .send-btn-demo:active {
+        transform: scale(0.96);
+      }
+      .send-btn-demo svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      .quick-link-demo {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 36px;
+        padding: 0 13px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--surface);
+        color: var(--ink-soft);
+        transition:
+          border-color 140ms var(--ease-out),
+          color 140ms var(--ease-out),
+          background 140ms var(--ease-out);
+      }
+      .quick-link-demo:hover {
+        border-color: var(--hover-border);
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+      .quick-link-demo svg {
+        width: 15px;
+        height: 15px;
+      }
+
+      .recent-item-demo {
+        display: grid;
+        gap: 3px;
+        width: 100%;
+        padding: 9px 10px;
+        border-radius: var(--radius-control);
+        background: transparent;
+        color: var(--ink-soft);
+        text-align: left;
+        transition:
+          background 140ms var(--ease-out),
+          color 140ms var(--ease-out);
+      }
+      .recent-item-demo:hover {
+        background: var(--nav-hover);
+        color: var(--ink);
+      }
+      .recent-item-demo .recent-title {
+        overflow: hidden;
+        font-size: 13px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .recent-item-demo .recent-meta {
+        color: var(--ink-faint);
+        font-size: 11px;
+      }
+
+      footer.foot {
+        margin-top: 64px;
+        padding-top: 24px;
+        border-top: 1px solid var(--line);
+        color: var(--ink-faint);
+        font-size: 12px;
+      }
+
+      @media (max-width: 900px) {
+        .page {
+          padding: 32px 16px 80px;
+        }
+      }
+      @media (max-width: 560px) {
+        .row {
+          grid-template-columns: 1fr;
+        }
+        .row .meta {
+          text-align: left;
+        }
+        .theme-table th:nth-child(3),
+        .theme-table td:nth-child(3) {
+          display: none;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          transition-duration: 1ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header class="page-head">
+        <span class="eyebrow">Design Tokens · Reference</span>
+        <h1>标航智导 · 学生工作台 · 设计 Token 速查</h1>
+        <p class="lead">
+          纯 Token / 样式速查，详细规范见
+          <code>docs/dev/student-workbench-layout-demo.html</code>
+          与设计规范文档。
+        </p>
+      </header>
+
+      <!-- =================== 01. Token =================== -->
+      <h2><span class="num">01</span>设计 Token</h2>
+      <p style="color: var(--ink-faint); margin: 0 0 16px; font-size: 13px">
+        所有 CSS 变量定义在 <code>:root</code>，下表列出命名、值与使用建议。
+      </p>
+
+      <h3>颜色 Token</h3>
+      <div class="grid grid-2">
+        <div class="swatch">
+          <div class="chip" style="background: var(--canvas)">
+            <span class="chip-text chip-text-dark">canvas</span>
+          </div>
+          <div class="meta">
+            <div class="name">canvas</div>
+            <div class="value">--canvas · #f7f8fa</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--surface)">
+            <span class="chip-text chip-text-dark">surface</span>
+          </div>
+          <div class="meta">
+            <div class="name">surface</div>
+            <div class="value">--surface · #ffffff</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--surface-soft)">
+            <span class="chip-text chip-text-dark">surface-soft</span>
+          </div>
+          <div class="meta">
+            <div class="name">surface-soft</div>
+            <div class="value">--surface-soft · #fbfcfd</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--line)">
+            <span class="chip-text chip-text-dark">line</span>
+          </div>
+          <div class="meta">
+            <div class="name">line</div>
+            <div class="value">--line · #e5e8ec</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--line-strong)">
+            <span class="chip-text chip-text-dark">line-strong</span>
+          </div>
+          <div class="meta">
+            <div class="name">line-strong</div>
+            <div class="value">--line-strong · #d4d9e0</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--ink)">
+            <span class="chip-text chip-text-light">ink</span>
+          </div>
+          <div class="meta">
+            <div class="name">ink</div>
+            <div class="value">--ink · #17212b</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--ink-soft)">
+            <span class="chip-text chip-text-light">ink-soft</span>
+          </div>
+          <div class="meta">
+            <div class="name">ink-soft</div>
+            <div class="value">--ink-soft · #5f6b76</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--ink-faint)">
+            <span class="chip-text chip-text-light">ink-faint</span>
+          </div>
+          <div class="meta">
+            <div class="name">ink-faint</div>
+            <div class="value">--ink-faint · #98a2ad</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--accent)">
+            <span class="chip-text chip-text-light">accent</span>
+          </div>
+          <div class="meta">
+            <div class="name">accent</div>
+            <div class="value">--accent · #2477d6</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--accent-soft)">
+            <span class="chip-text chip-text-dark">accent-soft</span>
+          </div>
+          <div class="meta">
+            <div class="name">accent-soft</div>
+            <div class="value">--accent-soft · #edf5ff</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--teal)">
+            <span class="chip-text chip-text-light">teal</span>
+          </div>
+          <div class="meta">
+            <div class="name">teal</div>
+            <div class="value">--teal · #159b91</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--amber)">
+            <span class="chip-text chip-text-light">amber</span>
+          </div>
+          <div class="meta">
+            <div class="name">amber</div>
+            <div class="value">--amber · #bf7417</div>
+          </div>
+        </div>
+      </div>
+
+      <h3>状态色（success / warn / error / info）</h3>
+      <div class="grid grid-2">
+        <div class="swatch">
+          <div class="chip" style="background: var(--success)">
+            <span class="chip-text chip-text-light">success</span>
+          </div>
+          <div class="meta">
+            <div class="name">success</div>
+            <div class="value">--success · #2f9b58</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--success-soft)">
+            <span class="chip-text chip-text-dark">success-soft</span>
+          </div>
+          <div class="meta">
+            <div class="name">success-soft</div>
+            <div class="value">--success-soft · #e3f4ea</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--warn)">
+            <span class="chip-text chip-text-light">warn</span>
+          </div>
+          <div class="meta">
+            <div class="name">warn</div>
+            <div class="value">--warn · #d08a17</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--warn-soft)">
+            <span class="chip-text chip-text-dark">warn-soft</span>
+          </div>
+          <div class="meta">
+            <div class="name">warn-soft</div>
+            <div class="value">--warn-soft · #fcf1dc</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--error)">
+            <span class="chip-text chip-text-light">error</span>
+          </div>
+          <div class="meta">
+            <div class="name">error</div>
+            <div class="value">--error · #d8453d</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--error-soft)">
+            <span class="chip-text chip-text-dark">error-soft</span>
+          </div>
+          <div class="meta">
+            <div class="name">error-soft</div>
+            <div class="value">--error-soft · #fbe5e3</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--info)">
+            <span class="chip-text chip-text-light">info</span>
+          </div>
+          <div class="meta">
+            <div class="name">info</div>
+            <div class="value">--info · #2477d6</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--info-soft)">
+            <span class="chip-text chip-text-dark">info-soft</span>
+          </div>
+          <div class="meta">
+            <div class="name">info-soft</div>
+            <div class="value">--info-soft · #edf5ff</div>
+          </div>
+        </div>
+      </div>
+
+      <h3>辅助色（直接写值，未抽 Token）</h3>
+      <div class="grid grid-4">
+        <div class="swatch">
+          <div class="chip" style="background: var(--placeholder)">
+            <span class="chip-text chip-text-light">placeholder</span>
+          </div>
+          <div class="meta">
+            <div class="name">placeholder</div>
+            <div class="value">#a7afb8</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--hover-border)">
+            <span class="chip-text chip-text-dark">hover-border</span>
+          </div>
+          <div class="meta">
+            <div class="name">hover-border</div>
+            <div class="value">#b8c9dc</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--focus-border)">
+            <span class="chip-text chip-text-dark">focus-border</span>
+          </div>
+          <div class="meta">
+            <div class="name">focus-border</div>
+            <div class="value">#9dbde2</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--send-idle)">
+            <span class="chip-text chip-text-dark">send-idle</span>
+          </div>
+          <div class="meta">
+            <div class="name">send-idle</div>
+            <div class="value">#d9dde2</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--nav-hover)">
+            <span class="chip-text chip-text-dark">nav-hover</span>
+          </div>
+          <div class="meta">
+            <div class="name">nav-hover</div>
+            <div class="value">#eef2f6</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--prompt-btn-hover)">
+            <span class="chip-text chip-text-dark">btn-hover</span>
+          </div>
+          <div class="meta">
+            <div class="name">prompt-btn-hover</div>
+            <div class="value">#f0f3f6</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--user-ink)">
+            <span class="chip-text chip-text-light">user-ink</span>
+          </div>
+          <div class="meta">
+            <div class="name">user-ink</div>
+            <div class="value">#235f9f</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--teal-soft)">
+            <span class="chip-text chip-text-dark">teal-soft</span>
+          </div>
+          <div class="meta">
+            <div class="name">activity-line</div>
+            <div class="value">#cde5e0</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--avatar-bg)">
+            <span class="chip-text chip-text-dark">avatar-bg</span>
+          </div>
+          <div class="meta">
+            <div class="name">avatar-bg</div>
+            <div class="value">#dcefe9</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--avatar-ink)">
+            <span class="chip-text chip-text-light">avatar-ink</span>
+          </div>
+          <div class="meta">
+            <div class="name">avatar-ink</div>
+            <div class="value">#126f68</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--accent-strong)">
+            <span class="chip-text chip-text-light">accent-strong</span>
+          </div>
+          <div class="meta">
+            <div class="name">accent-strong</div>
+            <div class="value">#1d65bd</div>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip" style="background: var(--user-bubble)">
+            <span class="chip-text chip-text-dark">user-bubble</span>
+          </div>
+          <div class="meta">
+            <div class="name">user-bubble</div>
+            <div class="value">#edf5ff</div>
+          </div>
+        </div>
+      </div>
+
+      <h3>尺寸与圆角</h3>
+      <div class="row">
+        <span class="label">侧栏展开宽</span
+        ><span class="demo">272px 固定列</span
+        ><span class="meta">--sidebar-width</span>
+      </div>
+      <div class="row">
+        <span class="label">侧栏折叠宽</span
+        ><span class="demo">68px 仅 icon</span
+        ><span class="meta">--sidebar-collapsed</span>
+      </div>
+      <div class="row">
+        <span class="label">侧栏 / toolbar 高</span
+        ><span class="demo">68px（移动 60px）</span
+        ><span class="meta">min-height</span>
+      </div>
+      <div class="row">
+        <span class="label">nav-link 高</span
+        ><span class="demo">38px 最小可点</span
+        ><span class="meta">min-height: 38px</span>
+      </div>
+      <div class="row">
+        <span class="label">icon 按钮</span
+        ><span class="demo">34×34 · icon 18</span
+        ><span class="meta">.icon-btn</span>
+      </div>
+      <div class="row">
+        <span class="label">send 按钮</span><span class="demo">38×38 圆形</span
+        ><span class="meta">.send-btn</span>
+      </div>
+      <div class="row">
+        <span class="label">radius-control</span
+        ><span class="demo">8px 控件默认</span
+        ><span class="meta">--radius-control</span>
+      </div>
+      <div class="row">
+        <span class="label">radius-input</span
+        ><span class="demo">16px prompt 输入</span
+        ><span class="meta">--radius-input</span>
+      </div>
+      <div class="row">
+        <span class="label">radius-card</span
+        ><span class="demo">10px plan-inline</span
+        ><span class="meta">--radius-card</span>
+      </div>
+
+      <!-- =================== 02. 排版 =================== -->
+      <h2><span class="num">02</span>排版样式</h2>
+      <div class="card">
+        <h4>字号阶梯（type scale）</h4>
+        <div class="type-scale">
+          <div>
+            <span class="name">11px · nav-label</span
+            ><span
+              style="
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+                color: var(--ink-faint);
+              "
+              >学习空间</span
+            ><span class="meta">0.04em · UPPER</span>
+          </div>
+          <div>
+            <span class="name">11px · meta</span
+            ><span style="font-size: 11px; color: var(--ink-faint)"
+              >学生端 · 学习中</span
+            ><span class="meta">faint</span>
+          </div>
+          <div>
+            <span class="name">12px · toolbar</span
+            ><span style="font-size: 12px; color: var(--ink-soft)"
+              >学生工作台 / Agent 指挥舱</span
+            ><span class="meta">soft</span>
+          </div>
+          <div>
+            <span class="name">13px · recent / plan</span
+            ><span style="font-size: 13px; color: var(--ink-soft)"
+              >文本标注入门路径</span
+            ><span class="meta">soft</span>
+          </div>
+          <div>
+            <span class="name">14px · body</span
+            ><span style="font-size: 14px; color: var(--ink)"
+              >body 基准字号</span
+            ><span class="meta">ink</span>
+          </div>
+          <div>
+            <span class="name">15px · 副标题 / 消息</span
+            ><span
+              style="font-size: 15px; color: var(--ink-soft); line-height: 1.7"
+              >生成清晰的练习路径、任务卡和诊断建议。</span
+            ><span class="meta">soft · 1.7</span>
+          </div>
+          <div>
+            <span class="name">17px · textarea</span
+            ><span style="font-size: 17px; color: var(--ink); line-height: 1.6"
+              >输入你的学习目标</span
+            ><span class="meta">ink · 1.6</span>
+          </div>
+          <div>
+            <span class="name">clamp 30–48 · h1</span
+            ><span
+              style="
+                font-size: clamp(30px, 3.2vw, 48px);
+                font-weight: 720;
+                line-height: 1.15;
+                color: var(--ink);
+              "
+              >标航智导</span
+            ><span class="meta">720 · 1.15</span>
+          </div>
+        </div>
+      </div>
+
+      <h3>行高 / 字重</h3>
+      <div class="grid grid-2">
+        <div class="row">
+          <span class="label">body</span><span class="demo">1.55 · 400</span
+          ><span class="meta">default</span>
+        </div>
+        <div class="row">
+          <span class="label">message</span><span class="demo">1.75 · 400</span
+          ><span class="meta">assistant</span>
+        </div>
+        <div class="row">
+          <span class="label">prompt textarea</span
+          ><span class="demo">1.6 · 400</span><span class="meta">17px</span>
+        </div>
+        <div class="row">
+          <span class="label">hero p</span><span class="demo">1.7 · 400</span
+          ><span class="meta">15px soft</span>
+        </div>
+        <div class="row">
+          <span class="label">h1</span><span class="demo">1.15 · 720</span
+          ><span class="meta">hero</span>
+        </div>
+        <div class="row">
+          <span class="label">nav-link active</span
+          ><span class="demo">650 · 14</span
+          ><span class="meta">font-weight</span>
+        </div>
+        <div class="row">
+          <span class="label">nav-label</span><span class="demo">700 · 11</span
+          ><span class="meta">uppercase</span>
+        </div>
+        <div class="row">
+          <span class="label">badge</span><span class="demo">600 · 12</span
+          ><span class="meta">.badge</span>
+        </div>
+      </div>
+
+      <!-- ===== 深色模式速查 ===== -->
+      <h3 style="margin-top: 28px">深色模式速查</h3>
+      <div
+        style="
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 14px;
+        "
+      >
+        <button
+          class="theme-toggle"
+          type="button"
+          id="themeToggle"
+          aria-pressed="false"
+          aria-label="切换深色 / 浅色"
+        >
+          <span class="dot"></span>
+          <span id="themeLabel">深色</span>
+        </button>
+        <span style="color: var(--ink-faint); font-size: 12px"
+          >切换
+          <code>&lt;html data-theme="dark"&gt;</code>，下方映射表即生效</span
+        >
+      </div>
+
+      <div class="card" style="padding: 0; overflow: hidden">
+        <table class="theme-table">
+          <thead>
+            <tr>
+              <th>Token</th>
+              <th>浅色值</th>
+              <th>深色值</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>--canvas</td>
+              <td>
+                <span class="swatch-inline" style="background: #f7f8fa"></span
+                >#f7f8fa
+              </td>
+              <td>
+                <span class="swatch-inline" style="background: #0e1419"></span
+                >#0e1419
+              </td>
+            </tr>
+            <tr>
+              <td>--surface</td>
+              <td>
+                <span class="swatch-inline" style="background: #ffffff"></span
+                >#ffffff
+              </td>
+              <td>
+                <span class="swatch-inline" style="background: #161d24"></span
+                >#161d24
+              </td>
+            </tr>
+            <tr>
+              <td>--surface-soft</td>
+              <td>
+                <span class="swatch-inline" style="background: #fbfcfd"></span
+                >#fbfcfd
+              </td>
+              <td>
+                <span class="swatch-inline" style="background: #1b232b"></span
+                >#1b232b
+              </td>
+            </tr>
+            <tr>
+              <td>--line</td>
+              <td>
+                <span class="swatch-inline" style="background: #e5e8ec"></span
+                >#e5e8ec
+              </td>
+              <td>
+                <span class="swatch-inline" style="background: #2a333d"></span
+                >#2a333d
+              </td>
+            </tr>
+            <tr>
+              <td>--line-strong</td>
+              <td>
+                <span class="swatch-inline" style="background: #d4d9e0"></span
+                >#d4d9e0
+              </td>
+              <td>
+                <span class="swatch-inline" style="background: #38424e"></span
+                >#38424e
+              </td>
+            </tr>
+            <tr>
+              <td>--ink</td>
+              <td>
+                <span class="swatch-inline" style="background: #17212b"></span
+                >#17212b
+              </td>
+              <td>
+                <span class="swatch-inline" style="background: #e6ecf2"></span
+                >#e6ecf2
+              </td>
+            </tr>
+            <tr>
+              <td>--ink-soft</td>
+              <td>
+                <span class="swatch-inline" style="background: #5f6b76"></span
+                >#5f6b76
+              </td>
+              <td>
+                <span class="swatch-inline" style="background: #a4b0bd"></span
+                >#a4b0bd
+              </td>
+            </tr>
+            <tr>
+              <td>--ink-faint</td>
+              <td>
+                <span class="swatch-inline" style="background: #98a2ad"></span
+                >#98a2ad
+              </td>
+              <td>
+                <span class="swatch-inline" style="background: #6b7684"></span
+                >#6b7684
+              </td>
+            </tr>
+            <tr>
+              <td>--accent</td>
+              <td>
+                <span class="swatch-inline" style="background: #2477d6"></span
+                >#2477d6
+              </td>
+              <td>
+                <span class="swatch-inline" style="background: #4d92e3"></span
+                >#4d92e3
+              </td>
+            </tr>
+            <tr>
+              <td>--accent-soft</td>
+              <td>
+                <span class="swatch-inline" style="background: #edf5ff"></span
+                >#edf5ff
+              </td>
+              <td>
+                <span class="swatch-inline" style="background: #1d2c3f"></span
+                >#1d2c3f
+              </td>
+            </tr>
+            <tr>
+              <td>--teal</td>
+              <td>
+                <span class="swatch-inline" style="background: #159b91"></span
+                >#159b91
+              </td>
+              <td>
+                <span class="swatch-inline" style="background: #3bb6ab"></span
+                >#3bb6ab
+              </td>
+            </tr>
+            <tr>
+              <td>--teal-soft</td>
+              <td>
+                <span class="swatch-inline" style="background: #cde5e0"></span
+                >#cde5e0
+              </td>
+              <td>
+                <span class="swatch-inline" style="background: #1c2f2c"></span
+                >#1c2f2c
+              </td>
+            </tr>
+            <tr>
+              <td>--amber</td>
+              <td>
+                <span class="swatch-inline" style="background: #bf7417"></span
+                >#bf7417
+              </td>
+              <td>
+                <span class="swatch-inline" style="background: #e1a14a"></span
+                >#e1a14a
+              </td>
+            </tr>
+            <tr>
+              <td>--nav-hover</td>
+              <td>
+                <span class="swatch-inline" style="background: #eef2f6"></span
+                >#eef2f6
+              </td>
+              <td>
+                <span class="swatch-inline" style="background: #232c35"></span
+                >#232c35
+              </td>
+            </tr>
+            <tr>
+              <td>--prompt-btn-hover</td>
+              <td>
+                <span class="swatch-inline" style="background: #f0f3f6"></span
+                >#f0f3f6
+              </td>
+              <td>
+                <span class="swatch-inline" style="background: #202a32"></span
+                >#202a32
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- =================== 03. 间距 =================== -->
+      <h2><span class="num">03</span>间距阶梯</h2>
+      <div class="row">
+        <span class="label">2 / 4 / 5</span
+        ><span class="demo">紧致间距（list gap / border / avatar margin）</span
+        ><span class="meta">nav / icon / meta</span>
+      </div>
+      <div class="row">
+        <span class="label">7 / 8 / 11</span
+        ><span class="demo">控件内部 gap</span
+        ><span class="meta">toolbar / nav-link / chip</span>
+      </div>
+      <div class="row">
+        <span class="label">12 / 18 / 28</span
+        ><span class="demo">块级左右 padding</span
+        ><span class="meta">sidebar / toolbar / stage</span>
+      </div>
+      <div class="row">
+        <span class="label">18 / 24 / 44</span
+        ><span class="demo">块级垂直间距</span
+        ><span class="meta">new-session 底 / quick 顶 / continue 顶</span>
+      </div>
+      <div class="row">
+        <span class="label">22 / 34 / 38</span><span class="demo">章节距离</span
+        ><span class="meta">message gap / heading 底 / prompt 顶</span>
+      </div>
+
+      <!-- =================== 04. 圆角 =================== -->
+      <h2><span class="num">04</span>圆角</h2>
+      <div class="grid grid-4">
+        <div class="card">
+          <div class="radius-cell">
+            <div class="radius-shape" style="border-radius: 4px"></div>
+          </div>
+          <div class="radius-name">4px</div>
+          <div class="radius-meta">recent-meta / 极小元素</div>
+        </div>
+        <div class="card">
+          <div class="radius-cell">
+            <div class="radius-shape" style="border-radius: 6px"></div>
+          </div>
+          <div class="radius-name">6px</div>
+          <div class="radius-meta">tool-btn / continue / view-switch</div>
+        </div>
+        <div class="card">
+          <div class="radius-cell">
+            <div class="radius-shape" style="border-radius: 8px"></div>
+          </div>
+          <div class="radius-name">8px</div>
+          <div class="radius-meta">侧栏控件 · --radius-control</div>
+        </div>
+        <div class="card">
+          <div class="radius-cell">
+            <div class="radius-shape" style="border-radius: 10px"></div>
+          </div>
+          <div class="radius-name">10px</div>
+          <div class="radius-meta">plan-inline · --radius-card</div>
+        </div>
+        <div class="card">
+          <div class="radius-cell">
+            <div
+              class="radius-shape"
+              style="border-radius: 14px 14px 4px 14px"
+            ></div>
+          </div>
+          <div class="radius-name">14/4 复合</div>
+          <div class="radius-meta">user 气泡（非对称）</div>
+        </div>
+        <div class="card">
+          <div class="radius-cell">
+            <div class="radius-shape" style="border-radius: 16px"></div>
+          </div>
+          <div class="radius-name">16px</div>
+          <div class="radius-meta">prompt 输入 · --radius-input</div>
+        </div>
+        <div class="card">
+          <div class="radius-cell">
+            <div class="radius-shape" style="border-radius: 999px"></div>
+          </div>
+          <div class="radius-name">999px</div>
+          <div class="radius-meta">胶囊 · quick-link / badge</div>
+        </div>
+        <div class="card">
+          <div class="radius-cell">
+            <div class="radius-shape" style="border-radius: 50%"></div>
+          </div>
+          <div class="radius-name">50%</div>
+          <div class="radius-meta">圆 · 头像 / send-btn</div>
+        </div>
+      </div>
+
+      <!-- =================== 05. 阴影 =================== -->
+      <h2><span class="num">05</span>阴影</h2>
+      <div class="grid grid-3">
+        <div class="shadow-cell">
+          <div
+            class="shadow-shape"
+            style="box-shadow: 0 1px 2px rgba(26, 39, 52, 0.03)"
+          ></div>
+          <div>
+            <div class="shadow-name">极轻 · new-session</div>
+            <div class="shadow-meta">0 1 2 / 3%</div>
+          </div>
+        </div>
+        <div class="shadow-cell">
+          <div
+            class="shadow-shape"
+            style="box-shadow: 0 18px 42px rgba(26, 39, 52, 0.08)"
+          ></div>
+          <div>
+            <div class="shadow-name">输入框 · prompt</div>
+            <div class="shadow-meta">--shadow-input · 8%</div>
+          </div>
+        </div>
+        <div class="shadow-cell">
+          <div
+            class="shadow-shape"
+            style="box-shadow: 0 18px 42px rgba(36, 119, 214, 0.12)"
+          ></div>
+          <div>
+            <div class="shadow-name">输入框 · focus</div>
+            <div class="shadow-meta">--shadow-input-focus · 12%</div>
+          </div>
+        </div>
+        <div class="shadow-cell">
+          <div
+            class="shadow-shape"
+            style="box-shadow: 0 12px 30px rgba(20, 29, 38, 0.17)"
+          ></div>
+          <div>
+            <div class="shadow-name">浮层 · toast</div>
+            <div class="shadow-meta">--shadow-toast · 17%</div>
+          </div>
+        </div>
+        <div class="shadow-cell">
+          <div
+            class="shadow-shape"
+            style="box-shadow: 0 24px 60px rgba(20, 29, 38, 0.06)"
+          ></div>
+          <div>
+            <div class="shadow-name">容器卡片</div>
+            <div class="shadow-meta">shell stage</div>
+          </div>
+        </div>
+        <div class="shadow-cell">
+          <div
+            class="shadow-shape"
+            style="box-shadow: 0 18px 40px rgba(20, 29, 38, 0.18)"
+          ></div>
+          <div>
+            <div class="shadow-name">外框 · frame</div>
+            <div class="shadow-meta">mobile-frame</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- =================== 06. 动效 =================== -->
+      <h2><span class="num">06</span>动效</h2>
+      <p style="color: var(--ink-faint); margin: 0 0 14px; font-size: 13px">
+        全站统一
+        <code>--ease-out: cubic-bezier(0.16, 1, 0.3, 1)</code
+        >。鼠标悬停下方触发器查看时长差异。
+      </p>
+
+      <div class="grid grid-3">
+        <div class="motion-cell" id="m100">
+          <div
+            class="motion-target"
+            style="transition: transform 100ms var(--ease-out)"
+          ></div>
+          <button class="motion-trigger" type="button">100ms · 按下反馈</button>
+          <div style="color: var(--ink-faint); font-size: 12px">
+            send-btn:active · scale(0.96)
+          </div>
+        </div>
+        <div class="motion-cell" id="m140">
+          <div
+            class="motion-target"
+            style="transition: transform 140ms var(--ease-out)"
+          ></div>
+          <button class="motion-trigger" type="button">
+            140ms · 颜色 hover
+          </button>
+          <div style="color: var(--ink-faint); font-size: 12px">
+            nav / prompt-btn / icon-btn / quick-link
+          </div>
+        </div>
+        <div class="motion-cell" id="m160">
+          <div
+            class="motion-target"
+            style="transition: transform 160ms var(--ease-out)"
+          ></div>
+          <button class="motion-trigger" type="button">
+            160ms · 输入框阴影
+          </button>
+          <div style="color: var(--ink-faint); font-size: 12px">
+            prompt border / toast 渐显
+          </div>
+        </div>
+        <div class="motion-cell" id="m180">
+          <div
+            class="motion-target"
+            style="transition: transform 180ms var(--ease-out)"
+          ></div>
+          <button class="motion-trigger" type="button">180ms · 抽屉</button>
+          <div style="color: var(--ink-faint); font-size: 12px">
+            sidebar 移动 transform
+          </div>
+        </div>
+        <div class="motion-cell" id="m240">
+          <div
+            class="motion-target"
+            style="transition: transform 240ms var(--ease-out)"
+          ></div>
+          <button class="motion-trigger" type="button">240ms · 视图切换</button>
+          <div style="color: var(--ink-faint); font-size: 12px">
+            welcome ↔ conversation
+          </div>
+        </div>
+        <div class="motion-cell" id="mPulse">
+          <div
+            class="motion-target"
+            id="pulseDot"
+            style="
+              background: var(--teal);
+              transition: transform 1400ms var(--ease-out);
+            "
+          ></div>
+          <button class="motion-trigger" type="button" id="pulseBtn">
+            teal pulse · 活动指示
+          </button>
+          <div style="color: var(--ink-faint); font-size: 12px">
+            activity-dot 心跳
+          </div>
+        </div>
+      </div>
+
+      <script>
+        // 动效触发：单击触发器让方块在 100% 状态下短暂变化
+        document.querySelectorAll(".motion-trigger").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const cell = btn.closest(".motion-cell");
+            const target = cell.querySelector(".motion-target");
+            target.style.transform = "translateX(28px) scale(0.92)";
+            window.setTimeout(() => {
+              target.style.transform = "";
+            }, 320);
+          });
+        });
+        // 心跳
+        const pulseDot = document.getElementById("pulseDot");
+        let pulseOn = false;
+        document.getElementById("pulseBtn").addEventListener("click", () => {
+          pulseOn = !pulseOn;
+          if (pulseOn) {
+            pulseDot.animate(
+              [
+                {
+                  transform: "scale(1)",
+                  boxShadow: "0 0 0 0 rgba(21,155,145,.4)",
+                },
+                {
+                  transform: "scale(1.15)",
+                  boxShadow: "0 0 0 10px rgba(21,155,145,0)",
+                },
+              ],
+              {
+                duration: 1200,
+                iterations: Infinity,
+                easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+              },
+            );
+          } else {
+            pulseDot.getAnimations().forEach((a) => a.cancel());
+            pulseDot.style.boxShadow = "none";
+          }
+        });
+
+        // 深色模式切换
+        const root = document.documentElement;
+        const themeBtn = document.getElementById("themeToggle");
+        const themeLabel = document.getElementById("themeLabel");
+        const stored = localStorage.getItem("swb-theme");
+        // The reference page mirrors the product contract: system appearance
+        // never changes the workbench unexpectedly; dark is opt-in only.
+        const initial = stored || "light";
+        const applyTheme = (mode) => {
+          if (mode === "dark") {
+            root.setAttribute("data-theme", "dark");
+            themeBtn.setAttribute("aria-pressed", "true");
+            themeLabel.textContent = "浅色";
+          } else {
+            root.removeAttribute("data-theme");
+            themeBtn.setAttribute("aria-pressed", "false");
+            themeLabel.textContent = "深色";
+          }
+        };
+        applyTheme(initial);
+        themeBtn.addEventListener("click", () => {
+          const next =
+            root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+          applyTheme(next);
+          localStorage.setItem("swb-theme", next);
+        });
+      </script>
+
+      <!-- =================== 07. 组件状态 =================== -->
+      <h2><span class="num">07</span>组件状态</h2>
+      <p style="color: var(--ink-faint); margin: 0 0 14px; font-size: 13px">
+        hover / focus / active / disabled 四态对照。悬停 / 键盘 Tab 即可观察。
+      </p>
+
+      <div class="grid grid-2">
+        <div class="card">
+          <h4>icon-btn</h4>
+          <div class="state-grid">
+            <div class="state-cell">
+              <span class="state-name">default</span>
+              <div class="state-target">
+                <button class="icon-btn-demo" type="button">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M6 8a6 6 0 1 1 12 0c0 5 3 6 3 6H3s3-1 3-6" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="state-cell">
+              <span class="state-name">hover</span>
+              <div class="state-target">
+                <button
+                  class="icon-btn-demo"
+                  type="button"
+                  style="background: var(--line); color: var(--ink)"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M6 8a6 6 0 1 1 12 0c0 5 3 6 3 6H3s3-1 3-6" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="state-cell">
+              <span class="state-name">focus</span>
+              <div class="state-target">
+                <button
+                  class="icon-btn-demo"
+                  type="button"
+                  style="outline: 2px solid var(--accent); outline-offset: 2px"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M6 8a6 6 0 1 1 12 0c0 5 3 6 3 6H3s3-1 3-6" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="state-cell">
+              <span class="state-name">disabled</span>
+              <div class="state-target">
+                <button
+                  class="icon-btn-demo"
+                  type="button"
+                  disabled
+                  style="opacity: 0.45; cursor: not-allowed"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M6 8a6 6 0 1 1 12 0c0 5 3 6 3 6H3s3-1 3-6" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h4>nav-link</h4>
+          <div class="state-grid">
+            <div class="state-cell">
+              <span class="state-name">default</span>
+              <div class="state-target" style="justify-content: flex-start">
+                <a class="nav-link-demo" href="#" style="min-width: 180px"
+                  ><svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <rect x="3" y="3" width="7" height="7" />
+                    <rect x="14" y="3" width="7" height="7" />
+                    <rect x="3" y="14" width="7" height="7" />
+                    <rect x="14" y="14" width="7" height="7" /></svg
+                  ><span>预设学习</span></a
+                >
+              </div>
+            </div>
+            <div class="state-cell">
+              <span class="state-name">hover</span>
+              <div class="state-target" style="justify-content: flex-start">
+                <a
+                  class="nav-link-demo"
+                  href="#"
+                  style="
+                    min-width: 180px;
+                    background: var(--nav-hover);
+                    color: var(--ink);
+                  "
+                  ><svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <rect x="3" y="3" width="7" height="7" />
+                    <rect x="14" y="3" width="7" height="7" />
+                    <rect x="3" y="14" width="7" height="7" />
+                    <rect x="14" y="14" width="7" height="7" /></svg
+                  ><span>预设学习</span></a
+                >
+              </div>
+            </div>
+            <div class="state-cell">
+              <span class="state-name">active</span>
+              <div class="state-target" style="justify-content: flex-start">
+                <a
+                  class="nav-link-demo is-active"
+                  href="#"
+                  style="min-width: 180px"
+                  ><svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <rect x="3" y="3" width="7" height="7" />
+                    <rect x="14" y="3" width="7" height="7" />
+                    <rect x="3" y="14" width="7" height="7" />
+                    <rect x="14" y="14" width="7" height="7" /></svg
+                  ><span>Agent 指挥舱</span></a
+                >
+              </div>
+            </div>
+            <div class="state-cell">
+              <span class="state-name">disabled</span>
+              <div class="state-target" style="justify-content: flex-start">
+                <a
+                  class="nav-link-demo"
+                  href="#"
+                  aria-disabled="true"
+                  style="
+                    min-width: 180px;
+                    opacity: 0.45;
+                    cursor: not-allowed;
+                    pointer-events: none;
+                  "
+                  ><svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <rect x="3" y="3" width="7" height="7" />
+                    <rect x="14" y="3" width="7" height="7" />
+                    <rect x="3" y="14" width="7" height="7" />
+                    <rect x="14" y="14" width="7" height="7" /></svg
+                  ><span>已停用</span></a
+                >
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h4>tool-btn / setting-btn</h4>
+          <div class="state-grid">
+            <div class="state-cell">
+              <span class="state-name">default</span>
+              <div class="state-target">
+                <button class="tool-btn-demo" type="button">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M12 5v14M5 12h14" /></svg
+                  ><span>上传</span>
+                </button>
+              </div>
+            </div>
+            <div class="state-cell">
+              <span class="state-name">hover</span>
+              <div class="state-target">
+                <button
+                  class="tool-btn-demo"
+                  type="button"
+                  style="background: var(--prompt-btn-hover); color: var(--ink)"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M12 5v14M5 12h14" /></svg
+                  ><span>上传</span>
+                </button>
+              </div>
+            </div>
+            <div class="state-cell">
+              <span class="state-name">focus</span>
+              <div class="state-target">
+                <button
+                  class="tool-btn-demo"
+                  type="button"
+                  style="outline: 2px solid var(--accent); outline-offset: 2px"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M12 5v14M5 12h14" /></svg
+                  ><span>上传</span>
+                </button>
+              </div>
+            </div>
+            <div class="state-cell">
+              <span class="state-name">disabled</span>
+              <div class="state-target">
+                <button
+                  class="tool-btn-demo"
+                  type="button"
+                  disabled
+                  style="opacity: 0.45; cursor: not-allowed"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M12 5v14M5 12h14" /></svg
+                  ><span>上传</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h4>send-btn</h4>
+          <div class="state-grid">
+            <div class="state-cell">
+              <span class="state-name">idle</span>
+              <div class="state-target">
+                <button
+                  class="send-btn-demo"
+                  type="button"
+                  style="background: var(--send-idle)"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M12 19V5M5 12l7-7 7 7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="state-cell">
+              <span class="state-name">has-value</span>
+              <div class="state-target">
+                <button class="send-btn-demo has-value" type="button">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M12 19V5M5 12l7-7 7 7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="state-cell">
+              <span class="state-name">hover</span>
+              <div class="state-target">
+                <button
+                  class="send-btn-demo"
+                  type="button"
+                  style="
+                    background: var(--accent);
+                    box-shadow: 0 6px 14px rgba(36, 119, 214, 0.3);
+                  "
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M12 19V5M5 12l7-7 7 7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="state-cell">
+              <span class="state-name">active</span>
+              <div class="state-target">
+                <button
+                  class="send-btn-demo"
+                  type="button"
+                  style="background: var(--accent); transform: scale(0.96)"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M12 19V5M5 12l7-7 7 7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h4>quick-link</h4>
+          <div class="state-grid">
+            <div class="state-cell">
+              <span class="state-name">default</span>
+              <div class="state-target">
+                <button class="quick-link-demo" type="button">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+                    />
+                    <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" /></svg
+                  ><span>文本标注</span>
+                </button>
+              </div>
+            </div>
+            <div class="state-cell">
+              <span class="state-name">hover</span>
+              <div class="state-target">
+                <button
+                  class="quick-link-demo"
+                  type="button"
+                  style="
+                    border-color: var(--hover-border);
+                    background: var(--accent-soft);
+                    color: var(--accent);
+                  "
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+                    />
+                    <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" /></svg
+                  ><span>文本标注</span>
+                </button>
+              </div>
+            </div>
+            <div class="state-cell">
+              <span class="state-name">focus</span>
+              <div class="state-target">
+                <button
+                  class="quick-link-demo"
+                  type="button"
+                  style="outline: 2px solid var(--accent); outline-offset: 2px"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+                    />
+                    <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" /></svg
+                  ><span>文本标注</span>
+                </button>
+              </div>
+            </div>
+            <div class="state-cell">
+              <span class="state-name">disabled</span>
+              <div class="state-target">
+                <button
+                  class="quick-link-demo"
+                  type="button"
+                  disabled
+                  style="opacity: 0.45; cursor: not-allowed"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+                    />
+                    <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" /></svg
+                  ><span>已停用</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h4>recent-item</h4>
+          <div class="state-grid">
+            <div class="state-cell">
+              <span class="state-name">default</span>
+              <div class="state-target" style="justify-content: stretch">
+                <button
+                  class="recent-item-demo"
+                  type="button"
+                  style="min-width: 180px"
+                >
+                  <span class="recent-title">文本标注入门路径</span
+                  ><span class="recent-meta">今天 10:21</span>
+                </button>
+              </div>
+            </div>
+            <div class="state-cell">
+              <span class="state-name">hover</span>
+              <div class="state-target" style="justify-content: stretch">
+                <button
+                  class="recent-item-demo"
+                  type="button"
+                  style="
+                    min-width: 180px;
+                    background: var(--nav-hover);
+                    color: var(--ink);
+                  "
+                >
+                  <span class="recent-title">文本标注入门路径</span
+                  ><span class="recent-meta">今天 10:21</span>
+                </button>
+              </div>
+            </div>
+            <div class="state-cell">
+              <span class="state-name">active</span>
+              <div class="state-target" style="justify-content: stretch">
+                <button
+                  class="recent-item-demo"
+                  type="button"
+                  style="
+                    min-width: 180px;
+                    background: var(--nav-hover);
+                    color: var(--ink);
+                    font-weight: 650;
+                  "
+                >
+                  <span class="recent-title">文本标注入门路径</span
+                  ><span class="recent-meta">今天 10:21</span>
+                </button>
+              </div>
+            </div>
+            <div class="state-cell">
+              <span class="state-name">disabled</span>
+              <div class="state-target" style="justify-content: stretch">
+                <button
+                  class="recent-item-demo"
+                  type="button"
+                  disabled
+                  style="min-width: 180px; opacity: 0.45; cursor: not-allowed"
+                >
+                  <span class="recent-title">已停用</span
+                  ><span class="recent-meta">—</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- =================== 08. 断点 =================== -->
+      <h2><span class="num">08</span>响应式断点</h2>
+      <div class="row">
+        <span class="label">≤ 900px</span
+        ><span class="demo"
+          >shell → block；侧栏 fixed 抽屉 + 蒙层；toolbar 60px；hero h1
+          32px</span
+        ><span class="meta">@media (max-width: 900px)</span>
+      </div>
+      <div class="row">
+        <span class="label">≤ 560px</span
+        ><span class="demo">toolbar 简化；prompt 内边距更紧；消息气泡 100%</span
+        ><span class="meta">@media (max-width: 560px)</span>
+      </div>
+      <div class="row">
+        <span class="label">reduced-motion</span
+        ><span class="demo">transition-duration: 1ms !important</span
+        ><span class="meta">prefers-reduced-motion</span>
+      </div>
+
+      <footer class="foot">
+        设计 Token 与状态色版 · 与 docs/dev/student-workbench-layout-demo.html
+        同步维护。
+      </footer>
+    </div>
+  </body>
+</html>

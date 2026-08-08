@@ -344,6 +344,31 @@ def test_conversation_detail_projects_safe_historical_activities(client, tmp_db_
     assert "preview" not in serialized
 
 
+def test_conversation_detail_sanitizes_legacy_assistant_reasoning(client, tmp_db_path):
+    """History projection must not re-expose reasoning persisted by older runs."""
+
+    conversation = client.post(
+        "/api/conversations", json={"title": "legacy answer"}, headers=csrf_headers()
+    ).json()
+    now = utc_now_iso()
+    conn = open_db(tmp_db_path)
+    try:
+        conn.execute(
+            """
+            INSERT INTO messages (id, conversation_id, run_id, role, content, created_at)
+            VALUES ('legacy-answer', ?, NULL, 'assistant', ?, ?)
+            """,
+            (conversation["id"], "<think>private reasoning</think>visible answer", now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    detail = client.get(f"/api/conversations/{conversation['id']}")
+    assert detail.status_code == 200
+    assert detail.json()["messages"][0]["content"] == "visible answer"
+
+
 def test_conversation_detail_keeps_empty_activity_map_for_legacy_history(client, tmp_db_path):
     """A message without durable visible events stays honest rather than fabricated."""
 

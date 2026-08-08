@@ -478,7 +478,7 @@ describe("指挥舱 · 诊断上传", () => {
         diagnostic_token: "tok-abc",
       }),
     );
-    await screen.findByText("诊断摘要已保存，掌握度已更新");
+    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
   });
 
   it("生成补强计划 → 以 attachment 携带 diagnostic_token 发起运行", async () => {
@@ -868,10 +868,10 @@ describe("指挥舱 · 确认门过期", () => {
     const gate = await screen.findByTestId("confirmation-gate");
     fireEvent.click(within(gate).getByRole("button", { name: "确认" }));
 
-    expect(await screen.findByText("预览已过期，请重新生成")).toBeInTheDocument();
     // 过期后刷新 run（GET /api/runs/r1），确认门随之关闭
     await waitFor(() => expect(mockedGet).toHaveBeenCalledWith("/api/runs/r1"));
     await waitFor(() => expect(screen.queryByTestId("confirmation-gate")).not.toBeInTheDocument());
+    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
   });
 });
 

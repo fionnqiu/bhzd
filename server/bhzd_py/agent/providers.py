@@ -535,7 +535,11 @@ async def _cc_complete(
     _raise_for_status(resp)
     data = resp.json()
     choice = (data.get("choices") or [{}])[0]
-    text = ((choice.get("message") or {}).get("content")) or ""
+    message = choice.get("message") or {}
+    # OpenAI-compatible reasoning models may return chain-of-thought in a
+    # sibling field. Only the user-facing content field crosses this adapter
+    # boundary; reasoning_content/analysis fields are intentionally ignored.
+    text = message.get("content") or ""
     return {
         "text": text,
         "model": row["model"],
@@ -572,7 +576,10 @@ async def _cc_stream(
                 break
             chunk = json.loads(payload)
             choice = (chunk.get("choices") or [{}])[0]
-            delta = ((choice.get("delta") or {}).get("content"))
+            delta_payload = choice.get("delta") or {}
+            # Some gateways emit reasoning_content beside content for the same
+            # token. Forwarding only content keeps the stream answer-only.
+            delta = delta_payload.get("content")
             if delta:
                 yield {"delta": str(delta)}
             usage = _normalize_usage(chunk.get("usage"))

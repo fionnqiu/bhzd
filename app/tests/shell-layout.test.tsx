@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { Database, SearchCheck } from "lucide-react";
+import { PageHeader } from "../src/components";
 import ShellLayout from "../src/layouts/ShellLayout";
 import {
   StudentWorkbenchShellProvider,
@@ -90,20 +91,35 @@ function renderOperationsShell(compact = false) {
   stubViewport(compact);
   return render(
     <MemoryRouter initialEntries={["/rag-admin/search-test"]}>
-      <ShellLayout
-        portalKey="rag-admin"
-        portalName="RAG 知识库管理"
-        variant="operations-workbench"
-        navItems={[
-          { to: "/rag-admin", label: "资料库", icon: Database, end: true, section: "资料管理" },
-          {
-            to: "/rag-admin/search-test",
-            label: "召回测试",
-            icon: SearchCheck,
-            section: "检索与质量",
-          },
-        ]}
-      />
+      <Routes>
+        <Route
+          element={
+            <ShellLayout
+              portalKey="rag-admin"
+              portalName="RAG 知识库管理"
+              variant="operations-workbench"
+              navItems={[
+                { to: "/rag-admin", label: "资料库", icon: Database, end: true, section: "资料管理" },
+                {
+                  to: "/rag-admin/search-test",
+                  label: "召回测试",
+                  icon: SearchCheck,
+                  section: "检索与质量",
+                },
+              ]}
+            />
+          }
+        >
+          <Route
+            path="/rag-admin/search-test"
+            element={<PageHeader title="召回测试" sub="验证知识库召回结果与排序质量" />}
+          />
+          <Route
+            path="/rag-admin"
+            element={<PageHeader title="资料库" sub="管理资料与发布状态" />}
+          />
+        </Route>
+      </Routes>
     </MemoryRouter>,
   );
 }
@@ -147,34 +163,35 @@ describe("ShellLayout student workbench navigation", () => {
     await waitFor(() => expect(toggle).toHaveAttribute("aria-expanded", "false"));
   });
 
-  it("collapses the desktop student rail while retaining its account footer semantics", async () => {
+  it("fully hides the desktop student rail and restores it from the main-area control", () => {
     stubViewport(false);
     renderWorkbenchShell();
 
     const shell = document.querySelector<HTMLElement>(".shell");
     const sidebar = document.getElementById("shell-sidebar");
     const collapseButton = screen.getByRole("button", { name: "收起导航" });
-    const accountTrigger = screen.getByRole("button", { name: "打开个人菜单" });
 
     expect(shell).not.toBeNull();
     expect(sidebar).toContainElement(document.querySelector(".student-workbench-account-footer"));
     expect(collapseButton).toHaveAttribute("aria-controls", "shell-sidebar");
     expect(collapseButton).toHaveAttribute("aria-expanded", "true");
-    expect(accountTrigger).toHaveAttribute("aria-expanded", "false");
-    expect(accountTrigger).toHaveTextContent("Test student");
 
     fireEvent.click(collapseButton);
 
     expect(shell).toHaveClass("student-workbench-sidebar-collapsed");
     expect(shell).toHaveAttribute("data-student-workbench-collapsed", "true");
-    expect(screen.getByRole("button", { name: "展开导航" })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
+    expect(sidebar).toHaveAttribute("aria-hidden", "true");
 
-    fireEvent.click(accountTrigger);
-    await waitFor(() => expect(accountTrigger).toHaveAttribute("aria-expanded", "true"));
-    expect(await screen.findByRole("button", { name: "退出登录" })).toBeInTheDocument();
+    const expandButton = screen.getByRole("button", { name: "展开导航" });
+    expect(expandButton).toHaveAttribute("aria-controls", "shell-sidebar");
+    expect(expandButton).toHaveAttribute("aria-expanded", "false");
+    expect(expandButton).toHaveFocus();
+
+    fireEvent.click(expandButton);
+
+    expect(shell).not.toHaveClass("student-workbench-sidebar-collapsed");
+    expect(sidebar).not.toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByRole("button", { name: "收起导航" })).toBeInTheDocument();
   });
 });
 
@@ -198,15 +215,18 @@ describe("ShellLayout operations workbench navigation", () => {
 
     expect(shell).toHaveClass("operations-workbench-sidebar-collapsed");
     expect(shell).toHaveAttribute("data-operations-workbench-collapsed", "true");
-    expect(screen.getByRole("button", { name: "展开导航" })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
+    expect(sidebar).toHaveAttribute("aria-hidden", "true");
 
-    fireEvent.click(screen.getByRole("button", { name: "打开个人菜单" }));
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "退出登录" })).toBeInTheDocument(),
-    );
+    const expandButton = screen.getByRole("button", { name: "展开导航" });
+    expect(expandButton).toHaveAttribute("aria-controls", "shell-sidebar");
+    expect(expandButton).toHaveAttribute("aria-expanded", "false");
+    expect(expandButton).toHaveFocus();
+
+    fireEvent.click(expandButton);
+
+    expect(shell).not.toHaveClass("operations-workbench-sidebar-collapsed");
+    expect(sidebar).not.toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByRole("button", { name: "收起导航" })).toBeInTheDocument();
   });
 
   it("uses the shared compact drawer and closes it after navigation", () => {

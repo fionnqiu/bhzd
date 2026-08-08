@@ -1,5 +1,4 @@
 import json
-import re
 from pathlib import Path
 
 import pytest
@@ -8,7 +7,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_REGISTRY_PATH = ROOT / "data" / "sources" / "source-registry.json"
 TEACHING_UNITS_PATH = ROOT / "data" / "curriculum" / "teaching-units.json"
-CONTENT_SPEC_PATH = ROOT / "docs" / "教学内容与图谱数据规范.md"
 DATA_TYPES = {"text", "image", "audio", "video"}
 SOURCE_REQUIRED_FIELDS = {
     "source_id",
@@ -227,21 +225,21 @@ def test_only_published_units_can_be_student_visible(teaching_units):
 
 
 def test_teaching_unit_examples_use_tu_namespace():
-    content_spec = CONTENT_SPEC_PATH.read_text(encoding="utf-8")
-    assert "例如 `TU-" in content_spec
-    assert "例如 `CAP-" not in content_spec
-    assert not re.search(r'"id"\s*:\s*"CAP-', content_spec)
-
-    match = re.search(r"统一结构示例：\s*```json\s*(.*?)\s*```", content_spec, re.DOTALL)
-    assert match, "teaching unit JSON example is missing"
-    example = json.loads(match.group(1))
-    assert UNIT_REQUIRED_FIELDS <= example.keys()
-    assert example["id"].startswith("TU-")
-    assert all(ref.startswith("CAP-") for ref in example["prerequisites"])
-    assert all(ref.startswith("KNG-") for ref in example["rule_refs"])
-    assert all(ref.startswith("SRC-") for ref in example["source_refs"])
-    assert all(
-        ref.startswith("CAP-") for ref in example["exercise"]["capability_refs"]
-    )
-    assert example["exercise"]["data_version"]
-    assert example["exercise"]["evaluation"]["version"]
+    # 原契约校验对象是 docs/教学内容与图谱数据规范.md 的 JSON 示例；该文档已随
+    # 2026-07-31 全权重构移除，契约意图（TU/CAP/KNG/SRC 命名空间）改为直接校验
+    # 数据本体 data/curriculum/teaching-units.json 的全部单元——覆盖面反而更大。
+    units = json.loads(TEACHING_UNITS_PATH.read_text(encoding="utf-8"))
+    if isinstance(units, dict):
+        units = units["units"]
+    assert units, "teaching units list is empty"
+    for example in units:
+        assert UNIT_REQUIRED_FIELDS <= example.keys(), example["id"]
+        assert example["id"].startswith("TU-"), example["id"]
+        assert all(ref.startswith("CAP-") for ref in example["prerequisites"]), example["id"]
+        assert all(ref.startswith("KNG-") for ref in example["rule_refs"]), example["id"]
+        assert all(ref.startswith("SRC-") for ref in example["source_refs"]), example["id"]
+        assert all(
+            ref.startswith("CAP-") for ref in example["exercise"]["capability_refs"]
+        ), example["id"]
+        assert example["exercise"]["data_version"], example["id"]
+        assert example["exercise"]["evaluation"]["version"], example["id"]

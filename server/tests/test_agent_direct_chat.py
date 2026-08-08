@@ -103,6 +103,31 @@ def test_unknown_input_uses_llm_direct_chat(db, tmp_db_path, user_id, monkeypatc
     )
 
 
+def test_direct_chat_hides_reasoning_blocks_across_stream_chunks(
+    db, tmp_db_path, user_id, monkeypatch
+):
+    """Only final text is persisted when a model mixes tagged reasoning into deltas."""
+
+    class _FakeProviders:
+        @staticmethod
+        async def stream_deltas(_messages, *, role):
+            assert role == "primary"
+            yield {"delta": "<think>internal reasoning"}
+            yield {"delta": " continues</think>final answer"}
+            yield {"done": True, "model": "model-a", "provider_id": "provider-a"}
+
+    monkeypatch.setattr(composer, "_providers", lambda: _FakeProviders)
+    run_id, conv_id = insert_run(db, user_id, "test reasoning filter")
+    asyncio.run(orchestrator.execute_run(run_id, tmp_db_path))
+
+    message = db.execute(
+        "SELECT content FROM messages WHERE conversation_id = ? AND role = 'assistant'",
+        (conv_id,),
+    ).fetchone()
+    assert message["content"] == "final answer"
+    assert "internal reasoning" not in message["content"]
+
+
 def test_identity_question_uses_direct_chat_without_rag_tools(
     db, tmp_db_path, user_id, monkeypatch
 ):

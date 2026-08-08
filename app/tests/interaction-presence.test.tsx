@@ -140,8 +140,7 @@ describe("shared interaction presence", () => {
     expect(drawer).toHaveAttribute("data-motion-state", "open");
   });
 
-  it("keeps toast announcements mounted until their exit duration completes", () => {
-    vi.useFakeTimers();
+  it("keeps the toast API compatible without rendering a top-right notice", () => {
     render(
       <ToastProvider>
         <ToastHarness />
@@ -149,17 +148,8 @@ describe("shared interaction presence", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Show toast" }));
-    const toast = screen.getByText("Saved").closest(".toast");
-    if (!toast) throw new Error("toast must render after a success announcement");
-    expect(toast).toHaveAttribute("data-motion-state", "open");
-
-    fireEvent.click(screen.getByRole("button", { name: "关闭提示" }));
-    expect(toast).toHaveAttribute("data-motion-state", "closing");
-    const toastContainer = document.querySelector(".toast-container");
-    expect(toastContainer).toHaveAttribute("aria-live", "polite");
-
-    act(() => vi.advanceTimersByTime(MOTION_EXIT_MS));
     expect(screen.queryByText("Saved")).not.toBeInTheDocument();
+    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
   });
 
   it("removes a closing surface immediately when the system requests reduced motion", () => {

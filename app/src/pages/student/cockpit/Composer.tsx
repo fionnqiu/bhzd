@@ -13,8 +13,8 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
 } from "react";
-import { ArrowUp, ChevronDown, FolderOpen, Plus } from "lucide-react";
-import { Textarea } from "../../../components";
+import { ArrowUp, Plus } from "lucide-react";
+import { Select, Textarea, type SelectOption } from "../../../components";
 
 export interface ComposerHandle {
   openFilePicker: () => void;
@@ -33,7 +33,9 @@ export interface ComposerProps {
   /** 运行进行中：发送禁用（追问走新一轮 run，等本轮终态后开放） */
   sending: boolean;
   uploading?: boolean;
-  scenarioName: string;
+  scenarioId: string;
+  scenarioOptions: readonly SelectOption[];
+  onScenarioChange: (scenarioId: string) => void;
   /** 欢迎态使用同一输入路径的扩展视觉，避免产生第二个独立目标输入。 */
   variant?: "default" | "hero";
 }
@@ -46,7 +48,9 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
     onUpload,
     sending,
     uploading = false,
-    scenarioName,
+    scenarioId,
+    scenarioOptions,
+    onScenarioChange,
     variant = "default",
   },
   ref,
@@ -99,8 +103,8 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
           />
-          {/* Both states share this toolbar so upload, keyboard submit, and the
-              busy lock remain one production path instead of visual-only clones. */}
+          {/* Keep upload, scene selection, and submit in one stable row below the
+              textarea so the active context stays adjacent to the next message. */}
           <div className="composer-input-actions">
             <button
               type="button"
@@ -113,15 +117,17 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
             >
               <Plus size={16} aria-hidden="true" />
             </button>
-            <span
-              className="composer-scenario"
-              aria-label={`当前场景：${scenarioName}`}
-              title={`当前场景：${scenarioName}`}
-            >
-              <FolderOpen size={16} aria-hidden="true" />
-              <span>{scenarioName}</span>
-              <ChevronDown size={14} aria-hidden="true" />
-            </span>
+            {/* Keep the continuation context text-only so the compact row does
+                not repeat a decorative icon beside the native selector. */}
+            <div className="composer-scenario-control">
+              <Select
+                className="composer-scenario-select"
+                aria-label="继续场景"
+                value={scenarioId}
+                options={scenarioOptions}
+                onChange={(event) => onScenarioChange(event.target.value)}
+              />
+            </div>
             <button
               type="button"
               className="composer-send-btn"

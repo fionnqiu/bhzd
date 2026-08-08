@@ -82,7 +82,7 @@ app/src/
   components/                     # DataTable StatusBadge ConfirmDialog CitationCard MasteryBadge EmptyState Field 等
   pages/student/  CockpitPage PresetsPage GraphPage TasksPage TaskDetailPage DiagnosticsPage RagQaPage ProfilePage
   pages/student/cockpit/          # WelcomeState ChatStream PlanCard ExecutionTrace ConfirmationGate EmbeddedCard Composer
-  pages/teacher/  DashboardPage ClassesPage ClassDetailPage TaskPublishPage AnalyticsPage ResourceReviewPage
+  pages/teacher/  DashboardPage ClassesPage ClassDetailPage TaskPublishPage AnalyticsPage
   pages/rag/  DocumentsPage UploadPage DocumentDetailPage JobsPage ChunkEditorPage LedgersPage SearchTestPage EvalCasesPage PublishReviewPage
   pages/admin/  ProvidersPage RagSettingsPage UsersPage SecurityPage AuditLogsPage
 app/tests/                        # vitest：router 守卫 + 关键页面冒烟
@@ -445,16 +445,16 @@ CREATE TABLE audit_logs (
 ### 6.4 RAG routers/rag_query.py + rag_admin.py（PRD-05 §4.3）
 | 端点 | 说明 |
 |------|------|
-| POST /api/rag/query `{question,scenario_id?,data_type?,published_only=true}` | → `RagAnswerDTO{answer,steps,notes,followups,citations:[CitationDTO],related_cap_ids,refused,notice}`；无召回/低于阈值→refused=true 不编造(AC6) |
+| POST /api/rag/query `{question,scenario_id?,data_type?,published_only=true}` | 学生端角色（`student` / `content_admin` / `system_admin`）可用；→ `RagAnswerDTO{answer,steps,notes,followups,citations:[CitationDTO],related_cap_ids,refused,notice}`；无召回/低于阈值→refused=true 不编造(AC6) |
 | `CitationDTO{document_id,title,section_title,page_start,page_end,version,score}` | 学生端不显示 chunk_id/上传人(PRD-06 §4.5) |
-| GET/POST /api/rag/documents；GET/PATCH/DELETE /api/rag/documents/{id} | 上传必填校验(PRD-03 §5.2)；已发布仅可归档不可物理删；未发布可删留审计 |
-| POST /api/rag/documents/{id}/parse /chunk /index | 生成 rag_jobs（幂等 key），同步执行但保留状态机/重试语义 |
-| POST /api/rag/documents/{id}/submit-review /publish /archive | 状态机迁移 + review_records + audit_logs；发布校验(PRD-06 §4.2：forbidden/缺来源/空切片/敏感信息阻止) |
-| GET /api/rag/documents/{id}/chunks；GET/PATCH /api/rag/chunks/{id}；POST /api/rag/chunks/{id}/split；POST /api/rag/chunks/merge `{chunk_ids}` | 切片编辑器；保存后重建索引 |
-| GET /api/rag/jobs?status；POST /api/rag/jobs/{id}/retry | 队列/重试从失败阶段继续 |
-| POST /api/rag/search-test `{query,filters,top_k}` | `{vector_results,reranked_results,diagnostics:{latency_ms,embedding_model,rerank_model,filters,prompt_template_version}}`；可存为评测用例 |
-| GET/POST /api/rag/eval-cases；POST /api/rag/eval-runs；GET /api/rag/eval-runs/{id} | 指标：Recall@K/CitationAccuracy/Faithfulness/RefusalAccuracy/Latency |
-| GET/POST/PATCH /api/source-ledgers | 台账；风险提示(过期/未授权/缺引用位置) |
+| GET/POST /api/rag/documents；GET/PATCH/DELETE /api/rag/documents/{id} | 仅 `system_admin`；上传必填校验(PRD-03 §5.2)；已发布仅可归档不可物理删；未发布可删留审计 |
+| POST /api/rag/documents/{id}/parse /chunk /index | 仅 `system_admin`；生成 rag_jobs（幂等 key），同步执行但保留状态机/重试语义 |
+| POST /api/rag/documents/{id}/submit-review /publish /archive | 仅 `system_admin`；状态机迁移 + review_records + audit_logs；发布校验(PRD-06 §4.2：forbidden/缺来源/空切片/敏感信息阻止) |
+| GET /api/rag/documents/{id}/chunks；GET/PATCH /api/rag/chunks/{id}；POST /api/rag/chunks/{id}/split；POST /api/rag/chunks/merge `{chunk_ids}` | 仅 `system_admin`；切片编辑器；保存后重建索引 |
+| GET /api/rag/jobs?status；POST /api/rag/jobs/{id}/retry | 仅 `system_admin`；队列/重试从失败阶段继续 |
+| POST /api/rag/search-test `{query,filters,top_k}` | 仅 `system_admin`；`{vector_results,reranked_results,diagnostics:{latency_ms,embedding_model,rerank_model,filters,prompt_template_version}}`；可存为评测用例 |
+| GET/POST /api/rag/eval-cases；POST /api/rag/eval-runs；GET /api/rag/eval-runs/{id} | 仅 `system_admin`；指标：Recall@K/CitationAccuracy/Faithfulness/RefusalAccuracy/Latency |
+| GET/POST/PATCH /api/source-ledgers | 仅 `system_admin`；台账；风险提示(过期/未授权/缺引用位置) |
 
 召回规则（PRD-06 §4.4）：学生端仅 `status=published AND visibility=student AND license_status=authorized AND 未过期`；场景冲突降权并提示；多版本取最新已发布；未发布资料请求引用→拒绝。
 
@@ -466,7 +466,7 @@ CREATE TABLE audit_logs (
 | GET /api/teacher/classes/{id}/students?status&mastery_min&mastery_max | 完成率/掌握度/最近活跃 |
 | GET/POST /api/teacher/tasks；POST /api/teacher/tasks/{id}/publish `{class_id,due_at,counts_toward_mastery}` | 发布前必须预览(任务体随 POST 提交)；≥1 能力节点+≥1 来源资料；发布→学生任务列表可见(source=teacher)；改已发布任务→version+1 新记录(parent_task_id) |
 | GET /api/teacher/analytics?class_id&data_type&scenario_id&source&range | 热力图/趋势/高频错误/干预建议；学生<3 人提示样本过小 |
-| GET /api/teacher/review-queue | 待审核资料（复用 rag_admin 数据） |
+| GET /api/teacher/resources `?q&limit&offset` | 只读资料选择器：仅返回已发布、`visibility=student`、授权有效且未过期的资料，供教师任务附加；不复用 RAG 管理 API |
 
 ### 6.6 系统管理 routers/admin.py（仅 admin session）
 | 端点 | 说明 |
@@ -502,9 +502,9 @@ preset_clicked / goal_submitted / agent_plan_shown / rag_query_submitted / rag_r
 | mastery.update | write | 否 | 确认后写 mastery + mastery_events（clamp 0..1） |
 | rag.search | read | 是 | rag.retriever；事件 rag.retrieval.* |
 | rag.answer | read | 是 | 证据压缩+LLM/模板合成+引用校验；拒答策略 |
-| rag.preview_upload | read | 是 | 预检：类型/大小/敏感信息检测(PRD-06 §4.3) |
-| rag.create_document | write | 否 | 教师/管理员经 Agent 建资料草稿 |
-| rag.reindex_document / rag.publish_document / rag.archive_document / rag.save_eval_case | write | 否 | 全部确认门+审计 |
+| rag.preview_upload | read | 是 | 仅 `system_admin`；预检：类型/大小/敏感信息检测(PRD-06 §4.3) |
+| rag.create_document | write | 否 | 仅 `system_admin` 可经 Agent 建资料草稿 |
+| rag.reindex_document / rag.publish_document / rag.archive_document / rag.save_eval_case | write | 否 | 仅 `system_admin`；全部确认门+审计 |
 
 确认门过期：普通写 30min，删除/归档 10min；过期需重新生成预览（PRD-06 §6.4）。
 
@@ -539,21 +539,21 @@ preset_clicked / goal_submitted / agent_plan_shown / rag_query_submitted / rag_r
 ## 14. 前端信息架构与路由（PRD-01/02/03/04）
 
 - 学生壳导航：Agent 指挥舱(/) 预设学习(/presets) 能力图谱(/graph) 学习任务(/tasks) 标注诊断(/diagnostics) 知识问答(/rag-qa) 个人中心(/profile)。
-- 教师壳：工作台(/teacher) 班级管理(/teacher/classes) 任务发布(/teacher/tasks) 学情分析(/teacher/analytics) 资源审核(/teacher/review)。
-- RAG 管理壳（content_admin/system_admin/teacher 可进）：资料库(/rag-admin) 上传(/rag-admin/upload) 任务队列(/rag-admin/jobs) 来源台账(/rag-admin/ledgers) 召回测试(/rag-admin/search-test) 评测集(/rag-admin/eval-cases) 发布审核(/rag-admin/publish)。资料详情 /rag-admin/documents/:id（含切片编辑器入口 /rag-admin/documents/:id/chunks）。
+- 教师壳：工作台(/teacher) 班级管理(/teacher/classes) 任务发布(/teacher/tasks) 学情分析(/teacher/analytics)。教师不能进入学生端或 RAG 管理端。
+- RAG 管理壳（仅 system_admin）：资料库(/rag-admin) 上传(/rag-admin/upload) 任务队列(/rag-admin/jobs) 来源台账(/rag-admin/ledgers) 召回测试(/rag-admin/search-test) 评测集(/rag-admin/eval-cases) 发布审核(/rag-admin/publish)。资料详情 /rag-admin/documents/:id（含切片编辑器入口 /rag-admin/documents/:id/chunks）。
 - 系统管理壳（仅 system_admin）：模型供应商(/admin/providers) RAG 参数(/admin/rag-settings) 用户权限(/admin/users) 安全配置(/admin/security) 审计日志(/admin/audit-logs)。
-- 守卫：未登录→/login；角色不足→403 页；学生不可见其他端入口（PRD-04 §5.2）。
+- 守卫：未登录→/login；角色不足→403 页；学生端仅 `student` / `content_admin` / `system_admin`，教师访问学生端或其 API 必须拒绝；RAG 管理端与其 HTTP/Agent 管理能力仅 `system_admin`。
 - 指挥舱要点：欢迎态=目标输入(占位文案"说说你想学什么，比如：我想学客服语音情感标注")+8 预设快捷卡+3 示例问题；右栏执行轨迹(工具名/状态/耗时/是否写操作，默认折叠)+引用来源+确认门+当前能力定位；嵌入工具卡两级展示"卡片+专注视图"(NF19)；状态机(空白/计划中/工具调用中/等待确认/完成/失败不暴露堆栈)。
 - 图谱页配色：已掌握=绿实心，待加强=橙描边，初学=红描边（v3.0 §7.3.3）；搜索/类型筛选/视图模式(全图/局部/路径)/节点抽屉/PRE 路径面板(跳过已掌握)。
 - 埋点：§8 事件在对应交互触发。
 
 ## 15. 角色权限矩阵（PRD-04 §5.1 + PRD-06 §3.3，deps.py 强制）
 
-学生：学生端 API；教师：+teacher/* +RAG 上传/审核 +rag-admin 读；内容管理员：+rag-admin 全部 +source-ledgers；系统管理员：+admin/*（默认不开班级任务发布）。服务端逐端点校验，教师数据按 class_teachers 隔离。
+学生端 API：`student`、`content_admin`、`system_admin`；教师：仅 `teacher/*` 教学任务、班级和学情能力，不能访问学生端 API 或 RAG 管理；内容管理员：保留学生端与既有教师协作权限，但无 RAG 管理权限；系统管理员：学生端 + `rag-admin/*` + `admin/*`。RAG 管理由 `system_admin` 独占，服务端逐端点校验，教师数据按 class_teachers 隔离。
 
 ## 16. 测试计划
 
-- server/tests（pytest）：auth 流程/权限矩阵/限流锁定；password-key 与三条密码信封路径、明文拒绝和篡改信封安全失败；RAG 管线(上传→发布→召回→引用→拒答 AC4/5/6)；诊断四格式+边界(PRD-06 §14.3)；图谱 PRE 无环/子图性能；掌握度 clamp/冲突；确认门过期/取消与 SSE 终态；provider key 加密不回显+base_url 校验、按角色最小测试和 disabled/none 零外呼；审计写入；种子幂等。
+- server/tests（pytest）：auth 流程/权限矩阵/限流锁定；教师访问学生端 API 与 RAG HTTP/Agent 管理能力均为 403，`content_admin` / `system_admin` 保留学生端，RAG 仅 `system_admin`；password-key 与三条密码信封路径、明文拒绝和篡改信封安全失败；RAG 管线(上传→发布→召回→引用→拒答 AC4/5/6)；诊断四格式+边界(PRD-06 §14.3)；图谱 PRE 无环/子图性能；掌握度 clamp/冲突；确认门过期/取消与 SSE 终态；provider key 加密不回显+base_url 校验、按角色最小测试和 disabled/none 零外呼；审计写入；种子幂等。
 - app/tests（vitest）：路由守卫 + 指挥舱欢迎态 8 入口 + 关键页渲染冒烟。
 - tests/content、tests/graph 保持通过（data/ 不动）。
 - tests/e2e 重写为单文件冒烟（登录→指挥舱→预设→任务预览确认），wave4 执行。

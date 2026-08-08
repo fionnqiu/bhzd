@@ -1,0 +1,15 @@
+=== E:\AgentWorkspaces\bhzd\docs\design\student-workbench-design-spec.md ===
+L13: → → → → → →  | 本规范按 **「原则 → Token → 模式 → 组件 → 内容 → 验收 → 映射」** 的顺序组织，遵循三段式心智模型：
+L288: →  | - 侧栏转 fixed 抽屉：`transform: translateX(-100%)` → `-open` 时 `0`（L798–L804）。
+L320: ←  | │   │   ├── Agent 指挥舱  ← 当前激活
+L379: → →  | 本章只新增命名与提交流程，不改写 v2 的 Token 数值。Token 分三层：**基础（primitive）→ 语义（semantic）→ 组件别名（component alias）**。组件 CSS 只消费语义 Token 或组件别名；禁止在组件规则内直接写 hex、rgb 或 rgba 颜色值。v2 中已经存在的硬编码颜色继续作为迁移对象，迁移时必须保持视觉结果不变。
+L485: →  | | 成功 | `--success` / `--success-soft` | 成功 → teal；`--success` = `--teal` | 完成 toast、完成点、成功反馈、已完成活动线 | 不用作品牌按钮或整屏底色 | activity-line 的青点与完成文案 L718–L734；toast L759–L783 |
+L486: →  | | 警告 | `--warn` / `--warn-soft` | 警告 → amber；`--warn` = `--amber` | 风险提醒、需要注意的输入、未完成前置条件 | 不用作错误、品牌 active 或正文大面积底色 | `--amber` L20；demo 当前未启用 |
+L488: →  | | 提示 / 信息 | `--info` / `--info-soft` | 提示 → accent；`--info` = `--accent`，`--info-soft` = `--accent-soft` | 普通提示、链接、focus、user 气泡 | 不把普通提示误标为成功或警告 | focus L57–L62；quick-link L571–L612；user 气泡 L695–L702 |
+L1019: ↔  | ### 14.1 Token ↔ 行号
+L1030: ↔  | ### 14.2 组件 ↔ 行号
+L1052: ↔  | ### 14.3 响应式 ↔ 行号
+L1060: ↔  | ### 14.4 关键交互逻辑 ↔ 行号
+=== E:\AgentWorkspaces\bhzd\docs\design\student-workbench-design-tokens.html ===
+L753: ↔  |           <div style="color: var(--ink-faint); font-size: 12px;">welcome ↔ conversation</div>
+L959: →  |       <div class="row"><span class="label">≤ 900px</span><span class="demo">shell → block；侧栏 fixed 抽屉 + 蒙层；toolbar 60px；hero h1 32px</span><span class="meta">@media (max-width: 900px)</span></div>

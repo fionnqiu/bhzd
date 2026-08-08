@@ -1,0 +1,113 @@
+name: Quality gates
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend lint and tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: server/uv.lock
+      - name: Install locked development dependencies
+        run: uv sync --group dev --locked
+      - name: Lint correctness defects
+        # Application code is the initial blocking Ruff baseline. Test-fixture
+        # naming and full-repository style debt remain visible in the advisory job.
+        run: uv run --group dev ruff check bhzd_py
+      - name: Run backend tests
+        run: uv run --group dev pytest
+
+  backend-style-and-types-advisory:
+    # Formatting and type diagnostics are visible from day one but non-blocking
+    # until the current unformatted and unannotated baseline is paid down.
+    name: Backend formatting and types (advisory)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: server/uv.lock
+      - name: Install locked development dependencies
+        run: uv sync --group dev --locked
+      - name: Check full-repository lint backlog
+        run: uv run --group dev ruff check .
+        continue-on-error: true
+      - name: Check Python formatting
+        run: uv run --group dev ruff format --check .
+        continue-on-error: true
+      - name: Check application types
+        run: uv run --group dev mypy bhzd_py
+        continue-on-error: true
+
+  frontend:
+    name: Frontend lint, types, tests, and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.12.0"
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint frontend source
+        run: pnpm lint
+      - name: Type-check frontend source
+        run: pnpm typecheck
+      - name: Run frontend tests
+        run: pnpm test:run
+      - name: Build frontend
+        run: pnpm build
+
+  frontend-format-advisory:
+    # Prettier is enforced on touched files by pre-commit. This CI job remains
+    # advisory while the existing repository-wide formatting backlog is retired.
+    name: Frontend formatting (advisory)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.12.0"
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check frontend formatting
+        run: pnpm format:check
+        continue-on-error: true

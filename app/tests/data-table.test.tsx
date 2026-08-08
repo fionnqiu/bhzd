@@ -77,9 +77,11 @@ describe("DataTable", () => {
     expect(css).toMatch(/\.table td\.table-empty\s*\{[^}]*white-space:\s*normal;/s);
   });
 
-  it("does not reserve a vertical scrollbar gutter for the horizontally scrolling provider table", () => {
+  it("does not reserve a trailing scrollbar gutter for any horizontally scrolling table", () => {
     const css = readFileSync("src/index.css", "utf8");
 
-    expect(css).toMatch(/\.provider-table\s*>\s*\.table-wrap\s*\{[^}]*scrollbar-gutter:\s*auto;/s);
+    // A stable gutter reserves space even when overflow is horizontal-only,
+    // which is the source of the blank strip visible at the right edge.
+    expect(css).toMatch(/\.table-wrap\s*\{[^}]*scrollbar-gutter:\s*auto;/s);
   });
 });

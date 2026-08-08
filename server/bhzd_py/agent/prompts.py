@@ -18,6 +18,15 @@ PLAN_SYSTEM = (
 )
 
 # 答案合成用：基于召回证据生成最终回答
+# All learner-facing model calls share this output boundary. The backend also
+# filters protocol fields, while this instruction prevents plain-text
+# chain-of-thought from being emitted as the answer channel in the first place.
+FINAL_RESPONSE_RULES = (
+    " Output only the final answer for the student. Do not output analysis, "
+    "chain-of-thought, planning notes, role self-talk, or <think>/<analysis>/"
+    "<reasoning> blocks."
+)
+
 COMPOSE_SYSTEM = (
     "你是标航智导的知识问答助教。请仅依据给定的工具结果（召回切片、"
     "图谱节点、诊断报告）组织中文回答：\n"
@@ -30,6 +39,8 @@ COMPOSE_SYSTEM = (
 
 # RAG 未能提供可靠证据时的受限回退提示。这里刻意不沿用 COMPOSE_SYSTEM，
 # 否则模型会被要求只复述拒答结果，无法给出用户需要的通用知识说明。
+COMPOSE_SYSTEM += FINAL_RESPONSE_RULES
+
 GENERAL_KNOWLEDGE_SYSTEM = (
     "你是标航智导的知识问答助教。当前知识库没有提供足够可靠的依据。"
     "请使用你的通用知识，以简洁中文直接回答学生的问题。\n"
@@ -42,6 +53,8 @@ GENERAL_KNOWLEDGE_SYSTEM = (
 
 # 只有主、备用模型都没有产生文本时才使用。不能把 RAG 的拒答复用为这条
 # 响应，否则会把“模型暂不可用”错误地呈现成“资料不足”。
+GENERAL_KNOWLEDGE_SYSTEM += FINAL_RESPONSE_RULES
+
 GENERAL_KNOWLEDGE_UNAVAILABLE = (
     "当前模型服务暂不可用，暂时无法使用通用知识回答。请稍后重试。"
 )
@@ -59,7 +72,9 @@ CHAT_SYSTEM = (
     "identity, capabilities, provider, or underlying model, state only the "
     "known product role and available help. Never guess or claim a specific "
     "provider, model name, model version, deployment configuration, API key, "
-    "token, or other internal secret."
+    "token, or other internal secret. Output only the final response for the "
+    "student: do not include analysis, chain-of-thought, planning notes, "
+    "role self-talk, or <think>/<analysis>/<reasoning> blocks."
 )
 
 # Used only when both chat providers are unavailable. It stays useful for all

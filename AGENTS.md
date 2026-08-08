@@ -19,7 +19,7 @@ For every change to a project document, append an entry to `docs/logs/document-c
 
 ## Work Logs
 
-For every Codex task, append one entry to `E:\ObsidianWorkSpace\codex\Work Log YYYY-MM-DD.md` before the final user-facing response. Follow the existing daily format:
+For every Codex task, append one entry to `E:\ObsidianWorkSpace\logs\codex\Work Log YYYY-MM-DD.md` before the final user-facing response. Follow the existing daily format:
 
 ```markdown
 ## [HH:mm] Short task title

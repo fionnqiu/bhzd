@@ -1,0 +1,1388 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>标航智导 · 学生工作台演示</title>
+    <style>
+      :root {
+        --canvas: #f7f8fa;
+        --surface: #ffffff;
+        --surface-soft: #fbfcfd;
+        --line: #e5e8ec;
+        --line-strong: #d4d9e0;
+        --ink: #17212b;
+        --ink-soft: #5f6b76;
+        --ink-faint: #98a2ad;
+        --accent: #2477d6;
+        --accent-soft: #edf5ff;
+        --teal: #159b91;
+        --amber: #bf7417;
+        --shadow-input: 0 18px 42px rgba(26, 39, 52, 0.08);
+        --sidebar-width: 272px;
+        --radius-control: 8px;
+        --radius-input: 16px;
+        --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        min-height: 100%;
+      }
+
+      body {
+        margin: 0;
+        background: var(--canvas);
+        color: var(--ink);
+        font-family:
+          Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        font-size: 14px;
+        letter-spacing: 0;
+      }
+
+      button,
+      textarea {
+        font: inherit;
+      }
+
+      button {
+        border: 0;
+        cursor: pointer;
+      }
+
+      button:focus-visible,
+      textarea:focus-visible,
+      a:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .demo-shell {
+        display: grid;
+        grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+        min-height: 100dvh;
+        background: var(--surface);
+      }
+
+      /* Collapsing preserves the reference product's narrow control strip
+         without turning navigation into a second modal workflow. */
+      .demo-shell.sidebar-collapsed {
+        grid-template-columns: 68px minmax(0, 1fr);
+      }
+
+      .demo-shell.sidebar-collapsed .sidebar-header {
+        justify-content: center;
+        padding: 0;
+      }
+
+      .demo-shell.sidebar-collapsed .brand-copy,
+      .demo-shell.sidebar-collapsed .new-session span,
+      .demo-shell.sidebar-collapsed .nav-label,
+      .demo-shell.sidebar-collapsed .nav-link span,
+      .demo-shell.sidebar-collapsed .recent,
+      .demo-shell.sidebar-collapsed .user-copy,
+      .demo-shell.sidebar-collapsed .sidebar-footer .icon-button {
+        display: none;
+      }
+
+      .demo-shell.sidebar-collapsed .new-session {
+        justify-content: center;
+        width: 44px;
+        margin: 4px auto 18px;
+        padding: 0;
+      }
+
+      .demo-shell.sidebar-collapsed .sidebar-nav {
+        padding: 0 12px;
+      }
+
+      .demo-shell.sidebar-collapsed .nav-link {
+        justify-content: center;
+        padding: 0;
+      }
+
+      .demo-shell.sidebar-collapsed .sidebar-footer {
+        justify-content: center;
+        padding: 16px 0 18px;
+      }
+
+      /* The sidebar is the persistent workspace anchor; it never competes with
+         the learning canvas for attention on the welcome screen. */
+      .sidebar {
+        position: relative;
+        z-index: 3;
+        display: flex;
+        min-height: 100dvh;
+        flex-direction: column;
+        overflow-y: auto;
+        scrollbar-width: none;
+        border-right: 1px solid var(--line);
+        background: var(--surface-soft);
+      }
+
+      /* The rail remains scrollable for a long session list without exposing
+         a visual scrollbar that competes with the navigation hierarchy. */
+      .sidebar::-webkit-scrollbar {
+        display: none;
+      }
+
+      .sidebar-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 68px;
+        padding: 0 18px 0 20px;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+
+      .brand img {
+        width: 32px;
+        height: 32px;
+        flex: 0 0 auto;
+      }
+
+      .brand-copy {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .icon-button {
+        display: inline-grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        border-radius: var(--radius-control);
+        background: transparent;
+        color: var(--ink-soft);
+        transition:
+          background 140ms var(--ease-out),
+          color 140ms var(--ease-out);
+      }
+
+      .icon-button:hover {
+        background: var(--line);
+        color: var(--ink);
+      }
+
+      .icon-button svg {
+        width: 18px;
+        height: 18px;
+      }
+
+      .new-session {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: calc(100% - 24px);
+        min-height: 46px;
+        margin: 4px 12px 18px;
+        padding: 0 14px;
+        border: 1px solid var(--line-strong);
+        border-radius: var(--radius-control);
+        background: var(--surface);
+        color: var(--ink);
+        font-weight: 600;
+        text-align: left;
+        box-shadow: 0 1px 2px rgba(26, 39, 52, 0.03);
+        transition:
+          border-color 140ms var(--ease-out),
+          background 140ms var(--ease-out);
+      }
+
+      .new-session:hover {
+        border-color: #b8c9dc;
+        background: var(--accent-soft);
+      }
+
+      .new-session svg {
+        width: 18px;
+        height: 18px;
+        color: var(--accent);
+      }
+
+      .sidebar-nav {
+        display: grid;
+        gap: 2px;
+        padding: 0 12px;
+      }
+
+      .nav-label {
+        margin: 14px 10px 7px;
+        color: var(--ink-faint);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .nav-link {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        min-height: 38px;
+        padding: 0 10px;
+        border-radius: var(--radius-control);
+        color: var(--ink-soft);
+        transition:
+          background 140ms var(--ease-out),
+          color 140ms var(--ease-out);
+      }
+
+      .nav-link:hover,
+      .nav-link.active {
+        background: #eef2f6;
+        color: var(--ink);
+      }
+
+      .nav-link.active {
+        box-shadow: inset 2px 0 0 var(--accent);
+        font-weight: 650;
+      }
+
+      .nav-link svg {
+        width: 17px;
+        height: 17px;
+        flex: 0 0 auto;
+        color: var(--ink-faint);
+      }
+
+      .nav-link.active svg {
+        color: var(--accent);
+      }
+
+      .recent {
+        min-height: 0;
+        margin-top: 20px;
+        padding: 0 12px;
+      }
+
+      .recent-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin: 0 10px 7px;
+        color: var(--ink-faint);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .recent-list {
+        display: grid;
+        gap: 2px;
+        max-height: 220px;
+        overflow: auto;
+      }
+
+      .recent-item {
+        display: grid;
+        gap: 3px;
+        width: 100%;
+        padding: 9px 10px;
+        border-radius: var(--radius-control);
+        background: transparent;
+        color: var(--ink-soft);
+        text-align: left;
+        transition:
+          background 140ms var(--ease-out),
+          color 140ms var(--ease-out);
+      }
+
+      .recent-item:hover,
+      .recent-item.active {
+        background: #eef2f6;
+        color: var(--ink);
+      }
+
+      .recent-title {
+        overflow: hidden;
+        font-size: 13px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .recent-meta {
+        color: var(--ink-faint);
+        font-size: 11px;
+      }
+
+      .sidebar-footer {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: auto;
+        padding: 16px 18px 18px;
+        border-top: 1px solid var(--line);
+      }
+
+      .avatar {
+        display: grid;
+        width: 32px;
+        height: 32px;
+        flex: 0 0 auto;
+        place-items: center;
+        border-radius: 50%;
+        background: #dcefe9;
+        color: #126f68;
+        font-weight: 700;
+      }
+
+      .user-copy {
+        min-width: 0;
+        flex: 1;
+      }
+
+      .user-name,
+      .user-role {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .user-name {
+        color: var(--ink);
+        font-weight: 650;
+      }
+
+      .user-role {
+        margin-top: 2px;
+        color: var(--ink-faint);
+        font-size: 11px;
+      }
+
+      .stage {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 100dvh;
+        overflow: hidden;
+        background: var(--surface);
+      }
+
+      .stage-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 68px;
+        padding: 0 28px;
+        border-bottom: 1px solid rgba(229, 232, 236, 0.65);
+        color: var(--ink-soft);
+      }
+
+      .toolbar-context {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--ink-faint);
+        font-size: 12px;
+      }
+
+      .toolbar-context strong {
+        color: var(--ink-soft);
+        font-weight: 650;
+      }
+
+      .toolbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .view {
+        display: none;
+        min-height: calc(100dvh - 68px);
+      }
+
+      .view.is-active {
+        display: flex;
+      }
+
+      .welcome-view {
+        align-items: center;
+        flex-direction: column;
+        padding: clamp(76px, 15vh, 146px) 28px 48px;
+      }
+
+      .hero {
+        width: min(900px, 100%);
+        text-align: center;
+      }
+
+      .capability-mark {
+        display: grid;
+        grid-template-columns: repeat(9, 7px);
+        gap: 5px;
+        width: max-content;
+        margin: 0 auto 22px;
+      }
+
+      .capability-mark span {
+        width: 7px;
+        height: 7px;
+        border-radius: 2px;
+        background: #d9dee5;
+      }
+
+      .capability-mark span:nth-child(7n + 2) {
+        background: #b4c8e3;
+      }
+
+      .capability-mark span:nth-child(11n + 4) {
+        background: #8ed3cb;
+      }
+
+      .capability-mark span:nth-child(13n + 5) {
+        background: #efc281;
+      }
+
+      .hero h1 {
+        margin: 0;
+        color: var(--ink);
+        font-size: clamp(30px, 3.2vw, 48px);
+        font-weight: 720;
+        line-height: 1.15;
+      }
+
+      .hero p {
+        max-width: 560px;
+        margin: 15px auto 30px;
+        color: var(--ink-soft);
+        font-size: 15px;
+        line-height: 1.7;
+      }
+
+      .prompt-wrap {
+        width: min(900px, 100%);
+        margin: 0 auto;
+      }
+
+      .prompt {
+        display: flex;
+        min-height: 164px;
+        flex-direction: column;
+        padding: 18px 18px 12px;
+        border: 1px solid var(--line-strong);
+        border-radius: var(--radius-input);
+        background: var(--surface);
+        box-shadow: var(--shadow-input);
+        transition:
+          border-color 160ms var(--ease-out),
+          box-shadow 160ms var(--ease-out);
+      }
+
+      .prompt:focus-within {
+        border-color: #9dbde2;
+        box-shadow: 0 18px 42px rgba(36, 119, 214, 0.12);
+      }
+
+      .prompt textarea {
+        width: 100%;
+        min-height: 90px;
+        flex: 1;
+        resize: none;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        color: var(--ink);
+        font-size: 17px;
+        line-height: 1.6;
+      }
+
+      .prompt textarea::placeholder {
+        color: #a7afb8;
+      }
+
+      .prompt-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        min-height: 38px;
+      }
+
+      .prompt-tools,
+      .prompt-settings {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+
+      .tool-button,
+      .setting-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 32px;
+        padding: 0 9px;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--ink-soft);
+        white-space: nowrap;
+        transition:
+          background 140ms var(--ease-out),
+          color 140ms var(--ease-out);
+      }
+
+      .tool-button:hover,
+      .setting-button:hover {
+        background: #f0f3f6;
+        color: var(--ink);
+      }
+
+      .tool-button svg,
+      .setting-button svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      .send-button {
+        display: inline-grid;
+        width: 38px;
+        height: 38px;
+        place-items: center;
+        border-radius: 50%;
+        background: #d9dde2;
+        color: #ffffff;
+        transition:
+          background 140ms var(--ease-out),
+          transform 100ms var(--ease-out);
+      }
+
+      .send-button.has-value,
+      .send-button:hover {
+        background: var(--accent);
+      }
+
+      .send-button:active {
+        transform: scale(0.96);
+      }
+
+      .quick-links {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        width: min(980px, 100%);
+        margin: 24px auto 0;
+        overflow-x: auto;
+        padding-bottom: 3px;
+        scrollbar-width: none;
+      }
+
+      .quick-links::-webkit-scrollbar {
+        display: none;
+      }
+
+      .quick-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 36px;
+        padding: 0 13px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--surface);
+        color: var(--ink-soft);
+        white-space: nowrap;
+        transition:
+          border-color 140ms var(--ease-out),
+          color 140ms var(--ease-out),
+          background 140ms var(--ease-out);
+      }
+
+      .quick-link:hover {
+        border-color: #aec7e4;
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+
+      .quick-link svg {
+        width: 15px;
+        height: 15px;
+      }
+
+      .conversation-view {
+        width: min(900px, 100%);
+        height: calc(100dvh - 68px);
+        min-height: 0;
+        margin: 0 auto;
+        padding: 58px 28px 28px;
+        flex-direction: column;
+      }
+
+      .conversation-heading {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex: 0 0 auto;
+        margin-bottom: 18px;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-control);
+        background: var(--surface-soft);
+        color: var(--ink-soft);
+      }
+
+      .conversation-heading-copy {
+        display: flex;
+        min-width: 0;
+        flex-wrap: wrap;
+        gap: 4px 12px;
+      }
+
+      .conversation-heading-copy span {
+        color: var(--ink-soft);
+      }
+
+      .conversation-heading strong {
+        color: var(--ink);
+        font-size: 15px;
+      }
+
+      .message-list {
+        display: grid;
+        gap: 22px;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        padding-right: 4px;
+      }
+
+      .message {
+        max-width: 82%;
+        color: var(--ink-soft);
+        font-size: 15px;
+        line-height: 1.75;
+      }
+
+      .message.user {
+        justify-self: end;
+        max-width: 72%;
+        padding: 12px 15px;
+        border-radius: 14px 14px 4px 14px;
+        background: #edf5ff;
+        color: #235f9f;
+      }
+
+      .message.assistant {
+        padding-left: 2px;
+      }
+
+      .message-label {
+        display: block;
+        margin-bottom: 5px;
+        color: var(--ink-faint);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .activity-line {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin: 4px 0 0 2px;
+        padding-left: 12px;
+        border-left: 2px solid #cde5e0;
+        color: var(--ink-faint);
+        font-size: 12px;
+      }
+
+      .activity-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--teal);
+      }
+
+      .plan-inline {
+        margin-top: 13px;
+        padding: 15px 16px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--surface-soft);
+      }
+
+      .plan-inline h2 {
+        margin: 0 0 10px;
+        font-size: 13px;
+      }
+
+      .plan-inline p {
+        margin: 7px 0 0;
+        color: var(--ink-soft);
+        font-size: 13px;
+      }
+
+      .conversation-prompt {
+        flex: 0 0 auto;
+        margin-top: 16px;
+      }
+
+      .demo-toast {
+        position: fixed;
+        right: 22px;
+        bottom: 22px;
+        z-index: 10;
+        max-width: min(320px, calc(100vw - 44px));
+        padding: 10px 13px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--ink);
+        color: #ffffff;
+        box-shadow: 0 12px 30px rgba(20, 29, 38, 0.17);
+        font-size: 12px;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(8px);
+        transition:
+          opacity 160ms var(--ease-out),
+          transform 160ms var(--ease-out);
+      }
+
+      .demo-toast.is-visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .mobile-menu {
+        display: none;
+      }
+
+      @media (max-width: 900px) {
+        /* A compact viewport must always leave the desktop grid behind. This
+           also wins over a sidebar-collapsed class left by a previous desktop
+           interaction, so the off-canvas rail cannot reserve page width. */
+        html,
+        body {
+          max-width: 100%;
+          overflow-x: hidden;
+        }
+
+        .demo-shell,
+        .demo-shell.sidebar-collapsed {
+          display: block;
+          width: 100%;
+          min-width: 0;
+          overflow-x: hidden;
+        }
+
+        .stage {
+          width: 100%;
+          max-width: 100%;
+        }
+
+        .sidebar {
+          position: fixed;
+          inset: 0 auto 0 0;
+          width: min(272px, 84vw);
+          transform: translateX(-100%);
+          transition: transform 180ms var(--ease-out);
+        }
+
+        .demo-shell.sidebar-open .sidebar {
+          transform: translateX(0);
+        }
+
+        .demo-shell.sidebar-open::after {
+          position: fixed;
+          inset: 0;
+          z-index: 2;
+          background: rgba(23, 33, 43, 0.22);
+          content: "";
+        }
+
+        .stage-toolbar {
+          min-height: 60px;
+          padding: 0 16px;
+        }
+
+        .mobile-menu {
+          display: inline-grid;
+          margin-right: 4px;
+        }
+
+        .toolbar-context {
+          flex: 1;
+        }
+
+        .welcome-view {
+          min-height: calc(100dvh - 60px);
+          padding: 80px 16px 32px;
+        }
+
+        .hero h1 {
+          font-size: 32px;
+        }
+
+        .quick-links {
+          justify-content: flex-start;
+        }
+
+        .conversation-view {
+          height: calc(100dvh - 60px);
+          min-height: 0;
+          padding: 36px 16px 20px;
+        }
+      }
+
+      @media (max-width: 560px) {
+        .toolbar-context span:last-child {
+          display: none;
+        }
+
+        .welcome-view {
+          padding-top: 54px;
+        }
+
+        .conversation-heading-copy {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .hero p {
+          margin-bottom: 22px;
+          font-size: 14px;
+        }
+
+        .prompt {
+          min-height: 150px;
+          padding: 14px 12px 10px;
+        }
+
+        .prompt textarea {
+          font-size: 16px;
+        }
+
+        .setting-button span {
+          max-width: 112px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .message,
+        .message.user {
+          max-width: 100%;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          transition-duration: 1ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="demo-shell" id="demoShell">
+      <aside class="sidebar" aria-label="学生端导航">
+        <div class="sidebar-header">
+          <a class="brand" href="#welcome" aria-label="标航智导首页">
+            <img src="../../app/public/favicon.svg" alt="" />
+            <span class="brand-copy">标航智导</span>
+          </a>
+          <button
+            class="icon-button"
+            type="button"
+            id="collapseButton"
+            aria-label="收起导航"
+            title="收起导航"
+          >
+            <i data-lucide="panel-left-close"></i>
+          </button>
+        </div>
+
+        <button class="new-session" type="button" id="newSessionButton">
+          <i data-lucide="plus-circle"></i>
+          <span>新建会话</span>
+          <span
+            style="margin-left: auto; color: var(--ink-faint); font-size: 11px"
+            >Ctrl K</span
+          >
+        </button>
+
+        <nav class="sidebar-nav" aria-label="学习空间">
+          <span class="nav-label">学习空间</span>
+          <a class="nav-link active" href="#welcome" data-view="welcome"
+            ><i data-lucide="layout-dashboard"></i><span>Agent 指挥舱</span></a
+          >
+          <a class="nav-link" href="#" data-demo-nav
+            ><i data-lucide="route"></i><span>预设学习</span></a
+          >
+          <a class="nav-link" href="#" data-demo-nav
+            ><i data-lucide="map"></i><span>能力图谱</span></a
+          >
+          <a class="nav-link" href="#" data-demo-nav
+            ><i data-lucide="list-checks"></i><span>学习任务</span></a
+          >
+          <span class="nav-label">资料与诊断</span>
+          <a class="nav-link" href="#" data-demo-nav
+            ><i data-lucide="file-search"></i><span>标注诊断</span></a
+          >
+          <a class="nav-link" href="#" data-demo-nav
+            ><i data-lucide="message-circle-question"></i
+            ><span>知识问答</span></a
+          >
+          <span class="nav-label">账户</span>
+          <a class="nav-link" href="#" data-demo-nav
+            ><i data-lucide="user-round"></i><span>个人中心</span></a
+          >
+        </nav>
+
+        <!-- Recent sessions live here for every student route; the welcome view
+             deliberately does not repeat the same history. -->
+        <section class="recent" aria-labelledby="recentTitle">
+          <div class="recent-header">
+            <span id="recentTitle">最近会话</span><i data-lucide="ellipsis"></i>
+          </div>
+          <div class="recent-list">
+            <button class="recent-item" type="button" data-view="conversation">
+              <span class="recent-title">文本标注入门路径</span>
+              <span class="recent-meta">今天 10:21</span>
+            </button>
+            <button class="recent-item" type="button" data-view="conversation">
+              <span class="recent-title">TextGrid 诊断结果</span>
+              <span class="recent-meta">昨天 16:04</span>
+            </button>
+          </div>
+        </section>
+
+        <footer class="sidebar-footer">
+          <span class="avatar" aria-hidden="true">婕</span>
+          <span class="user-copy"
+            ><span class="user-name">演示学生</span
+            ><span class="user-role">学生端 · 学习中</span></span
+          >
+          <button
+            class="icon-button"
+            type="button"
+            aria-label="打开个人菜单"
+            title="个人菜单"
+          >
+            <i data-lucide="more-horizontal"></i>
+          </button>
+        </footer>
+      </aside>
+
+      <main class="stage">
+        <header class="stage-toolbar">
+          <div style="display: flex; align-items: center; min-width: 0">
+            <button
+              class="icon-button mobile-menu"
+              type="button"
+              id="mobileMenuButton"
+              aria-label="打开导航"
+              title="打开导航"
+            >
+              <i data-lucide="menu"></i>
+            </button>
+            <div class="toolbar-context">
+              <strong>学生工作台</strong><span>/</span><span>Agent 指挥舱</span>
+            </div>
+          </div>
+          <div class="toolbar-actions">
+            <button
+              class="icon-button"
+              type="button"
+              aria-label="查看通知"
+              title="通知"
+            >
+              <i data-lucide="bell"></i>
+            </button>
+          </div>
+        </header>
+
+        <section
+          class="view welcome-view is-active"
+          id="welcomeView"
+          aria-label="欢迎开始"
+        >
+          <div class="hero">
+            <div class="capability-mark" aria-hidden="true">
+              <span></span><span></span><span></span><span></span><span></span
+              ><span></span><span></span><span></span><span></span> <span></span
+              ><span></span><span></span><span></span><span></span><span></span
+              ><span></span><span></span><span></span> <span></span><span></span
+              ><span></span><span></span><span></span><span></span><span></span
+              ><span></span><span></span>
+            </div>
+            <h1>标航智导</h1>
+            <p>把学习目标交给指挥舱，生成清晰的练习路径、任务卡和诊断建议。</p>
+          </div>
+
+          <form class="prompt-wrap" id="welcomeForm">
+            <div class="prompt">
+              <textarea
+                id="welcomeInput"
+                aria-label="学习目标"
+                placeholder="输入你的学习目标，或输入 / 选择能力"
+                rows="3"
+              ></textarea>
+              <div class="prompt-toolbar">
+                <div class="prompt-tools">
+                  <button
+                    class="tool-button"
+                    type="button"
+                    id="uploadButton"
+                    aria-label="上传诊断文件"
+                    title="上传诊断文件"
+                  >
+                    <i data-lucide="plus"></i>
+                  </button>
+                </div>
+                <div class="prompt-settings">
+                  <button
+                    class="setting-button"
+                    type="button"
+                    id="scenarioButton"
+                    aria-label="继续场景"
+                  >
+                    <i data-lucide="folder-open"></i
+                    ><span>继续场景：文本标注</span
+                    ><i data-lucide="chevron-down"></i>
+                  </button>
+                  <button
+                    class="send-button"
+                    type="submit"
+                    id="welcomeSend"
+                    aria-label="开始学习"
+                    title="开始学习"
+                  >
+                    <i data-lucide="arrow-up"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </form>
+
+          <div class="quick-links" aria-label="快捷入口">
+            <button
+              class="quick-link"
+              type="button"
+              data-fill="我想学习文本标注入门"
+            >
+              <i data-lucide="file-text"></i><span>文本标注</span>
+            </button>
+            <button
+              class="quick-link"
+              type="button"
+              data-fill="我想学习图像标注入门"
+            >
+              <i data-lucide="scan-line"></i><span>图像标注</span>
+            </button>
+            <button
+              class="quick-link"
+              type="button"
+              data-fill="请诊断我的标注结果"
+            >
+              <i data-lucide="clipboard-check"></i><span>结果诊断</span>
+            </button>
+            <button
+              class="quick-link"
+              type="button"
+              data-fill="请按我的薄弱能力生成补强任务"
+            >
+              <i data-lucide="target"></i><span>薄弱补强</span>
+            </button>
+            <button
+              class="quick-link"
+              type="button"
+              data-fill="请解释这条标注规范"
+            >
+              <i data-lucide="book-open"></i><span>规范问答</span>
+            </button>
+          </div>
+        </section>
+
+        <section
+          class="view conversation-view"
+          id="conversationView"
+          aria-label="会话内容"
+        >
+          <div class="conversation-heading">
+            <i data-lucide="sparkles"></i>
+            <div class="conversation-heading-copy">
+              <strong>文本标注入门路径</strong>
+              <span>继续场景：文本标注</span>
+            </div>
+          </div>
+          <div class="message-list" id="messageList">
+            <div class="message user">
+              我想从 NER 和分类规范开始学习文本标注。
+            </div>
+            <div class="message assistant">
+              <span class="message-label">标航智导</span
+              >好的。我会先定位你的学习起点，再按规范、示例和练习安排一条可执行的路径。
+            </div>
+            <div class="activity-line">
+              <span class="activity-dot"></span
+              ><span>已完成能力定位 · 找到 2 个适合今天练习的主题</span>
+            </div>
+            <div class="plan-inline">
+              <h2>今天的练习路径</h2>
+              <p>1. NER 实体边界识别</p>
+              <p>2. 分类标签选择</p>
+              <p>3. 用一组样例完成自测</p>
+            </div>
+            <div class="message assistant">
+              <span class="message-label">下一步</span
+              >先从实体边界开始。你可以继续提问，也可以让我生成一张练习任务卡。
+            </div>
+          </div>
+          <form class="prompt-wrap conversation-prompt" id="conversationForm">
+            <div class="prompt">
+              <textarea
+                id="conversationInput"
+                aria-label="继续对话"
+                placeholder="继续描述你的学习问题"
+                rows="2"
+              ></textarea>
+              <div class="prompt-toolbar">
+                <div class="prompt-tools">
+                  <button
+                    class="tool-button"
+                    type="button"
+                    aria-label="上传诊断文件"
+                    title="上传诊断文件"
+                  >
+                    <i data-lucide="plus"></i>
+                  </button>
+                </div>
+                <div class="prompt-settings">
+                  <button class="setting-button" type="button">
+                    <i data-lucide="folder-open"></i
+                    ><span>文本标注</span></button
+                  ><button
+                    class="send-button"
+                    type="submit"
+                    aria-label="发送"
+                    title="发送"
+                  >
+                    <i data-lucide="arrow-up"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </form>
+        </section>
+      </main>
+    </div>
+    <div
+      class="demo-toast"
+      id="demoToast"
+      role="status"
+      aria-live="polite"
+    ></div>
+
+    <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.js"></script>
+    <script>
+      // This prototype keeps state local so the production router and Agent APIs
+      // remain untouched while the information hierarchy is being reviewed.
+      const shell = document.getElementById("demoShell");
+      const welcomeView = document.getElementById("welcomeView");
+      const conversationView = document.getElementById("conversationView");
+      const welcomeInput = document.getElementById("welcomeInput");
+      const conversationInput = document.getElementById("conversationInput");
+      const toast = document.getElementById("demoToast");
+      const collapseButton = document.getElementById("collapseButton");
+
+      if (window.lucide) window.lucide.createIcons();
+
+      function showToast(message) {
+        toast.textContent = message;
+        toast.classList.add("is-visible");
+        window.clearTimeout(showToast.timer);
+        showToast.timer = window.setTimeout(
+          () => toast.classList.remove("is-visible"),
+          1800,
+        );
+      }
+
+      function setView(view) {
+        const isConversation = view === "conversation";
+        welcomeView.classList.toggle("is-active", !isConversation);
+        conversationView.classList.toggle("is-active", isConversation);
+        document.querySelectorAll("[data-view]").forEach((element) => {
+          element.classList.toggle(
+            "active",
+            element.dataset.view === view &&
+              element.classList.contains("nav-link"),
+          );
+        });
+        if (isConversation) conversationInput.focus();
+        window.location.hash = isConversation ? "conversation" : "welcome";
+      }
+
+      document.querySelectorAll("[data-view]").forEach((element) => {
+        element.addEventListener("click", (event) => {
+          event.preventDefault();
+          setView(element.dataset.view);
+          shell.classList.remove("sidebar-open");
+        });
+      });
+
+      document.querySelectorAll("[data-fill]").forEach((element) => {
+        element.addEventListener("click", () => {
+          welcomeInput.value = element.dataset.fill;
+          syncSendState(welcomeInput, document.getElementById("welcomeSend"));
+          welcomeInput.focus();
+        });
+      });
+
+      document.querySelectorAll("[data-demo-nav]").forEach((element) => {
+        element.addEventListener("click", (event) => {
+          event.preventDefault();
+          showToast("演示原型只展示指挥舱布局");
+        });
+      });
+
+      function addDemoMessage(origin, input) {
+        const value = input.value.trim();
+        if (!value) return;
+        setView("conversation");
+        const userMessage = document.createElement("div");
+        userMessage.className = "message user";
+        userMessage.textContent = value;
+        document.getElementById("messageList").append(userMessage);
+        input.value = "";
+        syncSendState(
+          input,
+          origin === "welcome"
+            ? document.getElementById("welcomeSend")
+            : document.querySelector("#conversationForm .send-button"),
+        );
+        showToast("已把目标加入演示会话");
+        if (origin === "welcome") conversationInput.focus();
+      }
+
+      // The prototype mirrors the production interaction contract: one key sends
+      // and the alternate key combination keeps a line break inside the prompt.
+      function bindComposer(input, form, sendButton) {
+        input.addEventListener("input", () => syncSendState(input, sendButton));
+        input.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            form.requestSubmit();
+          }
+        });
+      }
+
+      function syncSendState(input, sendButton) {
+        sendButton.classList.toggle("has-value", Boolean(input.value.trim()));
+      }
+
+      document
+        .getElementById("welcomeForm")
+        .addEventListener("submit", (event) => {
+          event.preventDefault();
+          addDemoMessage("welcome", welcomeInput);
+        });
+
+      document
+        .getElementById("conversationForm")
+        .addEventListener("submit", (event) => {
+          event.preventDefault();
+          addDemoMessage("conversation", conversationInput);
+        });
+
+      bindComposer(
+        welcomeInput,
+        document.getElementById("welcomeForm"),
+        document.getElementById("welcomeSend"),
+      );
+      bindComposer(
+        conversationInput,
+        document.getElementById("conversationForm"),
+        document.querySelector("#conversationForm .send-button"),
+      );
+
+      document
+        .getElementById("newSessionButton")
+        .addEventListener("click", () => {
+          welcomeInput.value = "";
+          conversationInput.value = "";
+          setView("welcome");
+          showToast("已开始新会话");
+        });
+
+      collapseButton.addEventListener("click", () => {
+        if (window.matchMedia("(max-width: 900px)").matches) {
+          shell.classList.remove("sidebar-open");
+          return;
+        }
+        const collapsed = shell.classList.toggle("sidebar-collapsed");
+        collapseButton.setAttribute(
+          "aria-label",
+          collapsed ? "展开导航" : "收起导航",
+        );
+        collapseButton.setAttribute(
+          "title",
+          collapsed ? "展开导航" : "收起导航",
+        );
+      });
+
+      document
+        .getElementById("mobileMenuButton")
+        .addEventListener("click", () => {
+          shell.classList.add("sidebar-open");
+        });
+
+      shell.addEventListener("click", (event) => {
+        if (
+          window.matchMedia("(max-width: 900px)").matches &&
+          shell.classList.contains("sidebar-open") &&
+          !event.target.closest(".sidebar") &&
+          !event.target.closest("#mobileMenuButton")
+        ) {
+          shell.classList.remove("sidebar-open");
+        }
+      });
+
+      document
+        .getElementById("uploadButton")
+        .addEventListener("click", () => showToast("演示中保留上传入口"));
+      document
+        .getElementById("scenarioButton")
+        .addEventListener("click", () => showToast("继续场景：文本标注"));
+
+      window.addEventListener("keydown", (event) => {
+        if (
+          (event.ctrlKey || event.metaKey) &&
+          event.key.toLowerCase() === "k"
+        ) {
+          event.preventDefault();
+          document.getElementById("newSessionButton").click();
+        }
+        if (event.key === "Escape") shell.classList.remove("sidebar-open");
+      });
+
+      if (window.location.hash === "#conversation") setView("conversation");
+    </script>
+  </body>
+</html>

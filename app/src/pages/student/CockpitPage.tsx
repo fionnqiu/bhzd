@@ -20,7 +20,7 @@ import { useCockpitRun } from "./cockpit/useCockpitRun";
 import { useOnboardingGate } from "./OnboardingPage";
 import { useDiagnosticUpload } from "./cockpit/useDiagnosticUpload";
 import WelcomeState, { type QuickAction } from "./cockpit/WelcomeState";
-import ChatStream from "./cockpit/ChatStream";
+import ChatStream, { ConversationInfoBar } from "./cockpit/ChatStream";
 import Composer, { type ComposerHandle } from "./cockpit/Composer";
 import { DiagnosticReportContent } from "./cockpit/EmbeddedCard";
 import { trackEvent } from "./cockpit/constants";
@@ -29,7 +29,7 @@ import "./cockpit/cockpit.css";
 export default function CockpitPage() {
   // 入学测评门禁：未完成且未跳过的学生先进 /onboarding（v3.0 §11.1）
   useOnboardingGate();
-  const { scenarioId, scenarioName, setScenarioId } = useScenario();
+  const { scenarioId, scenarios, setScenarioId } = useScenario();
   const toast = useToast();
   const run = useCockpitRun(scenarioId);
   const upload = useDiagnosticUpload(scenarioId);
@@ -146,6 +146,9 @@ export default function CockpitPage() {
         // response when the learner chose a newer conversation in the meantime.
         if (requestId !== conversationLoadRequestRef.current) return;
         loadConversation(detail);
+        // Continuing a saved conversation should restore the context it was
+        // created with; older rows without a scene fall back to the generic one.
+        setScenarioId(detail.scenario_id ?? "");
         setActiveConversationId(detail.id);
         // The Composer changes variant after loading a transcript. Defer focus
         // until the persistent input has mounted in its conversation position.
@@ -155,7 +158,7 @@ export default function CockpitPage() {
         toast.error(err instanceof ApiRequestError ? err.message : "会话加载失败，请稍后重试");
       }
     },
-    [loadConversation, sending, setActiveConversationId, toast],
+    [loadConversation, sending, setActiveConversationId, setScenarioId, toast],
   );
 
   const handleNewConversation = useCallback(() => {
@@ -212,11 +215,16 @@ export default function CockpitPage() {
       onUpload={(file) => void upload.upload(file)}
       sending={sending}
       uploading={upload.uploading}
-      scenarioName={scenarioName}
+      scenarioId={scenarioId}
+      scenarioOptions={scenarios.map((scenario) => ({ value: scenario.id, label: scenario.name }))}
+      onScenarioChange={setScenarioId}
     />
   );
   return (
     <div className="cockpit cockpit-workbench">
+      {/* Keep the title band outside the constrained conversation column so it
+          can span the full main area without being clipped by the scroll shell. */}
+      {showWelcome ? null : <ConversationInfoBar conversationTitle={conversationTitle} />}
       <div className={`cockpit-center${showWelcome ? " cockpit-center-welcome" : ""}`}>
         {/* Welcome intentionally owns the visual Hero -> Prompt -> quick-link order.
             Once a transcript exists, the Composer returns outside the scroller so
@@ -227,47 +235,49 @@ export default function CockpitPage() {
           role="region"
           aria-label="对话内容"
         >
-          {showWelcome ? (
-            <WelcomeState
-              onQuickAction={handleQuickAction}
-              composer={renderComposer("hero")}
-              busy={sending}
-            />
-          ) : (
-            <ChatStream
-              run={run}
-              conversationTitle={conversationTitle}
-              scenarioName={scenarioName}
-              onFocusComposer={() => composerRef.current?.focus()}
-              onAcceptSuggestion={(id) => setScenarioId(id)}
-            />
-          )}
+          {/* The outer region owns vertical scrolling; this inner stack only
+              lays out transcript content so the Composer remains a sibling. */}
+          <div className="cockpit-content-inner" data-testid="cockpit-content-inner">
+            {showWelcome ? (
+              <WelcomeState
+                onQuickAction={handleQuickAction}
+                composer={renderComposer("hero")}
+                busy={sending}
+              />
+            ) : (
+              <ChatStream
+                run={run}
+                onFocusComposer={() => composerRef.current?.focus()}
+                onAcceptSuggestion={(id) => setScenarioId(id)}
+              />
+            )}
 
-          {upload.error ? <ErrorState message={upload.error} onRetry={upload.dismiss} /> : null}
+            {upload.error ? <ErrorState message={upload.error} onRetry={upload.dismiss} /> : null}
 
-          {upload.report ? (
-            <Card
-              title="诊断报告"
-              className="embedded-card"
-              data-testid="diagnostic-report"
-              actions={
-                <Button variant="ghost" size="sm" onClick={upload.dismiss}>
-                  关闭
-                </Button>
-              }
-            >
-              <DiagnosticReportContent report={upload.report} />
-              <div className="flex gap-2 mt-4">
-                {/* 保存摘要会写掌握度：先弹确认展示 old→new（PRD-01 §7 验收） */}
-                <Button size="sm" onClick={() => setSaveConfirmOpen(true)}>
-                  保存诊断摘要
-                </Button>
-                <Button size="sm" variant="secondary" onClick={handleBoostFromDiagnosis}>
-                  生成补强计划
-                </Button>
-              </div>
-            </Card>
-          ) : null}
+            {upload.report ? (
+              <Card
+                title="诊断报告"
+                className="embedded-card"
+                data-testid="diagnostic-report"
+                actions={
+                  <Button variant="ghost" size="sm" onClick={upload.dismiss}>
+                    关闭
+                  </Button>
+                }
+              >
+                <DiagnosticReportContent report={upload.report} />
+                <div className="flex gap-2 mt-4">
+                  {/* 保存摘要会写掌握度：先弹确认展示 old→new（PRD-01 §7 验收） */}
+                  <Button size="sm" onClick={() => setSaveConfirmOpen(true)}>
+                    保存诊断摘要
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={handleBoostFromDiagnosis}>
+                    生成补强计划
+                  </Button>
+                </div>
+              </Card>
+            ) : null}
+          </div>
         </div>
 
         {showWelcome ? null : renderComposer("default")}

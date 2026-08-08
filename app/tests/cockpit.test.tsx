@@ -72,7 +72,7 @@ function renderCockpit() {
           <StudentWorkbenchShellProvider>
             {/* Mirror ShellLayout's route-level scroll owner so streaming tests
                 exercise the same page surface as the production workbench. */}
-            <main className="main-content student-workbench-main-content">
+            <main className="main-content student-workbench-main-content student-workbench-cockpit-main-content">
               <CockpitPage />
             </main>
             <WorkbenchSidebarTestHost />
@@ -117,6 +117,11 @@ describe("指挥舱 · 欢迎态", () => {
     expect(scrollRegion).toContainElement(welcome);
     expect(welcome).toContainElement(composer);
     expect(composer).toHaveClass("composer-hero");
+    const scenarioSelect = within(composer).getByRole("combobox", { name: "继续场景" });
+    expect(scenarioSelect).toBeInTheDocument();
+    fireEvent.click(scenarioSelect);
+    fireEvent.click(screen.getByRole("option", { name: "车载语音标注" }));
+    expect(localStorage.getItem("bhzd.scenario_id")).toBe("SCN-IN-VEHICLE-001");
   });
 
   it("文本快捷入口只预填并聚焦 Composer，不会在用户确认前启动运行", async () => {
@@ -153,6 +158,25 @@ describe("指挥舱 · 欢迎态", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
     await screen.findByTestId("chat-stream");
+    const conversationInfo = screen.getByRole("status", { name: "当前对话信息" });
+    expect(conversationInfo).toHaveTextContent("学习会话");
+    expect(conversationInfo).not.toHaveTextContent("继续场景：");
+    expect(conversationInfo).toHaveClass("conversation-info-bar", "conversation-heading");
+    // The transcript may scroll independently, while the active Composer must
+    // remain its sibling so a long history cannot scroll the input away.
+    const scrollRegion = screen.getByTestId("cockpit-scroll-region");
+    const composer = screen.getByTestId("composer");
+    const contentInner = screen.getByTestId("cockpit-content-inner");
+    expect(scrollRegion).not.toContainElement(conversationInfo);
+    expect(conversationInfo.parentElement).toBe(scrollRegion.parentElement?.parentElement);
+    expect(conversationInfo.parentElement).not.toBe(scrollRegion.parentElement);
+    expect(scrollRegion).not.toContainElement(composer);
+    expect(composer.parentElement).toBe(scrollRegion.parentElement);
+    // The scroll region wraps the message stack; the inner stack is layout-only
+    // so a long transcript cannot create a second scrollbar in the middle box.
+    expect(scrollRegion).toContainElement(contentInner);
+    expect(contentInner).toContainElement(screen.getByTestId("chat-stream"));
+    expect(composer.querySelector("svg.lucide-folder-open")).toBeNull();
     await waitForStream();
     expect(mockedPost).toHaveBeenCalledWith(
       "/api/runs",
@@ -324,11 +348,8 @@ describe("指挥舱 · 运行事件流", () => {
 
     try {
       await startRun();
-      // The transcript deliberately has no nested scrollbar; the shell's main
-      // content element is the single page-level scroll surface under test.
-      const scrollRegion = document.querySelector<HTMLElement>(
-        ".student-workbench-main-content",
-      );
+      // The transcript owns the scroll surface; the Composer remains outside it.
+      const scrollRegion = document.querySelector<HTMLElement>(".cockpit-content-scroll");
       expect(scrollRegion).not.toBeNull();
       Object.defineProperties(scrollRegion!, {
         clientHeight: { configurable: true, value: 200 },
@@ -547,11 +568,9 @@ describe("指挥舱 · 运行事件流", () => {
 
     try {
       await startRun();
-      // Keep the historical-reader assertion aligned with the page-level
-      // scroll contract rather than the removed inner transcript scroller.
-      const scrollRegion = document.querySelector<HTMLElement>(
-        ".student-workbench-main-content",
-      );
+      // A reader who leaves the transcript near its history must not be pulled
+      // back when later Agent activity arrives.
+      const scrollRegion = document.querySelector<HTMLElement>(".cockpit-content-scroll");
       expect(scrollRegion).not.toBeNull();
       Object.defineProperties(scrollRegion!, {
         clientHeight: { configurable: true, value: 200 },
