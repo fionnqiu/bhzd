@@ -1,0 +1,8 @@
+# Generated output and package-manager state are reproducible, not source
+# formatting inputs. Keeping them ignored avoids noisy, tool-owned rewrites.
+coverage/
+dist/
+node_modules/
+playwright-report/
+pnpm-lock.yaml
+test-results/

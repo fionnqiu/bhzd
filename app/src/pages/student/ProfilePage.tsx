@@ -1,0 +1,586 @@
+/**
+ * 个人中心页（PRD-01 §9）。
+ *
+ * 聚合数据：/api/profile（任务统计/诊断摘要/成长记录/设置）、
+ * /api/profile/mastery（能力地图）、/api/tasks（最近任务记录）、
+ * /api/profile/favorites（收藏资料，008 迁移起为真实数据）。
+ *
+ * 关键决策（为什么）：
+ * - 能力地图按 通用/场景 分组、薄弱优先排序：学生第一眼应看到"最该补的"
+ *   （与预设页薄弱优先同口径）；点击能力行开抽屉看近 30 天掌握度趋势
+ *   （GET mastery/trend），趋势是学生判断"学习方法是否有效"的直接证据。
+ * - 收藏资料按 item_type 分流跳转（文档/引用→问答、教学单元→预设、节点→图谱），
+ *   删除用收藏行 id（后端按 id 删，item_id 不具备全局唯一性）。
+ * - share_diagnostics 默认关闭（PRD-06 待确认项 #2 的产品决策）：关闭时教师
+ *   只能看班级聚合统计，开启后才可查看本人诊断详情；开关改动即 PATCH 生效。
+ * - 修改密码引导走 /forgot-password 流程（邮件令牌重置），站内不另做表单。
+ *
+ * 类型说明：api/types.ts 由其他任务并行维护，新增 DTO（收藏/趋势/设置）
+ * 一律页内声明，与后端 profile.py 响应逐字段对齐。
+ */
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { api } from "../../api/client";
+import type {
+  JoinClassResponse,
+  MasteryRecord,
+  Paginated,
+  ProfileOverview,
+  TaskSummary,
+} from "../../api/types";
+import {
+  Button,
+  Card,
+  DataTable,
+  Drawer,
+  EmptyState,
+  ErrorState,
+  Field,
+  Input,
+  MasteryBadge,
+  PageHeader,
+  ProgressBar,
+  Spinner,
+  StatusBadge,
+  Tag,
+  useToast,
+} from "../../components";
+import {
+  errMsg,
+  formatDateTime,
+  masterySourceLabel,
+} from "./shared";
+
+/** 最近任务条数（PRD-01 §9：任务记录做紧凑列表，全量进 /tasks） */
+const RECENT_TASK_LIMIT = 10;
+
+/* ---------------------------------------------------------------- 页内 DTO（对齐 profile.py） */
+
+/** GET /api/profile/favorites 列表项（_favorite_dto） */
+interface FavoriteItem {
+  id: string;
+  item_type: string;
+  item_id: string;
+  title: string;
+  meta: Record<string, unknown>;
+  created_at: string;
+}
+
+/** GET /api/profile 新增的 settings 段（类型文件并行维护，这里本地扩展） */
+interface ProfileSettings {
+  share_diagnostics: boolean;
+}
+
+/** GET /api/profile/mastery/trend 的时间序列点（mastery_events 按时间升序） */
+interface MasteryTrendPoint {
+  date: string;
+  cap_id: string;
+  scenario_id: string;
+  old_score: number;
+  new_score: number;
+  source: string;
+  created_at: string;
+}
+
+/** 收藏类型 → 中文名（008 迁移 CHECK 约束四值） */
+const FAVORITE_TYPE_LABELS: Record<string, string> = {
+  rag_document: "资料文档",
+  citation: "问答引用",
+  teaching_unit: "教学单元",
+  graph_node: "图谱节点",
+};
+
+function favoriteTypeLabel(itemType: string): string {
+  return FAVORITE_TYPE_LABELS[itemType] ?? itemType;
+}
+
+/**
+ * 掌握度趋势迷你折线（纯 SVG 无依赖）：new_score 序列按时间升序描点。
+ * 为什么手画而不用图表库：趋势只是"方向感"参考，一条折线足够，
+ * 引入图表库只为这张小图不值（NO new npm deps 约束同向）。
+ */
+function TrendSparkline({ points }: { points: number[] }) {
+  const W = 280;
+  const H = 64;
+  const PAD = 6;
+  if (points.length === 0) return null;
+  if (points.length === 1) {
+    // 单点无法成线：画一个点，避免空图误解为"无数据"
+    const y = H - PAD - points[0] * (H - PAD * 2);
+    return (
+      <svg width={W} height={H} role="img" aria-label="掌握度趋势（1 次记录）">
+        <circle cx={W / 2} cy={y} r={4} fill="var(--color-primary)" />
+      </svg>
+    );
+  }
+  const coords = points.map((score, index) => {
+    const x = PAD + (index / (points.length - 1)) * (W - PAD * 2);
+    const y = H - PAD - score * (H - PAD * 2);
+    return `${x},${y}`;
+  });
+  return (
+    <svg width={W} height={H} role="img" aria-label="掌握度趋势">
+      {/* 0.8/0.4 档位参考线：与 MasteryBadge 阈值同一口径 */}
+      <line x1={PAD} x2={W - PAD} y1={H - PAD - 0.8 * (H - PAD * 2)} y2={H - PAD - 0.8 * (H - PAD * 2)} stroke="var(--color-success)" strokeDasharray="4 4" strokeWidth={1} opacity={0.5} />
+      <line x1={PAD} x2={W - PAD} y1={H - PAD - 0.4 * (H - PAD * 2)} y2={H - PAD - 0.4 * (H - PAD * 2)} stroke="var(--color-danger)" strokeDasharray="4 4" strokeWidth={1} opacity={0.5} />
+      <polyline points={coords.join(" ")} fill="none" stroke="var(--color-primary)" strokeWidth={2} />
+    </svg>
+  );
+}
+
+export default function ProfilePage() {
+  const toast = useToast();
+  const navigate = useNavigate();
+
+  const [profile, setProfile] = useState<(ProfileOverview & { settings?: ProfileSettings }) | null>(null);
+  const [mastery, setMastery] = useState<MasteryRecord[] | null>(null);
+  const [recentTasks, setRecentTasks] = useState<TaskSummary[]>([]);
+  const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [inviteCode, setInviteCode] = useState("");
+  const [joining, setJoining] = useState(false);
+  const [savingShare, setSavingShare] = useState(false);
+
+  // 能力趋势抽屉：点击能力行打开，drawer 内拉该 cap 近 30 天事件序列
+  const [trendCap, setTrendCap] = useState<MasteryRecord | null>(null);
+  const [trend, setTrend] = useState<MasteryTrendPoint[] | null>(null);
+
+  const load = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true);
+    setError(null);
+    try {
+      // 四路并发：任一失败整体进错误态（个人中心是聚合页，缺一角会误导）
+      const [profileRes, masteryRes, tasksRes, favoritesRes] = await Promise.all([
+        api.get<ProfileOverview & { settings?: ProfileSettings }>("/api/profile", undefined, { signal }),
+        api.get<Paginated<MasteryRecord>>("/api/profile/mastery", undefined, { signal }),
+        api.get<Paginated<TaskSummary>>("/api/tasks", undefined, { signal }),
+        api.get<{ items: FavoriteItem[] }>("/api/profile/favorites", undefined, { signal }),
+      ]);
+      if (signal?.aborted) return;
+      setProfile(profileRes);
+      setMastery(masteryRes.items);
+      setRecentTasks(tasksRes.items.slice(0, RECENT_TASK_LIMIT));
+      setFavorites(favoritesRes.items);
+    } catch (err) {
+      if (!signal?.aborted) setError(errMsg(err));
+    } finally {
+      if (!signal?.aborted) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
+
+  // 打开趋势抽屉时拉取该能力近 30 天序列；换能力重拉，关闭时清空防串数据
+  useEffect(() => {
+    if (!trendCap) {
+      setTrend(null);
+      return;
+    }
+    const controller = new AbortController();
+    setTrend(null);
+    api
+      .get<{ items: MasteryTrendPoint[] }>("/api/profile/mastery/trend", {
+        cap_id: trendCap.cap_id,
+        days: 30,
+      }, { signal: controller.signal })
+      .then((res) => {
+        if (!controller.signal.aborted) setTrend(res.items);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setTrend([]);
+      });
+    return () => controller.abort();
+  }, [trendCap]);
+
+  /**
+   * 能力地图分组：通用（scenario_id=''）一组 + 各场景一组；
+   * 组内按分数升序（薄弱优先，与预设页推荐口径一致）。
+   */
+  const masteryGroups = useMemo(() => {
+    const groups = new Map<string, MasteryRecord[]>();
+    for (const record of mastery ?? []) {
+      const key = record.scenario_id === "" ? "通用" : record.scenario_name;
+      const list = groups.get(key) ?? [];
+      list.push(record);
+      groups.set(key, list);
+    }
+    // 通用组排在最前（它是掌握度主视图，PRD-06 §8.4 口径）
+    return [...groups.entries()]
+      .sort(([a], [b]) => (a === "通用" ? -1 : b === "通用" ? 1 : a.localeCompare(b)))
+      .map(([name, records]) => ({
+        name,
+        records: [...records].sort((a, b) => a.score - b.score),
+      }));
+  }, [mastery]);
+
+  /** 加入班级：邀请码 → join-class（幂等；无效码后端 404 中文提示） */
+  const joinClass = async () => {
+    const code = inviteCode.trim();
+    if (!code) {
+      toast.error("请输入教师提供的邀请码");
+      return;
+    }
+    setJoining(true);
+    try {
+      const res = await api.post<JoinClassResponse>("/api/student/join-class", {
+        invite_code: code,
+      });
+      toast.success(
+        res.already_enrolled ? `你已在「${res.class_name}」班级中` : `已加入「${res.class_name}」`,
+      );
+      setInviteCode("");
+    } catch (err) {
+      toast.error(errMsg(err));
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  /** 收藏点击：按条目类型跳到对应页面（文档/引用→问答，单元→预设，节点→图谱） */
+  const openFavorite = (favorite: FavoriteItem) => {
+    if (favorite.item_type === "rag_document" || favorite.item_type === "citation") {
+      navigate(`/rag-qa?doc=${encodeURIComponent(favorite.item_id)}`);
+    } else if (favorite.item_type === "graph_node") {
+      navigate(`/graph?node=${encodeURIComponent(favorite.item_id)}`);
+    } else if (favorite.item_type === "teaching_unit") {
+      navigate("/presets");
+    }
+  };
+
+  /** 取消收藏：按收藏行 id 删除（后端口径），成功后本地剔除 */
+  const removeFavorite = async (favorite: FavoriteItem) => {
+    try {
+      await api.delete(`/api/profile/favorites/${favorite.id}`);
+      setFavorites((prev) => prev.filter((f) => f.id !== favorite.id));
+      toast.success("已取消收藏");
+    } catch (err) {
+      toast.error(errMsg(err));
+    }
+  };
+
+  /**
+   * 诊断分享开关（PRD-06：默认关闭，教师只能看班级聚合统计）。
+   * 成功后才更新本地态：失败时开关停留在原值，不出现"看着开了其实没开"。
+   */
+  const toggleShareDiagnostics = async (next: boolean) => {
+    setSavingShare(true);
+    try {
+      const res = await api.patch<{ settings: ProfileSettings }>("/api/profile", {
+        share_diagnostics: next,
+      });
+      setProfile((prev) => (prev ? { ...prev, settings: res.settings } : prev));
+      toast.success(next ? "已允许任课教师查看你的诊断详情" : "已关闭诊断详情分享");
+    } catch (err) {
+      toast.error(errMsg(err));
+    } finally {
+      setSavingShare(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="loading-block">
+        <Spinner large /> 正在加载个人中心…
+      </div>
+    );
+  }
+  if (error || !profile || !mastery) {
+    return <ErrorState message={error ?? "加载失败"} onRetry={load} />;
+  }
+
+  const statusCount = (status: string): number => profile.task_counts[status] ?? 0;
+  const shareDiagnostics = profile.settings?.share_diagnostics ?? false;
+
+  return (
+    <div>
+      <PageHeader title="个人中心" sub="能力地图、学习记录与账号设置" />
+
+      <div className="grid grid-cols-2 mb-4">
+        {/* 能力地图（薄弱优先；点击能力行看 30 天趋势） */}
+        <Card title="能力地图">
+          {mastery.length === 0 ? (
+            <EmptyState
+              title="还没有掌握度记录"
+              hint="完成一次练习或诊断后，这里会生成你的能力地图"
+              action={
+                <Link to="/presets" className="btn btn-primary btn-sm">
+                  去预设学习
+                </Link>
+              }
+            />
+          ) : (
+            <div className="flex flex-col gap-4">
+              {masteryGroups.map((group) => (
+                <div key={group.name}>
+                  <h3 className="mb-2" style={{ fontSize: "var(--font-size-base)" }}>
+                    {group.name}
+                  </h3>
+                  <div className="flex flex-col gap-3">
+                    {group.records.map((record) => (
+                      <div key={`${record.cap_id}|${record.scenario_id}`}>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          {/* 能力名改为按钮：点击开趋势抽屉（图谱入口移到抽屉内） */}
+                          <button
+                            type="button"
+                            className="text-sm"
+                            style={{
+                              background: "none",
+                              border: "none",
+                              padding: 0,
+                              cursor: "pointer",
+                              color: "var(--color-primary)",
+                            }}
+                            onClick={() => setTrendCap(record)}
+                          >
+                            {record.cap_name}
+                          </button>
+                          <MasteryBadge score={record.score} />
+                        </div>
+                        <ProgressBar value={record.score} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <div className="flex flex-col gap-4">
+          {/* 学习任务记录（统计 chips + 最近 10 条紧凑表） */}
+          <Card
+            title="学习任务记录"
+            actions={
+              <Link to="/tasks" className="text-sm">
+                查看全部 →
+              </Link>
+            }
+          >
+            <div className="flex items-center gap-2 flex-wrap mb-3">
+              <span className="badge badge-primary">进行中 {statusCount("in_progress")}</span>
+              <span className="badge badge-neutral">未开始 {statusCount("not_started")}</span>
+              <span className="badge badge-success">已完成 {statusCount("completed")}</span>
+            </div>
+            <DataTable<TaskSummary>
+              ariaLabel="学习任务记录"
+              columns={[
+                { key: "title", title: "任务" },
+                {
+                  key: "status",
+                  title: "状态",
+                  width: "90px",
+                  render: (row) => <StatusBadge status={row.status} />,
+                },
+                {
+                  key: "latest_score",
+                  title: "得分",
+                  width: "70px",
+                  render: (row) =>
+                    row.latest_score == null ? "—" : `${Math.round(row.latest_score * 100)}`,
+                },
+              ]}
+              rows={recentTasks}
+              empty="还没有学习任务"
+            />
+          </Card>
+
+          {/* 诊断摘要 */}
+          <Card
+            title="诊断摘要"
+            actions={
+              <Link to="/diagnostics" className="text-sm">
+                去诊断 →
+              </Link>
+            }
+          >
+            {profile.recent_diagnostic_summaries.length === 0 ? (
+              <EmptyState title="还没有诊断摘要" hint="上传一次标注结果，获取第一次诊断" />
+            ) : (
+              <div className="flex flex-col gap-2">
+                {profile.recent_diagnostic_summaries.map((summary) => (
+                  <div key={summary.id} className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-2">
+                      <Tag>{summary.file_format}</Tag>
+                      <span className="text-sm">{summary.error_count} 个错误</span>
+                    </span>
+                    <span className="text-xs text-muted">{formatDateTime(summary.created_at)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 mb-4">
+        {/* 成长记录（mastery_events 时间线；来源中文化） */}
+        <Card title="成长记录">
+          {profile.growth.length === 0 ? (
+            <EmptyState title="还没有成长记录" hint="掌握度每次变化都会记录在这里" />
+          ) : (
+            <div className="flex flex-col gap-2">
+              {profile.growth.map((event, index) => (
+                <div key={index} className="flex items-center justify-between gap-2">
+                  <span className="text-sm">
+                    {event.cap_name}
+                    <span className="text-xs text-muted">
+                      {" "}
+                      {Math.round(event.old_score * 100)}% → {Math.round(event.new_score * 100)}%
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <Tag>{masterySourceLabel(event.source)}</Tag>
+                    <span className="text-xs text-muted">{formatDateTime(event.created_at)}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {/* 收藏资料（真实数据：008 起 favorites 表；按类型跳转 + 可删除） */}
+        <Card title="收藏资料">
+          {favorites.length === 0 ? (
+            <EmptyState
+              title="还没有收藏"
+              hint="在知识问答的引用卡片上点击 ☆ 即可收藏常用资料"
+            />
+          ) : (
+            <div className="flex flex-col gap-2">
+              {favorites.map((favorite) => (
+                <div key={favorite.id} className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 text-sm"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                      textAlign: "left",
+                    }}
+                    onClick={() => openFavorite(favorite)}
+                  >
+                    <Tag>{favoriteTypeLabel(favorite.item_type)}</Tag>
+                    <span style={{ color: "var(--color-primary)" }}>{favorite.title}</span>
+                  </button>
+                  <span className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-xs text-muted">{formatDateTime(favorite.created_at)}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`删除收藏 ${favorite.title}`}
+                      onClick={() => removeFavorite(favorite)}
+                    >
+                      删除
+                    </Button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* 账号设置 */}
+      <Card title="账号设置">
+        <div className="grid grid-cols-2">
+          <div>
+            <p className="text-sm mb-2">
+              <span className="text-secondary">姓名：</span>
+              {profile.user.name}
+            </p>
+            <p className="text-sm mb-4">
+              <span className="text-secondary">邮箱：</span>
+              {profile.user.email}
+            </p>
+            <Link to="/forgot-password" className="btn btn-secondary btn-sm">
+              修改密码（通过重置邮件）
+            </Link>
+          </div>
+          <div className="flex flex-col gap-4">
+            <Field label="加入班级" hint="输入教师提供的班级邀请码">
+              <div className="flex items-center gap-2">
+                <Input
+                  aria-label="班级邀请码"
+                  placeholder="如 BHZD-2026"
+                  value={inviteCode}
+                  onChange={(e) => setInviteCode(e.target.value)}
+                />
+                <Button variant="secondary" loading={joining} onClick={joinClass}>
+                  加入班级
+                </Button>
+              </div>
+            </Field>
+            {/* 诊断详情分享授权（PRD-06 待确认项 #2：默认关闭，教师仅见聚合） */}
+            <Field
+              label="隐私授权"
+              hint="默认关闭：关闭时任课教师只能看到你所在班级的聚合统计；开启后教师可查看你的诊断详情，用于针对性辅导。"
+            >
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  aria-label="允许任课教师查看我的诊断详情"
+                  checked={shareDiagnostics}
+                  disabled={savingShare}
+                  onChange={(e) => toggleShareDiagnostics(e.target.checked)}
+                />
+                允许任课教师查看我的诊断详情
+              </label>
+            </Field>
+          </div>
+        </div>
+      </Card>
+
+      {/* 能力趋势抽屉：近 30 天掌握度事件折线（mastery/trend 升序序列） */}
+      <Drawer
+        open={trendCap !== null}
+        title={trendCap ? `${trendCap.cap_name} · 近 30 天趋势` : ""}
+        onClose={() => setTrendCap(null)}
+      >
+        {trendCap ? (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm text-secondary">当前掌握度</span>
+              <MasteryBadge score={trendCap.score} />
+            </div>
+            {trend === null ? (
+              <div className="loading-block">
+                <Spinner /> 正在加载趋势…
+              </div>
+            ) : trend.length === 0 ? (
+              <p className="text-sm text-secondary">近 30 天暂无掌握度变化记录。</p>
+            ) : (
+              <>
+                <TrendSparkline points={trend.map((p) => p.new_score)} />
+                <p className="text-xs text-muted">
+                  共 {trend.length} 次变化；虚线为「已掌握 80%」与「待加强 40%」参考线。
+                </p>
+                <ul className="flex flex-col gap-2">
+                  {[...trend].reverse().slice(0, 5).map((point, index) => (
+                    <li key={index} className="flex items-center justify-between gap-2 text-sm">
+                      <span>
+                        {Math.round(point.old_score * 100)}% → {Math.round(point.new_score * 100)}%
+                        <span className="text-xs text-muted">（{masterySourceLabel(point.source)}）</span>
+                      </span>
+                      <span className="text-xs text-muted">{point.date}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            <Link to={`/graph?node=${trendCap.cap_id}`} className="btn btn-secondary btn-sm">
+              在能力图谱中查看 →
+            </Link>
+          </div>
+        ) : null}
+      </Drawer>
+    </div>
+  );
+}

@@ -1,44 +1,99 @@
-"""FastAPI 应用工厂（蓝图 §2.1/§17 Wave1）。
+"""FastAPI 应用工厂。
 
-router 注册的容错策略：Wave1 只有地基，routers/* 在 Wave2 才逐个落地，
-因此每个模块的 import+include 都包在 try/except ImportError 里——缺哪个
-记一条告警继续，保证地基阶段应用始终可启动；Wave4 集成时全部就位后
-这些告警自然消失。
+All listed routers are now production requirements.  Import failures must stop
+startup rather than silently turn an API domain into health-check-hidden 404s.
 """
 
 from __future__ import annotations
 
-import importlib
 import logging
 from contextlib import asynccontextmanager
+from threading import Thread
+from types import ModuleType
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__, db as db_module
+from .agent.recovery import recover_interrupted_runs
 from .config import get_config
 from .errors import register_error_handlers
+from .rag import pipeline as rag_pipeline
+from .retention import prune_expired_records
+from .routers import (
+    admin,
+    auth,
+    confirmations,
+    diagnostics,
+    events,
+    graph,
+    notifications,
+    presets,
+    profile,
+    rag_admin,
+    rag_query,
+    runs,
+    tasks,
+    teacher,
+)
 from .security import create_password_encryption_material
 
 logger = logging.getLogger(__name__)
 
-# 蓝图 §2.1 约定的全部 router 模块（每个暴露 APIRouter 实例名 `router`）
-ROUTER_MODULES = [
-    "auth",
-    "runs",
-    "confirmations",
-    "presets",
-    "graph",
-    "tasks",
-    "diagnostics",
-    "profile",
-    "rag_query",
-    "rag_admin",
-    "teacher",
-    "admin",
-    "notifications",
-    "events",
-]
+# Each module exposes an ``APIRouter`` named ``router``.  Keeping this explicit
+# makes a missing dependency an immediate startup error instead of a partial API.
+ROUTER_MODULES: tuple[ModuleType, ...] = (
+    auth,
+    runs,
+    confirmations,
+    presets,
+    graph,
+    tasks,
+    diagnostics,
+    profile,
+    rag_query,
+    rag_admin,
+    teacher,
+    admin,
+    notifications,
+    events,
+)
+
+
+def _start_startup_maintenance(config, *, resume_rag_jobs: bool) -> None:
+    """Resume durable RAG work and optionally prune one bounded retention batch.
+
+    The request-independent worker owns a fresh SQLite connection because the
+    lifespan connection closes before the app starts serving traffic.  It is a
+    daemon by design: shutdown may interrupt it, but queued RAG jobs and old
+    records remain durable and will be retried on the next enabled startup.
+    """
+
+    def run() -> None:
+        maintenance_conn = db_module.connect(config.resolved_database_path)
+        try:
+            if resume_rag_jobs:
+                summary = rag_pipeline.run_pending(maintenance_conn, config)
+                logger.info(
+                    "启动时恢复 RAG 队列: executed=%d, failed=%d",
+                    summary["executed"],
+                    summary["failed"],
+                )
+            if config.retention_enabled:
+                deleted = prune_expired_records(
+                    maintenance_conn, batch_size=config.retention_batch_size
+                )
+                deleted_total = sum(deleted.values())
+                if deleted_total:
+                    logger.info("启动时完成保留策略清理: deleted=%s", deleted)
+        except Exception:
+            # Startup must stay available when a best-effort maintenance pass
+            # fails; the next restart can safely retry durable queued work.
+            logger.exception("启动维护任务失败")
+        finally:
+            maintenance_conn.close()
+
+    Thread(target=run, name="bhzd-startup-maintenance", daemon=True).start()
 
 
 @asynccontextmanager
@@ -53,9 +108,45 @@ async def _lifespan(app: FastAPI):
         applied = db_module.apply_migrations(conn)
         if applied:
             logger.info("已应用数据库迁移: %s", ", ".join(applied))
+        recovery = recover_interrupted_runs(conn)
+        if recovery.total:
+            logger.warning(
+                "启动时恢复 Agent 运行: failed=%d, replayed_terminal=%d, expired_confirmations=%d",
+                recovery.failed_running,
+                recovery.replayed_terminal,
+                recovery.expired_confirmations,
+            )
+        # A RAG worker can stop between its durable claim and completion.  Put
+        # only those interrupted claims back before checking whether startup
+        # maintenance is needed; successful stages keep their artifacts.
+        recovered_rag_jobs = rag_pipeline.recover_interrupted_jobs(conn)
+        if recovered_rag_jobs:
+            logger.warning("启动时重新排队中断的 RAG 任务: %d", recovered_rag_jobs)
+        # Queue rows survive a process crash.  The bounded daemon below resumes
+        # them after the lifespan connection is released, so 202 never depends
+        # solely on the original BackgroundTasks worker remaining alive.
+        queued_rag_jobs = conn.execute(
+            "SELECT EXISTS(SELECT 1 FROM rag_jobs WHERE status = 'queued')"
+        ).fetchone()[0]
     finally:
         conn.close()
+    if queued_rag_jobs or config.retention_enabled:
+        _start_startup_maintenance(config, resume_rag_jobs=bool(queued_rag_jobs))
     yield
+
+
+def _register_routers(
+    app: FastAPI, modules: tuple[ModuleType, ...] | None = None
+) -> None:
+    """Register every required router and deliberately propagate import failures.
+
+    The former Wave1 fallback concealed dependency regressions behind a healthy
+    ``/api/health`` response.  A required router is part of application startup,
+    so its failure must be visible to the process supervisor and deployment.
+    """
+
+    for module in ROUTER_MODULES if modules is None else modules:
+        app.include_router(module.router)
 
 
 def create_app() -> FastAPI:
@@ -80,13 +171,7 @@ def create_app() -> FastAPI:
     async def health() -> dict:
         return {"status": "ok", "version": __version__}
 
-    for name in ROUTER_MODULES:
-        try:
-            module = importlib.import_module(f"bhzd_py.routers.{name}")
-            app.include_router(module.router)
-        except ImportError:
-            # Wave2 才会逐个补齐；缺失仅告警，不阻断地基启动
-            logger.warning("router 模块 bhzd_py.routers.%s 尚未就绪，已跳过注册", name)
+    _register_routers(app)
     return app
 
 

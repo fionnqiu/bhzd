@@ -1,0 +1,279 @@
+/*
+ * 教师工作台的页面级视觉层。共享壳层负责导航、抽屉和账户菜单，
+ * 这里仅约束教师业务内容，避免把学生 Cockpit 的视口规则带入管理表格。
+ */
+.teacher-workbench-page {
+  --teacher-workbench-canvas: var(--operations-canvas, var(--canvas, #f7f8fa));
+  --teacher-workbench-subtle: var(--color-surface-muted);
+  min-width: 0;
+  max-width: 1440px;
+  margin: 0 auto;
+  background: var(--teacher-workbench-canvas);
+  color: var(--color-text);
+}
+
+.teacher-workbench-page .page-header {
+  margin-bottom: var(--space-5);
+}
+
+.teacher-workbench-page .page-header-title {
+  letter-spacing: 0;
+}
+
+/* Repeated operational rows carry hierarchy without creating cards inside cards. */
+.teacher-action-row,
+.teacher-suggestion-row {
+  padding: var(--space-3) var(--space-4);
+  background: var(--teacher-workbench-subtle);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-primary);
+  border-radius: var(--radius-md);
+}
+
+.teacher-action-row {
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+
+.teacher-action-row:hover {
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary-border);
+}
+
+.teacher-dashboard-stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.teacher-dashboard-stats .card {
+  min-height: 106px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.teacher-two-column {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.teacher-quick-action-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.teacher-quick-actions .btn {
+  min-height: 42px;
+}
+
+/* A card already frames its table, so DataTable receives the borderless viewport. */
+.teacher-table-surface {
+  overflow: hidden;
+}
+
+.teacher-table-surface .card-body {
+  padding: 0;
+}
+
+.teacher-table-surface .table-wrap-borderless {
+  border: 0;
+  border-radius: 0;
+}
+
+.teacher-table-surface .table th:first-child,
+.teacher-table-surface .table td:first-child {
+  padding-left: var(--space-5);
+}
+
+.teacher-table-surface .table th:last-child,
+.teacher-table-surface .table td:last-child {
+  padding-right: var(--space-5);
+}
+
+.teacher-filter-surface .card-body {
+  padding-block: var(--space-4);
+}
+
+.teacher-filter-surface .card-body > .flex {
+  row-gap: var(--space-3);
+}
+
+.teacher-class-detail-page .teacher-filter-surface .select,
+.teacher-analytics-page .teacher-filter-surface .select {
+  min-width: 10rem;
+}
+
+/* Task publishing is intentionally explicit so the preview can move below the editor. */
+.teacher-task-publish-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.teacher-task-editor-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.teacher-task-editor-layout > .flex,
+.teacher-task-editor-layout > .teacher-task-preview {
+  min-width: 0;
+}
+
+.teacher-task-preview {
+  position: sticky;
+  top: var(--space-4);
+  max-height: calc(100dvh - var(--space-8));
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.teacher-enroll-row,
+.teacher-invite-row {
+  min-width: 0;
+}
+
+.teacher-enroll-row .input {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.teacher-resource-adder {
+  min-width: 0;
+}
+
+.teacher-resource-adder .input {
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.teacher-task-fields,
+.teacher-task-step-fields,
+.teacher-task-publish-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.teacher-task-publish-page .field,
+.teacher-task-publish-page .card {
+  min-width: 0;
+}
+
+.teacher-task-publish-page .card-title {
+  font-size: var(--font-size-base);
+}
+
+.teacher-task-publish-page .teacher-task-preview .card {
+  box-shadow: var(--shadow-md);
+}
+
+.teacher-task-publish-page .teacher-task-preview .citation-card {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1180px) {
+  .teacher-task-publish-layout {
+    grid-template-columns: minmax(190px, 230px) minmax(0, 1fr);
+  }
+
+  .teacher-task-editor-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Mid-width editors keep form controls readable by placing the preview below. */
+  .teacher-task-preview {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+@media (max-width: 900px) {
+  .teacher-dashboard-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .teacher-task-publish-layout,
+  .teacher-task-editor-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .teacher-task-preview {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .teacher-task-publish-layout > .card {
+    order: 0;
+  }
+
+  .teacher-task-editor-layout > .teacher-task-preview {
+    order: 2;
+  }
+}
+
+@media (max-width: 640px) {
+  .teacher-dashboard-stats,
+  .teacher-two-column,
+  .teacher-quick-action-grid,
+  .teacher-task-fields,
+  .teacher-task-step-fields,
+  .teacher-task-publish-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .teacher-workbench-page .page-header-actions {
+    width: 100%;
+  }
+
+  .teacher-workbench-page .page-header-actions > * {
+    flex: 1 1 auto;
+  }
+
+  .teacher-class-detail-page .teacher-filter-surface .card-body > .flex,
+  .teacher-analytics-page .teacher-filter-surface .card-body > .flex {
+    align-items: stretch;
+  }
+
+  .teacher-class-detail-page .teacher-filter-surface .select,
+  .teacher-analytics-page .teacher-filter-surface .select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .teacher-class-detail-page .teacher-filter-surface input,
+  .teacher-class-detail-page .teacher-filter-surface button {
+    min-width: 0;
+  }
+
+  .teacher-enroll-row,
+  .teacher-resource-adder {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .teacher-invite-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .teacher-resource-adder .input,
+  .teacher-resource-adder .btn,
+  .teacher-enroll-row .input,
+  .teacher-enroll-row .btn {
+    width: 100%;
+  }
+
+  .teacher-task-publish-page .teacher-task-preview .card-body {
+    padding: var(--space-4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .teacher-action-row {
+    transition: none;
+  }
+}

@@ -11,6 +11,33 @@ export default defineConfig({
   plugins: [react()],
   build: {
     manifest: true,
+    rollupOptions: {
+      output: {
+        /**
+         * Keep React's runtime cacheable and isolate the graph engine from the entry chunk.  The
+         * path normalization is required on Windows because Rollup module ids otherwise use `\\`.
+         */
+        manualChunks(id) {
+          const normalizedId = id.replaceAll("\\", "/");
+          if (
+            normalizedId.includes("/node_modules/vis-network/") ||
+            normalizedId.includes("/node_modules/vis-data/") ||
+            normalizedId.includes("/node_modules/vis-util/")
+          ) {
+            return "graph-vendor";
+          }
+          if (
+            normalizedId.includes("/node_modules/react/") ||
+            normalizedId.includes("/node_modules/react-dom/") ||
+            normalizedId.includes("/node_modules/react-router/") ||
+            normalizedId.includes("/node_modules/react-router-dom/")
+          ) {
+            return "react-vendor";
+          }
+          return undefined;
+        },
+      },
+    },
   },
   server: {
     fs: {

@@ -87,22 +87,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // 只在挂载时引导一次；未登录的 401 是正常路径（静默转未登录态）
-    let cancelled = false;
+    const controller = new AbortController();
     (async () => {
       try {
-        const data = await api.get<SessionResponse>("/api/auth/session");
-        if (!cancelled) applySession(data);
+        const data = await api.get<SessionResponse>("/api/auth/session", undefined, {
+          signal: controller.signal,
+        });
+        if (!controller.signal.aborted) applySession(data);
       } catch (err) {
+        if (controller.signal.aborted) return;
         if (!(err instanceof ApiRequestError && err.status === 401)) {
           // 网络错误等非 401：保持未登录态但不阻断应用（用户可重试登录）
           console.warn("会话引导失败", err);
         }
       } finally {
-        if (!cancelled) setBootstrapping(false);
+        if (!controller.signal.aborted) setBootstrapping(false);
       }
     })();
     return () => {
-      cancelled = true;
+      // The bootstrap response must not update a provider that was already unmounted.
+      controller.abort();
     };
   }, [applySession]);
 

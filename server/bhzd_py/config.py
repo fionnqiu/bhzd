@@ -108,6 +108,14 @@ class AppConfig(BaseSettings):
     # ---- 行为开关 ----
     demo_mode: bool = False
     session_ttl_hours: int = 72
+    # Retention is opt-in because applying a sensible default policy must never
+    # silently delete an operator's existing teaching or audit data on upgrade.
+    retention_enabled: bool = False
+    retention_batch_size: int = Field(default=500, ge=1, le=5_000)
+    # Private memory is on by default for the active chat only; it is not a
+    # cross-session profile or a public knowledge-base indexing switch.
+    conversation_memory_enabled: bool = True
+    conversation_memory_top_k: int = Field(default=8, ge=1, le=20)
 
     # NODE_ENV 不带 BHZD_ 前缀，是旧栈沿用名，单独映射
     node_env: str = Field(default="development", validation_alias="NODE_ENV")

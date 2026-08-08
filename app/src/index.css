@@ -1,0 +1,3501 @@
+/* =========================================================================
+ * 标航智导 设计系统（手写 CSS，无框架）
+ *
+ * 为什么不用 Tailwind：任务契约要求 hand-rolled，且组件类与业务语义
+ * （掌握度配色、状态徽章）直接绑定，语义化类名比原子类更利于多代理并行
+ * 开发时保持一致（F1-F4 只消费这里的类，不再各自发明样式）。
+ *
+ * 组织：设计令牌 → 基础重置 → 布局 → 通用组件 → 业务语义 → 响应式/打印。
+ * ========================================================================= */
+
+/* ------------------------------------------------------------------ 令牌 */
+:root {
+  /* 主色：indigo/blue 教育主题（蓝图 §14 浅色专业风） */
+  --color-primary: #4f46e5;
+  --color-primary-hover: #4338ca;
+  --color-primary-active: #3730a3;
+  --color-primary-soft: #eef2ff;
+  --color-primary-border: #c7d2fe;
+
+  /* 中性色 */
+  --color-bg: #f6f7fb;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f1f5f9;
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+  --color-text: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-muted: #94a3b8;
+
+  /* 语义色（操作结果） */
+  --color-success: #16a34a;
+  --color-success-soft: #f0fdf4;
+  --color-warning: #d97706;
+  --color-warning-soft: #fffbeb;
+  --color-danger: #dc2626;
+  --color-danger-soft: #fef2f2;
+  --color-info: #0284c7;
+  --color-info-soft: #f0f9ff;
+
+  /* 掌握度三色（v3.0 §7.3.3 图谱配色口径，蓝图 §14 强制） */
+  --color-mastered: #16a34a; /* 已掌握=绿 */
+  --color-mastered-soft: #f0fdf4;
+  --color-weak: #ea580c; /* 待加强=橙 */
+  --color-weak-soft: #fff7ed;
+  --color-beginner: #dc2626; /* 初学=红 */
+  --color-beginner-soft: #fef2f2;
+
+  /* 间距（4px 基线） */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* 圆角 */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* 阴影（浅色主题下保持克制，避免脏边） */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.14);
+
+  /* 字体：中文优先 PingFang/YaHei，回退 system-ui；等宽用于数据 */
+  --font-sans:
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", system-ui,
+    -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 20px;
+  --font-size-2xl: 24px;
+
+  /* 布局尺寸 */
+  --sidebar-width: 232px;
+  --topbar-height: 56px;
+
+  /* z-index 分层（统一登记，避免层叠战争） */
+  --z-drawer: 60;
+  --z-modal: 70;
+  /* Portal comboboxes must clear drawers and modals while staying below toasts. */
+  --z-select: 75;
+  --z-toast: 80;
+  --z-dropdown: 50;
+
+  /* Motion stays short and directional so repeated work remains responsive. */
+  --motion-press: 100ms;
+  --motion-fast: 140ms;
+  --motion-standard: 180ms;
+  --motion-surface: 200ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@keyframes motion-page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes motion-overlay-enter {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes motion-overlay-exit {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes motion-surface-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes motion-surface-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.995);
+  }
+}
+
+@keyframes motion-drawer-enter {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes motion-drawer-exit {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+}
+
+@keyframes motion-popover-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.99);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes motion-popover-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.99);
+  }
+}
+
+@keyframes motion-popover-enter-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.99);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes motion-popover-exit-up {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(2px) scale(0.99);
+  }
+}
+
+@keyframes motion-toast-enter {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes motion-toast-exit {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+/* -------------------------------------------------------------- 基础重置 */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  line-height: 1.6;
+  color: var(--color-text);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+img {
+  max-width: 100%;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* -------------------------------------------------------------- 布局骨架 */
+/* .shell = 侧边栏 + 主区；各 Layout（Student/Teacher/RagAdmin/Admin）共用 */
+.shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+  height: var(--topbar-height);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: var(--color-primary);
+  white-space: nowrap;
+}
+
+.sidebar-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: #fff;
+  font-size: var(--font-size-sm);
+}
+
+.sidebar-portal {
+  padding: var(--space-3) var(--space-4) 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: var(--space-3) var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-nav a {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 9px var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-base);
+  text-decoration: none;
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+
+.sidebar-nav a:hover {
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+}
+
+/* NavLink 激活态：左色条 + 浅主色底，比单纯变色更易识别当前端 */
+.sidebar-nav a.active {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.sidebar-footer {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/* 主区 = 顶栏 + 内容 */
+.main {
+  flex: 1;
+  min-width: 0; /* 防止内容横向撑破 flex 布局 */
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  height: var(--topbar-height);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 0 var(--space-6);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: var(--z-dropdown);
+}
+
+.topbar-title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.topbar-spacer {
+  flex: 1;
+}
+
+.topbar-toggle {
+  display: none; /* 窄屏时才显示侧栏开关 */
+}
+
+.main-content {
+  flex: 1;
+  padding: var(--space-6);
+  max-width: 1280px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* Route content enters without holding the persistent navigation shell. The
+   animation deliberately has no fill mode so its final transform cannot turn
+   the route wrapper into a containing block for fixed overlays. */
+.main-content > * {
+  animation: motion-page-enter var(--motion-standard) var(--ease-out);
+}
+
+/* -------------------------------------------------------------- Student workbench */
+/* This skin is deliberately opt-in so the teacher and administration portals
+   retain their denser application shell. */
+.shell[data-shell-variant="student-workbench"] {
+  --student-workbench-sidebar-width: 296px;
+  background: var(--color-surface);
+}
+
+/* Keep student navigation in view while a long task or conversation scrolls.
+   The compact breakpoint below resets the main offset because the same sidebar
+   becomes the existing off-canvas drawer there. */
+.shell[data-shell-variant="student-workbench"] .sidebar {
+  width: var(--student-workbench-sidebar-width);
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: var(--z-dropdown);
+}
+
+.shell[data-shell-variant="student-workbench"] .main {
+  height: 100dvh;
+  min-height: 0;
+  margin-left: var(--student-workbench-sidebar-width);
+  background: var(--color-surface);
+}
+
+/* A verified-email banner is a sibling of route content.  Make the student
+   main column own the viewport so that banner can consume real flex space
+   instead of pushing a fixed cockpit composer below the fold. */
+.shell[data-shell-variant="student-workbench"] .main-content {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.shell[data-shell-variant="student-workbench"] .verify-banner {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+
+.shell[data-shell-variant="student-workbench"] .verify-banner > span:first-child {
+  min-width: 0;
+  flex: 1 1 20rem;
+}
+
+.shell[data-shell-variant="student-workbench"] .main-content.student-workbench-main-content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.shell[data-shell-variant="student-workbench"]
+  .main-content.student-workbench-main-content
+  > .cockpit.cockpit-workbench {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar-brand {
+  padding: 0 var(--space-4);
+  color: var(--color-text);
+  border-bottom-color: transparent;
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar-portal {
+  padding: var(--space-2) var(--space-4) var(--space-1);
+  color: var(--color-text-secondary);
+  font-weight: 600;
+}
+
+/* The cockpit supplies the recent-session region below the shared route nav;
+   its scroll boundary keeps the nav and account footer reachable. */
+.shell[data-shell-variant="student-workbench"] .student-workbench-sidebar-top {
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3) var(--space-3);
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-sidebar-top > * {
+  min-width: 0;
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-sidebar-top .btn {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-sidebar {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-2);
+  scrollbar-gutter: stable;
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-sidebar > * {
+  min-width: 0;
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-sidebar .btn {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar-has-student-workbench {
+  overflow: hidden;
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar-has-student-workbench .sidebar-nav {
+  flex: 0 0 auto;
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar-nav {
+  padding: var(--space-2);
+  gap: var(--space-1);
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar-nav a {
+  min-height: 40px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar-nav a.active {
+  box-shadow: inset 2px 0 0 var(--color-primary);
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar-footer {
+  padding: var(--space-3) var(--space-4);
+}
+
+.shell[data-shell-variant="student-workbench"] .topbar {
+  padding: 0 var(--space-5);
+  background: var(--color-surface);
+}
+
+.shell[data-shell-variant="student-workbench"] .topbar-center,
+.shell[data-shell-variant="student-workbench"] .student-workbench-context {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-scenario {
+  width: 180px;
+  flex: 0 1 180px;
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-scenario .select-trigger {
+  min-height: 32px;
+  padding: 4px var(--space-2);
+  border-color: transparent;
+  background: transparent;
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-scenario .select-trigger:hover,
+.shell[data-shell-variant="student-workbench"]
+  .student-workbench-scenario
+  .select-trigger[aria-expanded="true"] {
+  background: var(--color-surface-muted);
+  border-color: var(--color-border);
+}
+
+.shell[data-shell-variant="student-workbench"] .topbar-actions {
+  flex-shrink: 0;
+}
+
+.shell[data-shell-variant="student-workbench"] .topbar-user-name {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell[data-shell-variant="student-workbench"] .main-content {
+  max-width: none;
+  margin: 0;
+  padding: var(--space-5) var(--space-6) var(--space-6);
+  background: var(--color-surface);
+}
+
+/* -------------------------------------------------------------- 按钮 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 8px var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  line-height: 1.4;
+  text-decoration: none;
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    transform var(--motion-press) var(--ease-out);
+  user-select: none;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.btn-secondary {
+  background: var(--color-surface);
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--color-surface-muted);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+}
+
+.btn-danger {
+  background: var(--color-danger);
+  color: #fff;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.btn-sm {
+  padding: 4px var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+.btn-lg {
+  padding: 12px var(--space-6);
+  font-size: var(--font-size-lg);
+}
+
+.btn-block {
+  width: 100%;
+}
+
+/* 图标按钮：表格行操作、抽屉关闭等密集场景 */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    transform var(--motion-press) var(--ease-out);
+}
+
+.icon-btn:hover:not(:disabled) {
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+}
+
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .btn:not(:disabled):active,
+  .icon-btn:not(:disabled):active {
+    transform: scale(0.98);
+  }
+}
+
+/* -------------------------------------------------------------- 表单 */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+}
+
+.field-label {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.field-required {
+  color: var(--color-danger);
+  margin-left: 2px;
+}
+
+.input,
+.textarea {
+  width: 100%;
+  padding: 8px var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+.select {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.input:focus,
+.textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+.select-trigger:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+.input:disabled,
+.textarea:disabled {
+  background: var(--color-surface-muted);
+  cursor: not-allowed;
+}
+
+.input-error,
+.textarea-error,
+.select-trigger.select-error,
+.select-error .select-trigger {
+  border-color: var(--color-danger);
+}
+
+/* The real select stays in the form tree as a value/event bridge, while the
+   button below owns all visible interaction and avoids the browser menu UI. */
+.select-native-proxy {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  opacity: 0;
+  pointer-events: none;
+  clip-path: inset(50%);
+}
+
+.select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 36px;
+  padding: 8px var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard);
+}
+
+.select-trigger:hover:not(:disabled) {
+  background: var(--color-surface-muted);
+  border-color: var(--color-border-strong);
+}
+
+.select-trigger:disabled,
+.select-disabled .select-trigger {
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+.select-error .select-trigger {
+  border-color: var(--color-danger);
+}
+
+.select-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select-chevron {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  transition: transform var(--motion-fast) var(--ease-standard);
+}
+
+.select-trigger[aria-expanded="true"] .select-chevron {
+  transform: rotate(180deg);
+}
+
+/* This list is portalled to body so it is not clipped by tables or drawers. */
+.select-listbox {
+  z-index: var(--z-select);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lg);
+  transform-origin: top left;
+}
+
+.select-listbox[data-placement="above"] {
+  transform-origin: bottom left;
+}
+
+.select-listbox[data-placement="below"][data-motion-state="open"] {
+  animation: motion-popover-enter var(--motion-fast) var(--ease-out) both;
+}
+
+.select-listbox[data-placement="below"][data-motion-state="closing"] {
+  animation: motion-popover-exit var(--motion-fast) var(--ease-in) both;
+  pointer-events: none;
+}
+
+.select-listbox[data-placement="above"][data-motion-state="open"] {
+  animation: motion-popover-enter-up var(--motion-fast) var(--ease-out) both;
+}
+
+.select-listbox[data-placement="above"][data-motion-state="closing"] {
+  animation: motion-popover-exit-up var(--motion-fast) var(--ease-in) both;
+  pointer-events: none;
+}
+
+.select-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 34px;
+  padding: 7px var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+
+.select-option:hover,
+.select-option[data-active="true"] {
+  background: var(--color-surface-muted);
+}
+
+.select-option[data-active="true"] {
+  color: var(--color-primary);
+}
+
+.select-option[aria-selected="true"] {
+  font-weight: 600;
+}
+
+.select-option:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.select-option-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select-option-check {
+  flex: 0 0 auto;
+  color: var(--color-primary);
+}
+
+/* Select menus render in document.body to escape table clipping. The variant
+   marker is carried by Select.tsx so a portalled menu keeps its workbench
+   tokens instead of falling back to the root portal palette. */
+.select-listbox[data-workbench-variant="student-workbench"],
+.select-listbox[data-workbench-variant="operations-workbench"] {
+  border-color: #e5e8ec;
+  background: #ffffff;
+  color: #17212b;
+}
+
+.select-listbox[data-workbench-variant="student-workbench"] .select-option,
+.select-listbox[data-workbench-variant="operations-workbench"] .select-option {
+  color: #17212b;
+}
+
+.select-listbox[data-workbench-variant="student-workbench"] .select-option:hover,
+.select-listbox[data-workbench-variant="student-workbench"] .select-option[data-active="true"],
+.select-listbox[data-workbench-variant="operations-workbench"] .select-option:hover,
+.select-listbox[data-workbench-variant="operations-workbench"] .select-option[data-active="true"] {
+  background: #edf5ff;
+  color: #2477d6;
+}
+
+.select-listbox[data-workbench-variant="student-workbench"] .select-option-check,
+.select-listbox[data-workbench-variant="operations-workbench"] .select-option-check {
+  color: #2477d6;
+}
+
+html[data-theme="dark"] .select-listbox[data-workbench-variant="student-workbench"],
+html[data-theme="dark"] .select-listbox[data-workbench-variant="operations-workbench"] {
+  border-color: #2a3640;
+  background: #162027;
+  color: #edf3f7;
+}
+
+html[data-theme="dark"] .select-listbox[data-workbench-variant="student-workbench"] .select-option,
+html[data-theme="dark"]
+  .select-listbox[data-workbench-variant="operations-workbench"]
+  .select-option {
+  color: #edf3f7;
+}
+
+html[data-theme="dark"]
+  .select-listbox[data-workbench-variant="student-workbench"]
+  .select-option:hover,
+html[data-theme="dark"]
+  .select-listbox[data-workbench-variant="student-workbench"]
+  .select-option[data-active="true"],
+html[data-theme="dark"]
+  .select-listbox[data-workbench-variant="operations-workbench"]
+  .select-option:hover,
+html[data-theme="dark"]
+  .select-listbox[data-workbench-variant="operations-workbench"]
+  .select-option[data-active="true"] {
+  background: #173552;
+  color: #65a9ef;
+}
+
+.select-empty {
+  padding: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+.field-error-text {
+  font-size: var(--font-size-xs);
+  color: var(--color-danger);
+}
+
+.field-hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+/* -------------------------------------------------------------- 卡片 */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.card-padded {
+  padding: var(--space-5);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.card-title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+}
+
+.card-body {
+  padding: var(--space-5);
+}
+
+.card-footer {
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+
+/* -------------------------------------------------------------- 页头 */
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+  flex-wrap: wrap;
+}
+
+.page-header-title {
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+}
+
+.page-header-sub {
+  margin-top: var(--space-1);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.page-header-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* -------------------------------------------------------------- 表格 */
+.table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-gutter: stable;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+/* A visible focus ring tells keyboard users which table viewport will scroll horizontally. */
+.table-wrap:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-base);
+}
+
+.table col {
+  width: 10rem;
+}
+
+.table th {
+  text-align: left;
+  padding: 10px var(--space-4);
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.table td {
+  padding: 10px var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+}
+
+/* Data cells remain single-line so narrow viewports scroll the table instead of growing rows. */
+.table th,
+.table td {
+  white-space: nowrap;
+}
+
+/* Shared inline status groups must stay on one row so the table viewport owns overflow. */
+.table td .flex-wrap {
+  flex-wrap: nowrap;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table tbody tr:hover {
+  background: var(--color-surface-muted);
+}
+
+.table tbody tr {
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+
+.table-empty {
+  padding: var(--space-10) var(--space-4);
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+/* Empty and loading content are explanatory copy rather than row data, so they may wrap. */
+.table td.table-empty {
+  white-space: normal;
+}
+
+/* Cards that already provide the visual frame can reuse scrolling without a second border. */
+.table-wrap-borderless {
+  border: 0;
+  border-radius: 0;
+}
+
+/* Fill the available desktop surface while retaining enough room for the action
+   group on compact screens, where the table viewport intentionally scrolls. */
+.provider-table .table {
+  min-width: max(100%, 1100px);
+}
+
+/* This view only scrolls horizontally, so a reserved vertical gutter reads as
+   trailing data whitespace; keep the global stable gutter for other tables. */
+.provider-table > .table-wrap {
+  scrollbar-gutter: auto;
+}
+
+.provider-table .table td {
+  white-space: nowrap;
+}
+
+.provider-protocol,
+.provider-last-test {
+  white-space: nowrap;
+}
+
+.provider-actions {
+  flex-wrap: nowrap;
+  gap: var(--space-1);
+  min-width: max-content;
+}
+
+.provider-actions .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* Keep the action cell stable: the generic spinner animates transform, so it is
+   centered with absolute positioning instead of a transform-based offset. */
+.provider-test-button {
+  position: relative;
+}
+
+.provider-test-button[aria-busy="true"] .provider-test-button-label {
+  visibility: hidden;
+}
+
+.provider-test-button[aria-busy="true"] .spinner {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+}
+
+.provider-model-discovery {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* The replacement-key toggle only affects newly typed text and stays aligned with its input. */
+.provider-api-key-control {
+  --provider-api-key-control-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.provider-api-key-control > .input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--provider-api-key-control-height);
+}
+
+.provider-api-key-visibility-button {
+  flex: 0 0 var(--provider-api-key-control-height);
+  width: var(--provider-api-key-control-height);
+  height: var(--provider-api-key-control-height);
+  padding: 0;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+}
+
+.provider-api-key-visibility-button:hover:not(:disabled) {
+  border-color: var(--color-primary-border);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-hover);
+}
+
+.provider-api-key-visibility-button:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+/* Keep discovery attached to the selected model, rather than reading as a form-wide action. */
+.provider-model-control {
+  --provider-model-control-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.provider-model-control > .input,
+.provider-model-control > .select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.provider-model-control > .input,
+.provider-model-control .select-trigger {
+  height: var(--provider-model-control-height);
+}
+
+/* The import action shares the model control's exact footprint, so it reads as
+   an adjacent field action instead of a smaller table-style icon button. */
+.provider-model-import-button {
+  flex: 0 0 var(--provider-model-control-height);
+  width: var(--provider-model-control-height);
+  height: var(--provider-model-control-height);
+  padding: 0;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-primary);
+}
+
+.provider-model-import-button:hover:not(:disabled) {
+  border-color: var(--color-primary-border);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-hover);
+}
+
+.provider-model-import-button:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+.provider-model-discovery p {
+  margin: 0;
+  white-space: normal;
+}
+
+/* Form-level testing is deliberately separate from Save: administrators can
+   validate a new endpoint without creating a persistent provider row. */
+.provider-form-test {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+}
+
+.provider-form-test .field-hint {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+/* -------------------------------------------------------------- 徽章/标签 */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.badge-neutral {
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+}
+
+.badge-primary {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.badge-success {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.badge-warning {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.badge-danger {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.badge-info {
+  background: var(--color-info-soft);
+  color: var(--color-info);
+}
+
+/* 掌握度三色徽章（与图谱页配色同一口径，跨页保持一致认知） */
+.badge-mastered {
+  background: var(--color-mastered-soft);
+  color: var(--color-mastered);
+}
+
+.badge-weak {
+  background: var(--color-weak-soft);
+  color: var(--color-weak);
+}
+
+.badge-beginner {
+  background: var(--color-beginner-soft);
+  color: var(--color-beginner);
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  background: var(--color-surface);
+}
+
+/* -------------------------------------------------------------- 模态/抽屉/下拉 */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+}
+
+.overlay[data-motion-state="open"] {
+  animation: motion-overlay-enter var(--motion-fast) var(--ease-out) both;
+}
+
+.overlay[data-motion-state="closing"] {
+  animation: motion-overlay-exit var(--motion-fast) var(--ease-in) both;
+}
+
+.modal {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  width: 100%;
+  max-width: 520px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal[data-motion-state="open"] {
+  animation: motion-surface-enter var(--motion-surface) var(--ease-out) both;
+}
+
+.modal[data-motion-state="closing"] {
+  animation: motion-surface-exit var(--motion-fast) var(--ease-in) both;
+}
+
+.modal-lg {
+  max-width: 760px;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.modal-title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+}
+
+.modal-body {
+  padding: var(--space-5);
+  overflow-y: auto;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+
+/* 抽屉：右侧滑出，用于节点详情/工具专注视图（NF19 两级展示的第二级） */
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  z-index: var(--z-drawer);
+}
+
+.drawer-overlay[data-motion-state="open"] {
+  animation: motion-overlay-enter var(--motion-fast) var(--ease-out) both;
+}
+
+.drawer-overlay[data-motion-state="closing"] {
+  animation: motion-overlay-exit var(--motion-fast) var(--ease-in) both;
+}
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(440px, 92vw);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-drawer);
+  display: flex;
+  flex-direction: column;
+}
+
+.drawer[data-motion-state="open"] {
+  animation: motion-drawer-enter var(--motion-surface) var(--ease-out) both;
+}
+
+.drawer[data-motion-state="closing"] {
+  animation: motion-drawer-exit var(--motion-surface) var(--ease-in) both;
+  pointer-events: none;
+}
+
+.drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.drawer-title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+}
+
+.drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-5);
+}
+
+/* 顶部栏下拉（门户切换/用户菜单共用） */
+.dropdown {
+  position: relative;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 180px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-1);
+  z-index: var(--z-dropdown);
+}
+
+.dropdown-menu[data-motion-state="open"] {
+  animation: motion-popover-enter var(--motion-fast) var(--ease-out) both;
+}
+
+.dropdown-menu[data-motion-state="closing"] {
+  animation: motion-popover-exit var(--motion-fast) var(--ease-in) both;
+  pointer-events: none;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 8px var(--space-3);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: var(--font-size-base);
+  color: var(--color-text);
+  text-align: left;
+  text-decoration: none;
+}
+
+.dropdown-item:hover {
+  background: var(--color-surface-muted);
+}
+
+.dropdown-item.current {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.dropdown-divider {
+  height: 1px;
+  margin: var(--space-1) 0;
+  background: var(--color-border);
+}
+
+/* -------------------------------------------------------------- 页签 */
+.tabs {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: var(--space-4);
+  overflow-x: auto;
+}
+
+.tab {
+  padding: 8px var(--space-4);
+  border: none;
+  background: none;
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  white-space: nowrap;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+
+.tab:hover {
+  color: var(--color-text);
+}
+
+.tab.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+  font-weight: 600;
+}
+
+/* -------------------------------------------------------------- Toast */
+.toast-container {
+  position: fixed;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 360px;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left-width: 4px;
+  box-shadow: var(--shadow-md);
+  font-size: var(--font-size-sm);
+}
+
+.toast[data-motion-state="open"] {
+  animation: motion-toast-enter var(--motion-standard) var(--ease-out) both;
+}
+
+.toast[data-motion-state="closing"] {
+  animation: motion-toast-exit var(--motion-fast) var(--ease-in) both;
+  pointer-events: none;
+}
+
+.toast-success {
+  border-left-color: var(--color-success);
+}
+
+.toast-error {
+  border-left-color: var(--color-danger);
+}
+
+.toast-info {
+  border-left-color: var(--color-info);
+}
+
+.toast-body {
+  flex: 1;
+}
+
+.toast-close {
+  flex-shrink: 0;
+}
+
+/* -------------------------------------------------------------- 空态/错误态 */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-10) var(--space-4);
+  text-align: center;
+}
+
+.empty-state-title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.empty-state-hint {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  max-width: 420px;
+}
+
+/* -------------------------------------------------------------- 反馈元件 */
+.spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.spinner-lg {
+  width: 32px;
+  height: 32px;
+  border-width: 3px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-block {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-10);
+  color: var(--color-text-secondary);
+}
+
+.progress {
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-muted);
+  overflow: hidden;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  transform: scaleX(var(--progress-scale, 0));
+  transform-origin: left center;
+  transition: transform var(--motion-standard) var(--ease-out);
+}
+
+.progress-bar-success {
+  background: var(--color-success);
+}
+
+.progress-bar-warning {
+  background: var(--color-warning);
+}
+
+.progress-bar-danger {
+  background: var(--color-danger);
+}
+
+/* -------------------------------------------------------------- 业务语义 */
+/* 掌握度色块：色条 + 百分比（个人中心/图谱/教师端共用） */
+.mastery-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.mastery-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mastery-dot-mastered {
+  background: var(--color-mastered);
+}
+
+.mastery-dot-weak {
+  background: var(--color-weak);
+}
+
+.mastery-dot-beginner {
+  background: var(--color-beginner);
+}
+
+.mastery-dot-none {
+  background: var(--color-border-strong);
+}
+
+/* 引用卡（PRD-01 §8：文档名/章节/页码/版本/可信等级） */
+.citation-card {
+  display: block;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  margin-bottom: var(--space-2);
+}
+
+.citation-card-title {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.citation-card-meta {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+}
+
+/* 邮箱验证横幅：未验证用户的核心能力被服务端拦截，必须全局显眼提示 */
+.verify-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-6);
+  background: var(--color-warning-soft);
+  border-bottom: 1px solid #fde68a;
+  color: #92400e;
+  font-size: var(--font-size-sm);
+}
+
+.verify-banner .btn {
+  flex-shrink: 0;
+}
+
+/* -------------------------------------------------------------- 认证页 */
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background: linear-gradient(160deg, #eef2ff 0%, var(--color-bg) 55%);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-8);
+  /* Public routes do not pass through ShellLayout, so they opt into the
+     same restrained page entrance as authenticated route content. */
+  animation: motion-surface-enter var(--motion-surface) var(--ease-out) both;
+}
+
+.auth-brand {
+  text-align: center;
+  margin-bottom: var(--space-6);
+}
+
+.auth-brand-name {
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.auth-brand-slogan {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  margin-top: var(--space-1);
+}
+
+.auth-title {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  margin-bottom: var(--space-5);
+}
+
+.auth-links {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--space-4);
+  font-size: var(--font-size-sm);
+}
+
+/* 表单级错误/成功提示条 */
+.form-alert {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--space-4);
+}
+
+.form-alert-error {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.form-alert-success {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+/* 开发模式令牌提示（未配置 SMTP 时后端回显 dev_*_token） */
+.dev-token-box {
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px dashed var(--color-warning);
+  border-radius: var(--radius-md);
+  background: var(--color-warning-soft);
+  font-size: var(--font-size-xs);
+  color: #92400e;
+  word-break: break-all;
+}
+
+/* -------------------------------------------------------------- 工具类 */
+.text-muted {
+  color: var(--color-text-muted);
+}
+
+.text-secondary {
+  color: var(--color-text-secondary);
+}
+
+.text-danger {
+  color: var(--color-danger);
+}
+
+.text-success {
+  color: var(--color-success);
+}
+
+.text-sm {
+  font-size: var(--font-size-sm);
+}
+
+.text-xs {
+  font-size: var(--font-size-xs);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+.flex {
+  display: flex;
+}
+
+.flex-col {
+  flex-direction: column;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.gap-1 {
+  gap: var(--space-1);
+}
+.gap-2 {
+  gap: var(--space-2);
+}
+.gap-3 {
+  gap: var(--space-3);
+}
+.gap-4 {
+  gap: var(--space-4);
+}
+
+.mt-2 {
+  margin-top: var(--space-2);
+}
+.mt-3 {
+  margin-top: var(--space-3);
+}
+.mt-4 {
+  margin-top: var(--space-4);
+}
+.mt-6 {
+  margin-top: var(--space-6);
+}
+.mb-2 {
+  margin-bottom: var(--space-2);
+}
+.mb-3 {
+  margin-bottom: var(--space-3);
+}
+.mb-4 {
+  margin-bottom: var(--space-4);
+}
+.mb-6 {
+  margin-bottom: var(--space-6);
+}
+
+.w-full {
+  width: 100%;
+}
+
+.grid {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.grid-cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.grid-cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.grid-cols-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* -------------------------------------------------------------- 响应式 */
+/* NF17：桌面 + 窄屏。<900px 侧栏折叠为抽屉式（默认隐藏，顶栏按钮唤出）。 */
+@media (max-width: 900px) {
+  /* The fixed desktop rail must not reserve space once it turns into the
+     shared off-canvas drawer, otherwise compact pages would start off-screen. */
+  .shell[data-shell-variant="student-workbench"] .sidebar {
+    width: min(var(--student-workbench-sidebar-width), calc(100vw - var(--space-6)));
+  }
+
+  /* On short mobile viewports the workbench and route navigation must share
+     one drawer scroll surface; otherwise the desktop workbench clip hides the
+     lower nav links and account footer behind the fixed off-canvas frame. */
+  .shell[data-shell-variant="student-workbench"] .sidebar-has-student-workbench {
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .shell[data-shell-variant="student-workbench"] .student-workbench-sidebar {
+    flex: 0 0 auto;
+    max-height: none;
+    overflow: visible;
+    scrollbar-gutter: auto;
+  }
+
+  .shell[data-shell-variant="student-workbench"] .main {
+    margin-left: 0;
+  }
+
+  .shell[data-shell-variant="student-workbench"] .main-content {
+    padding: var(--space-4);
+  }
+
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: var(--z-drawer);
+    transform: translateX(-100%);
+    transition: transform var(--motion-surface) var(--ease-out);
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* Layout 在窄屏时给 shell 加 .sidebar-open 控制显隐 */
+  .shell.sidebar-open .sidebar {
+    transform: translateX(0);
+  }
+
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.35);
+    z-index: calc(var(--z-drawer) - 1);
+  }
+
+  .sidebar-overlay[data-motion-state="open"] {
+    animation: motion-overlay-enter var(--motion-fast) var(--ease-out) both;
+  }
+
+  .sidebar-overlay[data-motion-state="closing"] {
+    animation: motion-overlay-exit var(--motion-fast) var(--ease-in) both;
+  }
+
+  .topbar-toggle {
+    display: inline-flex;
+  }
+
+  .main-content {
+    padding: var(--space-4);
+  }
+
+  .grid-cols-3,
+  .grid-cols-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .page-header {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 560px) {
+  .shell[data-shell-variant="student-workbench"] .topbar {
+    padding: 0 var(--space-3);
+  }
+
+  .shell[data-shell-variant="student-workbench"] .topbar-center {
+    flex: 1 1 auto;
+  }
+
+  /* The combobox keeps its accessible name, so the repeated visible label can
+     disappear on narrow screens without making the compact toolbar ambiguous. */
+  .shell[data-shell-variant="student-workbench"] .student-workbench-context > .text-sm {
+    display: none;
+  }
+
+  .shell[data-shell-variant="student-workbench"] .student-workbench-scenario {
+    width: min(180px, 30vw);
+    flex-basis: min(180px, 30vw);
+  }
+
+  .shell[data-shell-variant="student-workbench"] .topbar-actions {
+    gap: var(--space-1);
+  }
+
+  .shell[data-shell-variant="student-workbench"] .topbar-portal-button {
+    min-width: 32px;
+    padding-inline: var(--space-2);
+    font-size: 0;
+  }
+
+  .shell[data-shell-variant="student-workbench"] .topbar-user-button {
+    padding-inline: var(--space-1);
+  }
+
+  .shell[data-shell-variant="student-workbench"] .topbar-user-name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .grid-cols-2,
+  .grid-cols-3,
+  .grid-cols-4 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .topbar {
+    padding: 0 var(--space-3);
+    gap: var(--space-2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-delay: 0ms !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-delay: 0ms !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* -------------------------------------------------------------- 打印 */
+/* 打印友好：诊断报告/学情报表可能被导出；隐藏导航与交互件，保留内容。 */
+@media print {
+  .sidebar,
+  .topbar,
+  .verify-banner,
+  .toast-container,
+  .btn,
+  .icon-btn {
+    display: none !important;
+  }
+
+  .main-content {
+    padding: 0;
+    max-width: none;
+  }
+
+  .card {
+    box-shadow: none;
+    break-inside: avoid;
+  }
+
+  body {
+    background: #fff;
+  }
+}
+
+/* ------------------------------------------------ Student workbench v3 */
+/*
+ * The workbench has a deliberately quieter visual language than the shared
+ * portals.  Scope the revised tokens to the student shell so administration
+ * and teaching tools keep their established density and status palette.
+ */
+.shell[data-shell-variant="student-workbench"] {
+  --canvas: #f7f8fa;
+  --surface: #ffffff;
+  --surface-soft: #fbfcfd;
+  --line: #e5e8ec;
+  --line-strong: #d4d9e0;
+  --ink: #17212b;
+  --ink-soft: #5f6b76;
+  --ink-faint: #98a2ad;
+  --accent: #2477d6;
+  --accent-soft: #edf5ff;
+  --teal: #159b91;
+  --amber: #bf7417;
+  --shadow-input: 0 18px 42px rgba(26, 39, 52, 0.08);
+  --student-workbench-sidebar-width: 296px;
+  --topbar-height: 68px;
+  --radius-control: 8px;
+  --radius-input: 16px;
+  --color-primary: var(--accent);
+  --color-primary-hover: #1f67bd;
+  --color-primary-active: #1b5aa5;
+  --color-primary-soft: var(--accent-soft);
+  --color-primary-border: #9dbde2;
+  --color-bg: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-muted: #f0f3f6;
+  --color-border: var(--line);
+  --color-border-strong: var(--line-strong);
+  --color-text: var(--ink);
+  --color-text-secondary: var(--ink-soft);
+  --color-text-muted: var(--ink-faint);
+  --motion-surface: 180ms;
+  /* Keep the learning canvas light regardless of the operating-system theme.
+     White remains reserved for input and content surfaces, as in the approved demo. */
+  background: var(--canvas);
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar {
+  width: var(--student-workbench-sidebar-width);
+  background: var(--surface-soft);
+  border-color: var(--line);
+  transition: width 180ms var(--ease-out);
+}
+
+.shell.student-workbench-sidebar-collapsed .sidebar {
+  width: 68px;
+}
+
+.shell[data-shell-variant="student-workbench"] .main {
+  margin-left: var(--student-workbench-sidebar-width);
+  background: var(--canvas);
+  transition: margin-left 180ms var(--ease-out);
+}
+
+.shell.student-workbench-sidebar-collapsed .main {
+  margin-left: 68px;
+}
+
+.shell[data-shell-variant="student-workbench"] .main-content {
+  padding: 0 28px 28px;
+  background: var(--canvas);
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 68px;
+  padding: 0 18px 0 20px;
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar-brand.student-workbench-brand {
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  gap: 10px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar-brand-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-control);
+  background: var(--accent);
+  color: #fff;
+}
+
+.shell[data-shell-variant="student-workbench"] .workbench-brand-copy {
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-sidebar-collapse {
+  width: 34px;
+  height: 34px;
+  color: var(--ink-soft);
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar-portal {
+  display: none;
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-sidebar-top {
+  padding: 4px 12px 18px;
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-sidebar-top .btn {
+  min-height: 46px;
+  padding: 0 14px;
+  border-color: var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(26, 39, 52, 0.03);
+  font-weight: 600;
+}
+
+.shell[data-shell-variant="student-workbench"]
+  .student-workbench-sidebar-top
+  .btn:hover:not(:disabled) {
+  border-color: #b8c9dc;
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-sidebar-top .btn svg {
+  color: var(--accent);
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar-nav {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 0 12px;
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-nav-label {
+  margin: 14px 10px 7px;
+  color: var(--ink-faint);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar-nav a {
+  min-height: 38px;
+  padding: 0 10px;
+  gap: 11px;
+  border-radius: var(--radius-control);
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar-nav a:hover,
+.shell[data-shell-variant="student-workbench"] .sidebar-nav a.active {
+  background: #eef2f6;
+  color: var(--ink);
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar-nav a.active {
+  box-shadow: inset 2px 0 0 var(--accent);
+  font-weight: 650;
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar-nav a svg {
+  width: 17px;
+  height: 17px;
+  color: var(--ink-faint);
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar-nav a.active svg {
+  color: var(--accent);
+}
+
+/* An active run owns the Cockpit route and its SSE stream. Keep the student
+   rail visibly locked until the run reaches a terminal state. */
+.shell[data-shell-variant="student-workbench"] .sidebar-nav a[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-sidebar {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: visible;
+  padding: 0 0 18px;
+  scrollbar-gutter: auto;
+}
+
+/* Recent sessions keep their own bounded scroll area, while the full rail
+   scrolls on short desktops so navigation and the account menu remain reachable. */
+.shell[data-shell-variant="student-workbench"] .sidebar-has-student-workbench {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar-footer.student-workbench-account-footer {
+  margin-top: auto;
+  padding: 16px 18px 18px;
+  border-top-color: var(--line);
+}
+
+.student-workbench-account-menu {
+  position: relative;
+}
+
+.student-workbench-account-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  padding: 0;
+  text-align: left;
+}
+
+.student-workbench-account-avatar {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: #dcefe9;
+  color: #126f68;
+}
+
+.student-workbench-account-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+}
+
+.student-workbench-account-name,
+.student-workbench-account-role {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.student-workbench-account-name {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.student-workbench-account-role {
+  margin-top: 2px;
+  color: var(--ink-faint);
+  font-size: 11px;
+}
+
+.student-workbench-account-menu .dropdown-menu {
+  right: 0;
+  bottom: calc(100% + 8px);
+  left: auto;
+  top: auto;
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-context {
+  gap: 12px;
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-context > .text-sm {
+  color: var(--ink-faint);
+  font-size: 12px;
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-scenario .select-trigger {
+  min-height: 32px;
+  border-radius: 6px;
+  color: var(--ink-soft);
+}
+
+.student-workbench-header-actions,
+.shell[data-shell-variant="student-workbench"] .topbar-custom-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-help-link {
+  width: 34px;
+  height: 34px;
+}
+
+.shell.student-workbench-sidebar-collapsed .student-workbench-sidebar-header {
+  justify-content: center;
+  padding: 0;
+}
+
+.shell.student-workbench-sidebar-collapsed .workbench-brand-copy,
+.shell.student-workbench-sidebar-collapsed .student-workbench-sidebar-top,
+.shell.student-workbench-sidebar-collapsed .student-workbench-nav-label,
+.shell.student-workbench-sidebar-collapsed .student-workbench-sidebar,
+.shell.student-workbench-sidebar-collapsed .student-workbench-account-copy,
+.shell.student-workbench-sidebar-collapsed .student-workbench-account-trigger > svg:last-child {
+  display: none;
+}
+
+.shell.student-workbench-sidebar-collapsed .student-workbench-sidebar-collapse {
+  position: static;
+}
+
+.shell.student-workbench-sidebar-collapsed .sidebar-nav {
+  padding: 0 12px;
+}
+
+.shell.student-workbench-sidebar-collapsed .sidebar-nav a {
+  justify-content: center;
+  padding: 0;
+}
+
+.shell.student-workbench-sidebar-collapsed .sidebar-nav a span {
+  display: none;
+}
+
+.shell.student-workbench-sidebar-collapsed .sidebar-footer.student-workbench-account-footer {
+  display: flex;
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.shell.student-workbench-sidebar-collapsed .student-workbench-account-trigger {
+  justify-content: center;
+}
+
+@media (max-width: 900px) {
+  .shell[data-shell-variant="student-workbench"] {
+    --topbar-height: 60px;
+  }
+
+  .shell[data-shell-variant="student-workbench"] .sidebar,
+  .shell.student-workbench-sidebar-collapsed .sidebar {
+    width: min(296px, 84vw);
+  }
+
+  .shell[data-shell-variant="student-workbench"] .main,
+  .shell.student-workbench-sidebar-collapsed .main {
+    margin-left: 0;
+  }
+
+  .shell[data-shell-variant="student-workbench"] .student-workbench-sidebar-header {
+    min-height: 60px;
+  }
+
+  .shell[data-shell-variant="student-workbench"] .main-content {
+    padding: 0 16px 20px;
+  }
+
+  .shell[data-shell-variant="student-workbench"] .student-workbench-sidebar {
+    padding-bottom: 18px;
+  }
+
+  /* A desktop collapse may remain in React state while the viewport crosses
+     into drawer mode. Restore every navigation affordance in that mode. */
+  .shell.student-workbench-sidebar-collapsed .workbench-brand-copy {
+    display: inline;
+  }
+
+  .shell.student-workbench-sidebar-collapsed .student-workbench-sidebar-top {
+    display: block;
+  }
+
+  .shell.student-workbench-sidebar-collapsed .student-workbench-nav-label {
+    display: block;
+  }
+
+  .shell.student-workbench-sidebar-collapsed .student-workbench-sidebar {
+    display: flex;
+  }
+
+  .shell.student-workbench-sidebar-collapsed .student-workbench-account-copy {
+    display: grid;
+  }
+
+  .shell.student-workbench-sidebar-collapsed .student-workbench-account-trigger > svg:last-child {
+    display: block;
+  }
+
+  .shell.student-workbench-sidebar-collapsed .sidebar-nav {
+    padding: 0 12px;
+  }
+
+  .shell.student-workbench-sidebar-collapsed .sidebar-nav a {
+    justify-content: flex-start;
+    padding: 0 10px;
+  }
+
+  .shell.student-workbench-sidebar-collapsed .sidebar-nav a span {
+    display: inline;
+  }
+
+  .shell[data-shell-variant="student-workbench"] .sidebar-overlay {
+    background: rgba(23, 33, 43, 0.22);
+  }
+}
+
+@media (max-width: 560px) {
+  .shell[data-shell-variant="student-workbench"] .student-workbench-context > .text-sm {
+    display: none;
+  }
+
+  .shell[data-shell-variant="student-workbench"] .student-workbench-context {
+    gap: 6px;
+  }
+
+  .shell[data-shell-variant="student-workbench"] .student-workbench-scenario {
+    width: min(180px, 34vw);
+    flex-basis: min(180px, 34vw);
+  }
+
+  .shell[data-shell-variant="student-workbench"] .student-workbench-header-actions > :last-child {
+    display: none;
+  }
+}
+
+/* Keep the approved light workbench stable by default. A future account-level
+   preference can still opt into this mapping without following system color mode. */
+html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] {
+  --canvas: #11171c;
+  --surface: #162027;
+  --surface-soft: #131b21;
+  --line: #2a3640;
+  --line-strong: #3a4955;
+  --ink: #edf3f7;
+  --ink-soft: #b8c4cd;
+  --ink-faint: #83919c;
+  --accent: #65a9ef;
+  --accent-soft: #173552;
+  --teal: #49bdb2;
+  --amber: #e3a54d;
+  --shadow-input: 0 18px 42px rgba(0, 0, 0, 0.28);
+  --color-primary-hover: #8bbdf2;
+  --color-primary-active: #b1d3f7;
+  --color-primary-border: #467eae;
+  --color-surface-muted: #1d2831;
+}
+
+html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] .sidebar-nav a:hover,
+html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] .sidebar-nav a.active,
+html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] .workbench-session-row:hover,
+html[data-theme="dark"]
+  .shell[data-shell-variant="student-workbench"]
+  .workbench-session-row.is-active,
+html[data-theme="dark"]
+  .shell[data-shell-variant="student-workbench"]
+  .workbench-session-row.is-current {
+  background: #1d2831;
+}
+
+html[data-theme="dark"]
+  .shell[data-shell-variant="student-workbench"]
+  .student-workbench-sidebar-top
+  .btn:hover:not(:disabled),
+html[data-theme="dark"]
+  .shell[data-shell-variant="student-workbench"]
+  .composer-tool-button:hover:not(:disabled) {
+  background: #21303a;
+}
+
+/* ------------------------------------------------ Operations workbench v1 */
+/*
+ * Administrative surfaces share the workbench rail geometry and light token
+ * hierarchy, but keep normal document scrolling.  Student-only session slots
+ * and cockpit overflow rules intentionally remain scoped to their own variant.
+ */
+.shell[data-shell-variant="operations-workbench"] {
+  --operations-sidebar-width: 296px;
+  --operations-canvas: #f7f8fa;
+  --operations-surface: #ffffff;
+  --operations-surface-soft: #fbfcfd;
+  --operations-line: #e5e8ec;
+  --operations-line-strong: #d4d9e0;
+  --operations-ink: #17212b;
+  --operations-ink-soft: #5f6b76;
+  --operations-ink-faint: #98a2ad;
+  --operations-accent: #2477d6;
+  --operations-accent-soft: #edf5ff;
+  --topbar-height: 68px;
+  --color-primary: var(--operations-accent);
+  --color-primary-hover: #1f67bd;
+  --color-primary-active: #1b5aa5;
+  --color-primary-soft: var(--operations-accent-soft);
+  --color-primary-border: #9dbde2;
+  --color-bg: var(--operations-canvas);
+  --color-surface: var(--operations-surface);
+  --color-surface-muted: #f0f3f6;
+  --color-border: var(--operations-line);
+  --color-border-strong: var(--operations-line-strong);
+  --color-text: var(--operations-ink);
+  --color-text-secondary: var(--operations-ink-soft);
+  --color-text-muted: var(--operations-ink-faint);
+  min-height: 100dvh;
+  background: var(--operations-canvas);
+}
+
+.shell[data-shell-variant="operations-workbench"] .sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: var(--z-drawer);
+  width: var(--operations-sidebar-width);
+  overflow-y: auto;
+  background: var(--operations-surface-soft);
+  border-color: var(--operations-line);
+  transition: width 180ms var(--ease-out);
+}
+
+.shell[data-shell-variant="operations-workbench"] .main {
+  min-height: 100dvh;
+  margin-left: var(--operations-sidebar-width);
+  background: var(--operations-canvas);
+  transition: margin-left 180ms var(--ease-out);
+}
+
+.shell.operations-workbench-sidebar-collapsed .sidebar,
+.shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"] .sidebar {
+  width: 68px;
+}
+
+.shell.operations-workbench-sidebar-collapsed .main,
+.shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"] .main {
+  margin-left: 68px;
+}
+
+.shell[data-shell-variant="operations-workbench"] .operations-workbench-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 68px;
+  padding: 0 18px 0 20px;
+}
+
+.shell[data-shell-variant="operations-workbench"] .operations-workbench-brand {
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  gap: 10px;
+  color: var(--operations-ink);
+  text-decoration: none;
+}
+
+.shell[data-shell-variant="operations-workbench"] .sidebar-brand-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--operations-accent);
+  color: #fff;
+}
+
+.shell[data-shell-variant="operations-workbench"] .workbench-brand-copy {
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell[data-shell-variant="operations-workbench"] .operations-workbench-sidebar-collapse {
+  width: 34px;
+  height: 34px;
+  color: var(--operations-ink-soft);
+}
+
+.shell[data-shell-variant="operations-workbench"] .sidebar-portal {
+  display: none;
+}
+
+.shell[data-shell-variant="operations-workbench"] .sidebar-nav {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 0 12px 18px;
+}
+
+.shell[data-shell-variant="operations-workbench"] .operations-workbench-nav-label {
+  margin: 14px 10px 7px;
+  color: var(--operations-ink-faint);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.shell[data-shell-variant="operations-workbench"] .sidebar-nav a {
+  min-height: 38px;
+  padding: 0 10px;
+  gap: 11px;
+  border-radius: 8px;
+  color: var(--operations-ink-soft);
+  font-size: 14px;
+}
+
+.shell[data-shell-variant="operations-workbench"] .sidebar-nav a:hover,
+.shell[data-shell-variant="operations-workbench"] .sidebar-nav a.active {
+  background: #eef2f6;
+  color: var(--operations-ink);
+}
+
+.shell[data-shell-variant="operations-workbench"] .sidebar-nav a.active {
+  box-shadow: inset 2px 0 0 var(--operations-accent);
+  font-weight: 650;
+}
+
+.shell[data-shell-variant="operations-workbench"] .sidebar-nav a svg {
+  width: 17px;
+  height: 17px;
+  color: var(--operations-ink-faint);
+}
+
+.shell[data-shell-variant="operations-workbench"] .sidebar-nav a.active svg {
+  color: var(--operations-accent);
+}
+
+.shell[data-shell-variant="operations-workbench"] .operations-workbench-account-footer {
+  margin-top: auto;
+  padding: 16px 18px 18px;
+  border-top-color: var(--operations-line);
+}
+
+.operations-workbench-account-menu {
+  position: relative;
+}
+
+.operations-workbench-account-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--operations-ink-soft);
+  text-align: left;
+}
+
+.shell[data-shell-variant="operations-workbench"] .workbench-account-avatar {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: #dcefe9;
+  color: #126f68;
+}
+
+.shell[data-shell-variant="operations-workbench"] .workbench-account-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+}
+
+.shell[data-shell-variant="operations-workbench"] .workbench-account-name,
+.shell[data-shell-variant="operations-workbench"] .workbench-account-role {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell[data-shell-variant="operations-workbench"] .workbench-account-name {
+  color: var(--operations-ink);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.shell[data-shell-variant="operations-workbench"] .workbench-account-role {
+  margin-top: 2px;
+  color: var(--operations-ink-faint);
+  font-size: 11px;
+}
+
+.operations-workbench-account-menu .dropdown-menu {
+  top: auto;
+  right: 0;
+  bottom: calc(100% + 8px);
+  left: auto;
+}
+
+.shell[data-shell-variant="operations-workbench"] .operations-workbench-context {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.shell[data-shell-variant="operations-workbench"] .operations-workbench-main-content {
+  max-width: none;
+  margin: 0;
+  padding: 28px;
+  overflow: visible;
+  background: var(--operations-canvas);
+}
+
+/* Chunk editing needs a simultaneous source, list, and edit view on wide
+   screens. The editor moves below the source/list pair before controls become
+   too narrow, then becomes a document-style single column on compact screens. */
+.shell[data-shell-variant="operations-workbench"] .rag-chunk-editor-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-4);
+}
+
+.shell[data-shell-variant="operations-workbench"] .rag-chunk-editor-layout > .card {
+  min-width: 0;
+}
+
+@media (max-width: 1260px) {
+  .shell[data-shell-variant="operations-workbench"] .rag-chunk-editor-layout {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .shell[data-shell-variant="operations-workbench"] .rag-chunk-editor-layout > .card:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+.shell.operations-workbench-sidebar-collapsed .operations-workbench-sidebar-header,
+.shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"]
+  .operations-workbench-sidebar-header {
+  justify-content: center;
+  padding: 0;
+}
+
+.shell.operations-workbench-sidebar-collapsed .workbench-brand-copy,
+.shell.operations-workbench-sidebar-collapsed .operations-workbench-nav-label,
+.shell.operations-workbench-sidebar-collapsed .workbench-account-copy,
+.shell.operations-workbench-sidebar-collapsed
+  .operations-workbench-account-trigger
+  > svg:last-child,
+.shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"] .workbench-brand-copy,
+.shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"]
+  .operations-workbench-nav-label,
+.shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"]
+  .workbench-account-copy,
+.shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"]
+  .operations-workbench-account-trigger
+  > svg:last-child {
+  display: none;
+}
+
+.shell.operations-workbench-sidebar-collapsed .operations-workbench-sidebar-collapse,
+.shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"]
+  .operations-workbench-sidebar-collapse {
+  position: static;
+}
+
+.shell.operations-workbench-sidebar-collapsed .sidebar-nav,
+.shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"] .sidebar-nav {
+  padding: 0 12px;
+}
+
+.shell.operations-workbench-sidebar-collapsed .sidebar-nav a,
+.shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"] .sidebar-nav a {
+  justify-content: center;
+  padding: 0;
+}
+
+.shell.operations-workbench-sidebar-collapsed .sidebar-nav a span,
+.shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"] .sidebar-nav a span {
+  display: none;
+}
+
+.shell.operations-workbench-sidebar-collapsed .operations-workbench-account-footer,
+.shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"]
+  .operations-workbench-account-footer {
+  display: flex;
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.shell.operations-workbench-sidebar-collapsed .operations-workbench-account-trigger,
+.shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"]
+  .operations-workbench-account-trigger {
+  justify-content: center;
+}
+
+/* Dark mode is opt-in via data-theme; administration stays light by default. */
+html[data-theme="dark"] .shell[data-shell-variant="operations-workbench"] {
+  --operations-canvas: #11171c;
+  --operations-surface: #162027;
+  --operations-surface-soft: #131b21;
+  --operations-line: #2a3640;
+  --operations-line-strong: #3a4955;
+  --operations-ink: #edf3f7;
+  --operations-ink-soft: #b8c4cd;
+  --operations-ink-faint: #83919c;
+  --operations-accent: #65a9ef;
+  --operations-accent-soft: #173552;
+  --color-primary-hover: #8bbdf2;
+  --color-primary-active: #b1d3f7;
+  --color-primary-border: #467eae;
+  --color-surface-muted: #1d2831;
+}
+
+html[data-theme="dark"] .shell[data-shell-variant="operations-workbench"] .sidebar-nav a:hover,
+html[data-theme="dark"] .shell[data-shell-variant="operations-workbench"] .sidebar-nav a.active {
+  background: #1d2831;
+}
+
+@media (max-width: 900px) {
+  .shell[data-shell-variant="operations-workbench"] .sidebar,
+  .shell.operations-workbench-sidebar-collapsed .sidebar,
+  .shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"] .sidebar {
+    width: min(296px, 84vw);
+  }
+
+  .shell[data-shell-variant="operations-workbench"] .main,
+  .shell.operations-workbench-sidebar-collapsed .main,
+  .shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"] .main {
+    margin-left: 0;
+  }
+
+  .shell[data-shell-variant="operations-workbench"] .operations-workbench-main-content {
+    padding: 20px 16px;
+  }
+
+  /* Desktop collapse state must not hide labels when the same rail becomes a drawer. */
+  .shell.operations-workbench-sidebar-collapsed .operations-workbench-brand,
+  .shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"]
+    .operations-workbench-brand {
+    display: inline-flex;
+  }
+
+  .shell.operations-workbench-sidebar-collapsed .workbench-brand-copy,
+  .shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"]
+    .workbench-brand-copy,
+  .shell.operations-workbench-sidebar-collapsed .operations-workbench-nav-label,
+  .shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"]
+    .operations-workbench-nav-label,
+  .shell.operations-workbench-sidebar-collapsed .workbench-account-copy,
+  .shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"]
+    .workbench-account-copy,
+  .shell.operations-workbench-sidebar-collapsed
+    .operations-workbench-account-trigger
+    > svg:last-child,
+  .shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"]
+    .operations-workbench-account-trigger
+    > svg:last-child {
+    display: revert;
+  }
+
+  .shell.operations-workbench-sidebar-collapsed .sidebar-nav a,
+  .shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"] .sidebar-nav a {
+    justify-content: flex-start;
+    padding: 0 10px;
+  }
+
+  .shell.operations-workbench-sidebar-collapsed .sidebar-nav a span,
+  .shell.workbench-sidebar-collapsed[data-shell-variant="operations-workbench"]
+    .sidebar-nav
+    a
+    span {
+    display: inline;
+  }
+}
+
+@media (max-width: 560px) {
+  .shell[data-shell-variant="operations-workbench"] .operations-workbench-context {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .shell[data-shell-variant="operations-workbench"] .rag-chunk-editor-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .shell[data-shell-variant="operations-workbench"] .rag-chunk-editor-layout > .card:last-child {
+    grid-column: auto;
+  }
+}
+
+/* These session rules intentionally live in the global workbench stylesheet.
+   Student routes such as /profile need the same empty, error, delete, and
+   internal-scroll states even when CockpitPage (and its lazy CSS) is absent. */
+.shell[data-shell-variant="student-workbench"] .workbench-new-session {
+  position: relative;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px;
+  border-color: var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(26, 39, 52, 0.03);
+  font-weight: 600;
+}
+
+.shell[data-shell-variant="student-workbench"] .workbench-new-session:hover:not(:disabled) {
+  border-color: #b8c9dc;
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.shell[data-shell-variant="student-workbench"] .workbench-new-session svg {
+  color: var(--accent);
+}
+
+.shell[data-shell-variant="student-workbench"] .workbench-new-session-hint {
+  margin-left: auto;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.shell[data-shell-variant="student-workbench"] .workbench-session-list {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 0 12px;
+}
+
+.shell[data-shell-variant="student-workbench"] .workbench-session-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 10px 7px;
+  padding: 0;
+  color: var(--ink-faint);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.shell[data-shell-variant="student-workbench"] .workbench-session-count {
+  display: none;
+}
+
+.shell[data-shell-variant="student-workbench"] .workbench-session-empty,
+.shell[data-shell-variant="student-workbench"] .workbench-session-error {
+  margin: 0;
+  padding: 0 10px;
+  color: var(--ink-faint);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.shell[data-shell-variant="student-workbench"] .workbench-session-error {
+  display: grid;
+  gap: 4px;
+  color: var(--color-danger);
+}
+
+.shell[data-shell-variant="student-workbench"] .workbench-session-error .btn {
+  justify-self: start;
+  min-height: 28px;
+  padding-inline: 8px;
+}
+
+.shell[data-shell-variant="student-workbench"] .workbench-session-scroll,
+.shell[data-shell-variant="student-workbench"] .workbench-recent-list {
+  display: grid;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 0;
+  scrollbar-gutter: stable;
+}
+
+.shell[data-shell-variant="student-workbench"] .workbench-session-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border-radius: var(--radius-control);
+}
+
+.shell[data-shell-variant="student-workbench"] .workbench-session-row:hover,
+.shell[data-shell-variant="student-workbench"] .workbench-session-row.is-active,
+.shell[data-shell-variant="student-workbench"] .workbench-session-row.is-current {
+  background: #eef2f6;
+}
+
+.shell[data-shell-variant="student-workbench"] .workbench-session-main {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 2px;
+  border: 0;
+  background: transparent;
+  padding: 9px 10px;
+  color: var(--ink-soft);
+  font: inherit;
+  text-align: left;
+}
+
+.shell[data-shell-variant="student-workbench"] .workbench-session-row:hover .workbench-session-main,
+.shell[data-shell-variant="student-workbench"]
+  .workbench-session-row.is-current
+  .workbench-session-main {
+  color: var(--ink);
+}
+
+.shell[data-shell-variant="student-workbench"] .workbench-session-title,
+.shell[data-shell-variant="student-workbench"] .workbench-session-date {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell[data-shell-variant="student-workbench"] .workbench-session-title {
+  font-size: 13px;
+}
+
+.shell[data-shell-variant="student-workbench"] .workbench-session-date {
+  color: var(--ink-faint);
+  font-size: 11px;
+}
+
+.shell[data-shell-variant="student-workbench"] .workbench-session-delete {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  margin-right: 2px;
+  opacity: 0;
+}
+
+.shell[data-shell-variant="student-workbench"]
+  .workbench-session-row:hover
+  .workbench-session-delete,
+.shell[data-shell-variant="student-workbench"] .workbench-session-delete:focus-visible {
+  opacity: 1;
+}
+
+@media (max-width: 900px) {
+  /* Touch drawers have no dependable hover state, so keep the destructive
+     action visible instead of making a student discover it by keyboard only. */
+  .shell[data-shell-variant="student-workbench"] .workbench-session-delete {
+    opacity: 1;
+  }
+}
+
+/* -------------------------------------------------------------------------
+   Shared navigation revision
+
+   The shell intentionally has no page-wide top bar.  Every fixed control now
+   lives in the sidebar, while the central scroll region owns both route links
+   and the student conversation history.  This prevents nested session scroll
+   boxes and keeps the primary account actions anchored at the rail bottom. */
+.sidebar {
+  overflow: hidden;
+}
+
+.sidebar-scroll-region {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.shell-mobile-nav-toggle {
+  display: none;
+}
+
+.sidebar-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+
+.sidebar-context-main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.sidebar-context-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Every portal uses the same tangible account surface so the fixed footer is
+   visually distinct from scrollable navigation rather than transparent. */
+.sidebar-footer.workbench-account-footer {
+  flex: 0 0 auto;
+  margin-top: 0;
+  background: #f1f4f7;
+  border-top-color: var(--color-border);
+}
+
+.workbench-account-menu {
+  position: relative;
+}
+
+.workbench-account-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  padding: 0;
+  font: inherit;
+  text-align: left;
+}
+
+.workbench-account-avatar {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: #dcefe9;
+  color: #126f68;
+}
+
+.workbench-account-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+}
+
+.workbench-account-name,
+.workbench-account-role {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbench-account-name {
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.workbench-account-role {
+  margin-top: 2px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.workbench-account-menu .dropdown-menu {
+  top: auto;
+  right: 0;
+  bottom: calc(100% + 8px);
+  left: auto;
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar-has-student-workbench,
+.shell[data-shell-variant="operations-workbench"] .sidebar {
+  overflow: hidden;
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar-scroll-region,
+.shell[data-shell-variant="operations-workbench"] .sidebar-scroll-region {
+  display: flex;
+  flex-direction: column;
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar-nav,
+.shell[data-shell-variant="operations-workbench"] .sidebar-nav {
+  flex: 0 0 auto;
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-sidebar {
+  display: block;
+  min-height: auto;
+  flex: 0 0 auto;
+  overflow: visible;
+  padding: 0 0 18px;
+}
+
+.shell[data-shell-variant="student-workbench"] .workbench-session-scroll,
+.shell[data-shell-variant="student-workbench"] .workbench-recent-list {
+  max-height: none;
+  overflow: visible;
+  scrollbar-gutter: auto;
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-account-footer {
+  background: #edf1f5;
+  border-top-color: var(--line);
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-context-label {
+  flex: 0 0 auto;
+  color: var(--ink-faint);
+  font-size: 12px;
+}
+
+.shell[data-shell-variant="student-workbench"] .student-workbench-scenario {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.shell[data-shell-variant="student-workbench"] .sidebar-context-actions .icon-btn {
+  width: 32px;
+  height: 32px;
+}
+
+.shell[data-shell-variant="operations-workbench"] .operations-workbench-account-footer {
+  background: #f1f4f7;
+}
+
+.shell[data-shell-variant="student-workbench"] .main-content.student-workbench-main-content {
+  display: block;
+  overflow-y: auto;
+}
+
+@media (max-width: 900px) {
+  .shell-mobile-nav-toggle {
+    display: inline-grid;
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: calc(var(--z-drawer) + 1);
+    width: 36px;
+    height: 36px;
+    place-items: center;
+    border-color: var(--color-border);
+    background: var(--color-surface);
+    box-shadow: 0 4px 14px rgba(23, 33, 43, 0.12);
+  }
+
+  .main-content,
+  .shell[data-shell-variant="student-workbench"] .main-content,
+  .shell[data-shell-variant="operations-workbench"] .operations-workbench-main-content {
+    padding-top: 68px;
+  }
+
+  .shell.student-workbench-sidebar-collapsed .student-workbench-sidebar-top,
+  .shell.student-workbench-sidebar-collapsed .student-workbench-sidebar,
+  .shell.student-workbench-sidebar-collapsed .workbench-brand-copy,
+  .shell.student-workbench-sidebar-collapsed .workbench-account-copy,
+  .shell.student-workbench-sidebar-collapsed .student-workbench-account-trigger > svg:last-child {
+    display: revert;
+  }
+
+  .shell.student-workbench-sidebar-collapsed .sidebar-nav a {
+    justify-content: flex-start;
+    padding: 0 10px;
+  }
+
+  .shell.student-workbench-sidebar-collapsed .sidebar-nav a span {
+    display: inline;
+  }
+}
+
+html[data-theme="dark"] .sidebar-footer.workbench-account-footer,
+html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] .student-workbench-account-footer,
+html[data-theme="dark"] .shell[data-shell-variant="operations-workbench"] .operations-workbench-account-footer {
+  background: #182129;
+}

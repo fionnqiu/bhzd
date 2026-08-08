@@ -30,7 +30,7 @@ from ..agent.confirmation_state import (
 from ..agent.orchestrator import continue_run, spawn
 from ..config import get_config
 from ..db import utc_now_iso
-from ..deps import CurrentUser, csrf_protect
+from ..deps import CurrentUser, csrf_protect, require_student_portal_user
 from ..errors import ApiError
 from ..tools import registry
 from ..tools.registry import ToolContext
@@ -38,7 +38,10 @@ from .runs import get_agent_db
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/confirmations", tags=["agent"])
+# Confirmation actions resume learner-cockpit runs, so they share its role boundary.
+router = APIRouter(
+    prefix="/api/confirmations", tags=["agent"], dependencies=[Depends(require_student_portal_user)]
+)
 
 _APPLY_FAILED_NOTICE = "确认的操作执行失败，请稍后重试"
 _CANCELLED_NOTICE = "已取消，未做任何更改。"
@@ -157,7 +160,13 @@ def _persist_apply_failure(
                 "status": "failed",
                 "duration_ms": 0,
                 "is_write": 1,
-                "result": {"error": _APPLY_FAILED_NOTICE},
+                "execution_kind": agent_events.execution_kind(confirmation["action_type"]),
+                "output_summary": agent_events.summarize_tool_result(
+                    {"error": _APPLY_FAILED_NOTICE}, status="failed"
+                ),
+                "result": agent_events.public_tool_result(
+                    confirmation["action_type"], {"error": _APPLY_FAILED_NOTICE}
+                ),
             },
             commit=False,
         )
@@ -289,7 +298,11 @@ async def confirm(
                 "status": "completed",
                 "duration_ms": duration_ms,
                 "is_write": 1,
-                "result": result,
+                "execution_kind": agent_events.execution_kind(row["action_type"]),
+                "output_summary": agent_events.summarize_tool_result(
+                    result, status="completed"
+                ),
+                "result": agent_events.public_tool_result(row["action_type"], result),
             },
             commit=False,
         )
@@ -302,7 +315,13 @@ async def confirm(
         raise ApiError(500, "INTERNAL_ERROR", _APPLY_FAILED_NOTICE)
 
     spawn(continue_run(run["id"], get_config().resolved_database_path))
-    return {"status": "confirmed", "result": result}
+    # The private tool result is already persisted for the resumed planner.
+    # Return the same bounded projection used by the SSE event so a caller
+    # cannot bypass the activity-feed redaction boundary through this endpoint.
+    return {
+        "status": "confirmed",
+        "result": agent_events.public_tool_result(row["action_type"], result),
+    }
 
 
 @router.post("/{confirmation_id}/expire")

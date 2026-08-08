@@ -8,7 +8,7 @@ import uuid
 
 import pytest
 
-from bhzd_py.agent import composer, events, intents, orchestrator
+from bhzd_py.agent import composer, events, intents, orchestrator, prompts
 from bhzd_py.tools.registry import ToolContext
 
 from _agent_helpers import (
@@ -41,6 +41,17 @@ def _offline_composer(monkeypatch):
 
 def _event_types(rows):
     return [r["event_type"] for r in rows]
+
+
+def _visible_answer_progress(rows):
+    """Return only progress rows that the student timeline may render."""
+
+    return [
+        row["payload"]
+        for row in rows
+        if row["event_type"] == events.RUN_PROGRESS
+        and row["payload"].get("activity_id")
+    ]
 
 
 def _insert_follow_up_run(db, user_id: str, conversation_id: str, input_text: str) -> str:
@@ -82,6 +93,36 @@ def test_emit_seq_monotonic(db, user_id):
     assert len(events.list_events(db, run_id, after_seq=1)) == 2
 
 
+def test_tool_activity_projection_classifies_and_redacts_payloads():
+    """Learner events expose useful counts without exposing tool values."""
+
+    assert events.execution_kind("shell.run") == "command"
+    assert events.execution_kind("file.read") == "file"
+    assert events.execution_kind("course.search") == "tool"
+    assert "参数 2 项" in events.summarize_tool_input(
+        {"query": "private", "token": "secret"}
+    )
+    assert events.summarize_tool_result(
+        {"hits": [1, 2]}, status="completed"
+    ) == "执行完成，返回 2 个检索结果"
+    assert events.summarize_tool_result(
+        {}, status="awaiting_confirmation"
+    ) == "等待确认，尚未执行写入"
+    assert events.public_tool_result("rag.search", {"hits": ["private excerpt"]}) is None
+    assert events.public_tool_result("course.search", {"label": "课程"}) == {
+        "label": "课程"
+    }
+
+    projected = events.redact_tool_payload(
+        {"token": "top-secret", "nested": {"password": "pw"}, "label": "safe"}
+    )
+    assert projected == {
+        "token": "[已隐藏]",
+        "nested": {"password": "[已隐藏]"},
+        "label": "safe",
+    }
+
+
 # ---------------------------------------------------------------------------
 # intents.py
 # ---------------------------------------------------------------------------
@@ -108,6 +149,17 @@ def test_intent_rag_question():
     assert intent.kind == intents.KIND_RAG_QUESTION
     assert intent.data_type == "text"
     assert intent.missing == []
+
+
+@pytest.mark.parametrize("text", ["你是什么模型？", "你是谁？", "能做什么？"])
+def test_intent_agent_identity_uses_direct_chat_kind(text):
+    intent = intents.detect(text)
+    assert intent.kind == intents.KIND_AGENT_IDENTITY
+    assert intent.missing == []
+
+
+def test_model_topic_without_agent_address_stays_rag_question():
+    assert intents.detect("什么是模型？").kind == intents.KIND_RAG_QUESTION
 
 
 def test_intent_scenario_synonyms():
@@ -166,6 +218,39 @@ def test_template_plan_summary_lists_steps():
     assert "召回相关资料" in text and "命中 2 条" in text
 
 
+def test_compact_summary_keeps_conclusions_but_drops_plan_markers():
+    text = "✓ 召回资料\n命中 4 条相关内容。\n✓ 生成任务\n已生成学习任务。\n✓ 完成\n请继续练习。"
+
+    compact = composer.compact_summary(text)
+
+    assert compact == "命中 4 条相关内容。\n已生成学习任务。\n请继续练习。"
+    assert len(compact.splitlines()) == 3
+
+
+def test_template_compact_plan_summary_keeps_first_and_final_results():
+    plan = {
+        "steps": [
+            {"id": "s1", "title": "召回资料", "status": "completed", "tool": "rag.search"},
+            {"id": "s2", "title": "定位知识点", "status": "completed", "tool": "graph.reason"},
+            {"id": "s3", "title": "生成任务", "status": "completed", "tool": "task.preview"},
+            {"id": "s4", "title": "完成", "status": "completed"},
+        ]
+    }
+    results = {
+        "s1": {"hits": [{"id": "h1"}, {"id": "h2"}]},
+        "s2": {"nodes": [{"id": "n1"}]},
+        "s3": {"card": {"title": "NER 练习任务"}},
+    }
+
+    compact = composer.template_compact_plan_summary(plan, results)
+
+    assert compact.splitlines() == [
+        "资料检索完成：找到 2 条相关内容。",
+        "知识图谱定位完成：找到 1 个相关节点。",
+        "完成已完成。",
+    ]
+
+
 # ---------------------------------------------------------------------------
 # 编排器：完整运行 / 追问 / 确认门
 # ---------------------------------------------------------------------------
@@ -190,6 +275,27 @@ def test_run_clarifies_and_completes(db, tmp_db_path, user_id, monkeypatch):
     assert message["content"] == "你要学习的是文本、图像、语音还是视频标注？"
     status = db.execute("SELECT status FROM agent_runs WHERE id = ?", (run_id,)).fetchone()
     assert status["status"] == "completed"
+    visible = _visible_answer_progress(rows)
+    # Clarifications do not create an execution plan until the learner supplies
+    # the missing slot, and do not disclose a model-thinking activity.
+    assert all(
+        row["payload"]["phase"] != "understanding"
+        for row in rows
+        if row["event_type"] == events.RUN_PROGRESS
+    )
+    assert [(item["phase"], item["status"]) for item in visible] == [
+        ("synthesis", "running"),
+        ("synthesis", "completed"),
+    ]
+    assert {item["activity_id"] for item in visible} == {
+        f"answer:{run_id}",
+    }
+    assert all(
+        "activity_id" not in row["payload"]
+        for row in rows
+        if row["event_type"] == events.RUN_PROGRESS
+        and row["payload"]["phase"] in {"tool", "retrieval", "system"}
+    )
     # message.delta 单帧 ≤40 字符（契约）
     for row in rows:
         if row["event_type"] == events.MESSAGE_DELTA:
@@ -458,6 +564,11 @@ def test_run_rag_question_full_flow(db, tmp_db_path, user_id, monkeypatch):
     assert idx(events.CITATION_ATTACHED) < idx(events.RUN_COMPLETED)
     assert types[-1] == events.RUN_COMPLETED
 
+    plan_event = next(row for row in rows if row["event_type"] == events.PLAN_UPDATED)
+    assert [step["tool"] for step in plan_event["payload"]["steps"]] == [
+        "rag.search", "rag.answer"
+    ]
+
     tool_events = [r for r in rows if r["event_type"] == events.TOOL_CALL_REQUESTED]
     assert [e["payload"]["tool"] for e in tool_events] == ["rag.search", "rag.answer"]
 
@@ -468,6 +579,178 @@ def test_run_rag_question_full_flow(db, tmp_db_path, user_id, monkeypatch):
     assert "这是基于资料的模板回答。" in message["content"]
     status = db.execute("SELECT status FROM agent_runs WHERE id = ?", (run_id,)).fetchone()
     assert status["status"] == "completed"
+    visible = _visible_answer_progress(rows)
+    # Grounded RAG exposes only its concrete plan and answer lifecycles;
+    # retrieval/tool frames remain operational metadata without activity IDs.
+    assert all(
+        row["payload"]["phase"] != "understanding"
+        for row in rows
+        if row["event_type"] == events.RUN_PROGRESS
+    )
+    assert [(item["phase"], item["status"]) for item in visible] == [
+        ("planning", "running"),
+        ("planning", "completed"),
+        ("synthesis", "running"),
+        ("synthesis", "completed"),
+    ]
+    assert {item["activity_id"] for item in visible} == {
+        f"planning:{run_id}",
+        f"answer:{run_id}",
+    }
+    assert all(
+        "activity_id" not in row["payload"]
+        for row in rows
+        if row["event_type"] == events.RUN_PROGRESS
+        and row["payload"]["phase"] in {"tool", "retrieval", "system"}
+    )
+
+
+def _make_rag_insufficient(stubs):
+    """Make the standard RAG test tools report a successful but unusable recall."""
+
+    stubs["rag.search"].handler = lambda _ctx: {
+        "hits": [], "hit_count": 0, "below_threshold": True,
+    }
+    stubs["rag.answer"].handler = lambda _ctx: {
+        "answer": "知识库暂无可靠依据，无法给出专业结论",
+        "citations": [],
+        "refused": True,
+    }
+
+
+def test_rag_insufficient_uses_general_knowledge_provider(
+    db, tmp_db_path, user_id, monkeypatch
+):
+    stubs = install_stub_tools(monkeypatch)
+    _make_rag_insufficient(stubs)
+
+    class _FakeProviders:
+        calls: list[str] = []
+
+        @classmethod
+        async def stream_deltas(cls, messages, *, role):
+            cls.calls.append(role)
+            assert messages[0]["content"] == prompts.GENERAL_KNOWLEDGE_SYSTEM
+            assert "工具返回的原始结果" not in messages[-1]["content"]
+            assert "NER 标注的规范是什么？" in messages[-1]["content"]
+            yield {"delta": "NER 标注通常需要先明确实体边界和标签定义。"}
+            yield {
+                "done": True,
+                "model": "general-model",
+                "provider_id": "general-provider",
+                "usage": {"prompt_tokens": 8, "completion_tokens": 12},
+            }
+
+    monkeypatch.setattr(composer, "_providers", lambda: _FakeProviders)
+    run_id, conv_id = insert_run(db, user_id, "NER 标注的规范是什么？")
+    asyncio.run(orchestrator.execute_run(run_id, tmp_db_path))
+
+    message = db.execute(
+        "SELECT content FROM messages WHERE conversation_id = ? AND role = 'assistant'",
+        (conv_id,),
+    ).fetchone()
+    assert message["content"] == "NER 标注通常需要先明确实体边界和标签定义。"
+    run = db.execute(
+        "SELECT status, provider_id FROM agent_runs WHERE id = ?", (run_id,)
+    ).fetchone()
+    assert run["status"] == "completed"
+    assert run["provider_id"] == "general-provider"
+    assert _FakeProviders.calls == ["primary"]
+    rows = fetch_events(tmp_db_path, run_id)
+    assert events.CITATION_ATTACHED not in _event_types(rows)
+    visible = _visible_answer_progress(rows)
+    # The low-evidence fallback may use model knowledge, but it exposes only
+    # plan/answer lifecycles rather than thinking or RAG internals.
+    assert all(
+        row["payload"]["phase"] != "understanding"
+        for row in rows
+        if row["event_type"] == events.RUN_PROGRESS
+    )
+    assert [(item["phase"], item["status"]) for item in visible] == [
+        ("planning", "running"),
+        ("planning", "completed"),
+        ("synthesis", "running"),
+        ("synthesis", "completed"),
+    ]
+    assert {item["activity_id"] for item in visible} == {
+        f"planning:{run_id}",
+        f"answer:{run_id}",
+    }
+    assert all(
+        "activity_id" not in row["payload"]
+        for row in rows
+        if row["event_type"] == events.RUN_PROGRESS
+        and row["payload"]["phase"] in {"tool", "retrieval", "system"}
+    )
+
+
+def test_rag_insufficient_uses_fallback_general_knowledge_provider(
+    db, tmp_db_path, user_id, monkeypatch
+):
+    """A silent primary provider must let the configured fallback answer."""
+
+    stubs = install_stub_tools(monkeypatch)
+    _make_rag_insufficient(stubs)
+
+    class _FallbackProviders:
+        calls: list[str] = []
+
+        @classmethod
+        async def stream_deltas(cls, messages, *, role):
+            cls.calls.append(role)
+            assert messages[0]["content"] == prompts.GENERAL_KNOWLEDGE_SYSTEM
+            if role == "primary":
+                return
+            yield {"delta": "NER 标注要先统一实体类别与边界规则。"}
+
+    monkeypatch.setattr(composer, "_providers", lambda: _FallbackProviders)
+    run_id, conv_id = insert_run(db, user_id, "NER 标注的规范是什么？")
+    asyncio.run(orchestrator.execute_run(run_id, tmp_db_path))
+
+    message = db.execute(
+        "SELECT content FROM messages WHERE conversation_id = ? AND role = 'assistant'",
+        (conv_id,),
+    ).fetchone()
+    assert message["content"] == "NER 标注要先统一实体类别与边界规则。"
+    assert _FallbackProviders.calls == ["primary", "fallback"]
+    assert events.CITATION_ATTACHED not in _event_types(fetch_events(tmp_db_path, run_id))
+
+
+def test_rag_insufficient_reports_model_unavailable_when_providers_do_not_respond(
+    db, tmp_db_path, user_id, monkeypatch
+):
+    stubs = install_stub_tools(monkeypatch)
+    _make_rag_insufficient(stubs)
+
+    class _UnavailableProviders:
+        stream_roles: list[str] = []
+        complete_roles: list[str] = []
+
+        @classmethod
+        async def stream_deltas(cls, _messages, *, role):
+            cls.stream_roles.append(role)
+            if False:
+                yield {}
+
+        @classmethod
+        async def complete(cls, _messages, *, role):
+            cls.complete_roles.append(role)
+            return None
+
+    monkeypatch.setattr(composer, "_providers", lambda: _UnavailableProviders)
+    run_id, conv_id = insert_run(db, user_id, "NER 标注的规范是什么？")
+    asyncio.run(orchestrator.execute_run(run_id, tmp_db_path))
+
+    message = db.execute(
+        "SELECT content FROM messages WHERE conversation_id = ? AND role = 'assistant'",
+        (conv_id,),
+    ).fetchone()
+    assert message["content"] == prompts.GENERAL_KNOWLEDGE_UNAVAILABLE
+    assert "知识库" not in message["content"]
+    assert "资料不足" not in message["content"]
+    assert _UnavailableProviders.stream_roles == ["primary", "fallback"]
+    assert _UnavailableProviders.complete_roles == ["primary", "fallback"]
+    assert events.CITATION_ATTACHED not in _event_types(fetch_events(tmp_db_path, run_id))
 
 
 def test_run_stops_at_write_gate(db, tmp_db_path, user_id, monkeypatch):

@@ -7,6 +7,7 @@ seed 链路（seed 会牵到并行开发中的 rag/ 模块）；加密密钥每�
 
 from __future__ import annotations
 
+import logging
 import secrets
 import uuid
 from base64 import b64encode
@@ -158,6 +159,360 @@ def test_provider_create_rejects_forbidden_base_url(admin_client):
     assert resp.status_code == 400
 
 
+def test_transient_model_discovery_returns_models_without_persisting_key_or_audit(
+    admin_client, monkeypatch
+):
+    """The new-provider selector may use a key once but must not save configuration state."""
+    captured: dict[str, object] = {}
+
+    async def fake_discover(protocol, base_url, api_key, extra=None):
+        captured.update(
+            {
+                "protocol": protocol,
+                "base_url": base_url,
+                "api_key": api_key,
+                "extra": extra,
+            }
+        )
+        return {"supported": True, "models": [{"id": "demo-model", "label": "Demo model"}]}
+
+    monkeypatch.setattr(providers, "discover_models", fake_discover)
+    api_key = "sk-transient-discovery-key"
+    response = admin_client.post(
+        "/api/admin/providers/discover-models",
+        json={
+            "protocol": "chat_completions",
+            "base_url": "https://catalog.example.com/v1",
+            "api_key": api_key,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "supported": True,
+        "models": [{"id": "demo-model", "label": "Demo model"}],
+    }
+    assert captured == {
+        "protocol": "chat_completions",
+        "base_url": "https://catalog.example.com/v1",
+        "api_key": api_key,
+        "extra": None,
+    }
+    assert api_key not in response.text
+
+    conn = _db()
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM provider_configs").fetchone()[0] == 0
+        assert (
+            conn.execute("SELECT COUNT(*) FROM audit_logs WHERE target_type = 'provider'").fetchone()[0]
+            == 0
+        )
+    finally:
+        conn.close()
+
+
+def test_transient_provider_test_uses_current_form_without_persisting_key_or_result(
+    admin_client, monkeypatch
+):
+    """The drawer can prove an unsaved connection without creating provider state."""
+    captured: dict[str, object] = {}
+
+    async def fake_test(protocol, base_url, api_key, model, role="none", extra=None):
+        captured.update(
+            {
+                "protocol": protocol,
+                "base_url": base_url,
+                "api_key": api_key,
+                "model": model,
+                "role": role,
+                "extra": extra,
+            }
+        )
+        return {
+            "ok": True,
+            "role": role,
+            "latency_ms": 8,
+            "model": model,
+            "error": None,
+            "tested_at": "2026-08-08T00:00:00+00:00",
+        }
+
+    monkeypatch.setattr(providers, "test_transient_provider", fake_test)
+    api_key = "sk-transient-test-key"
+    response = admin_client.post(
+        "/api/admin/providers/test-connection",
+        json={
+            "protocol": "chat_completions",
+            "base_url": "https://form.example.com/v1",
+            "api_key": api_key,
+            "model": "form-model",
+            "role": "none",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["ok"] is True
+    assert captured == {
+        "protocol": "chat_completions",
+        "base_url": "https://form.example.com/v1",
+        "api_key": api_key,
+        "model": "form-model",
+        "role": "none",
+        "extra": None,
+    }
+    assert api_key not in response.text
+    conn = _db()
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM provider_configs").fetchone()[0] == 0
+        assert (
+            conn.execute("SELECT COUNT(*) FROM audit_logs WHERE target_type = 'provider'").fetchone()[0]
+            == 0
+        )
+    finally:
+        conn.close()
+
+
+def test_transient_provider_test_rejects_unsafe_form_before_adapter(admin_client, monkeypatch):
+    called = False
+
+    async def fake_test(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        return {"ok": True}
+
+    monkeypatch.setattr(providers, "test_transient_provider", fake_test)
+    response = admin_client.post(
+        "/api/admin/providers/test-connection",
+        json={
+            "protocol": "chat_completions",
+            "base_url": "http://127.0.0.1:9000/v1",
+            "api_key": "sk-form-key",
+            "model": "form-model",
+        },
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_BASE_URL"
+    assert called is False
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "http://catalog.example.com/v1",
+        "https://username:password@catalog.example.com/v1",
+        "https://@catalog.example.com/v1",
+        "https://127.0.0.1/v1",
+    ],
+)
+def test_transient_model_discovery_rejects_unsafe_urls_before_adapter(
+    admin_client, monkeypatch, base_url
+):
+    """Discovery is stricter than saved runtime config because it immediately sends a key."""
+    called = False
+
+    async def fake_discover(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        return {"supported": True, "models": []}
+
+    monkeypatch.setattr(providers, "discover_models", fake_discover)
+    response = admin_client.post(
+        "/api/admin/providers/discover-models",
+        json={
+            "protocol": "chat_completions",
+            "base_url": base_url,
+            "api_key": "sk-discovery-key",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_BASE_URL"
+    assert called is False
+
+
+@pytest.mark.parametrize("api_key", ["k" * 501, {"secret": "sk-object-secret"}])
+def test_transient_model_discovery_rejects_an_invalid_key_without_echoing_it(
+    admin_client, monkeypatch, caplog, api_key
+):
+    """Route validation rejects malformed keys before the shared validation logger sees them."""
+    called = False
+
+    async def fake_discover(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        return {"supported": True, "models": []}
+
+    monkeypatch.setattr(providers, "discover_models", fake_discover)
+    caplog.set_level(logging.INFO, logger="bhzd_py.errors")
+    response = admin_client.post(
+        "/api/admin/providers/discover-models",
+        json={
+            "protocol": "chat_completions",
+            "base_url": "https://catalog.example.com/v1",
+            "api_key": api_key,
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_API_KEY"
+    assert "sk-object-secret" not in response.text
+    assert "sk-object-secret" not in caplog.text
+    assert called is False
+
+
+def test_saved_model_discovery_uses_only_the_stored_configuration(admin_client, monkeypatch):
+    """Editing users cannot substitute a URL or key when discovering a saved provider's models."""
+    created = _create_provider(
+        admin_client,
+        base_url="https://stored.example.com/v1",
+        api_key="sk-stored-discovery-key",
+        extra={"headers": {"X-Tenant": "school-a"}},
+    ).json()
+    captured: dict[str, object] = {}
+
+    async def fake_discover(protocol, base_url, api_key, extra=None):
+        captured.update(
+            {
+                "protocol": protocol,
+                "base_url": base_url,
+                "api_key": api_key,
+                "extra": extra,
+            }
+        )
+        return {"supported": True, "models": [{"id": "stored-model", "label": "Stored"}]}
+
+    monkeypatch.setattr(providers, "discover_models", fake_discover)
+    response = admin_client.post(f"/api/admin/providers/{created['id']}/discover-models")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["models"] == [{"id": "stored-model", "label": "Stored"}]
+    assert captured == {
+        "protocol": "chat_completions",
+        "base_url": "https://stored.example.com/v1",
+        "api_key": "sk-stored-discovery-key",
+        "extra": {"headers": {"X-Tenant": "school-a"}},
+    }
+    assert "sk-stored-discovery-key" not in response.text
+
+    response = admin_client.post(
+        f"/api/admin/providers/{created['id']}/discover-models",
+        json={"base_url": "https://attacker.example/v1", "api_key": "attacker-key"},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "MODEL_DISCOVERY_BODY_FORBIDDEN"
+    assert captured["base_url"] == "https://stored.example.com/v1"
+    assert captured["api_key"] == "sk-stored-discovery-key"
+
+    conn = _db()
+    try:
+        audit_rows = conn.execute(
+            "SELECT action, before_json, after_json FROM audit_logs WHERE target_id = ?",
+            (created["id"],),
+        ).fetchall()
+    finally:
+        conn.close()
+    assert [row["action"] for row in audit_rows] == ["provider.create"]
+    audit_text = "".join(f"{row['before_json']}{row['after_json']}" for row in audit_rows)
+    assert "sk-stored-discovery-key" not in audit_text
+    assert "attacker-key" not in audit_text
+
+
+def test_saved_model_discovery_revalidates_legacy_transport_before_decrypting(
+    admin_client, monkeypatch
+):
+    """A row allowed by legacy CRUD rules cannot send its key over plain HTTP discovery."""
+    created = _create_provider(
+        admin_client,
+        base_url="http://legacy-public-gateway.example.com/v1",
+        api_key="sk-legacy-key",
+    ).json()
+    called = False
+
+    async def fake_discover(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        return {"supported": True, "models": []}
+
+    monkeypatch.setattr(providers, "discover_models", fake_discover)
+    response = admin_client.post(f"/api/admin/providers/{created['id']}/discover-models")
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_BASE_URL"
+    assert called is False
+
+
+def test_model_discovery_maps_provider_errors_without_exposing_upstream_text(admin_client, monkeypatch):
+    """ProviderError content is internal-only even when a future adapter returns unsafe text."""
+    raw_failure = "credential=sk-secret url=https://catalog.example.com/private"
+
+    async def fake_discover(*_args, **_kwargs):
+        raise providers.ProviderError(raw_failure)
+
+    monkeypatch.setattr(providers, "discover_models", fake_discover)
+    response = admin_client.post(
+        "/api/admin/providers/discover-models",
+        json={
+            "protocol": "chat_completions",
+            "base_url": "https://catalog.example.com/v1",
+            "api_key": "sk-secret",
+        },
+    )
+
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "MODEL_DISCOVERY_FAILED"
+    assert "sk-secret" not in response.text
+    assert "catalog.example.com/private" not in response.text
+    assert raw_failure not in response.text
+
+
+def test_model_discovery_xunfei_reports_manual_entry_without_network(admin_client):
+    """The WebSocket protocols expose an explicit unsupported state instead of a guessed catalog."""
+    response = admin_client.post(
+        "/api/admin/providers/discover-models",
+        json={
+            "protocol": "xunfei_spark",
+            "base_url": "https://spark.example.com",
+            "api_key": "xf-key:xf-secret",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"supported": False, "models": []}
+
+
+def test_credential_bearing_provider_helpers_require_csrf(app_and_admin):
+    """Discovery and transient testing are mutations for CSRF purposes."""
+    _, client, _ = app_and_admin
+    created = _create_provider(client).json()
+    del client.headers["x-csrf-token"]
+
+    transient = client.post(
+        "/api/admin/providers/discover-models",
+        json={
+            "protocol": "chat_completions",
+            "base_url": "https://catalog.example.com/v1",
+            "api_key": "sk-key",
+        },
+    )
+    transient_test = client.post(
+        "/api/admin/providers/test-connection",
+        json={
+            "protocol": "chat_completions",
+            "base_url": "https://catalog.example.com/v1",
+            "api_key": "sk-key",
+            "model": "demo-model",
+        },
+    )
+    saved = client.post(f"/api/admin/providers/{created['id']}/discover-models")
+
+    assert transient.status_code == 403
+    assert transient.json()["error"]["code"] == "CSRF_TOKEN_INVALID"
+    assert transient_test.status_code == 403
+    assert transient_test.json()["error"]["code"] == "CSRF_TOKEN_INVALID"
+    assert saved.status_code == 403
+    assert saved.json()["error"]["code"] == "CSRF_TOKEN_INVALID"
+
+
 def test_provider_crud_and_key_never_echoed(admin_client):
     resp = _create_provider(admin_client)
     assert resp.status_code == 201, resp.text
@@ -180,6 +535,9 @@ def test_provider_crud_and_key_never_echoed(admin_client):
     assert resp.status_code == 200
     assert resp.json()["name"] == "新名字"
     assert resp.json()["timeout_seconds"] == 15
+
+    # 管理端流式探测已被移除，旧接口不得继续触发供应商调用。
+    assert admin_client.post(f"/api/admin/providers/{created['id']}/stream-test").status_code == 404
 
     resp = admin_client.delete(f"/api/admin/providers/{created['id']}")
     assert resp.status_code == 200
@@ -246,26 +604,30 @@ def test_provider_test_endpoint_records_last_test(admin_client, monkeypatch):
     assert listed["last_test"]["role"] == "primary"
 
 
-def test_provider_test_requires_enabled_assigned_role(admin_client, monkeypatch):
-    """A disabled or unassigned credential must not trigger an outbound test."""
-    called = False
+def test_provider_test_allows_enabled_unassigned_role_and_rejects_disabled(admin_client, monkeypatch):
+    """An enabled unassigned config delegates capability choice to the provider adapter."""
+    calls: list[tuple[str, str]] = []
 
-    async def fake_test(_row):
-        nonlocal called
-        called = True
-        return {"ok": True}
+    async def fake_test(row):
+        # Preserve the received role so this route test proves `none` reaches
+        # the adapter, while the adapter owns the neutral chat probe choice.
+        calls.append((str(row["id"]), str(row["role"])))
+        return {"ok": True, "role": row["role"]}
 
     monkeypatch.setattr(providers, "test_provider", fake_test)
     unassigned = _create_provider(admin_client).json()
     response = admin_client.post(f"/api/admin/providers/{unassigned['id']}/test")
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "PROVIDER_NOT_TESTABLE"
+    assert response.status_code == 200, response.text
+    assert response.json()["ok"] is True
+    assert response.json()["role"] == "none"
+    assert calls == [(unassigned["id"], "none")]
 
     disabled = _create_provider(admin_client, name="disabled", role="primary", enabled=False).json()
     response = admin_client.post(f"/api/admin/providers/{disabled['id']}/test")
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "PROVIDER_NOT_TESTABLE"
-    assert called is False
+    # Disabling a provider remains a hard outbound-request boundary.
+    assert calls == [(unassigned["id"], "none")]
 
 
 def test_admin_mutations_require_csrf(app_and_admin):

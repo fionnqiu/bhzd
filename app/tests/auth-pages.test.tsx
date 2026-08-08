@@ -59,6 +59,7 @@ function renderLogin() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<div>指挥舱占位</div>} />
+          <Route path="/teacher" element={<div>教师端占位</div>} />
         </Routes>
       </MemoryRouter>
     </AuthProvider>,
@@ -117,6 +118,32 @@ describe("LoginPage", () => {
     });
     // 登录成功 → 守卫来源缺省回 /
     expect(await screen.findByText("指挥舱占位")).toBeInTheDocument();
+  });
+
+  it("教师登录时跳转教师端而不是学生端", async () => {
+    mockedPost.mockResolvedValue({
+      user: {
+        id: "t1",
+        email: "teacher@example.com",
+        name: "教师",
+        role: "teacher",
+        status: "active",
+        email_verified: true,
+      },
+      csrf_token: "tok",
+    });
+    renderLogin();
+
+    fireEvent.change(await screen.findByPlaceholderText("you@example.com"), {
+      target: { value: "teacher@example.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("请输入密码"), {
+      target: { value: "Passw0rd1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+
+    expect(await screen.findByText("教师端占位")).toBeInTheDocument();
+    expect(screen.queryByText("指挥舱占位")).not.toBeInTheDocument();
   });
 
   it("登录失败展示后端中文错误", async () => {

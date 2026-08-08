@@ -1,0 +1,2181 @@
+/**
+ * 指挥舱页级样式（F1 自有文件，不改 F0 的 index.css）。
+ *
+ * 布局（方案 A 三栏精修 + 视口固定高度，docs/dev/cockpit-layout-options.html）：
+ * 左栏 200px / 中栏自适应（上限 920px 居中）/ 右栏 250px；
+ * 整体固定为视口高度（页面不滚动），三栏内容各自在栏内滚动，
+ * 中栏滚动区与输入区分离，避免输入区覆盖最新消息；左右栏均可一键折叠为 48px 竖条。
+ * ≤1200px 右栏落到中栏下方并回落为自然流，≤900px 单列（NF17 响应式）。
+ * 颜色/间距/圆角全部复用 index.css 的设计变量，保证与全站一致。
+ */
+
+.cockpit {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr) 250px;
+  gap: var(--space-4);
+  /* 应用式满屏框架（用户 2026-08-01 要求）：高度 = 视口 - 顶栏 - 主区上下留白，
+     页面本身不再滚动；三栏内容各自在栏内滚动，输入区独立于中栏滚动区。
+     注意 ≤1200px 会回落为自然流（见响应式段） */
+  height: calc(100vh - var(--topbar-height) - 2 * var(--space-6));
+  align-items: stretch;
+  overflow: hidden;
+}
+
+/* 折叠态：一栏 48px 竖条（内容由 RailCollapsedStrip 渲染，原区块隐藏） */
+.cockpit.rail-left-collapsed {
+  grid-template-columns: 48px minmax(0, 1fr) 250px;
+}
+
+.cockpit.rail-right-collapsed {
+  grid-template-columns: 200px minmax(0, 1fr) 48px;
+}
+
+.cockpit.rail-left-collapsed.rail-right-collapsed {
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+}
+
+.cockpit-center {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: 0;
+  /* 方案 A：对话区限宽居中，长文本行不超过舒适阅读宽度 */
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;
+  /* 中栏不能因内容膨胀突破固定视口；子级滚动层承载内容，输入区保持为其兄弟节点。 */
+  height: 100%;
+  overflow: hidden;
+}
+
+.cockpit-content-scroll {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: var(--space-1);
+  scrollbar-gutter: stable;
+  /* This is the sole desktop transcript scroller. A reserved, high-contrast
+     track makes long conversations discoverable without moving the composer. */
+  overscroll-behavior: contain;
+  scrollbar-color: var(--color-primary-border) var(--color-surface-muted);
+  scrollbar-width: auto;
+}
+
+.cockpit-content-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.cockpit-content-scroll::-webkit-scrollbar-track {
+  background: var(--color-surface-muted);
+  border-radius: var(--radius-full);
+}
+
+.cockpit-content-scroll::-webkit-scrollbar-thumb {
+  min-height: 36px;
+  background: var(--color-primary-border);
+  border: 2px solid var(--color-surface-muted);
+  border-radius: var(--radius-full);
+}
+
+.cockpit-content-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary);
+}
+
+/* ------------------------------------------------------------- 左右栏 */
+
+.cockpit-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  /* 视口固定高度下：栏内容超出时在栏内滚动，不撑破框架 */
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+.rail-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+}
+
+.rail-section-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  margin: 0 0 var(--space-2);
+  color: var(--color-text-secondary);
+}
+
+.rail-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  margin-bottom: var(--space-2);
+}
+
+.rail-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  cursor: pointer;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.rail-item:hover {
+  background: var(--color-surface-muted);
+}
+
+.rail-item-active {
+  background: var(--color-primary-soft);
+}
+
+.rail-item-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.rail-item-main {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.rail-item-title {
+  display: block;
+  font-size: var(--font-size-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail-item-meta {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.weak-cap-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* 最近会话盒内滚动：限高盒子 + 内部滚动，会话再多也不把左栏顶长 */
+.rail-scroll-box {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-1);
+  background: var(--color-surface-muted, #f4f5f9);
+}
+
+/* ------------------------------------------------------------- 欢迎态 */
+
+.welcome {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+}
+
+.welcome-title {
+  margin: 0;
+  font-size: var(--font-size-xl);
+}
+
+.welcome-sub {
+  margin: var(--space-1) 0 var(--space-4);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.welcome-goal {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.welcome-goal .input {
+  flex: 1;
+}
+
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.quick-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    transform var(--motion-press) var(--ease-out);
+}
+
+.quick-card:hover {
+  border-color: var(--color-primary-border);
+  box-shadow: var(--shadow-sm);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .quick-card:active {
+    transform: scale(0.98);
+  }
+}
+
+.quick-card-icon {
+  color: var(--color-primary);
+}
+
+.quick-card-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.quick-card-desc {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.example-chips {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-4);
+}
+
+/* chips（快捷指令/示例问题/下一步建议共用的轻量胶囊） */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.chip:hover {
+  border-color: var(--color-primary-border);
+  color: var(--color-primary);
+}
+
+/* ------------------------------------------------------------- 对话流 */
+
+.chat-stream {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  /* 消息跟随父级内容滚动层，避免为对话流再嵌套一个滚动条。 */
+  min-height: 240px;
+}
+
+/* The execution record is a compact, evidence-first spine rather than a
+   separate status card. Its border is structural: every row is a durable plan,
+   tool, confirmation, or answer event that can be reopened after completion. */
+.agent-execution-record {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  border-left: 1px solid var(--color-border);
+  padding-left: 6px;
+  color: var(--color-text-muted);
+}
+
+.agent-activity-row-primary,
+.agent-tool-group-toggle {
+  display: flex;
+  align-items: center;
+}
+
+.agent-execution-record-completed {
+  border-left-color: var(--color-border);
+}
+
+.agent-execution-record-waiting {
+  border-left-color: var(--color-warning);
+}
+
+.agent-execution-record-failed {
+  border-left-color: var(--color-danger);
+}
+
+.agent-current-action {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0;
+  background: transparent;
+  padding: 2px 0 3px;
+  color: var(--color-text-secondary);
+  font: inherit;
+  text-align: left;
+}
+
+.agent-current-action[type="button"] {
+  cursor: pointer;
+}
+
+.agent-current-action[type="button"]:hover {
+  border-bottom-color: var(--color-text-muted);
+}
+
+.agent-current-action-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.agent-current-action-icon,
+.agent-activity-row-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+}
+
+.agent-current-action-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Keep the expanded trace visually subordinate to the answer bubble. */
+.agent-activity-row-icon svg,
+.agent-execution-plan-heading svg {
+  width: 14px;
+  height: 14px;
+}
+
+.agent-current-action-running .agent-current-action-icon svg,
+.agent-activity-row-running .agent-activity-row-icon svg {
+  animation: cockpit-spin 1s linear infinite;
+}
+
+.agent-current-action-title {
+  display: block;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The eyebrow identifies an observable record type, never hidden model intent. */
+.agent-current-action-stage {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.agent-activity-detail,
+.agent-activity-meta {
+  margin: 1px 0 0;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.agent-activity-summaries {
+  display: grid;
+  gap: 1px;
+  margin-top: 1px;
+}
+
+.agent-activity-status {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.agent-activity-status-running {
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+}
+
+.agent-activity-status-completed {
+  color: var(--color-text-muted);
+}
+
+.agent-activity-status-waiting {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.agent-activity-status-failed {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.agent-activity-summary-count {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.agent-current-action-chevron {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+}
+
+.agent-activity-expanded {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 0 7px;
+  border-left: 1px solid var(--color-border);
+  padding: 4px 0 2px 8px;
+}
+
+.agent-activity-history {
+  display: grid;
+  gap: 2px;
+}
+
+.agent-activity-history-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.agent-execution-plan {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px dashed var(--color-border);
+}
+
+.agent-execution-plan-heading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+
+.agent-execution-plan-count {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.agent-tool-group-count {
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.agent-activity-history-list {
+  display: grid;
+  gap: 2px;
+}
+
+.agent-activity-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  gap: 4px;
+  min-width: 0;
+  padding: 2px 0 2px 2px;
+}
+
+@keyframes cockpit-activity-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Only fresh, live activity rows receive this class; historical work stays still. */
+.agent-activity-row-arriving {
+  animation: cockpit-activity-arrive var(--motion-standard) var(--ease-out) both;
+}
+
+.agent-activity-row-content {
+  min-width: 0;
+}
+
+.agent-activity-row-primary {
+  flex-wrap: wrap;
+  gap: 4px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.agent-activity-stage {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.agent-activity-row-completed .agent-activity-row-icon {
+  color: var(--color-text-muted);
+}
+
+.agent-activity-row-waiting .agent-activity-row-icon {
+  color: var(--color-warning);
+}
+
+.agent-activity-row-failed .agent-activity-row-icon {
+  color: var(--color-danger);
+}
+
+.agent-tool-group {
+  border-left: 1px solid var(--color-border);
+  background: transparent;
+}
+
+.agent-tool-group-toggle {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 2px 4px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+.agent-tool-group-toggle:hover {
+  background: var(--color-surface-muted);
+}
+
+.agent-tool-group-summary {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-tool-group-details {
+  display: grid;
+  gap: 2px;
+  border-top: 1px dashed var(--color-border);
+  padding: 2px 4px;
+}
+
+.agent-tool-group-details .agent-activity-row {
+  padding: 2px 0;
+}
+
+.bubble {
+  display: flex;
+}
+
+.bubble-user {
+  justify-content: flex-end;
+}
+
+.bubble-content {
+  max-width: 78%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-base);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bubble-user .bubble-content {
+  background: var(--color-primary);
+  color: #fff;
+  border-bottom-right-radius: var(--radius-sm);
+}
+
+.bubble-assistant .bubble-content {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-bottom-left-radius: var(--radius-sm);
+}
+
+/* Assistant replies are parsed as Markdown, so their block elements need
+   deliberate compact spacing instead of inheriting the plain-text pre-wrap. */
+.bubble-markdown {
+  overflow-x: hidden;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.bubble-markdown > :first-child {
+  margin-top: 0;
+}
+
+.bubble-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.bubble-markdown p,
+.bubble-markdown ul,
+.bubble-markdown ol,
+.bubble-markdown blockquote,
+.bubble-markdown pre,
+.bubble-markdown table,
+.bubble-markdown hr {
+  margin: 0 0 var(--space-2);
+}
+
+.bubble-markdown h1,
+.bubble-markdown h2,
+.bubble-markdown h3,
+.bubble-markdown h4,
+.bubble-markdown h5,
+.bubble-markdown h6 {
+  margin: var(--space-3) 0 var(--space-1);
+  color: var(--color-text);
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.bubble-markdown h1 {
+  font-size: var(--font-size-xl);
+}
+
+.bubble-markdown h2 {
+  font-size: var(--font-size-lg);
+}
+
+.bubble-markdown h3,
+.bubble-markdown h4,
+.bubble-markdown h5,
+.bubble-markdown h6 {
+  font-size: var(--font-size-base);
+}
+
+.bubble-markdown ul,
+.bubble-markdown ol {
+  padding-left: var(--space-4);
+}
+
+.bubble-markdown li + li {
+  margin-top: 2px;
+}
+
+.bubble-markdown blockquote {
+  border-left: 3px solid var(--color-primary-border);
+  color: var(--color-text-secondary);
+  padding-left: var(--space-2);
+}
+
+.bubble-markdown a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.bubble-markdown :not(pre) > code {
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  padding: 1px 4px;
+}
+
+.bubble-markdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+  padding: var(--space-2);
+  white-space: pre;
+}
+
+.bubble-markdown pre code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--font-size-sm);
+}
+
+.bubble-markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  white-space: nowrap;
+}
+
+.bubble-markdown th,
+.bubble-markdown td {
+  border: 1px solid var(--color-border);
+  padding: 4px var(--space-2);
+  text-align: left;
+}
+
+.bubble-markdown th {
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+  font-weight: 600;
+}
+
+.bubble-markdown input[type="checkbox"] {
+  margin-right: 6px;
+}
+
+.bubble-system {
+  justify-content: center;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  background: var(--color-surface-muted);
+  border-radius: var(--radius-full);
+  padding: 2px var(--space-3);
+  align-self: center;
+}
+
+.bubble-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--color-primary);
+  animation: cockpit-blink 0.9s step-end infinite;
+}
+
+@keyframes cockpit-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ------------------------------------------------------------- 计划/轨迹 */
+
+.plan-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.plan-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.plan-step-running svg {
+  animation: cockpit-spin 1s linear infinite;
+  color: var(--color-primary);
+}
+
+.plan-step-done {
+  color: var(--color-success);
+}
+
+.plan-step-failed {
+  color: var(--color-danger);
+}
+
+.plan-step-waiting {
+  color: var(--color-warning);
+}
+
+.plan-step-pending {
+  color: var(--color-text-muted);
+}
+
+@keyframes cockpit-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.trace-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.trace-row-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.trace-tool {
+  font-size: var(--font-size-sm);
+}
+
+.trace-row-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: 2px;
+}
+
+/* ------------------------------------------------------------- 确认门 */
+
+.confirm-gate {
+  border: 2px solid var(--color-warning);
+  animation: cockpit-confirm-arrive var(--motion-standard) var(--ease-out) both;
+}
+
+@keyframes cockpit-confirm-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.confirm-preview p {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.confirm-fields {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.confirm-fields dt {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  margin-top: var(--space-2);
+}
+
+.confirm-fields dd {
+  margin: 0;
+}
+
+.confirm-steps {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+
+.mastery-change-row {
+  margin-top: var(--space-2);
+}
+
+.mastery-change-cap {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.mastery-change-bars {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.mastery-change-bars .progress {
+  flex: 1;
+}
+
+/* ------------------------------------------------------------- 嵌入卡 */
+
+.embedded-card .card-body,
+.diag-report,
+.task-card {
+  font-size: var(--font-size-sm);
+}
+
+.task-card-steps {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+}
+
+.course-list,
+.diag-errors,
+.graph-path {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+
+.course-list li,
+.diag-errors li {
+  margin-bottom: var(--space-1);
+}
+
+.scenario-hint {
+  border-left: 3px solid var(--color-primary);
+}
+
+.run-failed {
+  border-left: 3px solid var(--color-danger);
+}
+
+/* ------------------------------------------------------------- 输入区 */
+
+.composer {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  /* 输入区在滚动层外，flex 会为它预留高度，无需 sticky 覆盖消息。 */
+  flex: 0 0 auto;
+}
+
+.composer-chips {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-2);
+}
+
+.composer-row {
+  min-width: 0;
+}
+
+/* 内嵌操作栏叠在文本框底部；额外底部内边距确保输入内容始终不被按钮遮住。 */
+.composer-input-shell {
+  position: relative;
+  min-width: 0;
+}
+
+.composer-textarea {
+  display: block;
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  padding: var(--space-3) var(--space-3) calc(var(--space-3) + 44px);
+}
+
+.composer-input-actions {
+  position: absolute;
+  right: var(--space-2);
+  bottom: var(--space-2);
+  left: var(--space-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  /* 让两个按钮以外的底栏区域仍可点击并聚焦底下的 textarea。 */
+  pointer-events: none;
+}
+
+.composer-input-actions .btn {
+  pointer-events: auto;
+}
+
+.composer-upload-btn {
+  color: var(--color-text-secondary);
+}
+
+.composer-send-btn {
+  flex: none;
+}
+
+.composer-file {
+  display: none;
+}
+
+/* ------------------------------------------------------------- 折叠竖条与折叠按钮 */
+
+.rail-collapse-btn {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  margin-bottom: var(--space-2);
+}
+
+.rail-collapse-btn:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary-border);
+}
+
+/* 折叠后的 48px 竖条：只留一个展开按钮 + 竖排栏名 */
+.rail-collapsed-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+}
+
+.rail-collapsed-label {
+  writing-mode: vertical-rl;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  letter-spacing: 2px;
+  user-select: none;
+}
+
+/* 有确认门待处理时右栏竖条上的提醒圆点（折叠也不漏看，点击展开） */
+.rail-collapsed-alert {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-warning);
+  animation: cockpit-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes cockpit-pulse {
+  50% {
+    opacity: 0.35;
+    transform: scale(1.25);
+  }
+}
+
+/* ------------------------------------------------------------- 响应式 */
+
+@media (max-width: 1200px) {
+  /* 中屏：右栏落到中栏下方横排；折叠态失效（宽度已重排，竖条无意义）。
+     同时取消视口固定高度——右栏下落后内容天然比视口高，改回整页自然流 */
+  .cockpit,
+  .cockpit.rail-left-collapsed,
+  .cockpit.rail-right-collapsed,
+  .cockpit.rail-left-collapsed.rail-right-collapsed {
+    grid-template-columns: 200px minmax(0, 1fr);
+    height: auto;
+    overflow: visible;
+    align-items: start;
+  }
+
+  .cockpit-rail {
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  .cockpit-center {
+    height: auto;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .cockpit-content-scroll {
+    flex: none;
+    min-height: auto;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .cockpit-rail-right {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: var(--space-3);
+  }
+}
+
+@media (max-width: 900px) {
+  .cockpit,
+  .cockpit.rail-left-collapsed,
+  .cockpit.rail-right-collapsed,
+  .cockpit.rail-left-collapsed.rail-right-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quick-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .quick-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .welcome-goal {
+    flex-direction: column;
+  }
+
+  /* 窄屏保留可访问名称，只收起次要文字来保护可输入区域。 */
+  .composer-upload-label {
+    display: none;
+  }
+
+  /* A narrow transcript keeps state readable by moving the status below the
+     activity copy instead of squeezing it into an overlapping third column. */
+  .agent-activity-row {
+    grid-template-columns: 16px minmax(0, 1fr);
+  }
+
+  .agent-activity-row .agent-activity-status {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .agent-current-action {
+    align-items: flex-start;
+  }
+
+  .agent-current-action-title {
+    white-space: normal;
+  }
+
+  .agent-activity-summary-count {
+    display: none;
+  }
+
+  .agent-tool-group-toggle {
+    align-items: flex-start;
+  }
+
+  .agent-tool-group-summary {
+    white-space: normal;
+  }
+}
+
+/* -------------------------------------------------------------------------
+   Student workbench rewrite
+
+   The production cockpit uses one centered canvas.  The shared student shell
+   owns navigation and history; this stylesheet deliberately does not recreate
+   a second desktop rail or a drawer-first layout inside the conversation.
+   ------------------------------------------------------------------------- */
+
+.cockpit.cockpit-workbench {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: calc(100dvh - var(--topbar-height) - var(--space-5) - var(--space-6));
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cockpit-workbench .cockpit-center {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: min(100%, 900px);
+  max-width: 900px;
+  min-height: 0;
+  height: auto;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+/* The transcript is the only scroll surface.  Keeping it as a composer sibling
+   avoids obscuring the newest reply and preserves the near-bottom follow logic. */
+.cockpit-workbench .cockpit-content-scroll {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0 var(--space-3) 0 0;
+  scrollbar-color: var(--color-border-strong) transparent;
+  scrollbar-width: thin;
+}
+
+.cockpit-workbench .cockpit-content-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.cockpit-workbench .cockpit-content-scroll::-webkit-scrollbar-thumb {
+  border-radius: var(--radius-full);
+  background: var(--color-border-strong);
+}
+
+.cockpit-workbench .cockpit-content-scroll:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+}
+
+.cockpit-workbench .cockpit-center-welcome {
+  justify-content: center;
+  padding-bottom: min(7vh, var(--space-10));
+}
+
+.cockpit-workbench .cockpit-center-welcome .cockpit-content-scroll {
+  flex: 0 1 auto;
+  max-height: min(44vh, 27rem);
+  overflow-y: auto;
+  padding-right: 0;
+}
+
+/* ---------------------------------------------------------------- Welcome */
+
+.cockpit-workbench .welcome {
+  width: min(100%, 760px);
+  margin: 0 auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: var(--space-3) var(--space-4) 0;
+  text-align: center;
+}
+
+.welcome-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  color: var(--color-text);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+}
+
+.welcome-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: #fff;
+  font-size: var(--font-size-sm);
+}
+
+.cockpit-workbench .welcome-title {
+  margin: 0;
+  color: var(--color-text);
+  font-size: clamp(28px, 2.2vw, 36px);
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.cockpit-workbench .welcome-sub {
+  max-width: 34rem;
+  margin: var(--space-3) auto 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-base);
+  line-height: 1.65;
+}
+
+.welcome-signal-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  flex-wrap: wrap;
+  margin: var(--space-4) auto 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.welcome-signal-row span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.welcome-signal-row span:not(:last-child)::after {
+  width: 3px;
+  height: 3px;
+  margin: 0 var(--space-3);
+  border-radius: 50%;
+  background: var(--color-primary-border);
+  content: "";
+}
+
+/* Horizontal entry links retain all existing learning starts without turning
+   the welcome view back into a grid of oversized cards. */
+.welcome-quick-actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-2);
+  width: min(100%, 780px);
+  margin: var(--space-6) auto 0;
+  overflow-x: auto;
+  padding: 2px 1px var(--space-2);
+  scrollbar-width: none;
+}
+
+.welcome-quick-actions::-webkit-scrollbar {
+  display: none;
+}
+
+.welcome-quick-action {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  padding: 6px var(--space-2);
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.welcome-quick-action:hover:not(:disabled) {
+  background: var(--color-surface-muted);
+  color: var(--color-primary);
+}
+
+.welcome-quick-action:focus-visible,
+.welcome-example:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.welcome-examples {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-3);
+}
+
+.welcome-examples-label {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.welcome-example {
+  border: 0;
+  background: transparent;
+  padding: 2px 0;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.welcome-example:hover:not(:disabled) {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* --------------------------------------------------------- Runtime context */
+
+.cockpit-runtime-context {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.runtime-context-section {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-3);
+}
+
+.runtime-context-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+
+.runtime-context-heading h2 {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.runtime-context-heading span {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.runtime-citations {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* ------------------------------------------------------------ Transcript */
+
+.cockpit-workbench .chat-stream {
+  gap: var(--space-4);
+  min-height: 0;
+  padding: var(--space-2) 0 var(--space-4);
+}
+
+.cockpit-workbench .bubble-content {
+  max-width: min(82%, 43rem);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+.cockpit-workbench .bubble-assistant .bubble-content {
+  border-color: var(--color-border);
+}
+
+.cockpit-workbench .agent-execution-record {
+  max-width: 43rem;
+  margin: 0;
+}
+
+.cockpit-workbench .embedded-card,
+.cockpit-workbench .stream-recovery,
+.cockpit-workbench .run-failed,
+.cockpit-workbench .scenario-hint {
+  max-width: 43rem;
+}
+
+/* --------------------------------------------------------------- Composer */
+
+.cockpit-workbench .composer {
+  flex: 0 0 auto;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: var(--space-2);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.cockpit-workbench .composer-hero {
+  width: min(100%, 760px);
+  margin: 0 auto;
+  border-color: var(--color-border-strong);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
+}
+
+.cockpit-workbench .composer-input-shell {
+  position: relative;
+  min-width: 0;
+}
+
+.cockpit-workbench .composer-textarea {
+  display: block;
+  width: 100%;
+  min-height: 86px;
+  resize: vertical;
+  border: 0;
+  box-shadow: none;
+  padding: var(--space-2) var(--space-2) calc(var(--space-2) + 42px);
+}
+
+.cockpit-workbench .composer-textarea:focus {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.cockpit-workbench .composer-hero .composer-textarea {
+  min-height: 132px;
+  padding: var(--space-3) var(--space-3) calc(var(--space-3) + 44px);
+  font-size: var(--font-size-base);
+}
+
+.cockpit-workbench .composer-input-actions {
+  position: absolute;
+  right: var(--space-2);
+  bottom: var(--space-2);
+  left: var(--space-2);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+
+.cockpit-workbench .composer-input-actions .btn,
+.cockpit-workbench .composer-scenario {
+  pointer-events: auto;
+}
+
+.cockpit-workbench .composer-upload-btn,
+.cockpit-workbench .composer-send-btn {
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+}
+
+.cockpit-workbench .composer-upload-btn {
+  color: var(--color-text-muted);
+}
+
+.cockpit-workbench .composer-send-btn {
+  border-radius: 50%;
+}
+
+.cockpit-workbench .composer-scenario {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  min-width: 0;
+  gap: 3px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.cockpit-workbench .composer-scenario > span {
+  max-width: 17rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cockpit-workbench .composer-file {
+  display: none;
+}
+
+/* ---------------------------------------------------------------- Mobile */
+
+@media (max-width: 900px) {
+  .cockpit.cockpit-workbench {
+    height: calc(100dvh - var(--topbar-height) - 2 * var(--space-4));
+  }
+
+  .cockpit-workbench .cockpit-center {
+    width: min(100%, 46rem);
+  }
+
+  .cockpit-workbench .cockpit-center-welcome {
+    padding-bottom: var(--space-4);
+  }
+
+  .cockpit-workbench .welcome {
+    padding-inline: 0;
+  }
+
+}
+
+@media (max-width: 560px) {
+  .cockpit.cockpit-workbench {
+    height: calc(100dvh - var(--topbar-height) - 2 * var(--space-3));
+  }
+
+  .cockpit-workbench .cockpit-center {
+    gap: var(--space-3);
+  }
+
+  .cockpit-workbench .cockpit-content-scroll {
+    padding-right: 0;
+  }
+
+  .cockpit-workbench .cockpit-center-welcome {
+    justify-content: flex-start;
+  }
+
+  .cockpit-workbench .welcome-title {
+    font-size: 28px;
+  }
+
+  .welcome-quick-actions {
+    justify-content: flex-start;
+    margin-top: var(--space-4);
+  }
+
+  .welcome-signal-row span:not(:last-child)::after {
+    margin-inline: var(--space-2);
+  }
+
+  .cockpit-workbench .composer-hero .composer-textarea {
+    min-height: 112px;
+  }
+
+  .cockpit-workbench .bubble-content {
+    max-width: 90%;
+  }
+
+}
+
+/* ------------------------------------------------ Student workbench v3 */
+/* The final workbench layer follows the approved reference exactly where the
+   existing data model allows it, while leaving Agent state and recovery logic
+   untouched in the React components. */
+.cockpit.cockpit-workbench {
+  height: 100%;
+  min-height: 0;
+}
+
+.cockpit-workbench .cockpit-center {
+  gap: 38px;
+  width: min(900px, 100%);
+  max-width: 900px;
+}
+
+.cockpit-workbench .cockpit-content-scroll {
+  gap: 0;
+  padding-right: 0;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.cockpit-workbench .cockpit-center-welcome {
+  justify-content: flex-start;
+  padding: 0;
+}
+
+.cockpit-workbench .cockpit-center-welcome .cockpit-content-scroll {
+  flex: 1 1 auto;
+  max-height: none;
+  overflow-y: auto;
+}
+
+/* ---------------------------------------------------------------- Welcome */
+.cockpit-workbench .welcome {
+  width: min(900px, 100%);
+  margin: 0 auto;
+  padding: clamp(76px, 15vh, 146px) 0 48px;
+  text-align: center;
+}
+
+.welcome-hero {
+  width: min(900px, 100%);
+  margin: 0 auto;
+}
+
+.capability-mark {
+  display: grid;
+  grid-template-columns: repeat(9, 7px);
+  gap: 5px;
+  width: max-content;
+  margin: 0 auto 22px;
+}
+
+.capability-mark span {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: #d9dee5;
+}
+
+.capability-mark span:nth-child(7n + 2) {
+  background: #b4c8e3;
+}
+
+.capability-mark span:nth-child(11n + 4) {
+  background: #8ed3cb;
+}
+
+.capability-mark span:nth-child(13n + 5) {
+  background: #efc281;
+}
+
+.welcome-hero h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(30px, 3.2vw, 48px);
+  font-weight: 720;
+  line-height: 1.15;
+}
+
+.welcome-hero p {
+  max-width: 560px;
+  margin: 15px auto 30px;
+  color: var(--ink-soft);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.welcome-quick-actions {
+  justify-content: center;
+  gap: 8px;
+  width: min(980px, 100%);
+  margin: 24px auto 0;
+  padding: 0 0 3px;
+}
+
+.welcome-quick-action {
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 14px;
+  text-align: center;
+  transition:
+    border-color 140ms var(--ease-out),
+    color 140ms var(--ease-out),
+    background 140ms var(--ease-out);
+}
+
+.welcome-quick-action:hover:not(:disabled) {
+  border-color: #aec7e4;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.welcome-quick-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* ------------------------------------------------------------ Transcript */
+.cockpit-workbench .chat-stream {
+  gap: 0;
+  padding: 58px 0 28px;
+}
+
+.conversation-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 34px;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.conversation-heading strong {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.message-list {
+  display: grid;
+  gap: 22px;
+  flex: 1;
+}
+
+.cockpit-workbench .bubble {
+  max-width: 82%;
+  color: var(--ink-soft);
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.cockpit-workbench .bubble-content {
+  max-width: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.cockpit-workbench .bubble-assistant .bubble-content {
+  border: 0;
+  background: transparent;
+  padding-left: 2px;
+}
+
+.cockpit-workbench .bubble-user {
+  justify-self: end;
+  max-width: 72%;
+}
+
+.cockpit-workbench .bubble-user .bubble-content {
+  padding: 12px 15px;
+  border-radius: 14px 14px 4px 14px;
+  background: var(--accent-soft);
+  color: #235f9f;
+}
+
+.cockpit-workbench .message-label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--ink-faint);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cockpit-workbench .agent-execution-record {
+  max-width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.cockpit-workbench .agent-current-action {
+  min-height: 24px;
+  padding: 4px 0 4px 12px;
+  border: 0;
+  border-left: 2px solid #cde5e0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-faint);
+  font-size: 12px;
+}
+
+.cockpit-workbench .agent-current-action:hover {
+  background: transparent;
+  color: var(--ink-soft);
+}
+
+.cockpit-workbench .agent-current-action-icon {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--teal);
+}
+
+.cockpit-workbench .agent-current-action-icon svg,
+.cockpit-workbench .agent-current-action-stage,
+.cockpit-workbench .agent-activity-status,
+.cockpit-workbench .agent-activity-summary-count,
+.cockpit-workbench .agent-current-action-chevron {
+  display: none;
+}
+
+.cockpit-workbench .agent-current-action-copy {
+  overflow: visible;
+}
+
+.cockpit-workbench .agent-current-action-title {
+  overflow: visible;
+  white-space: normal;
+}
+
+.cockpit-workbench .agent-activity-expanded {
+  margin: 8px 0 0 14px;
+  padding: 0 0 0 12px;
+  border-left: 1px solid var(--line);
+}
+
+.cockpit-workbench .agent-activity-history,
+.cockpit-workbench .agent-execution-plan {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+
+.cockpit-workbench .agent-execution-plan {
+  margin: 13px 0 0;
+  padding: 15px 16px;
+}
+
+.cockpit-workbench .agent-execution-plan-heading {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.cockpit-workbench .agent-activity-history {
+  margin-top: 10px;
+  padding: 10px 12px;
+}
+
+.cockpit-workbench .agent-activity-history-heading,
+.cockpit-workbench .agent-tool-group-count {
+  color: var(--ink-faint);
+  font-size: 11px;
+}
+
+.cockpit-workbench .agent-activity-row,
+.cockpit-workbench .agent-tool-group-toggle {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.cockpit-workbench .cockpit-runtime-context {
+  gap: 14px;
+}
+
+.cockpit-workbench .runtime-context-section {
+  border-top-color: var(--line);
+}
+
+/* --------------------------------------------------------------- Composer */
+.cockpit-workbench .composer {
+  width: min(900px, 100%);
+  min-height: 132px;
+  margin: 0 auto;
+  padding: 18px 18px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-input);
+  background: var(--surface);
+  box-shadow: var(--shadow-input);
+  transition:
+    border-color 160ms var(--ease-out),
+    box-shadow 160ms var(--ease-out);
+}
+
+.cockpit-workbench .composer:focus-within {
+  border-color: #9dbde2;
+  box-shadow: 0 18px 42px rgba(36, 119, 214, 0.12);
+}
+
+.cockpit-workbench .composer-hero {
+  min-height: 164px;
+}
+
+.cockpit-workbench .composer-input-shell {
+  min-height: 132px;
+}
+
+.cockpit-workbench .composer-hero .composer-input-shell {
+  min-height: 132px;
+}
+
+.cockpit-workbench .composer-textarea,
+.cockpit-workbench .composer-hero .composer-textarea {
+  min-height: 90px;
+  padding: 0 0 44px;
+  resize: none;
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1.6;
+}
+
+.cockpit-workbench .composer-textarea::placeholder {
+  color: #a7afb8;
+}
+
+.cockpit-workbench .composer-input-actions {
+  right: 0;
+  bottom: 0;
+  left: 0;
+  min-height: 38px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.cockpit-workbench .composer-tool-button,
+.cockpit-workbench .composer-send-btn {
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  font: inherit;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.cockpit-workbench .composer-tool-button {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-soft);
+}
+
+.cockpit-workbench .composer-tool-button:hover:not(:disabled) {
+  background: #f0f3f6;
+  color: var(--ink);
+}
+
+.cockpit-workbench .composer-send-btn {
+  width: 38px;
+  height: 38px;
+  min-height: 38px;
+  border-radius: 50%;
+  background: #d9dde2;
+  color: #fff;
+  transition:
+    background 140ms var(--ease-out),
+    transform 100ms var(--ease-out);
+}
+
+.cockpit-workbench .composer-send-btn:not(:disabled) {
+  background: var(--accent);
+}
+
+.cockpit-workbench .composer-send-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.cockpit-workbench .composer-send-btn:disabled,
+.cockpit-workbench .composer-tool-button:disabled {
+  cursor: not-allowed;
+}
+
+.cockpit-workbench .composer-scenario {
+  gap: 7px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.cockpit-workbench .composer-scenario > span {
+  max-width: 17rem;
+}
+
+@media (max-width: 900px) {
+  .cockpit.cockpit-workbench {
+    height: 100%;
+  }
+
+  .cockpit-workbench .cockpit-center {
+    gap: 28px;
+  }
+
+  .cockpit-workbench .welcome {
+    padding: 80px 0 32px;
+  }
+
+  .welcome-quick-actions {
+    justify-content: flex-start;
+  }
+
+  .cockpit-workbench .chat-stream {
+    padding: 36px 0 20px;
+  }
+}
+
+@media (max-width: 560px) {
+  .cockpit-workbench .welcome {
+    padding-top: 54px;
+  }
+
+  .welcome-hero h1 {
+    font-size: 32px;
+  }
+
+  .welcome-hero p {
+    margin-bottom: 22px;
+    font-size: 14px;
+  }
+
+  .cockpit-workbench .composer,
+  .cockpit-workbench .composer-hero {
+    min-height: 150px;
+    padding: 14px 12px 10px;
+  }
+
+  .cockpit-workbench .composer-input-shell,
+  .cockpit-workbench .composer-hero .composer-input-shell {
+    min-height: 126px;
+  }
+
+  .cockpit-workbench .composer-textarea,
+  .cockpit-workbench .composer-hero .composer-textarea {
+    font-size: 16px;
+  }
+
+  .cockpit-workbench .conversation-heading span {
+    display: none;
+  }
+
+  .cockpit-workbench .bubble,
+  .cockpit-workbench .bubble-user {
+    max-width: 100%;
+  }
+}
+
+/* Dark-specific control states remain available for an explicit preference;
+   they must not replace the approved light learning canvas automatically. */
+html[data-theme="dark"]
+  .shell[data-shell-variant="student-workbench"]
+  .welcome-quick-action:hover:not(:disabled) {
+  border-color: #467eae;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+html[data-theme="dark"]
+  .shell[data-shell-variant="student-workbench"]
+  .composer-tool-button:hover:not(:disabled) {
+  background: #21303a;
+}
+
+html[data-theme="dark"]
+  .shell[data-shell-variant="student-workbench"]
+  .bubble-user
+  .bubble-content {
+  color: #c8e2ff;
+}
+
+html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] .composer-send-btn {
+  background: #3a4955;
+}
+
+/* The shell owns the conversation page scroll surface.  Keeping this layer
+   flow-based prevents a second scrollbar inside the centered transcript while
+   leaving the Composer immediately after the current conversation. */
+.cockpit.cockpit-workbench,
+.cockpit-workbench .cockpit-center,
+.cockpit-workbench .cockpit-content-scroll {
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+.cockpit.cockpit-workbench {
+  min-height: calc(100dvh - 2 * var(--space-6));
+}
+
+.cockpit-workbench .cockpit-center {
+  flex: 0 0 auto;
+}
+
+.cockpit-workbench .cockpit-content-scroll,
+.cockpit-workbench .cockpit-center-welcome .cockpit-content-scroll {
+  flex: 0 0 auto;
+  max-height: none;
+  overflow-y: visible;
+}
+
+.cockpit-workbench .cockpit-content-scroll::-webkit-scrollbar,
+.cockpit-workbench .cockpit-content-scroll::-webkit-scrollbar-track,
+.cockpit-workbench .cockpit-content-scroll::-webkit-scrollbar-thumb {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .cockpit.cockpit-workbench {
+    min-height: calc(100dvh - 2 * var(--space-4));
+  }
+}
+
+@media (max-width: 560px) {
+  .cockpit.cockpit-workbench {
+    min-height: calc(100dvh - 2 * var(--space-3));
+  }
+}

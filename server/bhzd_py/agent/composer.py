@@ -85,7 +85,7 @@ async def compose_text(
 async def stream_text(
     messages: list[dict], *, usage_capture: UsageCapture | None = None
 ) -> AsyncIterator[str]:
-    """流式合成：逐段产出文本增量；任何失败都安静结束（调用方走模板降级）。
+    """流式合成：逐段产出文本增量；首档未输出时可切到备用模型。
 
     Usage is attached to the capture belonging to this iterator's caller,
     rather than a module global that another concurrent run could overwrite.
@@ -108,10 +108,98 @@ async def stream_text(
                         usage_capture.record(event)
         except Exception:
             logger.warning("LLM 流式合成失败（role=%s）", role, exc_info=True)
-            return  # 已经吐出部分内容，不能再换角色重流，交给调用方补模板
+            # A mid-answer provider switch would splice two models into one
+            # response.  Before any visible chunk, however, the fallback role
+            # can safely take over and still satisfy the primary/fallback contract.
+            if produced:
+                return
+            continue
         if produced:
             return
     return
+
+
+def _with_private_memory(
+    messages: list[dict[str, str]], private_memory_context: str | None
+) -> list[dict[str, str]]:
+    """Add scoped conversation recall as internal context without exposing it as RAG evidence."""
+
+    if not private_memory_context:
+        return messages
+    memory_instruction = {
+        "role": "system",
+        "content": (
+            "以下内容仅是当前用户当前会话的私有历史片段，用于保持上下文一致。"
+            "不要把它称为知识库资料或引用来源，也不要透露检索机制。\n\n"
+            f"{private_memory_context}"
+        ),
+    }
+    # Keep the route-specific system prompt first so its product constraints
+    # remain higher priority than recalled user-authored text.
+    return [messages[0], memory_instruction, *messages[1:]]
+
+
+def build_direct_chat_messages(
+    history: list[dict[str, str]], private_memory_context: str | None = None
+) -> list[dict[str, str]]:
+    """Prepend direct-chat rules and optional private memory to recent turns."""
+
+    return _with_private_memory(
+        [{"role": "system", "content": prompts.CHAT_SYSTEM}, *history],
+        private_memory_context,
+    )
+
+
+async def stream_direct_chat_text(
+    history: list[dict[str, str]],
+    *,
+    private_memory_context: str | None = None,
+    usage_capture: UsageCapture | None = None,
+) -> AsyncIterator[str]:
+    """Yield direct-chat output as it arrives, then retain the old fallback path.
+
+    The orchestrator owns SSE persistence, so this generator intentionally
+    yields only text.  That lets each provider chunk reach the user promptly
+    while still allowing the caller to persist one complete assistant message
+    after the stream ends.
+    """
+
+    messages = build_direct_chat_messages(history, private_memory_context)
+    produced = False
+    async for delta in stream_text(messages, usage_capture=usage_capture):
+        produced = True
+        yield delta
+    if produced:
+        return
+
+    # A provider may support ordinary completion but not streaming.  Preserve
+    # that compatibility by exposing its finished text through the same
+    # iterator; callers do not need a separate persistence path.
+    text = await compose_text(messages, usage_capture=usage_capture)
+    if text:
+        yield text
+
+
+async def direct_chat_text(
+    history: list[dict[str, str]],
+    *,
+    private_memory_context: str | None = None,
+    usage_capture: UsageCapture | None = None,
+) -> str | None:
+    """Stream a normal chat or clarification turn, then try non-stream fallback.
+
+    The caller keeps the deterministic PRD question as the final offline path,
+    so this helper returns None when no configured provider produced text.
+    """
+
+    streamed: list[str] = []
+    async for delta in stream_direct_chat_text(
+        history,
+        private_memory_context=private_memory_context,
+        usage_capture=usage_capture,
+    ):
+        streamed.append(delta)
+    return "".join(streamed) if streamed else None
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +304,104 @@ def template_plan_summary(plan: dict[str, Any], tool_results: dict[str, Any]) ->
     return "\n".join(lines)
 
 
+def _clip_summary_text(value: str, limit: int, *, preserve_lines: bool = False) -> str:
+    """压缩摘要文本并尽量在句末截断，避免结果卡显示半截长段落。"""
+    text = (
+        "\n".join(" ".join(line.split()) for line in value.splitlines() if line.strip())
+        if preserve_lines
+        else " ".join(value.split())
+    )
+    if len(text) <= limit:
+        return text
+    punctuation = "。！？!?；;"
+    boundary = max((text.rfind(mark, 0, limit) for mark in punctuation), default=-1)
+    cutoff = boundary + 1 if boundary >= max(24, limit // 3) else limit
+    return text[:cutoff].rstrip(" ，,、:：") + "..."
+
+
+def compact_summary(text: str, *, max_lines: int = 3, max_chars: int = 220) -> str:
+    """为结果摘要卡提取短结论，完整回答仍保留在 assistant 消息中。
+
+    模板降级回答会同时包含步骤标记和工具明细；摘要卡只需要结论，
+    因此过滤纯步骤标记并保留首尾少量内容。这个投影也适用于 LLM 长回答，
+    避免把摘要卡变成第二份完整回答。
+    """
+    lines = [" ".join(line.split()) for line in text.splitlines() if line.strip()]
+    if not lines:
+        return ""
+    detail_lines = [line for line in lines if line[:1] not in "✓✗×·"]
+    if detail_lines:
+        lines = detail_lines
+    if len(lines) > max_lines:
+        lines = [*lines[: max_lines - 1], lines[-1]]
+    return _clip_summary_text("\n".join(lines), max_chars, preserve_lines=True)
+
+
+def template_compact_tool_summary(tool_name: str, result: Any) -> str:
+    """把工具结果归纳成一条可扫描的结论，不重复渲染详情卡内容。"""
+    if not isinstance(result, dict):
+        return "步骤已完成。"
+    if result.get("error"):
+        return f"本步骤未完成：{_clip_summary_text(str(result['error']), 72)}"
+
+    if tool_name == "course.search":
+        count = len(result.get("units") or [])
+        return f"课程检索完成：找到 {count} 个相关教学单元。" if count else "未找到匹配的教学单元。"
+    if tool_name == "graph.reason":
+        count = len(result.get("nodes") or [])
+        return f"知识图谱定位完成：找到 {count} 个相关节点。" if count else "未定位到相关知识节点。"
+    if tool_name == "task.preview":
+        card = result.get("card") or result
+        title = card.get("title")
+        return f"已生成学习任务「{title}」。" if title else "已生成学习任务。"
+    if tool_name == "task.create":
+        title = result.get("title")
+        return f"已创建学习任务「{title}」。" if title else "学习任务已创建。"
+    if tool_name == "diagnostic.preview":
+        count = result.get("error_count")
+        return f"诊断完成：发现 {count} 个问题。" if count is not None else "诊断已完成。"
+    if tool_name == "diagnostic.save_summary":
+        return "诊断摘要与掌握度已更新。"
+    if tool_name == "mastery.update":
+        return f"掌握度已更新 {len(result.get('updates') or [])} 项。"
+    if tool_name == "rag.search":
+        return f"资料检索完成：找到 {len(result.get('hits') or [])} 条相关内容。"
+    if tool_name == "rag.answer":
+        answer = result.get("answer")
+        if answer:
+            return compact_summary(str(answer), max_lines=1, max_chars=140)
+        if result.get("refused"):
+            return "现有资料不足，无法回答该问题。"
+        return "资料问答已完成。"
+    if tool_name == "rag.preview_upload":
+        return "资料预检通过。" if result.get("ok") else "资料预检未通过。"
+    return "步骤已完成。"
+
+
+def template_compact_plan_summary(
+    plan: dict[str, Any], tool_results: dict[str, Any], *, max_lines: int = 3
+) -> str:
+    """为无 Provider 的降级路径生成最多三条关键结论。"""
+    items: list[str] = []
+    for step in plan.get("steps") or []:
+        title = str(step.get("title") or "步骤")
+        if step.get("status") == "failed":
+            item = f"{title}未完成。"
+        elif step.get("id") in tool_results:
+            item = template_compact_tool_summary(
+                str(step.get("tool") or ""), tool_results[step["id"]]
+            )
+        else:
+            item = f"{title}已完成。"
+        if item not in items:
+            items.append(item)
+    if not items:
+        return "本次处理已完成。"
+    if len(items) > max_lines:
+        items = [*items[: max_lines - 1], items[-1]]
+    return compact_summary("\n".join(items), max_lines=max_lines)
+
+
 def build_compose_messages(user_input: str, tool_results: dict[str, Any]) -> list[dict]:
     """组装发给 LLM 的消息：系统提示 + 用户目标 + 工具结果原文（JSON）。"""
     context = json.dumps(tool_results, ensure_ascii=False, default=str)
@@ -229,3 +415,19 @@ def build_compose_messages(user_input: str, tool_results: dict[str, Any]) -> lis
             ),
         },
     ]
+
+
+def build_general_knowledge_messages(
+    user_input: str, private_memory_context: str | None = None
+) -> list[dict[str, str]]:
+    """Build the RAG-insufficient fallback request without leaking tool payloads.
+
+    The provider receives only the student's question.  In particular, it must
+    not receive an empty retrieval result or a refusal message as pseudo-evidence,
+    because that would invite it to present the answer as knowledge-base grounded.
+    """
+
+    return _with_private_memory([
+        {"role": "system", "content": prompts.GENERAL_KNOWLEDGE_SYSTEM},
+        {"role": "user", "content": f"学生的问题：{user_input}"},
+    ], private_memory_context)

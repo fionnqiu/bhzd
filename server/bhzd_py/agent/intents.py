@@ -66,6 +66,8 @@ KIND_DIAGNOSE_UPLOAD = "diagnose_upload"
 KIND_RAG_QUESTION = "rag_question"
 KIND_TASK_CONVERT = "task_convert"
 KIND_TEACHER_TASK = "teacher_task"
+KIND_AGENT_IDENTITY = "agent_identity"
+KIND_CONVERSATION_RECALL = "conversation_recall"
 KIND_UNKNOWN = "unknown"
 
 # A persisted clarification is input to a later request, so accept only the
@@ -74,10 +76,46 @@ _CLARIFICATION_SLOTS = frozenset({"data_type", "scenario", "goal", "file"})
 
 _DIAGNOSE_RE = re.compile(r"诊断|检查.{0,6}标注|帮我看看|看看.{0,4}(错|问题)|上传")
 _TEACHER_RE = re.compile(r"发布.{0,6}任务|布置|班级任务|给.{0,4}班")
-_TASK_CONVERT_RE = re.compile(r"转成任务|转化为任务|生成任务|任务卡|企业任务|岗位任务")
+_TASK_CONVERT_RE = re.compile(r"转成任务|转化为任务|任务卡|企业任务|岗位任务")
+# Creation requests often insert a domain modifier between the verb and
+# ``任务`` (for example, "帮我生成学习任务").  Require either an imperative
+# at the beginning or an explicit request cue so explanatory questions such as
+# "如何生成学习任务？" keep their normal RAG route instead of opening a task flow.
+_TASK_CREATE_REQUEST_RE = re.compile(
+    r"(?:^\s*(?:请(?:帮我)?|帮我|给我|为我|替我|我要|我想|麻烦|直接)?\s*"
+    r"|(?:请|帮我|给我|为我|替我|我要|我想|麻烦|能否|能|可以|可否|直接)\s*)"
+    r"(?:生成|创建|制定|安排)\s*(?:一(?:个|份))?\s*(?:学习|练习|标注)?\s*任务(?!的)"
+)
 _PRESET_RE = re.compile(r"预设|入门路径|学习路径|考证路径")
 _QUESTION_RE = re.compile(r"(什么是|怎么|如何|为什么|请问|吗[？?]?$|[？?]$)")
 _LEARN_RE = re.compile(r"我想学|想学|学习|入门|掌握|提升|学一下|补强")
+_CONVERSATION_RECALL_RE = re.compile(
+    r"(?:你还记得|还记得.{0,20}(?:之前|前面)|"
+    r"(?:我们|咱们).{0,20}(?:之前|前面).{0,20}(?:聊过|聊了|说过|问过)|"
+    r"(?:之前|前面).{0,20}(?:聊过|说过|问过)|"
+    r"(?:回顾|总结).{0,12}(?:对话|会话|聊天))"
+)
+
+# Keep this anchored and address-oriented: a course question such as
+# "什么是模型" still belongs to RAG, while questions about this Agent
+# must not spend a retrieval turn before the model can answer directly.
+_AGENT_IDENTITY_RE = re.compile(
+    r"^\s*(?:请问|想问一下|麻烦问下)?\s*(?:"
+    r"(?:(?:你|您|这个(?:智能体|助手|系统)|本(?:智能体|助手|系统)|标航智导)\s*)"
+    r"(?:"
+    r"(?:是|用(?:的)?(?:是)?|使用(?:的)?(?:是)?|属于)(?:什么|哪个|哪种)(?:大)?模型"
+    r"|(?:是|叫)谁"
+    r"|(?:是|做)什么的"
+    r"|(?:能|可以|会)(?:做|帮(?:我)?做|提供)(?:什么|哪些)(?:事|事情|功能|能力)?"
+    r"|(?:有什么|有哪些|具备什么)(?:功能|能力)"
+    r"|(?:功能|能力)(?:是|有)(?:什么|哪些)"
+    r"|介绍(?:一下)?(?:你|自己)"
+    r")"
+    r"|(?:能|可以|会)(?:做|帮(?:我)?做|提供)(?:什么|哪些)(?:事|事情|功能|能力)?"
+    r"|(?:有什么|有哪些|具备什么)(?:功能|能力)"
+    r")\s*(?:吗)?\s*[？?!！。.]?\s*$",
+    re.IGNORECASE,
+)
 
 # PRD-06 §6.2 话术表（逐字，前端/测试均按原文断言，不得改写）
 QUESTION_DATA_TYPE = "你要学习的是文本、图像、语音还是视频标注？"
@@ -394,7 +432,7 @@ def _detect_scenario(text: str) -> tuple[str | None, bool]:
 
 def detect(text: str, *, has_attachment: bool = False) -> Intent:
     """识别意图。规则按"更具体者优先"排序：诊断 > 教师任务 > 任务转化 >
-    预设 > 知识问答 > 学习目标 > unknown。"""
+    预设 > 智能体身份/会话回顾 > 知识问答 > 学习目标 > unknown。"""
     text = (text or "").strip()
     data_type = _detect_data_type(text)
     scenario_id, generic = _detect_scenario(text)
@@ -403,10 +441,15 @@ def detect(text: str, *, has_attachment: bool = False) -> Intent:
         kind = KIND_DIAGNOSE_UPLOAD
     elif _TEACHER_RE.search(text):
         kind = KIND_TEACHER_TASK
-    elif _TASK_CONVERT_RE.search(text):
+    elif _TASK_CONVERT_RE.search(text) or _TASK_CREATE_REQUEST_RE.search(text):
         kind = KIND_TASK_CONVERT
     elif _PRESET_RE.search(text):
         kind = KIND_PRESET_START
+    elif _AGENT_IDENTITY_RE.match(text):
+        kind = KIND_AGENT_IDENTITY
+    elif _CONVERSATION_RECALL_RE.search(text):
+        # A recall question must reach private chat memory before generic RAG.
+        kind = KIND_CONVERSATION_RECALL
     elif _QUESTION_RE.search(text):
         kind = KIND_RAG_QUESTION
     elif _LEARN_RE.search(text):

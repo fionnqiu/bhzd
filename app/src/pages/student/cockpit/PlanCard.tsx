@@ -1,38 +1,45 @@
-import { Ban, CheckCircle2, Circle, Loader2, PauseCircle, XCircle } from "lucide-react";
-import { Card } from "../../../components";
+import { CheckCircle2, Circle, ClipboardList, Loader2, PauseCircle, XCircle } from "lucide-react";
 import type { PlanStep } from "../../../api/types";
 
-/**
- * Agent 计划卡（PRD-01 §3.5"计划中"态）。
- * 步骤状态来自 plan.updated 事件（orchestrator 的 pending/waiting/completed/failed），
- * 图标映射集中在此，新增状态默认按"待执行"兜住。
- */
 const STEP_ICON: Record<string, { icon: typeof Circle; className: string; label: string }> = {
   pending: { icon: Circle, className: "plan-step-pending", label: "待执行" },
-  running: { icon: Loader2, className: "plan-step-running", label: "进行中" },
-  waiting: { icon: PauseCircle, className: "plan-step-waiting", label: "等待确认" },
+  running: { icon: Loader2, className: "plan-step-running", label: "执行中" },
   completed: { icon: CheckCircle2, className: "plan-step-done", label: "已完成" },
-  failed: { icon: XCircle, className: "plan-step-failed", label: "失败" },
-  // A cancelled write never ran; distinguish it from an execution failure.
-  cancelled: { icon: Ban, className: "plan-step-cancelled", label: "已取消" },
+  failed: { icon: XCircle, className: "plan-step-failed", label: "未完成" },
+  waiting_confirmation: {
+    icon: PauseCircle,
+    className: "plan-step-waiting",
+    label: "等待确认",
+  },
 };
 
-export default function PlanCard({ steps }: { steps: PlanStep[] }) {
+/**
+ * Render a server-issued plan inside the execution record rather than as a
+ * second card. The plan is only shown after a real `plan.updated` event, so it
+ * communicates an observable checklist instead of inferred model intent.
+ */
+export default function ExecutionPlan({ steps }: { steps: PlanStep[] }) {
   if (steps.length === 0) return null;
+
   return (
-    <Card title="执行计划" className="plan-card" data-testid="plan-card">
+    <section className="agent-execution-plan" data-testid="execution-plan">
+      <div className="agent-execution-plan-heading">
+        <ClipboardList aria-hidden="true" size={16} />
+        <span>今天的练习路径</span>
+        <span className="agent-execution-plan-count">{steps.length} 项</span>
+      </div>
       <ol className="plan-steps">
         {steps.map((step) => {
           const meta = STEP_ICON[step.status] ?? STEP_ICON.pending;
           const Icon = meta.icon;
           return (
             <li key={step.id} className={`plan-step ${meta.className}`}>
-              <Icon size={16} aria-label={meta.label} />
+              <Icon size={15} aria-label={meta.label} />
               <span>{step.title}</span>
             </li>
           );
         })}
       </ol>
-    </Card>
+    </section>
   );
 }

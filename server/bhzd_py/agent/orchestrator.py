@@ -21,13 +21,13 @@ import sqlite3
 import threading
 import time
 import uuid
-from typing import Any, Coroutine
+from typing import Any, Awaitable, Callable, Coroutine
 
 from ..config import get_config
 from ..db import connect, utc_now_iso
 from ..tools import registry
 from ..tools.registry import ToolContext
-from . import composer, events, intents
+from . import composer, conversation_memory, events, intents, prompts
 
 logger = logging.getLogger(__name__)
 
@@ -199,36 +199,152 @@ def _persist_message(
     role: str, content: str,
 ) -> str:
     message_id = uuid.uuid4().hex
+    created_at = utc_now_iso()
     db.execute(
         """
         INSERT INTO messages (id, conversation_id, run_id, role, content, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (message_id, conversation_id, run_id, role, content, utc_now_iso()),
+        (message_id, conversation_id, run_id, role, content, created_at),
     )
     db.commit()
+    owner = db.execute(
+        "SELECT user_id FROM conversations WHERE id = ?", (conversation_id,)
+    ).fetchone()
+    if owner is not None:
+        # Index only after the source message commits, so memory can never
+        # reference a message that failed durable persistence.
+        conversation_memory.index_message(
+            db,
+            message_id=message_id,
+            user_id=owner["user_id"],
+            conversation_id=conversation_id,
+            run_id=run_id,
+            role=role,
+            content=content,
+            created_at=created_at,
+        )
     return message_id
 
 
-def _update_run(db: sqlite3.Connection, run_id: str, **fields: Any) -> None:
-    """按列名更新 agent_runs（列名来自本模块内部常量，无注入面）。"""
+def _load_chat_history(
+    db: sqlite3.Connection, conversation_id: str, *, limit: int = 30
+) -> list[dict[str, str]]:
+    """Return the most recent persisted chat turns for one conversation."""
+
+    rows = db.execute(
+        """
+        SELECT role, content FROM messages
+        WHERE conversation_id = ? AND role IN ('user', 'assistant', 'system')
+        ORDER BY created_at ASC, rowid ASC
+        """,
+        (conversation_id,),
+    ).fetchall()
+    return [
+        {"role": row["role"], "content": row["content"]}
+        for row in rows[-limit:]
+    ]
+
+
+def _update_run(
+    db: sqlite3.Connection, run_id: str, *, commit: bool = True, **fields: Any
+) -> None:
+    """Update agent_runs using internal column names only."""
     assignments = ", ".join(f"{key} = ?" for key in fields)
     db.execute(
         f"UPDATE agent_runs SET {assignments} WHERE id = ?",
         (*fields.values(), run_id),
     )
+    if commit:
+        db.commit()
+
+
+def _finalize_run(
+    db: sqlite3.Connection,
+    run_id: str,
+    *,
+    event_type: str,
+    payload: dict[str, Any],
+    status: str,
+    error: str | None = None,
+) -> None:
+    """Commit a terminal run state together with its replayable SSE event.
+
+    The SSE reader uses a separate SQLite connection. Keeping the run row and
+    terminal event in one transaction means recovery cannot observe an emitted
+    completion while the corresponding run still reports ``running``.
+    """
+
+    fields: dict[str, Any] = {"status": status, "completed_at": utc_now_iso()}
+    if error is not None:
+        fields["error"] = error
+    _update_run(db, run_id, commit=False, **fields)
+    events.emit(db, run_id, event_type, payload, commit=False)
     db.commit()
+
+
+async def _emit_message_delta(
+    db: sqlite3.Connection, run_id: str, delta: str
+) -> None:
+    """Persist a provider chunk before asking it for the next chunk.
+
+    Keeping the commit inside the iteration is intentional: the SSE endpoint
+    reads durable events from a separate SQLite connection, so batching until
+    completion would make a provider stream look like a single final reply.
+    """
+
+    for index in range(0, len(delta), _MESSAGE_CHUNK):
+        events.emit(
+            db,
+            run_id,
+            events.MESSAGE_DELTA,
+            {"delta": delta[index:index + _MESSAGE_CHUNK]},
+        )
+        await asyncio.sleep(0)
 
 
 async def _emit_assistant_text(
     db: sqlite3.Connection, run_id: str, conversation_id: str, text: str
 ) -> None:
-    """把完整 assistant 文本按 ≤40 字符切块发 message.delta 并落库。"""
-    for i in range(0, len(text), _MESSAGE_CHUNK):
-        events.emit(db, run_id, events.MESSAGE_DELTA,
-                    {"delta": text[i:i + _MESSAGE_CHUNK]})
-        await asyncio.sleep(0)  # 让出事件循环，SSE 端能及时取走
+    """Emit a finished fallback reply and persist its single chat record."""
+
+    await _emit_message_delta(db, run_id, text)
     _persist_message(db, conversation_id, run_id, "assistant", text)
+
+
+def _emit_progress(
+    db: sqlite3.Connection,
+    run_id: str,
+    *,
+    phase: str,
+    status: str,
+    title: str,
+    detail: str | None = None,
+) -> None:
+    """Publish a bounded, replayable progress update for this run."""
+
+    # Intent classification is an internal decision, not an observable action.
+    # Keep this boundary here so a future orchestration branch cannot restore a
+    # student-visible thinking frame by accidentally reusing this helper.
+    if phase == "understanding":
+        return
+
+    # Only observable plan and response lifecycles get a stable learner-facing
+    # key. Tool calls have their own IDs, while retrieval/system details remain
+    # transport-only; model interpretation is deliberately never persisted as
+    # a student-visible progress activity.
+    activity_id = f"planning:{run_id}" if phase == "planning" else None
+    if phase == "synthesis":
+        activity_id = f"answer:{run_id}"
+    events.emit_progress(
+        db,
+        run_id,
+        phase=phase,
+        status=status,
+        title=title,
+        detail=detail,
+        activity_id=activity_id,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +386,11 @@ def _build_plan(
                  {"question": question, "scenario_id": scenario_id,
                   "data_type": data_type}),
         ]
+
+    if intent.kind == intents.KIND_AGENT_IDENTITY:
+        # Identity turns complete through direct chat before planning. Preserve
+        # the empty result here so a future caller cannot fall into task/RAG.
+        return []
 
     if intent.kind == intents.KIND_DIAGNOSE_UPLOAD:
         token = (attachment or {}).get("diagnostic_token")
@@ -392,13 +513,41 @@ def _make_ctx(db, config, user, run, conv, args) -> ToolContext:
 def _execute_read_step(
     db, config, user, run, conv, step, spec
 ) -> Any:
-    """执行读工具：tool.call.requested → 执行 → tool.call.completed（含耗时）。"""
-    args_summary = json.dumps(step["args"], ensure_ascii=False, default=str)[:200]
+    """执行读工具并发布可回放的安全生命周期事件。
+
+    The database keeps the original arguments/results for the planner, while
+    SSE receives only the execution kind and bounded summaries.  This is the
+    contract the cockpit uses to show real work without exposing prompts or
+    provider payloads.
+    """
+    input_summary = events.summarize_tool_input(step["args"], title=step["title"])
+    execution_kind = events.execution_kind(spec.name)
     tool_call_id = _insert_tool_call(db, run["id"], spec.name, "read", step["args"])
     step["tool_call_id"] = tool_call_id
+    _emit_progress(
+        db,
+        run["id"],
+        phase="tool",
+        status="running",
+        title=f"正在执行：{step['title']}",
+        detail=f"调用只读工具 {spec.name}",
+    )
+    if spec.name == "rag.search":
+        _emit_progress(
+            db,
+            run["id"],
+            phase="retrieval",
+            status="running",
+            title="正在检索相关资料",
+            detail="正在从知识库中查找匹配内容",
+        )
     events.emit(db, run["id"], events.TOOL_CALL_REQUESTED, {
         "tool_call_id": tool_call_id, "tool": spec.name,
-        "permission": "read", "args_summary": args_summary,
+        "permission": "read",
+        "execution_kind": execution_kind,
+        "input_summary": input_summary,
+        # Keep the legacy key for older clients; both values are already safe.
+        "args_summary": input_summary,
     })
     ctx = _make_ctx(db, config, user, run, conv, step["args"])
     started = time.perf_counter()
@@ -424,8 +573,34 @@ def _execute_read_step(
     db.commit()
     events.emit(db, run["id"], events.TOOL_CALL_COMPLETED, {
         "tool_call_id": tool_call_id, "tool": spec.name, "status": status,
-        "duration_ms": duration_ms, "is_write": 0, "result": result,
+        "duration_ms": duration_ms,
+        "is_write": 0,
+        "execution_kind": execution_kind,
+        "output_summary": events.summarize_tool_result(result, status=status),
+        # Result cards still need a typed payload.  Redaction happens before
+        # the event crosses the SSE boundary; the private DB keeps raw JSON.
+        "result": events.public_tool_result(spec.name, result),
     })
+    _emit_progress(
+        db,
+        run["id"],
+        phase="tool",
+        status=status,
+        title=(f"已完成：{step['title']}" if status == "completed"
+               else f"未完成：{step['title']}"),
+        detail=f"只读工具 {spec.name}，耗时 {duration_ms} ms",
+    )
+    if spec.name == "rag.search":
+        hit_count = result.get("hit_count", 0) if isinstance(result, dict) else 0
+        safe_hit_count = hit_count if isinstance(hit_count, int) and hit_count >= 0 else 0
+        _emit_progress(
+            db,
+            run["id"],
+            phase="retrieval",
+            status=status,
+            title=("资料检索完成" if status == "completed" else "资料检索未完成"),
+            detail=f"找到 {safe_hit_count} 条相关资料，耗时 {duration_ms} ms",
+        )
     step["status"] = "completed" if status == "completed" else "failed"
     return result
 
@@ -436,12 +611,24 @@ def _open_write_gate(db, config, user, run, conv, step, spec) -> bool:
     返回 True 表示已停在确认门；preview 自身失败（如角色不足/前置状态
     不满足）时按步骤失败处理并返回 False 让计划继续收尾。
     """
-    args_summary = json.dumps(step["args"], ensure_ascii=False, default=str)[:200]
+    input_summary = events.summarize_tool_input(step["args"], title=step["title"])
+    execution_kind = events.execution_kind(spec.name)
     tool_call_id = _insert_tool_call(db, run["id"], spec.name, "write", step["args"])
     step["tool_call_id"] = tool_call_id
+    _emit_progress(
+        db,
+        run["id"],
+        phase="tool",
+        status="running",
+        title=f"正在准备：{step['title']}",
+        detail=f"准备写入工具 {spec.name} 的确认预览",
+    )
     events.emit(db, run["id"], events.TOOL_CALL_REQUESTED, {
         "tool_call_id": tool_call_id, "tool": spec.name,
-        "permission": "write", "args_summary": args_summary,
+        "permission": "write",
+        "execution_kind": execution_kind,
+        "input_summary": input_summary,
+        "args_summary": input_summary,
     })
     ctx = _make_ctx(db, config, user, run, conv, step["args"])
     try:
@@ -459,8 +646,22 @@ def _open_write_gate(db, config, user, run, conv, step, spec) -> bool:
         db.commit()
         events.emit(db, run["id"], events.TOOL_CALL_COMPLETED, {
             "tool_call_id": tool_call_id, "tool": spec.name, "status": "failed",
-            "duration_ms": 0, "is_write": 1, "result": preview_payload,
+            "duration_ms": 0,
+            "is_write": 1,
+            "execution_kind": execution_kind,
+            "output_summary": events.summarize_tool_result(
+                preview_payload, status="failed"
+            ),
+            "result": events.public_tool_result(spec.name, preview_payload),
         })
+        _emit_progress(
+            db,
+            run["id"],
+            phase="tool",
+            status="failed",
+            title=f"未完成：{step['title']}",
+            detail=f"写入工具 {spec.name} 未能生成确认预览",
+        )
         step["status"] = "failed"
         return False
 
@@ -485,17 +686,39 @@ def _open_write_gate(db, config, user, run, conv, step, spec) -> bool:
     _update_run(db, run["id"], status="waiting_confirmation")
     db.commit()
     step["status"] = "waiting"
+    _emit_progress(
+        db,
+        run["id"],
+        phase="tool",
+        status="waiting_confirmation",
+        title=f"等待确认：{step['title']}",
+        detail="该操作会写入学习数据，确认前不会执行",
+    )
     events.emit(db, run["id"], events.CONFIRMATION_REQUIRED, {
         "confirmation": {
             "id": confirmation_id,
             "run_id": run["id"],
             "tool_call_id": tool_call_id,
             "action_type": spec.name,
-            "preview": preview_payload,
+            # Preview cards are intentionally typed, but their values still
+            # pass through the same event redaction boundary as tool results.
+            "preview": events.redact_tool_payload(preview_payload),
             "status": "pending",
             "expires_at": expires_at,
             "created_at": now,
         }
+    })
+    # A write tool has reached a real lifecycle boundary, but has not executed
+    # yet.  Emitting this state lets the UI show "waiting for confirmation"
+    # without pretending that the write already happened.
+    events.emit(db, run["id"], events.TOOL_CALL_COMPLETED, {
+        "tool_call_id": tool_call_id,
+        "tool": spec.name,
+        "status": "awaiting_confirmation",
+        "duration_ms": 0,
+        "is_write": 1,
+        "execution_kind": execution_kind,
+        "output_summary": "等待确认，尚未执行写入",
     })
     return True
 
@@ -510,24 +733,101 @@ def _iso_after_seconds(seconds: int) -> str:
 # 收尾：最终 assistant 消息 + run.completed / run.failed
 # ---------------------------------------------------------------------------
 
+
+def _needs_general_knowledge_fallback(
+    steps: list[dict[str, Any]], results: dict[str, Any]
+) -> bool:
+    """Return whether a knowledge-question run lacks usable RAG evidence.
+
+    ``rag.search`` also appears in task-planning runs, where a weak search must
+    not turn task creation into an ungrounded answer.  A ``rag.answer`` step is
+    therefore the explicit boundary that identifies the knowledge-question flow.
+    Tool errors are excluded: an unavailable RAG subsystem is not proof that the
+    knowledge base lacks material, while an explicit refusal or an empty/weak
+    successful retrieval is.
+    """
+
+    rag_answer_steps = [step for step in steps if step.get("tool") == "rag.answer"]
+    if not rag_answer_steps:
+        return False
+
+    for step in rag_answer_steps:
+        result = results.get(step.get("id"))
+        if isinstance(result, dict) and result.get("refused") is True:
+            return True
+
+    # A later answer with real citations is authoritative over a stale or
+    # independently re-run search result.  This protects the normal grounded
+    # path when the corpus changes between the two read-tool calls.
+    if any(
+        isinstance(results.get(step.get("id")), dict)
+        and results[step["id"]].get("answer")
+        and results[step["id"]].get("citations")
+        for step in rag_answer_steps
+    ):
+        return False
+
+    for step in steps:
+        if step.get("tool") != "rag.search":
+            continue
+        result = results.get(step.get("id"))
+        if not isinstance(result, dict) or result.get("error"):
+            continue
+        if result.get("below_threshold") is True:
+            return True
+        hits = result.get("hits")
+        if isinstance(hits, list) and not hits:
+            return True
+        if result.get("hit_count") == 0:
+            return True
+    return False
+
+
 async def _compose_final_text(
-    user_input: str, steps: list[dict[str, Any]], results: dict[str, Any]
-) -> tuple[str, dict[str, Any] | None]:
+    user_input: str,
+    steps: list[dict[str, Any]],
+    results: dict[str, Any],
+    *,
+    private_memory_context: str | None = None,
+    on_delta: Callable[[str], Awaitable[None]] | None = None,
+) -> tuple[str, dict[str, Any] | None, str]:
     """LLM 可用→流式/整段合成；不可用→模板渲染工具结果（PRD-06 §11.1）。
 
     流式失败的补偿：stream_text 若中段异常，composer 已记录日志并停止，
     此时已产出的增量仍被使用（不回退模板，避免同一条消息重复出现）。
     """
-    messages = composer.build_compose_messages(user_input, results)
+    use_general_knowledge = _needs_general_knowledge_fallback(steps, results)
+    messages = (
+        composer.build_general_knowledge_messages(user_input, private_memory_context)
+        if use_general_knowledge
+        else composer.build_compose_messages(user_input, results)
+    )
     usage_capture = composer.UsageCapture()
     streamed: list[str] = []
     async for delta in composer.stream_text(messages, usage_capture=usage_capture):
         streamed.append(delta)
+        if on_delta is not None:
+            # The callback persists the chunk before this iterator requests the
+            # next one, which is what makes final-composition output live.
+            await on_delta(delta)
     if streamed:
-        return "".join(streamed), usage_capture.value
+        text = "".join(streamed)
+        return text, usage_capture.value, composer.compact_summary(text)
     text = await composer.compose_text(messages, usage_capture=usage_capture)
     if text:
-        return text, usage_capture.value
+        return text, usage_capture.value, composer.compact_summary(text)
+    if use_general_knowledge:
+        # The RAG tool explicitly established insufficient evidence, so its
+        # refusal is not an acceptable substitute after both model roles fail.
+        # Returning a separate availability message keeps the source claim
+        # truthful and avoids attaching a general-knowledge disclosure without
+        # an actual model answer.
+        unavailable = prompts.GENERAL_KNOWLEDGE_UNAVAILABLE
+        return (
+            unavailable,
+            usage_capture.value,
+            composer.compact_summary(unavailable),
+        )
     plan = {"steps": steps}
     # 单工具结果的问答轮用工具摘要（含答案原文），多步任务轮用计划总结
     rag_answer = next(
@@ -542,8 +842,12 @@ async def _compose_final_text(
         if others:
             base += "\n" + composer.template_plan_summary(
                 {"steps": others}, results)
-        return base, usage_capture.value
-    return composer.template_plan_summary(plan, results), usage_capture.value
+        return base, usage_capture.value, composer.compact_summary(base)
+    return (
+        composer.template_plan_summary(plan, results),
+        usage_capture.value,
+        composer.template_compact_plan_summary(plan, results),
+    )
 
 
 def _collect_results(db: sqlite3.Connection, steps: list[dict[str, Any]]) -> dict[str, Any]:
@@ -591,6 +895,11 @@ def _emit_citations_if_any(
         if step["tool"] != "rag.answer":
             continue
         result = results.get(step["id"]) or {}
+        # A refusal has no evidentiary basis, even if an adapter accidentally
+        # carries stale citation data alongside it.  Do not expose that data as
+        # support for a general-knowledge fallback answer.
+        if result.get("refused"):
+            continue
         citations = result.get("citations") or []
         if citations:
             events.emit(db, run_id, events.CITATION_ATTACHED,
@@ -620,10 +929,126 @@ def _emit_usage_if_any(
         db.commit()
 
 
+async def _complete_direct_chat(
+    db: sqlite3.Connection, run: sqlite3.Row, conversation_id: str
+) -> bool:
+    """Try an LLM answer for a chat or clarification turn; return True if handled.
+
+    The caller owns the deterministic fallback when no configured provider
+    produces text, so this helper only completes the run after a real reply.
+    """
+
+    history = _load_chat_history(db, conversation_id)
+    if not history or history[-1].get("content") != run["input_text"]:
+        history.append({"role": "user", "content": run["input_text"]})
+    memory_context = conversation_memory.format_context(
+        conversation_memory.retrieve_context(
+            db,
+            user_id=run["user_id"],
+            conversation_id=conversation_id,
+            query=run["input_text"],
+            exclude_run_id=run["id"],
+        )
+    )
+    usage_capture = composer.UsageCapture()
+    _emit_progress(
+        db,
+        run["id"],
+        phase="system",
+        status="running",
+        title="正在生成回答",
+        detail="正在组织适合当前问题的回复",
+    )
+    pieces: list[str] = []
+    async for delta in composer.stream_direct_chat_text(
+        history,
+        private_memory_context=memory_context,
+        usage_capture=usage_capture,
+    ):
+        if not pieces:
+            # A provider can be unavailable before yielding output. Delay the
+            # visible start until text exists so a rule fallback has no stale
+            # model activity to reconcile.
+            _emit_progress(
+                db,
+                run["id"],
+                phase="synthesis",
+                status="running",
+                title="正在生成回答",
+                detail="正在组织适合当前问题的回复",
+            )
+        pieces.append(delta)
+        await _emit_message_delta(db, run["id"], delta)
+    text = "".join(pieces)
+    if not text:
+        return False
+    _persist_message(db, conversation_id, run["id"], "assistant", text)
+    _emit_progress(
+        db,
+        run["id"],
+        phase="synthesis",
+        status="completed",
+        title="回答已生成",
+    )
+    _emit_usage_if_any(db, run["id"], usage_capture.value)
+    _finalize_run(
+        db,
+        run["id"],
+        event_type=events.RUN_COMPLETED,
+        payload={"summary": composer.compact_summary(text)},
+        status="completed",
+    )
+    return True
+
+
+async def _complete_identity_fallback(
+    db: sqlite3.Connection, run: sqlite3.Row
+) -> None:
+    """Finish an identity turn safely when neither configured chat model replies."""
+
+    _emit_progress(
+        db,
+        run["id"],
+        phase="synthesis",
+        status="running",
+        title="正在提供助手说明",
+    )
+    await _emit_assistant_text(
+        db, run["id"], run["conversation_id"], prompts.IDENTITY_FALLBACK
+    )
+    _emit_progress(
+        db,
+        run["id"],
+        phase="synthesis",
+        status="completed",
+        title="助手说明已生成",
+    )
+    _finalize_run(
+        db,
+        run["id"],
+        event_type=events.RUN_COMPLETED,
+        payload={"summary": composer.compact_summary(prompts.IDENTITY_FALLBACK)},
+        status="completed",
+    )
+
+
 def _fail_run(db: sqlite3.Connection, run_id: str, message: str) -> None:
-    events.emit(db, run_id, events.RUN_FAILED, {"error": message})
-    _update_run(db, run_id, status="failed", error=message,
-                completed_at=utc_now_iso())
+    _emit_progress(
+        db,
+        run_id,
+        phase="system",
+        status="failed",
+        title="本次处理未能完成",
+        detail="请稍后重试",
+    )
+    _finalize_run(
+        db,
+        run_id,
+        event_type=events.RUN_FAILED,
+        payload={"error": message},
+        status="failed",
+        error=message,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -646,6 +1071,14 @@ async def _run_steps(
             logger.error("计划引用了未注册工具: %s", step["tool"])
             step["status"] = "failed"
             results[step["id"]] = {"error": f"工具 {step['tool']} 未注册"}
+            _emit_progress(
+                db,
+                run["id"],
+                phase="tool",
+                status="failed",
+                title=f"未完成：{step['title']}",
+                detail="所需工具暂不可用",
+            )
             continue
         _enrich_step_args(step, steps, results)
         if spec.permission == "read" and spec.auto_execute:
@@ -692,10 +1125,16 @@ def _persist_clarification(
 
 
 def _emit_plan_updated(db: sqlite3.Connection, run_id: str, steps: list[dict[str, Any]]) -> None:
-    events.emit(db, run_id, events.PLAN_UPDATED, {
-        "steps": [{"id": s["id"], "title": s["title"], "status": s["status"]}
-                  for s in steps]
-    })
+    payload_steps: list[dict[str, Any]] = []
+    for step in steps:
+        item = {"id": step["id"], "title": step["title"], "status": step["status"]}
+        tool = step.get("tool")
+        # Older persisted plans can lack a tool name, so expose it only when
+        # present and keep the original three-field replay contract intact.
+        if isinstance(tool, str) and tool:
+            item["tool"] = tool
+        payload_steps.append(item)
+    events.emit(db, run_id, events.PLAN_UPDATED, {"steps": payload_steps})
 
 
 async def _finalize(
@@ -706,16 +1145,70 @@ async def _finalize(
 ) -> None:
     """全部步骤走完后的收尾：最终消息 → 引用/用量事件 → run.completed。"""
     results = _collect_results(db, steps)
-    text, usage = await _compose_final_text(goal_text or run["input_text"], steps, results)
-    await _emit_assistant_text(db, run["id"], run["conversation_id"], text)
+    streamed = False
+
+    async def _forward_delta(delta: str) -> None:
+        nonlocal streamed
+        streamed = True
+        await _emit_message_delta(db, run["id"], delta)
+
+    _emit_progress(
+        db,
+        run["id"],
+        phase="synthesis",
+        status="running",
+        title="正在整理执行结果",
+        detail="正在生成最终回复",
+    )
+    user_input = goal_text or run["input_text"]
+    memory_context = None
+    if _needs_general_knowledge_fallback(steps, results):
+        # Grounded answers remain constrained to tool results; only the
+        # model-knowledge fallback receives private conversational context.
+        memory_context = conversation_memory.format_context(
+            conversation_memory.retrieve_context(
+                db,
+                user_id=run["user_id"],
+                conversation_id=run["conversation_id"],
+                query=user_input,
+                exclude_run_id=run["id"],
+            )
+        )
+    text, usage, summary = await _compose_final_text(
+        user_input,
+        steps,
+        results,
+        private_memory_context=memory_context,
+        on_delta=_forward_delta,
+    )
+    if streamed:
+        # Streamed chunks have already been persisted as message.delta events;
+        # only the durable chat record remains so a replay never duplicates it.
+        _persist_message(db, run["conversation_id"], run["id"], "assistant", text)
+    else:
+        # Template and non-stream providers retain the previous bounded-delta
+        # behavior while sharing the same single-message persistence contract.
+        await _emit_assistant_text(db, run["id"], run["conversation_id"], text)
+    _emit_progress(
+        db,
+        run["id"],
+        phase="synthesis",
+        status="completed",
+        title="最终回复已生成",
+    )
     _emit_citations_if_any(db, run["id"], steps, results)
     _emit_usage_if_any(db, run["id"], usage)
     suggestion = _scenario_suggestion(intent, conv)
-    payload: dict[str, Any] = {"summary": text[:200]}
+    payload: dict[str, Any] = {"summary": summary}
     if suggestion:
         payload["suggestion"] = suggestion
-    events.emit(db, run["id"], events.RUN_COMPLETED, payload)
-    _update_run(db, run["id"], status="completed", completed_at=utc_now_iso())
+    _finalize_run(
+        db,
+        run["id"],
+        event_type=events.RUN_COMPLETED,
+        payload=payload,
+        status="completed",
+    )
 
 
 async def execute_run(run_id: str, db_path: str) -> None:
@@ -736,6 +1229,44 @@ async def execute_run(run_id: str, db_path: str) -> None:
 
         intent, goal_text = _resolve_initial_intent(db, run, conv, attachment)
 
+        is_identity_turn = intent.kind == intents.KIND_AGENT_IDENTITY
+        is_recall_turn = intent.kind == intents.KIND_CONVERSATION_RECALL
+        needs_direct_chat = is_identity_turn or is_recall_turn or intents.next_question(intent) is not None or (
+            intent.kind == intents.KIND_DIAGNOSE_UPLOAD
+            and not (attachment and attachment.get("diagnostic_token"))
+        )
+        if needs_direct_chat:
+            if await _complete_direct_chat(db, run, run["conversation_id"]):
+                return
+            if is_identity_turn:
+                # Do not let an unavailable provider reclassify an identity
+                # question as a planning request and trigger RAG tools.
+                await _complete_identity_fallback(db, run)
+                return
+            if is_recall_turn:
+                await _emit_assistant_text(
+                    db,
+                    run["id"],
+                    run["conversation_id"],
+                    prompts.CONVERSATION_RECALL_UNAVAILABLE,
+                )
+                _finalize_run(
+                    db,
+                    run["id"],
+                    event_type=events.RUN_COMPLETED,
+                    payload={"summary": prompts.CONVERSATION_RECALL_UNAVAILABLE},
+                    status="completed",
+                )
+                return
+            _emit_progress(
+                db,
+                run_id,
+                phase="system",
+                status="completed",
+                title="已切换到规则引导",
+                detail="当前将提供明确的下一步建议",
+            )
+
         # 信息不足：每轮只追问一个最关键问题（PRD-06 §6.2），本轮即完成
         question = intents.next_question(intent)
         if question:
@@ -744,9 +1275,28 @@ async def execute_run(run_id: str, db_path: str) -> None:
             _persist_clarification(
                 db, run_id, intents.make_clarification(intent, goal_text), attachment
             )
+            _emit_progress(
+                db,
+                run_id,
+                phase="synthesis",
+                status="running",
+                title="正在准备下一步问题",
+            )
             await _emit_assistant_text(db, run_id, run["conversation_id"], question)
-            events.emit(db, run_id, events.RUN_COMPLETED, {"summary": question})
-            _update_run(db, run_id, status="completed", completed_at=utc_now_iso())
+            _emit_progress(
+                db,
+                run_id,
+                phase="synthesis",
+                status="completed",
+                title="下一步问题已生成",
+            )
+            _finalize_run(
+                db,
+                run_id,
+                event_type=events.RUN_COMPLETED,
+                payload={"summary": question},
+                status="completed",
+            )
             return
 
         if intent.kind == intents.KIND_DIAGNOSE_UPLOAD and not (
@@ -754,14 +1304,49 @@ async def execute_run(run_id: str, db_path: str) -> None:
         ):
             # 想诊断但没带文件：引导上传（话术表无对应行，用上传面板引导文案）
             notice = "请先上传需要诊断的标注结果文件（支持 JSON / TextGrid / COCO / VOC），我会先做格式校验。"
+            _emit_progress(
+                db,
+                run_id,
+                phase="synthesis",
+                status="running",
+                title="正在准备上传指引",
+            )
             await _emit_assistant_text(db, run_id, run["conversation_id"], notice)
-            events.emit(db, run_id, events.RUN_COMPLETED, {"summary": notice})
-            _update_run(db, run_id, status="completed", completed_at=utc_now_iso())
+            _emit_progress(
+                db,
+                run_id,
+                phase="synthesis",
+                status="completed",
+                title="上传指引已生成",
+            )
+            _finalize_run(
+                db,
+                run_id,
+                event_type=events.RUN_COMPLETED,
+                payload={"summary": notice},
+                status="completed",
+            )
             return
 
+        _emit_progress(
+            db,
+            run_id,
+            phase="planning",
+            status="running",
+            title="正在制定执行计划",
+            detail="正在安排可验证的处理步骤",
+        )
         steps = _build_plan(intent, run, conv, attachment, goal_text=goal_text)
         _persist_plan(db, run_id, steps)
         _emit_plan_updated(db, run_id, steps)
+        _emit_progress(
+            db,
+            run_id,
+            phase="planning",
+            status="completed",
+            title="执行计划已生成",
+            detail=f"已安排 {len(steps)} 个步骤",
+        )
         # run 行记录本轮生效的场景/数据类型（显式 > 识别）；会话行不在这里改，
         # 场景切换只能由用户显式触发（PRD-06 §7.3）
         _update_run(db, run_id,
@@ -806,9 +1391,11 @@ async def continue_run(run_id: str, db_path: str) -> None:
 
         # 定位刚被确认的写步骤：tool_call 已由确认路由置 completed
         start_index = len(steps)
+        resumed_confirmation = False
         for index, step in enumerate(steps):
             if step["status"] == "waiting":
                 step["status"] = "completed"
+                resumed_confirmation = True
             if step["status"] not in ("completed", "failed"):
                 start_index = index
                 break
@@ -816,6 +1403,23 @@ async def continue_run(run_id: str, db_path: str) -> None:
             start_index = len(steps)
 
         _update_run(db, run_id, status="running")
+        if resumed_confirmation:
+            _emit_progress(
+                db,
+                run_id,
+                phase="tool",
+                status="completed",
+                title="写入操作已确认",
+                detail="正在继续后续计划",
+            )
+        _emit_progress(
+            db,
+            run_id,
+            phase="planning",
+            status="running",
+            title="正在继续执行计划",
+            detail="已根据确认结果恢复未完成步骤",
+        )
         run_data_type, run_scenario_id, conversation_data_type, conversation_scenario_id = (
             _context_values(run, conv)
         )

@@ -20,6 +20,7 @@ import secrets
 import sqlite3
 import uuid
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
@@ -144,6 +145,40 @@ class ProviderUpdateIn(BaseModel):
     extra: dict[str, Any] | None = None
 
 
+class ProviderModelDiscoveryIn(BaseModel):
+    """One-shot credentials used to populate the new-provider model selector.
+
+    This deliberately excludes model, role, and persistence fields: discovery
+    must validate an administrator's current form without creating a provider
+    row or retaining the API key in any audit payload.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Keep sensitive input opaque until the route validates it. The shared
+    # RequestValidationError handler logs rejected values, which would be an
+    # unacceptable path for a malformed API key.
+    protocol: Any
+    base_url: Any
+    api_key: Any
+
+
+class ProviderTransientTestIn(BaseModel):
+    """Unsaved connection values used only for a bounded live smoke check.
+
+    ``Any`` keeps FastAPI's rejected-request logging path from coercing or
+    reflecting an API key before the route can validate it as opaque input.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    protocol: Any
+    base_url: Any
+    api_key: Any
+    model: Any
+    role: Any = "none"
+
+
 class SetRoleIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -157,6 +192,118 @@ def _validate_protocol_role(protocol: str, role: str) -> None:
         raise ApiError(400, "INVALID_ROLE", "供应商角色仅支持 primary / fallback / embedding / rerank / none")
 
 
+_MODEL_DISCOVERY_ERROR_RESPONSES: dict[str, tuple[int, str, str]] = {
+    "auth_error": (400, "PROVIDER_AUTH_ERROR", "供应商认证失败，请检查 API Key 后重试"),
+    "rate_limited": (429, "PROVIDER_RATE_LIMITED", "供应商暂时限制请求，请稍后重试"),
+    "timeout": (504, "PROVIDER_TIMEOUT", "获取模型超时，请稍后重试"),
+    "network_error": (502, "PROVIDER_NETWORK_ERROR", "暂时无法连接供应商，请稍后重试"),
+    "server_error": (502, "PROVIDER_UNAVAILABLE", "供应商暂时不可用，请稍后重试"),
+    "model_discovery_unsupported": (
+        400,
+        "MODEL_DISCOVERY_UNSUPPORTED",
+        "当前供应商不支持获取模型，请手动填写模型名",
+    ),
+    "invalid_model_list_response": (
+        502,
+        "MODEL_LIST_INVALID",
+        "供应商返回的模型列表不可用，请手动填写模型名",
+    ),
+    "model_list_response_too_large": (
+        502,
+        "MODEL_LIST_TOO_LARGE",
+        "供应商返回的模型列表超出安全限制，请手动填写模型名",
+    ),
+    "model_list_limit_exceeded": (
+        502,
+        "MODEL_LIST_LIMIT_EXCEEDED",
+        "可获取的模型数量超出安全限制，请缩小范围或手动填写模型名",
+    ),
+}
+
+
+def _model_discovery_error(exc: providers.ProviderError) -> ApiError:
+    """Translate adapter-only safe codes without exposing upstream exception text."""
+    status, code, message = _MODEL_DISCOVERY_ERROR_RESPONSES.get(
+        str(exc),
+        (502, "MODEL_DISCOVERY_FAILED", "无法获取模型列表，请检查配置后重试"),
+    )
+    return ApiError(status, code, message)
+
+
+def _provider_extra(row: sqlite3.Row) -> dict[str, Any]:
+    """Load stored gateway metadata defensively; malformed legacy JSON is inert."""
+    try:
+        value = json.loads(row["extra_json"] or "{}")
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _validate_model_discovery_base_url(base_url: str) -> str | None:
+    """Apply stricter transport rules before a transient API key leaves the process."""
+    error = validate_provider_base_url(base_url)
+    if error is not None:
+        return error
+    parsed = urlparse(base_url.strip())
+    if parsed.scheme != "https":
+        return "获取模型仅支持 HTTPS 接口地址"
+    if parsed.username is not None or parsed.password is not None:
+        return "接口地址不允许包含账户信息"
+    return None
+
+
+def _transient_provider_test_values(
+    body: ProviderTransientTestIn,
+) -> tuple[str, str, str, str, str]:
+    """Validate a form-only smoke request before its API key leaves the process.
+
+    Model discovery and transient testing share the strict HTTPS/SSRF boundary.
+    The returned tuple contains only normalized in-memory values and is never
+    passed to audit helpers or provider persistence code.
+    """
+    if not isinstance(body.protocol, str) or body.protocol not in _PROTOCOLS:
+        raise ApiError(400, "INVALID_PROTOCOL", "不支持的协议类型")
+    if (
+        not isinstance(body.base_url, str)
+        or not body.base_url.strip()
+        or len(body.base_url) > 500
+    ):
+        raise ApiError(400, "INVALID_BASE_URL", "接口地址格式不正确")
+    if not isinstance(body.api_key, str) or not body.api_key or len(body.api_key) > 500:
+        raise ApiError(400, "INVALID_API_KEY", "API Key 格式不正确")
+    if not isinstance(body.model, str) or not body.model.strip() or len(body.model) > 100:
+        raise ApiError(400, "INVALID_MODEL", "请先选择或填写模型名")
+    if not isinstance(body.role, str) or body.role not in _PROVIDER_ROLES:
+        raise ApiError(400, "INVALID_ROLE", "供应商角色格式不正确")
+    url_error = _validate_model_discovery_base_url(body.base_url)
+    if url_error is not None:
+        raise ApiError(400, "INVALID_BASE_URL", url_error)
+    return (
+        body.protocol,
+        body.base_url.strip(),
+        body.api_key,
+        body.model.strip(),
+        body.role,
+    )
+
+
+async def _discover_provider_models(
+    protocol: str,
+    base_url: str,
+    api_key: str,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Invoke the adapter while preserving only its allowlisted error vocabulary."""
+    try:
+        return await providers.discover_models(protocol, base_url, api_key, extra)
+    except providers.ProviderError as exc:
+        raise _model_discovery_error(exc) from None
+    except Exception:
+        # decrypt/client faults must not reach FastAPI's generic logger because
+        # third-party exceptions can embed request context or credentials.
+        raise ApiError(502, "MODEL_DISCOVERY_FAILED", "无法获取模型列表，请检查配置后重试") from None
+
+
 @router.get("/api/admin/providers")
 def list_providers(
     admin: CurrentUser = Depends(get_admin_user),
@@ -167,6 +314,81 @@ def list_providers(
     ).fetchall()
     items = [_provider_dto(row) for row in rows]
     return {"items": items, "total": len(items)}
+
+
+@router.post("/api/admin/providers/discover-models")
+async def discover_transient_provider_models(
+    body: ProviderModelDiscoveryIn,
+    admin: CurrentUser = Depends(_admin_csrf),
+) -> dict[str, Any]:
+    """Discover models from unsaved form values without writing a provider or audit row."""
+    if not isinstance(body.protocol, str) or body.protocol not in _PROTOCOLS:
+        raise ApiError(400, "INVALID_PROTOCOL", "不支持的协议类型")
+    if (
+        not isinstance(body.base_url, str)
+        or not body.base_url.strip()
+        or len(body.base_url) > 500
+    ):
+        raise ApiError(400, "INVALID_BASE_URL", "接口地址格式不正确")
+    if not isinstance(body.api_key, str) or not body.api_key or len(body.api_key) > 500:
+        raise ApiError(400, "INVALID_API_KEY", "API Key 格式不正确")
+    url_error = _validate_model_discovery_base_url(body.base_url)
+    if url_error is not None:
+        raise ApiError(400, "INVALID_BASE_URL", url_error)
+    return await _discover_provider_models(
+        body.protocol,
+        body.base_url.strip(),
+        body.api_key,
+    )
+
+
+@router.post("/api/admin/providers/test-connection")
+async def test_transient_provider_connectivity(
+    body: ProviderTransientTestIn,
+    admin: CurrentUser = Depends(_admin_csrf),
+) -> dict[str, Any]:
+    """Test an unsaved provider form without creating a row or audit record."""
+    protocol, base_url, api_key, model, role = _transient_provider_test_values(body)
+    # The adapter catches upstream failures and returns its existing safe result
+    # shape. Do not persist this result: it represents an incomplete form, not
+    # a durable provider configuration.
+    return await providers.test_transient_provider(protocol, base_url, api_key, model, role)
+
+
+@router.post("/api/admin/providers/{provider_id}/discover-models")
+async def discover_saved_provider_models(
+    provider_id: str,
+    request: Request,
+    admin: CurrentUser = Depends(_admin_csrf),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Discover from the immutable saved row, never from a caller-supplied URL or key."""
+    if await request.body():
+        # A non-empty body could otherwise be mistaken for an override of a
+        # stored credential.  Reject it before loading or decrypting the row.
+        raise ApiError(
+            400,
+            "MODEL_DISCOVERY_BODY_FORBIDDEN",
+            "已保存的供应商只能使用其已存配置获取模型",
+        )
+    row = _get_provider_or_404(conn, provider_id)
+    if row["protocol"] not in _PROTOCOLS:
+        raise ApiError(400, "INVALID_PROTOCOL", "已保存的供应商协议不受支持")
+    url_error = _validate_model_discovery_base_url(row["base_url"])
+    if url_error is not None:
+        raise ApiError(400, "INVALID_BASE_URL", url_error)
+    try:
+        api_key = providers.decrypt_key(row)
+    except Exception:
+        # The encrypted token, its parser error, and the key material must all
+        # remain server-only even if the local encryption configuration changed.
+        raise ApiError(500, "MODEL_DISCOVERY_FAILED", "无法读取供应商密钥，请重新保存配置") from None
+    return await _discover_provider_models(
+        row["protocol"],
+        row["base_url"],
+        api_key,
+        _provider_extra(row),
+    )
 
 
 @router.post("/api/admin/providers", status_code=201)
@@ -321,11 +543,6 @@ def test_provider_connectivity(
         # create an unexpected outbound request despite the administrator's
         # explicit disable action.
         raise ApiError(400, "PROVIDER_NOT_TESTABLE", "已禁用的供应商不能执行连接测试")
-    if row["role"] == "none":
-        # The test must prove a concrete runtime capability.  An unassigned
-        # provider has no safe contract to invoke, so require role selection
-        # before allowing its credential to leave the process.
-        raise ApiError(400, "PROVIDER_NOT_TESTABLE", "请先为供应商分配模型角色后再测试")
     # 真实连通性测试：同步端点跑在线程池里，asyncio.run 不会撞到事件循环
     result = asyncio.run(providers.test_provider(row))
     conn.execute(
