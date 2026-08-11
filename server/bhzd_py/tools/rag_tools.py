@@ -120,6 +120,7 @@ def rag_answer_handler(ctx: ToolContext) -> dict[str, Any]:
         scenario_id=args.get("scenario_id"),
         data_type=args.get("data_type"),
         published_only=bool(args.get("published_only", True)),
+        document_ids=args.get("document_ids"),
         composer=None,
     )
     payload = _to_jsonable(answer)

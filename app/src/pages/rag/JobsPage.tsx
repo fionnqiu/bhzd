@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { api } from "../../api/client";
 import type { Paginated, RagDocument, RagJob } from "../../api/types";
 import {
@@ -30,9 +30,9 @@ import {
   useToast,
   type Column,
 } from "../../components";
-import { errText, fmtDuration, fmtTime, hasActiveJobs, STAGE_LABELS } from "./ragShared";
+import { errText, fmtDuration, fmtTime, hasActiveJobs, safeRagReturnPath, STAGE_LABELS } from "./ragShared";
 
-const LIMIT = 20;
+const DEFAULT_LIMIT = 20;
 /** 阶段筛选生效时的拉取上限（客户端过滤），超出如实标注 */
 const STAGE_FILTER_SCAN = 200;
 
@@ -58,10 +58,15 @@ interface StatusCounts {
 }
 
 export default function JobsPage() {
+  const location = useLocation();
+  // Preserve the queue location through refreshes so detail pages can return to the
+  // exact filtered/paginated view that initiated the navigation.
+  const returnTo = safeRagReturnPath(`${location.pathname}${location.search}`);
   const toast = useToast();
   const [items, setItems] = useState<RagJob[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
+  const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [counts, setCounts] = useState<StatusCounts | null>(null);
   const [docTitles, setDocTitles] = useState<Record<string, string>>({});
   const [status, setStatus] = useState("");
@@ -75,8 +80,10 @@ export default function JobsPage() {
 
   const load = useCallback(
     async (quiet = false, signal?: AbortSignal) => {
-      if (refreshing.current) return;
-      refreshing.current = true;
+      // Only silent polling may skip an in-flight request. Lifecycle loads can be aborted
+      // during Strict Mode setup and must immediately re-enter so the page cannot stay loading.
+      if (quiet && refreshing.current) return;
+      if (quiet) refreshing.current = true;
       if (!quiet) {
         setLoading(true);
         setError(null);
@@ -86,7 +93,7 @@ export default function JobsPage() {
           // 服务端分页（无阶段筛选时最省事且 total 精确）
           const res = await api.get<Paginated<RagJob>>("/api/rag/jobs", {
             status: status || undefined,
-            limit: LIMIT,
+            limit,
             offset,
           }, { signal });
           if (signal?.aborted) return;
@@ -102,7 +109,7 @@ export default function JobsPage() {
           }, { signal });
           if (signal?.aborted) return;
           const filtered = res.items.filter((j) => j.stage === stage);
-          setItems(filtered.slice(offset, offset + LIMIT));
+          setItems(filtered.slice(offset, offset + limit));
           setTotal(filtered.length);
           setScanTruncated(res.total > STAGE_FILTER_SCAN);
         }
@@ -123,10 +130,10 @@ export default function JobsPage() {
         if (!quiet && !signal?.aborted) setError(errText(err, "任务队列加载失败"));
       } finally {
         if (!signal?.aborted) setLoading(false);
-        refreshing.current = false;
+        if (quiet) refreshing.current = false;
       }
     },
-    [status, stage, offset],
+    [status, stage, offset, limit],
   );
 
   // 资料 id → 标题映射（任务 DTO 不带标题）
@@ -185,7 +192,14 @@ export default function JobsPage() {
     {
       key: "document",
       title: "资料名",
-      render: (job) => <Link to={`/rag-admin/documents/${job.document_id}`}>{docName(job)}</Link>,
+      render: (job) => (
+        <Link
+          to={`/rag-admin/documents/${job.document_id}?returnTo=${encodeURIComponent(returnTo)}`}
+          state={{ returnTo }}
+        >
+          {docName(job)}
+        </Link>
+      ),
     },
     { key: "stage", title: "阶段", width: "80px", render: (job) => STAGE_LABELS[job.stage] ?? job.stage },
     { key: "status", title: "状态", width: "100px", render: (job) => <StatusBadge status={job.status} /> },
@@ -303,7 +317,16 @@ export default function JobsPage() {
             loading={loading}
             empty={<EmptyState title="暂无任务" hint="上传资料或触发重新解析后，任务会出现在这里" />}
           />
-          <Pagination offset={offset} limit={LIMIT} total={total} onChange={setOffset} />
+          <Pagination
+            offset={offset}
+            limit={limit}
+            total={total}
+            onChange={setOffset}
+            onLimitChange={(nextLimit) => {
+              setLimit(nextLimit);
+              setOffset(0);
+            }}
+          />
         </>
       )}
     </div>

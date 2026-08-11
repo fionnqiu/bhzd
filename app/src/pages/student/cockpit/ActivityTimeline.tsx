@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
   ChevronDown,
@@ -7,9 +7,11 @@ import {
   CircleDashed,
   Loader2,
   MessageSquareText,
+  Search,
   ShieldCheck,
   Wrench,
 } from "lucide-react";
+import { AgentOrb } from "../../../components";
 import type { PlanStep } from "../../../api/types";
 import { toolLabel } from "./constants";
 import ExecutionPlan from "./PlanCard";
@@ -36,6 +38,17 @@ const STATUS_LABELS: Record<ActivityStatus, string> = {
   failed: "未完成",
 };
 
+// The event store can retain legacy or future provider stages. Rendering only
+// this explicit set ensures the student record never turns an internal phase
+// such as understanding, thinking, or analysis into visible progress copy.
+const STUDENT_VISIBLE_STAGES = new Set<ActivityStage>([
+  "planning",
+  "retrieval",
+  "tool",
+  "responding",
+  "confirmation",
+]);
+
 type ActivityBlock =
   { kind: "entry"; entry: ActivityEntry } | { kind: "tools"; entries: ActivityEntry[] };
 
@@ -55,13 +68,15 @@ function ActivityIcon({
         ? CheckCircle2
         : stage === "responding"
           ? MessageSquareText
-          : stage === "confirmation"
-            ? ShieldCheck
-            : stage === "tool"
-              ? Wrench
-              : status === "running"
-                ? Loader2
-                : CircleDashed;
+          : stage === "retrieval"
+            ? Search
+            : stage === "confirmation"
+              ? ShieldCheck
+              : stage === "tool"
+                ? Wrench
+                : status === "running"
+                  ? Loader2
+                  : CircleDashed;
   return <Icon aria-hidden="true" size={size} />;
 }
 
@@ -91,7 +106,7 @@ function groupActivityBlocks(entries: ActivityEntry[]): ActivityBlock[] {
  * decoded, but only observable operations are allowed into the student record.
  */
 function isStudentHiddenActivity(activity: ActivityEntry): boolean {
-  return activity.stage === "understanding";
+  return !STUDENT_VISIBLE_STAGES.has(activity.stage);
 }
 
 function toolGroupLabel(entries: ActivityEntry[]): string {
@@ -120,11 +135,16 @@ function ActivityRow({
     activity.stage === "tool"
       ? executionKindLabel(activity.executionKind)
       : STAGE_LABELS[activity.stage];
+  // Input and output summaries are intentionally absent from this presentation.
+  // Even a bounded summary can drift toward prompts, arguments, or raw results;
+  // the lifecycle label and duration are sufficient learner-facing progress.
   return (
     <div
       className={[
         "agent-activity-row",
         `agent-activity-row-${activity.status}`,
+        activity.stage === "retrieval" ? "agent-activity-row-retrieval" : "",
+        activity.stage === "tool" ? "agent-activity-row-operation" : "",
         animateArrival ? "agent-activity-row-arriving" : "",
       ]
         .filter(Boolean)
@@ -137,6 +157,11 @@ function ActivityRow({
       <div className="agent-activity-row-content">
         <div className="agent-activity-row-primary">
           {stageLabel ? <span className="agent-activity-stage">{stageLabel}</span> : null}
+          {/* Keep each lifecycle state beside the operation it describes so
+              completed rows do not form a detached status column. */}
+          <span className={`agent-activity-status agent-activity-status-${activity.status}`}>
+            {STATUS_LABELS[activity.status]}
+          </span>
           <span>{activity.message}</span>
         </div>
         {activity.detail ? <p className="agent-activity-detail">{activity.detail}</p> : null}
@@ -147,20 +172,7 @@ function ActivityRow({
             {activity.durationMs != null ? ` · ${activity.durationMs}ms` : ""}
           </p>
         ) : null}
-        {activity.inputSummary || activity.outputSummary ? (
-          <div className="agent-activity-summaries">
-            {activity.inputSummary ? (
-              <p className="agent-activity-meta">输入摘要：{activity.inputSummary}</p>
-            ) : null}
-            {activity.outputSummary ? (
-              <p className="agent-activity-meta">输出摘要：{activity.outputSummary}</p>
-            ) : null}
-          </div>
-        ) : null}
       </div>
-      <span className={`agent-activity-status agent-activity-status-${activity.status}`}>
-        {STATUS_LABELS[activity.status]}
-      </span>
     </div>
   );
 }
@@ -246,43 +258,49 @@ function mergeVisibleActivities(
 function recordSummary(
   current: ActivityEntry | null,
   live: boolean,
-  toolCount: number,
-  hasAnswer: boolean,
   hasPlan: boolean,
+  processingLabel?: string,
 ): string {
   const terminal = !live && (current?.status === "completed" || current?.status === "failed");
   if (terminal) {
     if (current?.status === "failed") {
-      return toolCount > 0 ? `执行未完成 · 已处理 ${toolCount} 项操作` : "执行未完成";
+      return "处理未完成";
     }
-    const parts = [toolCount > 0 ? `已完成 ${toolCount} 项操作` : "", hasAnswer ? "回复已生成" : ""]
-      .filter(Boolean)
-      .join(" · ");
-    return parts || (hasPlan ? "执行清单已完成" : "执行已完成");
+    return "处理完成";
   }
   if (current) return current.message;
+  if (processingLabel) return processingLabel;
   return hasPlan ? "执行清单已就绪" : "等待可见执行事件";
 }
 
-function recordStageLabel(current: ActivityEntry | null, live: boolean, hasPlan: boolean): string {
-  if (!live && current?.status === "completed") return "执行记录";
-  if (!live && current?.status === "failed") return "执行记录";
-  if (!current) return hasPlan ? "执行清单" : "执行记录";
+function recordStageLabel(
+  current: ActivityEntry | null,
+  live: boolean,
+  hasPlan: boolean,
+  processingLabel?: string,
+): string {
+  if (!live && current?.status === "completed") return "处理过程";
+  if (!live && current?.status === "failed") return "处理过程";
+  if (!current && processingLabel) return "处理中";
+  if (!current) return hasPlan ? "执行清单" : "处理过程";
   if (current.stage === "tool") return executionKindLabel(current.executionKind);
-  return STAGE_LABELS[current.stage] ?? "执行记录";
+  return STAGE_LABELS[current.stage] ?? "处理过程";
 }
 
 /**
  * The single student-facing source for verified Agent work. It intentionally
  * projects plans, tool lifecycles, confirmations, and answer generation only;
  * raw reasoning, payloads, and fabricated progress never reach this component.
- * Planning and retrieval use only bounded server-issued progress summaries.
+ * Planning and retrieval use only bounded server-issued progress summaries. A live
+ * processing label is accepted as a fallback so the same record can replace the
+ * former standalone thinking/status widget before the first visible event arrives.
  */
 export default function ActivityTimeline({
   activities,
   planSteps = [],
   currentActivity = null,
   activityGroupId,
+  processingLabel,
   live = true,
 }: {
   activities: ActivityEntry[];
@@ -292,13 +310,25 @@ export default function ActivityTimeline({
   currentActivity?: ActivityEntry | null;
   /** Distinguishes historical controls from adjacent runs with matching sequence values. */
   activityGroupId?: string;
-  /** Historical and terminal records start folded; active runs stay inspectable. */
+  /** A safe run-state label shown in the same record before an event arrives. */
+  processingLabel?: string | null;
+  /** New live records start expanded; historical records stay compact. */
   live?: boolean;
 }) {
   const [open, setOpen] = useState(live);
+  const recordStateRef = useRef({ activityGroupId, live });
   const seenActivityKeysRef = useRef<Set<string> | null>(null);
-  useEffect(() => setOpen(live), [live]);
   const generatedId = useId();
+  useLayoutEffect(() => {
+    const previous = recordStateRef.current;
+    // Keep the current turn open when it settles so the reviewed lifecycle
+    // summary remains visible beside the answer, while historical records stay
+    // compact and a learner's manual fold choice is preserved.
+    if (previous.activityGroupId !== activityGroupId || (!previous.live && live)) {
+      setOpen(true);
+    }
+    recordStateRef.current = { activityGroupId, live };
+  }, [activityGroupId, live]);
   const visibleActivities = useMemo(
     () => mergeVisibleActivities(activities, currentActivity),
     [activities, currentActivity],
@@ -317,10 +347,9 @@ export default function ActivityTimeline({
   const blocks = useMemo(() => groupActivityBlocks(visibleActivities), [visibleActivities]);
   const current = visibleActivities[visibleActivities.length - 1] ?? null;
   const toolCount = visibleActivities.filter((activity) => activity.stage === "tool").length;
-  const hasAnswer = visibleActivities.some((activity) => activity.stage === "responding");
   const hasPlan = planSteps.length > 0;
 
-  if (!current && !hasPlan) return null;
+  if (!current && !hasPlan && !processingLabel) return null;
 
   const summaryStatus: ActivityStatus =
     !live && current?.status === "failed"
@@ -329,8 +358,18 @@ export default function ActivityTimeline({
         ? "completed"
         : (current?.status ?? "running");
   const detailsId = `agent-execution-details-${activityGroupId ?? generatedId}`;
-  const summary = recordSummary(current, live, toolCount, hasAnswer, hasPlan);
-  const stageLabel = recordStageLabel(current, live, hasPlan);
+  const summary = recordSummary(current, live, hasPlan, processingLabel ?? undefined);
+  const stageLabel = recordStageLabel(current, live, hasPlan, processingLabel ?? undefined);
+  // The orb communicates the currently safe, observable lifecycle phase. It
+  // deliberately never represents or reveals private model reasoning.
+  const orbPhase =
+    summaryStatus === "completed"
+      ? "finalizing"
+      : current?.stage === "retrieval"
+        ? "retrieving"
+        : current?.stage === "responding"
+          ? "generating"
+          : "preparing";
 
   return (
     <section
@@ -353,7 +392,9 @@ export default function ActivityTimeline({
         onClick={() => setOpen((value) => !value)}
       >
         <span className="agent-current-action-icon">
-          {current ? (
+          {summaryStatus === "running" || summaryStatus === "completed" ? (
+            <AgentOrb phase={orbPhase} />
+          ) : current ? (
             <ActivityIcon stage={current.stage} status={summaryStatus} size={16} />
           ) : (
             <Wrench aria-hidden="true" size={16} />

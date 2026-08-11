@@ -8,6 +8,7 @@
  * 过期倒计时来自 expires_at（ISO）；过期后禁用按钮，引导重新生成预览。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ListPlus } from "lucide-react";
 import { Button, Card, ProgressBar } from "../../../components";
 import type { Confirmation, MasteryChange, TaskStep } from "../../../api/types";
 import { actionLabel, dataTypeLabel } from "./constants";
@@ -194,9 +195,12 @@ export default function ConfirmationGate({
 }: ConfirmationGateProps) {
   const countdown = useCountdown(confirmation.expires_at);
   const expiredConfirmationId = useRef<string | null>(null);
+  // A task card is already the reviewed preview. Its explicit sync button is
+  // therefore the confirmation action itself, not a second write pathway.
+  const isTaskSync = confirmation.action_type === "task.create";
   const title = useMemo(
-    () => actionLabel(confirmation.action_type),
-    [confirmation.action_type],
+    () => (isTaskSync ? "同步到学习任务" : `待确认：${actionLabel(confirmation.action_type)}`),
+    [confirmation.action_type, isTaskSync],
   );
   useEffect(() => {
     if (!countdown.expired || expiredConfirmationId.current === confirmation.id) return;
@@ -207,8 +211,8 @@ export default function ConfirmationGate({
   }, [confirmation.id, countdown.expired, onExpire]);
   return (
     <Card
-      title={`待确认：${title}`}
-      className="confirm-gate"
+      title={title}
+      className={`confirm-gate${isTaskSync ? " confirm-gate-task-sync" : ""}`}
       data-testid="confirmation-gate"
     >
       <ConfirmationPreview confirmation={confirmation} />
@@ -221,8 +225,10 @@ export default function ConfirmationGate({
           loading={confirming}
           disabled={countdown.expired}
           onClick={onConfirm}
+          data-testid={isTaskSync ? "task-sync-button" : undefined}
         >
-          确认
+          {isTaskSync ? <ListPlus size={14} aria-hidden="true" /> : null}
+          {isTaskSync ? (confirming ? "正在同步..." : "同步到学习任务") : "确认"}
         </Button>
         <Button
           size="sm"

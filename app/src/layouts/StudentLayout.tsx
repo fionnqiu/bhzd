@@ -1,4 +1,4 @@
-import { FileSearch, ListTodo, Map, MessageCircleQuestion, Route, Bell } from "lucide-react";
+import { ListTodo, Map, Route, Bell } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
@@ -10,13 +10,11 @@ import {
   useStudentWorkbenchShell,
 } from "./StudentWorkbenchShellContext";
 
-/** 学生端导航保留学习入口；默认 Cockpit 与个人中心分别由品牌入口和账户菜单进入。 */
+/** 学生端导航保留学习入口；诊断上传与结果展示已内置于 Agent 工作台。 */
 const NAV_ITEMS: NavItem[] = [
   { to: "/presets", label: "预设学习", icon: Route },
   { to: "/graph", label: "能力图谱", icon: Map },
   { to: "/tasks", label: "学习任务", icon: ListTodo },
-  { to: "/diagnostics", label: "标注诊断", icon: FileSearch },
-  { to: "/rag-qa", label: "知识问答", icon: MessageCircleQuestion },
 ];
 
 /* ---------------------------------------------------------------- 站内通知 */

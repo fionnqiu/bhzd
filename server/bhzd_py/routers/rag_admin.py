@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import shutil
 import sqlite3
 import time
@@ -26,7 +27,7 @@ from pydantic import BaseModel
 
 from .. import deps as _deps
 from ..audit import audit
-from ..config import get_config
+from ..config import REPO_ROOT, get_config
 from ..db import connect, utc_now_iso
 from ..deps import CurrentUser, csrf_protect, get_db
 from ..errors import ApiError
@@ -91,6 +92,25 @@ _EXT_TO_FILE_TYPE = {
     ".gif": "image",
     ".bmp": "image",
     ".webp": "image",
+}
+
+# This import is deliberately restricted to the checked-in RAG package.  It
+# gives administrators a traceable migration path without accepting arbitrary
+# server-side paths from a browser request.
+_LOCAL_RAGDATA_ROOT = REPO_ROOT / "docs" / "ragData"
+_LOCAL_RAGDATA_MATERIALS = _LOCAL_RAGDATA_ROOT / "materials"
+_LOCAL_RAGDATA_SOURCES = _LOCAL_RAGDATA_ROOT / "sources"
+_LOCAL_IMPORT_ITEM_LIMIT = 50
+_LOCAL_SOURCE_TYPE_FALLBACK = "other"
+# A folder picker can legitimately contain the approved 1,000-item teaching
+# package.  The cap bounds one request while keeping that approved workflow intact.
+_SELECTED_FILE_IMPORT_LIMIT = 1_000
+
+# The candidate package reuses this historical source code for two different
+# textbooks.  The knowledge-graph material must point at its own durable ledger.
+_LOCAL_SOURCE_CODE_OVERRIDES = {
+    "mat_tbk_020_kg_methodology_v1_0.md": "SRC-TBK-WANGHAOFEN-2020",
+    "SRC-TBK-WANG-2020__knowledge-graph.md": "SRC-TBK-WANGHAOFEN-2020",
 }
 
 
@@ -390,6 +410,283 @@ def _default_stage_params(settings) -> dict[str, dict]:
     }
 
 
+def _safe_local_ragdata_files(directory: Path, pattern: str) -> list[Path]:
+    """Return package files only when their resolved paths remain inside ``directory``.
+
+    The endpoint never accepts a client path, but resolving every glob result
+    still prevents a repository symlink from turning this administrative action
+    into a read of a secret or unrelated operator file.
+    """
+    root = directory.resolve()
+    if not root.is_dir():
+        raise ApiError(422, "LOCAL_RAGDATA_MISSING", "本地 RAG 资料目录不存在")
+    files: list[Path] = []
+    for candidate in sorted(directory.glob(pattern)):
+        resolved = candidate.resolve()
+        if resolved.parent != root or not resolved.is_file():
+            raise ApiError(422, "LOCAL_RAGDATA_UNSAFE_PATH", "本地 RAG 资料包包含不安全路径")
+        files.append(resolved)
+    return files
+
+
+def _parse_local_front_matter(text: str) -> tuple[dict[str, str], str]:
+    """Parse the package's flat YAML front matter without adding a runtime dependency.
+
+    The controlled package intentionally uses one scalar per line.  Supporting
+    that subset keeps server installations reproducible while malformed headers
+    are rejected instead of being silently treated as untracked document text.
+    """
+    lines = text.lstrip("\ufeff").splitlines()
+    if not lines or lines[0].strip() != "---":
+        raise ValueError("缺少 YAML 元数据头")
+    end = next((index for index, line in enumerate(lines[1:], start=1) if line.strip() == "---"), None)
+    if end is None:
+        raise ValueError("YAML 元数据头未闭合")
+    metadata: dict[str, str] = {}
+    for line in lines[1:end]:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        key, separator, value = line.partition(":")
+        if not separator or not key.strip():
+            raise ValueError("YAML 元数据格式无效")
+        metadata[key.strip()] = value.strip().strip('"').strip("'")
+    return metadata, "\n".join(lines[end + 1 :])
+
+
+def _parse_local_source_table(text: str) -> dict[str, str]:
+    """Read the legacy Chinese ledger table as a fallback for pre-front-matter records."""
+    labels = {
+        "来源编码": "source_id",
+        "来源名称": "title",
+        "发布方": "issued_by",
+        "来源类型": "category",
+        "版本": "version",
+        "授权状态": "status",
+        "有效期起": "valid_from",
+        "有效期止": "valid_to",
+        "风险说明": "risk",
+    }
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        if "|" not in line:
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) < 2 or set(cells[0]) <= {"-", ":", " "}:
+            continue
+        label = re.sub(r"[`*]", "", cells[0]).strip()
+        key = labels.get(label)
+        if key and cells[1].strip():
+            values.setdefault(key, cells[1].strip().strip("`").strip())
+    return values
+
+
+def _local_import_source_code(raw_code: str, filename: str) -> str:
+    """Normalize the one known duplicate source code before it reaches the database."""
+    return _LOCAL_SOURCE_CODE_OVERRIDES.get(filename, raw_code.strip())
+
+
+def _local_import_date(value: str | None) -> str | None:
+    """Keep only ISO-like ledger dates so human prose never becomes a false expiry flag."""
+    if not value:
+        return None
+    match = re.match(r"^(\d{4})(?:[-/.年](\d{1,2}))?(?:[-/.月](\d{1,2}))?", value.strip())
+    if not match:
+        return None
+    year, month, day = match.groups()
+    return f"{year}-{int(month or 1):02d}-{int(day or 1):02d}"
+
+
+def _local_import_data_types(value: str | None) -> list[str]:
+    """Parse the package's comma-separated data-type declaration defensively.
+
+    Local packages are flat front matter rather than a full YAML document.  A
+    small parser keeps the importer dependency-free while refusing a malformed
+    declaration before it can become a published document with ambiguous scope.
+    """
+    values = [item.strip() for item in (value or "text").split(",") if item.strip()]
+    if not values or any(item not in _DATA_TYPES for item in values):
+        raise ValueError("资料适用数据类型不合法")
+    return list(dict.fromkeys(values))
+
+
+def _local_import_summary(items: list[dict]) -> dict:
+    """Limit response samples while retaining exact counts for a 200-file import."""
+    return {"items": items[:_LOCAL_IMPORT_ITEM_LIMIT], "remaining": max(0, len(items) - _LOCAL_IMPORT_ITEM_LIMIT)}
+
+
+def _run_auto_publish_import_pipeline(
+    document_ids: list[str],
+    database_path: str,
+    actor_id: str,
+    client_meta: dict[str, str | None],
+    auto_publish: bool,
+    audit_action: str,
+    publish_comment: str,
+) -> None:
+    """Process an import batch and publish only after the canonical checks pass.
+
+    The worker uses the normal upload pipeline first.  Publication is a second,
+    independently audited operation so a parse/index failure cannot be hidden
+    behind a successful import response.
+    """
+    for document_id in document_ids:
+        _run_upload_pipeline(document_id, database_path, auto_publish, actor_id, client_meta)
+        if not auto_publish:
+            continue
+        publish_conn = connect(database_path)
+        try:
+            document = publish_conn.execute(
+                "SELECT * FROM rag_documents WHERE id = ?", (document_id,)
+            ).fetchone()
+            if document is None:
+                continue
+            try:
+                _publish_document_with_guards(
+                    publish_conn,
+                    document,
+                    actor_id,
+                    "student",
+                    publish_comment,
+                )
+            except ApiError as exc:
+                # A blocked item remains review_pending for a human reviewer;
+                # audit the exact guard result without exposing document text.
+                audit(
+                    publish_conn,
+                    actor_id,
+                    f"{audit_action}_blocked",
+                    target_type="rag_document",
+                    target_id=document_id,
+                    after={"code": exc.code, "message": exc.message},
+                    **client_meta,
+                )
+            else:
+                audit(
+                    publish_conn,
+                    actor_id,
+                    audit_action,
+                    target_type="rag_document",
+                    target_id=document_id,
+                    after={"status": "published", "visibility": "student"},
+                    **client_meta,
+                )
+        finally:
+            publish_conn.close()
+
+
+def _validate_upload_metadata(
+    title: str,
+    source_type: str,
+    source_name: str,
+    version: str,
+    license_status: str,
+    visibility: str,
+    data_types: list[str],
+) -> None:
+    """Keep single and selected-file imports on one metadata validation contract."""
+    if not title.strip():
+        raise ApiError(422, "VALIDATION_ERROR", "请填写资料标题")
+    if source_type not in _SOURCE_TYPES:
+        raise ApiError(422, "VALIDATION_ERROR", "来源类型不合法")
+    if not source_name.strip():
+        raise ApiError(422, "VALIDATION_ERROR", "请填写来源（未填来源不得上传）")
+    if license_status not in _LICENSE_STATUSES:
+        raise ApiError(422, "VALIDATION_ERROR", "请填写授权状态（未填授权状态不得上传）")
+    if visibility not in _VISIBILITIES:
+        raise ApiError(422, "VALIDATION_ERROR", "可见范围不合法")
+    if not version.strip():
+        raise ApiError(422, "VALIDATION_ERROR", "请填写版本号")
+    if not data_types or any(dt not in _DATA_TYPES for dt in data_types):
+        raise ApiError(422, "VALIDATION_ERROR", "请填写适用数据类型（text/image/audio/video）")
+
+
+def _store_uploaded_document(
+    conn: sqlite3.Connection,
+    file: UploadFile,
+    *,
+    title: str,
+    source_type: str,
+    source_name: str,
+    source_url: str | None,
+    source_ledger_id: str | None,
+    version: str,
+    license_status: str,
+    visibility: str,
+    data_types: list[str],
+    scenario_ids: list[str],
+    cap_ids: list[str],
+    actor_id: str,
+) -> tuple[sqlite3.Row, list[sqlite3.Row]]:
+    """Persist one validated file and its durable processing jobs before background work.
+
+    Both upload surfaces use this helper so a browser-selected directory cannot
+    bypass filename sanitization, streaming size checks, or the normal job chain.
+    """
+    filename = Path(file.filename or "upload.bin").name
+    file_type = _EXT_TO_FILE_TYPE.get(Path(filename).suffix.lower(), "other")
+    if file_type not in SUPPORTED_FILE_TYPES:
+        raise to_api_error(RAGError(PARSE_UNSUPPORTED))
+
+    config = get_config()
+    doc_id = uuid.uuid4().hex
+    doc_dir = Path(config.resolved_upload_dir) / doc_id
+    doc_dir.mkdir(parents=True, exist_ok=True)
+    storage_path = doc_dir / filename
+    try:
+        file_size, file_hash = _stream_upload_to_path(file, storage_path)
+    except _UploadTooLarge as exc:
+        shutil.rmtree(doc_dir, ignore_errors=True)
+        raise ApiError(413, "FILE_TOO_LARGE", "文件超过 50MB 上限，请拆分后再上传") from exc
+    if file_size == 0:
+        shutil.rmtree(doc_dir, ignore_errors=True)
+        raise ApiError(422, "VALIDATION_ERROR", "文件内容为空")
+    try:
+        _preflight_uploaded_file(file_type, storage_path)
+    except ApiError:
+        shutil.rmtree(doc_dir, ignore_errors=True)
+        raise
+
+    now = utc_now_iso()
+    conn.execute(
+        """
+        INSERT INTO rag_documents (id, title, file_type, source_type, source_name, source_url,
+          source_ledger_id, version, license_status, data_types_json, scenario_ids_json,
+          cap_ids_json, visibility, status, storage_path, file_hash, process_version,
+          created_by, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, 1, ?, ?, ?)
+        """,
+        (
+            doc_id,
+            title.strip(),
+            file_type,
+            source_type,
+            source_name.strip(),
+            source_url,
+            source_ledger_id,
+            version.strip(),
+            license_status,
+            json.dumps(data_types, ensure_ascii=False),
+            json.dumps(scenario_ids, ensure_ascii=False),
+            json.dumps(cap_ids, ensure_ascii=False),
+            visibility,
+            str(storage_path),
+            file_hash,
+            actor_id,
+            now,
+            now,
+        ),
+    )
+    conn.commit()
+    pipeline.enqueue(
+        conn, doc_id, list(pipeline.STAGE_ORDER), _default_stage_params(load_settings(conn)), 1
+    )
+    document = _get_doc_or_404(conn, doc_id)
+    jobs = conn.execute(
+        "SELECT * FROM rag_jobs WHERE document_id = ? ORDER BY created_at, rowid", (doc_id,)
+    ).fetchall()
+    return document, jobs
+
+
 # ---------------------------------------------------------------- 资料列表 / 上传 / 详情 / 编辑 / 删除
 
 @router.get("/api/rag/documents")
@@ -482,115 +779,470 @@ def upload_document(
     202 只表示资料和任务已经持久化，调用方应通过文档详情或任务列表观察
     parse → chunk → index 的结果；这避免上传请求占住线程池执行 CPU/网络密集工作。
     """
-    # ---- 必填与枚举校验（PRD-03 §5.2：未填来源/授权状态不得上传）----
-    if not title.strip():
-        raise ApiError(422, "VALIDATION_ERROR", "请填写资料标题")
-    if source_type not in _SOURCE_TYPES:
-        raise ApiError(422, "VALIDATION_ERROR", "来源类型不合法")
-    if not source_name.strip():
-        raise ApiError(422, "VALIDATION_ERROR", "请填写来源（未填来源不得上传）")
-    if license_status not in _LICENSE_STATUSES:
-        raise ApiError(422, "VALIDATION_ERROR", "请填写授权状态（未填授权状态不得上传）")
-    if visibility not in _VISIBILITIES:
-        raise ApiError(422, "VALIDATION_ERROR", "可见范围不合法")
-    if not version.strip():
-        raise ApiError(422, "VALIDATION_ERROR", "请填写版本号")
-    if not data_types or any(dt not in _DATA_TYPES for dt in data_types):
-        raise ApiError(422, "VALIDATION_ERROR", "请填写适用数据类型（text/image/audio/video）")
-
-    # 扩展名决定 file_type；csv/xlsx 属 PRD-03 §3 P1 已支持，image/other 入口直接拒绝
-    filename = Path(file.filename or "upload.bin").name  # 去路径，防目录穿越
-    file_type = _EXT_TO_FILE_TYPE.get(Path(filename).suffix.lower(), "other")
-    if file_type not in SUPPORTED_FILE_TYPES:
-        raise to_api_error(RAGError(PARSE_UNSUPPORTED))
-    _reject_oversized_content_length(request)
-
-    config = get_config()
-    doc_id = uuid.uuid4().hex
-    doc_dir = Path(config.resolved_upload_dir) / doc_id
-    doc_dir.mkdir(parents=True, exist_ok=True)
-    storage_path = doc_dir / filename
-    try:
-        file_size, file_hash = _stream_upload_to_path(file, storage_path)
-    except _UploadTooLarge as exc:
-        shutil.rmtree(doc_dir, ignore_errors=True)
-        raise ApiError(413, "FILE_TOO_LARGE", "文件超过 50MB 上限，请拆分后再上传") from exc
-    if file_size == 0:
-        shutil.rmtree(doc_dir, ignore_errors=True)
-        raise ApiError(422, "VALIDATION_ERROR", "文件内容为空")
-    try:
-        _preflight_uploaded_file(file_type, storage_path)
-    except ApiError:
-        shutil.rmtree(doc_dir, ignore_errors=True)
-        raise
-
-    now = utc_now_iso()
-    conn.execute(
-        """
-        INSERT INTO rag_documents (id, title, file_type, source_type, source_name, source_url,
-          source_ledger_id, version, license_status, data_types_json, scenario_ids_json,
-          cap_ids_json, visibility, status, storage_path, file_hash, process_version,
-          created_by, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, 1, ?, ?, ?)
-        """,
-        (
-            doc_id,
-            title.strip(),
-            file_type,
-            source_type,
-            source_name.strip(),
-            source_url,
-            source_ledger_id,
-            version.strip(),
-            license_status,
-            json.dumps(data_types, ensure_ascii=False),
-            json.dumps(scenario_ids, ensure_ascii=False),
-            json.dumps(cap_ids, ensure_ascii=False),
-            visibility,
-            str(storage_path),
-            file_hash,
-            current.user["id"],
-            now,
-            now,
-        ),
+    # The single-file endpoint keeps its cheap whole-request preflight; a batch
+    # cannot use it because its multipart envelope legitimately contains many files.
+    _validate_upload_metadata(
+        title, source_type, source_name, version, license_status, visibility, data_types
     )
-    conn.commit()
-
-    settings = load_settings(conn)
-    pipeline.enqueue(
-        conn, doc_id, list(pipeline.STAGE_ORDER), _default_stage_params(settings), 1
+    _reject_oversized_content_length(request)
+    doc, jobs = _store_uploaded_document(
+        conn,
+        file,
+        title=title,
+        source_type=source_type,
+        source_name=source_name,
+        source_url=source_url,
+        source_ledger_id=source_ledger_id,
+        version=version,
+        license_status=license_status,
+        visibility=visibility,
+        data_types=data_types,
+        scenario_ids=scenario_ids,
+        cap_ids=cap_ids,
+        actor_id=current.user["id"],
     )
     # Capture only non-sensitive request metadata.  The background task opens
     # its own connection after this request-scoped one has been closed.
     background_tasks.add_task(
         _run_upload_pipeline,
-        doc_id,
-        config.resolved_database_path,
+        doc["id"],
+        get_config().resolved_database_path,
         auto_submit,
         current.user["id"],
         _client_meta(request),
     )
-    doc = _get_doc_or_404(conn, doc_id)
 
     audit(
         conn,
         current.user,
         "rag.upload_document",
         target_type="rag_document",
-        target_id=doc_id,
-        after={"title": doc["title"], "file_type": file_type, "status": doc["status"]},
+        target_id=doc["id"],
+        after={"title": doc["title"], "file_type": doc["file_type"], "status": doc["status"]},
         **_client_meta(request),
     )
     from .rag_query import emit_telemetry
 
-    emit_telemetry("rag_document_uploaded", {"document_id": doc_id, "status": doc["status"]})
-
-    jobs = conn.execute(
-        "SELECT * FROM rag_jobs WHERE document_id = ? ORDER BY created_at, rowid", (doc_id,)
-    ).fetchall()
+    emit_telemetry("rag_document_uploaded", {"document_id": doc["id"], "status": doc["status"]})
     return {
-        "document": _doc_dto(doc, chunk_count=_chunk_count(conn, doc_id)),
+        "document": _doc_dto(doc, chunk_count=_chunk_count(conn, doc["id"])),
         "jobs": [_job_dto(j) for j in jobs],
+    }
+
+
+@router.post("/api/rag/documents/batch-import", status_code=202)
+def batch_import_documents(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    files: list[UploadFile] = File(...),
+    source_type: str = Form(...),
+    source_name: str = Form(...),
+    source_url: str | None = Form(None),
+    source_ledger_id: str | None = Form(None),
+    version: str = Form(...),
+    license_status: str = Form(...),
+    visibility: str = Form("student"),
+    data_types: list[str] = Form(default=[]),
+    scenario_ids: list[str] = Form(default=[]),
+    cap_ids: list[str] = Form(default=[]),
+    auto_publish: bool = Form(True),
+    current: CurrentUser = Depends(rag_staff_mutation),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """Import browser-selected files or a folder without accepting server disk paths.
+
+    Every selected file gets the same reviewed metadata and its own durable
+    document/job chain.  Invalid siblings are reported rather than rolling back
+    valid teaching material already safely queued for the normal guard pipeline.
+    """
+    # A batch derives titles from filenames, so validate a non-empty sentinel
+    # while retaining the exact single-file metadata contract for all other fields.
+    _validate_upload_metadata(
+        "selected-file", source_type, source_name, version, license_status, visibility, data_types
+    )
+    if not files:
+        raise ApiError(422, "VALIDATION_ERROR", "请选择至少一个资料文件")
+    if len(files) > _SELECTED_FILE_IMPORT_LIMIT:
+        raise ApiError(
+            422,
+            "BATCH_TOO_LARGE",
+            f"一次最多导入 {_SELECTED_FILE_IMPORT_LIMIT} 个文件，请分批导入",
+        )
+
+    imported: list[dict] = []
+    failed: list[dict] = []
+    document_ids: list[str] = []
+    for file in files:
+        filename = Path(file.filename or "upload.bin").name
+        try:
+            # Folder-relative paths never reach storage; using only the basename
+            # prevents a browser multipart filename from becoming a disk path.
+            document, _jobs = _store_uploaded_document(
+                conn,
+                file,
+                title=Path(filename).stem or "未命名资料",
+                source_type=source_type,
+                source_name=source_name,
+                source_url=source_url,
+                source_ledger_id=source_ledger_id,
+                version=version,
+                license_status=license_status,
+                visibility=visibility,
+                data_types=data_types,
+                scenario_ids=scenario_ids,
+                cap_ids=cap_ids,
+                actor_id=current.user["id"],
+            )
+        except ApiError as exc:
+            failed.append({"file": filename, "reason": exc.message})
+            continue
+        except (OSError, sqlite3.Error, ValueError) as exc:
+            failed.append({"file": filename, "reason": str(exc)})
+            continue
+        document_ids.append(document["id"])
+        imported.append({"id": document["id"], "file": filename})
+
+    # One batch audit avoids an unhelpful row per file while the documents and
+    # jobs remain individually traceable in their existing operational views.
+    audit(
+        conn,
+        current.user,
+        "rag.import_selected_files",
+        target_type="rag_import",
+        after={
+            "imported": len(imported),
+            "failed": len(failed),
+            "auto_publish": auto_publish,
+            "visibility": "student" if auto_publish else visibility,
+        },
+        **_client_meta(request),
+    )
+    if document_ids:
+        background_tasks.add_task(
+            _run_auto_publish_import_pipeline,
+            document_ids,
+            get_config().resolved_database_path,
+            current.user["id"],
+            _client_meta(request),
+            auto_publish,
+            "rag.auto_publish_selected_files",
+            "管理员批量导入自动发布",
+        )
+    return {
+        "files": {
+            "total": len(files),
+            "imported": len(imported),
+            "failed": len(failed),
+            "queued": len(document_ids),
+        },
+        "auto_publish": auto_publish,
+        "samples": {
+            "imported": _local_import_summary(imported),
+            "failed": _local_import_summary(failed),
+        },
+    }
+
+
+class LocalRagdataImportBody(BaseModel):
+    """Explicit opt-in: regular governed imports remain non-publishing by default."""
+
+    auto_publish: bool = False
+    reindex_existing: bool = False
+
+
+@router.post("/api/rag/import-local-ragdata", status_code=202)
+def import_local_ragdata(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    body: LocalRagdataImportBody | None = None,
+    current: CurrentUser = Depends(rag_staff_mutation),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """Queue the checked-in RAG package through the same durable upload pipeline.
+
+    This is intentionally an operator action rather than a generic server-path
+    upload: all reads are constrained to ``docs/ragData`` and the normal
+    parser/chunker/indexer remains the authoritative processing record.  The
+    caller must explicitly opt into automatic publication after those checks.
+    """
+    auto_publish = bool(body and body.auto_publish)
+    reindex_existing = bool(body and body.reindex_existing)
+    source_files = _safe_local_ragdata_files(_LOCAL_RAGDATA_SOURCES, "SRC-*.md")
+    material_files = _safe_local_ragdata_files(_LOCAL_RAGDATA_MATERIALS, "*.md")
+    if not material_files:
+        raise ApiError(422, "LOCAL_RAGDATA_EMPTY", "本地 RAG 资料包没有可导入的正文")
+
+    source_created: list[dict] = []
+    source_skipped: list[dict] = []
+    source_failed: list[dict] = []
+    ledger_context: dict[str, dict[str, str | None]] = {}
+    seen_source_codes: set[str] = set()
+
+    for source_file in source_files:
+        try:
+            raw = source_file.read_text(encoding="utf-8")
+            table = _parse_local_source_table(raw)
+            try:
+                front_matter, _body = _parse_local_front_matter(raw)
+            except ValueError:
+                front_matter = {}
+            metadata = {**table, **front_matter}
+            source_code = _local_import_source_code(
+                metadata.get("source_id", ""), source_file.name
+            )
+            source_name = metadata.get("title", "").strip()
+            if not source_code or not source_name:
+                raise ValueError("缺少来源编码或来源名称")
+            if source_code in seen_source_codes:
+                source_skipped.append({"file": source_file.name, "reason": "重复来源编码"})
+                continue
+            seen_source_codes.add(source_code)
+
+            existing = conn.execute(
+                "SELECT id, name FROM source_ledgers WHERE source_code = ?", (source_code,)
+            ).fetchone()
+            if existing is not None:
+                ledger_context[source_code] = {
+                    "id": existing["id"],
+                    "name": source_name or existing["name"],
+                    "url": metadata.get("url") or None,
+                }
+                source_skipped.append({"source_code": source_code, "reason": "来源台账已存在"})
+                continue
+
+            source_type = metadata.get("category", _LOCAL_SOURCE_TYPE_FALLBACK).strip()
+            if source_type not in _SOURCE_TYPES:
+                source_type = _LOCAL_SOURCE_TYPE_FALLBACK
+            authorization_status = metadata.get("status", "pending").strip().lower()
+            if authorization_status not in _LEDGER_AUTH_STATUSES:
+                authorization_status = "pending"
+            original_valid_to = metadata.get("valid_to", "").strip()
+            notes = " | ".join(
+                part
+                for part in (
+                    f"本地资料包来源文件：{source_file.name}",
+                    metadata.get("risk", "").strip(),
+                    f"原始有效期止：{original_valid_to}" if original_valid_to else "",
+                )
+                if part
+            )
+            ledger_id = uuid.uuid4().hex
+            now = utc_now_iso()
+            conn.execute(
+                """
+                INSERT INTO source_ledgers (id, source_code, name, publisher, source_type, version,
+                  authorization_status, valid_from, valid_to, related_document_ids_json,
+                  review_status, notes, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 'draft', ?, ?, ?)
+                """,
+                (
+                    ledger_id,
+                    source_code,
+                    source_name,
+                    metadata.get("issued_by") or None,
+                    source_type,
+                    metadata.get("version") or None,
+                    authorization_status,
+                    _local_import_date(metadata.get("valid_from")),
+                    _local_import_date(original_valid_to),
+                    notes or None,
+                    now,
+                    now,
+                ),
+            )
+            conn.commit()
+            ledger_context[source_code] = {
+                "id": ledger_id,
+                "name": source_name,
+                "url": metadata.get("url") or None,
+            }
+            source_created.append({"source_code": source_code})
+        except (OSError, UnicodeDecodeError, ValueError, sqlite3.Error) as exc:
+            source_failed.append({"file": source_file.name, "reason": str(exc)})
+
+    imported: list[dict] = []
+    skipped: list[dict] = []
+    failed: list[dict] = []
+    queued_document_ids: list[str] = []
+    upload_root = Path(get_config().resolved_upload_dir).resolve()
+
+    for material_file in material_files:
+        doc_dir: Path | None = None
+        doc_id: str | None = None
+        try:
+            raw = material_file.read_bytes()
+            metadata, _body = _parse_local_front_matter(raw.decode("utf-8"))
+            required = ("id", "title", "version", "source", "source_type", "visibility")
+            missing = [field for field in required if not metadata.get(field, "").strip()]
+            if missing:
+                raise ValueError(f"缺少元数据：{', '.join(missing)}")
+            if metadata["source_type"] not in _SOURCE_TYPES:
+                raise ValueError("资料来源类型不合法")
+            visibility = metadata["visibility"]
+            if visibility not in _VISIBILITIES:
+                raise ValueError("资料可见范围不合法")
+            license_status = metadata.get("license_status", "pending").lower()
+            if license_status not in _LICENSE_STATUSES:
+                raise ValueError("资料授权状态不合法")
+            data_types = _local_import_data_types(metadata.get("data_types"))
+
+            source_code = _local_import_source_code(metadata["source"], material_file.name)
+            source_context = ledger_context.get(source_code)
+            if source_context is None:
+                row = conn.execute(
+                    "SELECT id, name FROM source_ledgers WHERE source_code = ?", (source_code,)
+                ).fetchone()
+                source_context = (
+                    {"id": row["id"], "name": row["name"], "url": None} if row is not None else None
+                )
+            if source_context is None:
+                raise ValueError(f"找不到来源台账：{source_code}")
+
+            file_hash = hashlib.sha256(raw).hexdigest()
+            existing = conn.execute(
+                "SELECT id, status, visibility, process_version FROM rag_documents WHERE file_hash = ?", (file_hash,)
+            ).fetchone()
+            if existing is not None:
+                if reindex_existing and existing["status"] != "archived":
+                    # A parser or chunking fix must travel through the normal
+                    # versioned pipeline.  The old index remains queryable
+                    # until the replacement stages claim their queued work.
+                    next_version = existing["process_version"] + 1
+                    conn.execute(
+                        "UPDATE rag_documents SET visibility=?, process_version=?, updated_at=? WHERE id=?",
+                        ("student" if auto_publish else visibility, next_version, utc_now_iso(), existing["id"]),
+                    )
+                    pipeline.enqueue(
+                        conn,
+                        existing["id"],
+                        list(pipeline.STAGE_ORDER),
+                        _default_stage_params(load_settings(conn)),
+                        next_version,
+                    )
+                    conn.commit()
+                    queued_document_ids.append(existing["id"])
+                    skipped.append({"file": material_file.name, "reason": "正文哈希已导入，已排入重建索引"})
+                elif auto_publish and existing["status"] not in ("published", "archived"):
+                    # A prior import may have completed indexing before the
+                    # operator opted into publication.  Update only visibility
+                    # and re-enter the durable review/publish worker; the
+                    # original file hash and processing history remain intact.
+                    conn.execute(
+                        "UPDATE rag_documents SET visibility = ?, updated_at = ? WHERE id = ?",
+                        ("student", utc_now_iso(), existing["id"]),
+                    )
+                    conn.commit()
+                    queued_document_ids.append(existing["id"])
+                    skipped.append({"file": material_file.name, "reason": "正文哈希已导入，已排入发布门禁"})
+                else:
+                    skipped.append({"file": material_file.name, "reason": "正文哈希已导入"})
+                continue
+
+            doc_id = uuid.uuid4().hex
+            doc_dir = upload_root / doc_id
+            resolved_doc_dir = doc_dir.resolve()
+            if upload_root not in resolved_doc_dir.parents:
+                raise ValueError("上传目录校验失败")
+            doc_dir.mkdir(parents=True, exist_ok=False)
+            storage_path = doc_dir / material_file.name
+            storage_path.write_bytes(raw)
+
+            now = utc_now_iso()
+            conn.execute(
+                """
+                INSERT INTO rag_documents (id, title, file_type, source_type, source_name, source_url,
+                  source_ledger_id, version, license_status, data_types_json, scenario_ids_json,
+                  cap_ids_json, visibility, status, storage_path, file_hash, process_version,
+                  created_by, created_at, updated_at)
+                VALUES (?, ?, 'md', ?, ?, ?, ?, ?, ?, ?, '[]', '[]', ?, 'draft', ?, ?, 1, ?, ?, ?)
+                """,
+                (
+                    doc_id,
+                    metadata["title"].strip(),
+                    metadata["source_type"],
+                    source_context["name"] or source_code,
+                    source_context["url"],
+                    source_context["id"],
+                    metadata["version"].strip(),
+                    license_status,
+                    json.dumps(data_types, ensure_ascii=False),
+                    visibility,
+                    str(storage_path),
+                    file_hash,
+                    current.user["id"],
+                    now,
+                    now,
+                ),
+            )
+            conn.commit()
+            pipeline.enqueue(
+                conn, doc_id, list(pipeline.STAGE_ORDER), _default_stage_params(load_settings(conn)), 1
+            )
+            queued_document_ids.append(doc_id)
+            imported.append({"id": doc_id, "file": material_file.name, "source_code": source_code})
+        except (OSError, UnicodeDecodeError, ValueError, sqlite3.Error, RAGError) as exc:
+            if doc_id is not None:
+                # A durable row without its full job chain cannot be retried
+                # truthfully, so keep storage and metadata atomic on import errors.
+                conn.execute("DELETE FROM rag_jobs WHERE document_id = ?", (doc_id,))
+                conn.execute("DELETE FROM rag_documents WHERE id = ?", (doc_id,))
+                conn.commit()
+            if doc_dir is not None:
+                shutil.rmtree(doc_dir, ignore_errors=True)
+            failed.append({"file": material_file.name, "reason": str(exc)})
+
+    # One audit record carries the operation's counts, avoiding 200 noisy rows
+    # while retaining the actor and without copying any candidate document text.
+    audit(
+        conn,
+        current.user,
+        "rag.import_local_ragdata",
+        target_type="rag_import",
+        after={
+            "source_created": len(source_created),
+            "source_skipped": len(source_skipped),
+            "source_failed": len(source_failed),
+            "document_imported": len(imported),
+            "document_skipped": len(skipped),
+            "document_failed": len(failed),
+            "auto_publish": auto_publish,
+            "reindex_existing": reindex_existing,
+        },
+        **_client_meta(request),
+    )
+    if queued_document_ids:
+        background_tasks.add_task(
+            _run_auto_publish_import_pipeline,
+            queued_document_ids,
+            get_config().resolved_database_path,
+            current.user["id"],
+            _client_meta(request),
+            auto_publish,
+            "rag.auto_publish_local_ragdata",
+            "本地资料包自动发布",
+        )
+    return {
+        "sources": {
+            "total": len(source_files),
+            "created": len(source_created),
+            "skipped": len(source_skipped),
+            "failed": len(source_failed),
+        },
+        "documents": {
+            "total": len(material_files),
+            "imported": len(imported),
+            "skipped": len(skipped),
+            "failed": len(failed),
+            "queued": len(queued_document_ids),
+        },
+        "auto_publish": auto_publish,
+        "reindex_existing": reindex_existing,
+        "samples": {
+            "source_failed": _local_import_summary(source_failed),
+            "imported": _local_import_summary(imported),
+            "skipped": _local_import_summary(skipped),
+            "failed": _local_import_summary(failed),
+        },
     }
 
 
@@ -783,13 +1435,13 @@ def delete_document(
 # ---------------------------------------------------------------- 批量操作（PRD-03 §7）
 
 class BatchBody(BaseModel):
-    """批量操作请求：reindex=重建索引 / archive=归档 / submit_review=送审。"""
+    """批量操作请求：发布与送审均复用单条资料的同一组质量守卫。"""
 
     ids: list[str]
     action: str
 
 
-_BATCH_ACTIONS = ("reindex", "archive", "submit_review")
+_BATCH_ACTIONS = ("reindex", "archive", "submit_review", "publish_student")
 # 单次批量条数上限：reindex 要同步执行管线，防止一次请求长时间拖住 worker
 _BATCH_MAX_IDS = 100
 
@@ -798,6 +1450,7 @@ _BATCH_AUDIT_ACTIONS = {
     "reindex": "rag.reindex_document",
     "archive": "rag.archive_document",
     "submit_review": "rag.submit_review",
+    "publish_student": "rag.publish_document",
 }
 
 
@@ -853,6 +1506,22 @@ def _batch_reindex(conn: sqlite3.Connection, doc: sqlite3.Row) -> tuple[bool, st
     return True, None, None
 
 
+def _batch_publish_student(
+    conn: sqlite3.Connection, doc: sqlite3.Row, user_id: str
+) -> tuple[bool, str | None, str | None]:
+    """Publish one review-pending document while preserving partial batch results.
+
+    The shared guard is intentionally called here instead of a direct UPDATE so
+    a batch request cannot bypass the single-document authorization, ledger,
+    sensitive-content, and chunk checks.
+    """
+    try:
+        _publish_document_with_guards(conn, doc, user_id, "student", "批量自动发布")
+    except ApiError as exc:
+        return False, exc.code, exc.message
+    return True, None, None
+
+
 @router.post("/api/rag/documents/batch")
 def batch_documents(
     body: BatchBody,
@@ -863,7 +1532,7 @@ def batch_documents(
     """批量操作（PRD-03 §7 验收）：逐条评估与单条端点相同的守卫并同步执行，
     每条写审计；允许部分成功，结果按请求顺序逐项返回。"""
     if body.action not in _BATCH_ACTIONS:
-        raise ApiError(422, "VALIDATION_ERROR", "不支持的批量操作，仅支持 reindex / archive / submit_review")
+        raise ApiError(422, "VALIDATION_ERROR", "不支持的批量操作")
     ids = list(dict.fromkeys(body.ids))  # 去重保序：同一资料重复执行没有意义
     if not ids:
         raise ApiError(422, "VALIDATION_ERROR", "请选择要操作的资料")
@@ -880,6 +1549,8 @@ def batch_documents(
             ok, code, message = _batch_submit_review(conn, doc, current.user["id"])
         elif body.action == "archive":
             ok, code, message = _batch_archive(conn, doc, current.user["id"])
+        elif body.action == "publish_student":
+            ok, code, message = _batch_publish_student(conn, doc, current.user["id"])
         else:
             ok, code, message = _batch_reindex(conn, doc)
         # 每条操作无论成败都写审计（NF8：状态变更类操作必须留痕）
@@ -1062,6 +1733,61 @@ class PublishBody(BaseModel):
     scope: str = "student"
 
 
+def _publish_document_with_guards(
+    conn: sqlite3.Connection,
+    doc: sqlite3.Row,
+    reviewer_id: str,
+    scope: str,
+    comment: str | None = None,
+) -> None:
+    """Apply the canonical publication guards and durable state transition.
+
+    Both single and batch publishing rely on this helper.  Keeping the checks
+    together prevents a high-volume operation from becoming a less-restricted
+    second publication path.
+    """
+    if scope not in ("student", "teacher"):
+        raise ApiError(422, "VALIDATION_ERROR", "发布范围仅支持 student / teacher")
+    if doc["status"] != "review_pending":
+        raise ApiError(409, REVIEW_REQUIRED, "资料需要审核后才能发布（当前不在待审核状态）")
+    if doc["license_status"] in ("forbidden", "pending"):
+        message = (
+            "资料授权状态为禁止，不允许发布"
+            if doc["license_status"] == "forbidden"
+            else "资料授权状态为待确认，请先完成授权确认后再发布"
+        )
+        raise ApiError(403, LICENSE_BLOCKED, message)
+    if doc["source_ledger_id"]:
+        ledger = conn.execute(
+            "SELECT * FROM source_ledgers WHERE id = ?", (doc["source_ledger_id"],)
+        ).fetchone()
+        if ledger is not None:
+            if ledger["authorization_status"] != "approved":
+                raise ApiError(403, LICENSE_BLOCKED, "关联来源台账未获授权批准，不允许发布")
+            if ledger["valid_to"] and ledger["valid_to"] < utc_now_iso():
+                raise ApiError(403, LICENSE_BLOCKED, "关联来源台账已过有效期，不允许发布")
+    if _chunk_count(conn, doc["id"]) == 0:
+        raise ApiError(422, CHUNK_EMPTY, "切片为空，不允许发布，请检查解析文本")
+    flags = _latest_parse_flags(conn, doc["id"])
+    if flags and (flags.get("block_publish") or flags.get("id_card")):
+        raise ApiError(403, SENSITIVE_INFO_BLOCKED, "检测到身份证号等敏感信息，需脱敏后才能发布")
+
+    now = utc_now_iso()
+    conn.execute(
+        "UPDATE rag_documents SET status='published', visibility=?, published_at=?, updated_at=?"
+        " WHERE id=?",
+        (scope, now, now, doc["id"]),
+    )
+    _add_review_record(
+        conn,
+        doc["id"],
+        reviewer_id,
+        "approve" if scope == "student" else "approve_teacher_only",
+        comment or f"发布范围：{scope}",
+    )
+    conn.commit()
+
+
 @router.post("/api/rag/documents/{doc_id}/publish")
 def publish_document(
     doc_id: str,
@@ -1073,43 +1799,7 @@ def publish_document(
     """发布：走 PRD-06 §4.2 全部守卫，通过后置 published + 审核记录 + 审计（NF8）。"""
     doc = _get_doc_or_404(conn, doc_id)
     scope = (body.scope if body else "student") or "student"
-    if scope not in ("student", "teacher"):
-        raise ApiError(422, "VALIDATION_ERROR", "发布范围仅支持 student / teacher")
-    if doc["status"] != "review_pending":
-        raise ApiError(409, REVIEW_REQUIRED, "资料需要审核后才能发布（当前不在待审核状态）")
-    if doc["license_status"] == "forbidden":
-        raise ApiError(403, LICENSE_BLOCKED, "资料授权状态为禁止，不允许发布")
-    if doc["license_status"] == "pending":
-        raise ApiError(403, LICENSE_BLOCKED, "资料授权状态为待确认，请先完成授权确认后再发布")
-    # 台账联动：绑定了台账的资料，台账未批准/已过期不得发布（PRD-03 §9 验收标准）
-    if doc["source_ledger_id"]:
-        ledger = conn.execute(
-            "SELECT * FROM source_ledgers WHERE id = ?", (doc["source_ledger_id"],)
-        ).fetchone()
-        if ledger is not None:
-            if ledger["authorization_status"] != "approved":
-                raise ApiError(403, LICENSE_BLOCKED, "关联来源台账未获授权批准，不允许发布")
-            if ledger["valid_to"] and ledger["valid_to"] < utc_now_iso():
-                raise ApiError(403, LICENSE_BLOCKED, "关联来源台账已过有效期，不允许发布")
-    if _chunk_count(conn, doc_id) == 0:
-        raise ApiError(422, CHUNK_EMPTY, "切片为空，不允许发布，请检查解析文本")
-    flags = _latest_parse_flags(conn, doc_id)
-    if flags and (flags.get("block_publish") or flags.get("id_card")):
-        raise ApiError(403, SENSITIVE_INFO_BLOCKED, "检测到身份证号等敏感信息，需脱敏后才能发布")
-
-    now = utc_now_iso()
-    conn.execute(
-        "UPDATE rag_documents SET status='published', visibility=?, published_at=?, updated_at=?"
-        " WHERE id=?",
-        (scope, now, now, doc_id),
-    )
-    # scope=teacher 时记 approve_teacher_only，学生端不可见但教师端可预览
-    _add_review_record(
-        conn, doc_id, current.user["id"],
-        "approve" if scope == "student" else "approve_teacher_only",
-        f"发布范围：{scope}",
-    )
-    conn.commit()
+    _publish_document_with_guards(conn, doc, current.user["id"], scope)
     doc = _get_doc_or_404(conn, doc_id)
     audit(
         conn,
@@ -1696,6 +2386,33 @@ class EvalCaseBody(BaseModel):
     filters: dict = {}
 
 
+class EvalCasePatchBody(BaseModel):
+    """Editable evaluation-case fields; omitted values keep their stored snapshot."""
+
+    question: str | None = None
+    expected_answer: str | None = None
+    must_hit_document_ids: list[str] | None = None
+    must_hit_chunk_ids: list[str] | None = None
+    filters: dict | None = None
+
+
+def _validated_eval_document_ids(conn: sqlite3.Connection, document_ids: list[str]) -> list[str]:
+    """Deduplicate document selections and reject stale IDs before persisting a case."""
+
+    unique_ids = list(dict.fromkeys(document_ids))
+    if not unique_ids:
+        return []
+    placeholders = ",".join("?" for _ in unique_ids)
+    rows = conn.execute(
+        f"SELECT id FROM rag_documents WHERE id IN ({placeholders})", unique_ids
+    ).fetchall()
+    existing = {row["id"] for row in rows}
+    missing = [document_id for document_id in unique_ids if document_id not in existing]
+    if missing:
+        raise ApiError(422, "VALIDATION_ERROR", f"资料不存在：{', '.join(missing[:5])}")
+    return unique_ids
+
+
 @router.post("/api/rag/eval-cases", status_code=201)
 def create_eval_case(
     body: EvalCaseBody,
@@ -1705,6 +2422,7 @@ def create_eval_case(
 ) -> dict:
     if not body.question.strip():
         raise ApiError(422, "VALIDATION_ERROR", "问题不能为空")
+    document_ids = _validated_eval_document_ids(conn, body.must_hit_document_ids)
     case_id = uuid.uuid4().hex
     conn.execute(
         """
@@ -1716,7 +2434,7 @@ def create_eval_case(
             case_id,
             body.question.strip(),
             body.expected_answer,
-            json.dumps(body.must_hit_document_ids, ensure_ascii=False),
+            json.dumps(document_ids, ensure_ascii=False),
             json.dumps(body.must_hit_chunk_ids, ensure_ascii=False),
             json.dumps(body.filters, ensure_ascii=False),
             current.user["id"],
@@ -1735,6 +2453,93 @@ def create_eval_case(
     )
     row = conn.execute("SELECT * FROM eval_cases WHERE id = ?", (case_id,)).fetchone()
     return {"case": _eval_case_dto(row)}
+
+
+@router.patch("/api/rag/eval-cases/{case_id}")
+def patch_eval_case(
+    case_id: str,
+    body: EvalCasePatchBody,
+    request: Request,
+    current: CurrentUser = Depends(rag_staff_mutation),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """Edit a case without rewriting historical eval-run snapshots."""
+
+    row = conn.execute("SELECT * FROM eval_cases WHERE id = ?", (case_id,)).fetchone()
+    if row is None:
+        raise ApiError(404, "NOT_FOUND", "评测用例不存在")
+    if not body.model_fields_set:
+        raise ApiError(422, "VALIDATION_ERROR", "至少修改一个字段")
+
+    question = row["question"] if body.question is None else body.question.strip()
+    if not question:
+        raise ApiError(422, "VALIDATION_ERROR", "问题不能为空")
+    document_ids = (
+        _json_list(row["must_hit_document_ids_json"])
+        if body.must_hit_document_ids is None
+        else _validated_eval_document_ids(conn, body.must_hit_document_ids)
+    )
+    chunk_ids = (
+        _json_list(row["must_hit_chunk_ids_json"])
+        if body.must_hit_chunk_ids is None
+        else list(dict.fromkeys(body.must_hit_chunk_ids))
+    )
+    filters = (
+        json.loads(row["filters_json"] or "{}") if body.filters is None else body.filters
+    )
+    expected_answer = row["expected_answer"] if "expected_answer" not in body.model_fields_set else body.expected_answer
+    conn.execute(
+        """UPDATE eval_cases
+           SET question = ?, expected_answer = ?, must_hit_document_ids_json = ?,
+               must_hit_chunk_ids_json = ?, filters_json = ?
+         WHERE id = ?""",
+        (
+            question,
+            expected_answer,
+            json.dumps(document_ids, ensure_ascii=False),
+            json.dumps(chunk_ids, ensure_ascii=False),
+            json.dumps(filters, ensure_ascii=False),
+            case_id,
+        ),
+    )
+    conn.commit()
+    audit(
+        conn,
+        current.user,
+        "rag.update_eval_case",
+        target_type="eval_case",
+        target_id=case_id,
+        after={"question": question, "must_hit_document_ids": document_ids},
+        **_client_meta(request),
+    )
+    updated = conn.execute("SELECT * FROM eval_cases WHERE id = ?", (case_id,)).fetchone()
+    return {"case": _eval_case_dto(updated)}
+
+
+@router.delete("/api/rag/eval-cases/{case_id}")
+def delete_eval_case(
+    case_id: str,
+    request: Request,
+    current: CurrentUser = Depends(rag_staff_mutation),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """Delete only the editable case row; completed run snapshots remain auditable."""
+
+    row = conn.execute("SELECT * FROM eval_cases WHERE id = ?", (case_id,)).fetchone()
+    if row is None:
+        raise ApiError(404, "NOT_FOUND", "评测用例不存在")
+    conn.execute("DELETE FROM eval_cases WHERE id = ?", (case_id,))
+    conn.commit()
+    audit(
+        conn,
+        current.user,
+        "rag.delete_eval_case",
+        target_type="eval_case",
+        target_id=case_id,
+        before={"question": row["question"]},
+        **_client_meta(request),
+    )
+    return {"deleted": True, "id": case_id}
 
 
 class EvalRunBody(BaseModel):
@@ -1837,6 +2642,7 @@ def run_eval(
             scenario_id=filters.scenario_id,
             data_type=filters.data_type,
             published_only=filters.published_only,
+            document_ids=filters.document_ids,
         )
         latency_ms = int((time.perf_counter() - started) * 1000)
         latencies.append(latency_ms)

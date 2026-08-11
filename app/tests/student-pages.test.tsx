@@ -73,6 +73,7 @@ vi.mock("../src/api/client", () => {
 
 const mockedGet = vi.mocked(api.get);
 const mockedPost = vi.mocked(api.post);
+const mockedDelete = vi.mocked(api.delete);
 const mockedPostForm = vi.mocked(api.postForm);
 
 /** 与生产 Provider 组合一致（Toast + 场景上下文）；附带跳转目标标记路由 */
@@ -107,6 +108,7 @@ beforeEach(() => {
   visHandlers.handlers = {};
   installDefaultGet();
   mockedPost.mockRejectedValue(new ApiRequestError(500, "NOT_MOCKED", "未 mock 的 POST"));
+  mockedDelete.mockResolvedValue({});
   mockedPostForm.mockRejectedValue(new ApiRequestError(500, "NOT_MOCKED", "未 mock 的 POST form"));
 });
 
@@ -331,6 +333,7 @@ describe("TaskDetailPage", () => {
     version: 1,
     parent_task_id: null,
     attempts: [],
+    latest_attempt: null,
   };
 
   it("提交 → 反馈 → 确认更新掌握度 闭环", async () => {
@@ -375,7 +378,7 @@ describe("TaskDetailPage", () => {
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "正确" } });
     fireEvent.click(screen.getByRole("button", { name: "提交答案" }));
     expect(await screen.findByText("本次得分")).toBeInTheDocument();
-    expect(screen.getByText("100 分")).toBeInTheDocument();
+    expect(screen.getAllByText("100 分")).not.toHaveLength(0);
     // 掌握度变化预览先于确认（PRD-06 §6.4 门口径）
     expect(screen.getByText(/50% → 65%/)).toBeInTheDocument();
 
@@ -386,6 +389,178 @@ describe("TaskDetailPage", () => {
       });
     });
     expect(await screen.findByRole("button", { name: "掌握度已更新" })).toBeDisabled();
+  });
+
+  it("旧对象型 rubric 不会让任务详情白屏", async () => {
+    mockedGet.mockImplementation((path: string) => {
+      if (path === "/api/tasks/t1") {
+        // Older backends can still return this pre-DTO shape during a rolling upgrade.
+        return Promise.resolve({
+          ...taskDetail,
+          rubric: { rules: [{ key: "q1" }] },
+          practice: null,
+        });
+      }
+      if (path === "/api/profile/mastery") return Promise.resolve({ items: [], total: 0 });
+      if (path === "/api/graph/overview") return Promise.resolve({ nodes: [], edges: [] });
+      return Promise.reject(new ApiRequestError(404, "NOT_FOUND", `未 mock 的 GET ${path}`));
+    });
+    renderPage(<TaskDetailPage />, "/tasks/t1", "/tasks/:id");
+
+    expect(await screen.findByText("NER 边界练习")).toBeInTheDocument();
+    expect(
+      screen.getByText("该任务没有预设练习题，完成学习后可直接提交，系统将按完成情况评分。"),
+    ).toBeInTheDocument();
+  });
+
+  it("返回任务详情时保留来源页的筛选路径", async () => {
+    mockedGet.mockImplementation((path: string) => {
+      if (path === "/api/tasks/t1") return Promise.resolve(taskDetail);
+      if (path === "/api/profile/mastery") return Promise.resolve({ items: [], total: 0 });
+      if (path === "/api/graph/overview") return Promise.resolve({ nodes: [], edges: [] });
+      return Promise.reject(new ApiRequestError(404, "NOT_FOUND", `未 mock 的 GET ${path}`));
+    });
+    render(
+      <ToastProvider>
+        <ScenarioProvider>
+          <MemoryRouter
+            initialEntries={[
+              { pathname: "/tasks/t1", state: { returnTo: "/tasks?status=completed" } },
+            ]}
+          >
+            <Routes>
+              <Route path="/tasks/:id" element={<TaskDetailPage />} />
+              <Route path="/tasks" element={<div>任务列表页标记</div>} />
+            </Routes>
+          </MemoryRouter>
+        </ScenarioProvider>
+      </ToastProvider>,
+    );
+
+    const returnLinks = await screen.findAllByRole("link", { name: "返回任务列表" });
+    // The first link is in the page header, so learners can leave a long task before reaching its footer.
+    expect(returnLinks[0]).toHaveAttribute("href", "/tasks?status=completed");
+    expect(returnLinks).toHaveLength(2);
+  });
+
+  it("刷新后恢复最近提交、教师来源和学习材料", async () => {
+    const restoredTask = {
+      ...taskDetail,
+      source: "teacher",
+      teacher_id: "teacher-private-id",
+      class_id: "class-private-id",
+      status: "submitted",
+      progress: 0.9,
+      latest_score: 0.8,
+      resources: [
+        { type: "teaching_unit", title: "NER 边界单元", ref_id: "TU-1" },
+        {
+          type: "rag_citation",
+          title: "BIO 标注规范",
+          ref_id: "DOC-1",
+          citation: {
+            document_id: "DOC-1",
+            title: "BIO 标注规范",
+            section_title: "实体边界",
+            page_start: 3,
+            page_end: 4,
+            version: "1.2",
+            score: 0.95,
+          },
+        },
+      ],
+      attempts: [
+        {
+          id: "a-restored",
+          attempt_number: 2,
+          score: 0.8,
+          mastery_applied: false,
+          created_at: "2026-07-03T00:00:00Z",
+        },
+      ],
+      latest_attempt: {
+        id: "a-restored",
+        attempt_number: 2,
+        score: 0.8,
+        mastery_applied: false,
+        created_at: "2026-07-03T00:00:00Z",
+        answers: { q1: "BIO" },
+        feedback: [{ key: "q1", expected: "BIO", got: "BIO", ok: true, hint: "回答正确" }],
+        mastery_preview: [
+          { cap_id: "CAP-1", scenario_id: "", delta: 0.1, old_score: 0.6, new_score: 0.7 },
+        ],
+      },
+    };
+    mockedGet.mockImplementation((path: string) => {
+      if (path === "/api/tasks/t1") return Promise.resolve(restoredTask);
+      if (path === "/api/profile/mastery") return Promise.resolve({ items: [], total: 0 });
+      if (path === "/api/graph/overview") return Promise.resolve({ nodes: [], edges: [] });
+      return Promise.reject(new ApiRequestError(404, "NOT_FOUND", `未 mock 的 GET ${path}`));
+    });
+    mockedPost.mockImplementation((path: string, body?: unknown) => {
+      if (path === "/api/tasks/t1/apply-mastery") {
+        expect(body).toEqual({ attempt_id: "a-restored" });
+        return Promise.resolve({
+          applied: [
+            { cap_id: "CAP-1", scenario_id: "", delta: 0.1, old_score: 0.6, new_score: 0.7 },
+          ],
+          already_applied: false,
+          status: "completed",
+        });
+      }
+      return Promise.reject(new ApiRequestError(500, "NOT_MOCKED", `未 mock 的 POST ${path}`));
+    });
+    renderPage(<TaskDetailPage />, "/tasks/t1", "/tasks/:id");
+
+    const answer = await screen.findByRole("textbox", { name: "边界是否正确？" });
+    expect(answer).toHaveValue("BIO");
+    expect(answer).toHaveAccessibleDescription("按 BIO");
+    expect(screen.getByRole("heading", { name: "学习材料", level: 2 })).toBeInTheDocument();
+    expect(screen.getByText("教师发布")).toBeInTheDocument();
+    expect(screen.getByText("教师任务")).toBeInTheDocument();
+    expect(screen.queryByText("teacher-private-id")).not.toBeInTheDocument();
+    expect(screen.queryByText("class-private-id")).not.toBeInTheDocument();
+    expect(screen.getByText("教学单元")).toBeInTheDocument();
+    expect(screen.getByText(/\[2\] BIO 标注规范/)).toBeInTheDocument();
+    expect(
+      screen.getByText("本次作答已提交。你可以核对反馈后确认完成，也可以修改答案后再次提交。"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "确认更新掌握度" }));
+    await waitFor(() => {
+      expect(mockedPost).toHaveBeenCalledWith("/api/tasks/t1/apply-mastery", {
+        attempt_id: "a-restored",
+      });
+    });
+    expect(
+      await screen.findByText("任务已完成，已保留最近一次作答与反馈供回顾。"),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("progressbar")[0]).toHaveAttribute("aria-valuenow", "100");
+  });
+
+  it("开始任务后同步状态和学习进度", async () => {
+    mockedGet.mockImplementation((path: string) => {
+      if (path === "/api/tasks/t1") {
+        return Promise.resolve({ ...taskDetail, status: "not_started", progress: 0 });
+      }
+      if (path === "/api/profile/mastery") return Promise.resolve({ items: [], total: 0 });
+      if (path === "/api/graph/overview") return Promise.resolve({ nodes: [], edges: [] });
+      return Promise.reject(new ApiRequestError(404, "NOT_FOUND", `未 mock 的 GET ${path}`));
+    });
+    mockedPost.mockImplementation((path: string) => {
+      if (path === "/api/tasks/t1/start")
+        return Promise.resolve({ status: "in_progress", progress: 0.5 });
+      return Promise.reject(new ApiRequestError(500, "NOT_MOCKED", `未 mock 的 POST ${path}`));
+    });
+    renderPage(<TaskDetailPage />, "/tasks/t1", "/tasks/:id");
+
+    fireEvent.click(await screen.findByRole("button", { name: "开始任务" }));
+    await waitFor(() => {
+      expect(mockedPost).toHaveBeenCalledWith("/api/tasks/t1/start");
+    });
+    expect(screen.getByText("进行中")).toBeInTheDocument();
+    expect(screen.getAllByRole("progressbar")[0]).toHaveAttribute("aria-valuenow", "50");
+    expect(screen.getByRole("button", { name: "提交答案" })).toBeEnabled();
   });
 });
 
@@ -631,6 +806,7 @@ describe("ProfilePage", () => {
           growth: [],
           favorites: [],
           favorites_note: "收藏资料功能为 P1 规划项，当前版本暂未开放",
+          classes: [{ id: "class-1", name: "个人中心测试班", joined_at: "2026-08-09T08:00:00Z" }],
         });
       if (path === "/api/profile/mastery")
         return Promise.resolve({
@@ -671,6 +847,15 @@ describe("ProfilePage", () => {
       });
     });
     expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
+
+    expect(screen.getByText("个人中心测试班")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "退出班级" }));
+    expect(await screen.findByText(/确认退出「个人中心测试班」吗/)).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "退出班级" })[1]);
+    await waitFor(() => {
+      expect(mockedDelete).toHaveBeenCalledWith("/api/student/classes/class-1");
+    });
+    expect(screen.queryByText("个人中心测试班")).not.toBeInTheDocument();
   });
 });
 
@@ -709,6 +894,13 @@ describe("GraphPage", () => {
           certificates: [],
           scenarios: [],
           related: [],
+          learning_materials: [
+            {
+              type: "teaching_unit",
+              ref_id: "TU-AUDIO-EMOTION-PARALINGUISTICS-001",
+              title: "分轨标注语音情感与副语言事件",
+            },
+          ],
           mastery: [
             {
               scenario_id: "",
@@ -753,7 +945,17 @@ describe("GraphPage", () => {
     await waitFor(() => {
       expect(mockedPost).toHaveBeenCalledWith(
         "/api/tasks",
-        expect.objectContaining({ cap_ids: ["CAP-1"], source: "agent" }),
+        expect.objectContaining({
+          cap_ids: ["CAP-1"],
+          source: "agent",
+          resources: [
+            {
+              type: "teaching_unit",
+              ref_id: "TU-AUDIO-EMOTION-PARALINGUISTICS-001",
+              title: "分轨标注语音情感与副语言事件",
+            },
+          ],
+        }),
       );
     });
     expect(await screen.findByText("任务详情页标记")).toBeInTheDocument();

@@ -41,6 +41,7 @@ import {
   scenarioLabel,
   SCENARIO_OPTIONS,
 } from "./ragShared";
+import RagDocumentMultiSelect from "./RagDocumentMultiSelect";
 
 /** 单条命中卡片：内容/相似度/重排分/来源位置（PRD-03 §10 召回结果字段） */
 function HitCard({ hit, showRerank }: { hit: SearchTestHit; showRerank: boolean }) {
@@ -128,6 +129,7 @@ export default function SearchTestPage() {
         scenario_id: scenarioId || null,
         data_type: dataType || null,
         published_only: !includeUnpublished,
+        document_ids: docIds.length > 0 ? docIds : null,
       });
       setAnswer(res);
     } catch (err) {
@@ -253,36 +255,12 @@ export default function SearchTestPage() {
           </Field>
         </div>
         <Field label={`资料集（已选 ${docIds.length}，不选为全库）`}>
-          <div
-            style={{
-              maxHeight: 140,
-              overflowY: "auto",
-              border: "1px solid var(--color-border)",
-              borderRadius: "var(--radius-md)",
-              padding: "var(--space-2) var(--space-3)",
-            }}
-          >
-            {documents.length === 0 ? (
-              <p className="text-sm text-muted">暂无可选资料</p>
-            ) : (
-              documents.map((doc) => (
-                <label key={doc.id} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={docIds.includes(doc.id)}
-                    onChange={() =>
-                      setDocIds((prev) =>
-                        prev.includes(doc.id)
-                          ? prev.filter((v) => v !== doc.id)
-                          : [...prev, doc.id],
-                      )
-                    }
-                  />
-                  {doc.title}
-                </label>
-              ))
-            )}
-          </div>
+          <RagDocumentMultiSelect
+            label="召回资料集"
+            documents={documents}
+            value={docIds}
+            onChange={setDocIds}
+          />
         </Field>
         <Button size="lg" loading={running} onClick={() => void run()}>
           运行召回测试

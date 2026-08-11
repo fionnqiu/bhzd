@@ -6,6 +6,11 @@ import pytest
 
 from bhzd_py.config import reset_config_cache
 
+# Learning and teacher API tests share one isolated TestClient fixture. Register
+# it before test modules are collected so individual tests do not need imports
+# that collide with their ``api`` fixture parameters.
+pytest_plugins = ["_learning_fixtures"]
+
 
 @pytest.fixture()
 def tmp_db_path(tmp_path, monkeypatch):

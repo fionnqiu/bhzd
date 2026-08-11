@@ -7,94 +7,33 @@
  *   基于真实学习数据"），前端不做任何二次估算。
  * - 班级是必选筛选（PRD §6.2）：列表加载后自动选中第一个班级再发分析请求，
  *   避免"全班级混合"视图冲淡单个课堂的问题信号。
- * - "学生个人能力地图"：选择学生后调 GET /api/teacher/analytics/students/{id}
- *   ?class_id= 拿逐学生明细（掌握度/最近任务/掌握度事件/诊断摘要），在下方
- *   整宽区域渲染真实明细；诊断明细遵循 PRD-06 §15 #2——未授权时后端回
- *   diagnostics=null + diagnostics_note，前端如实展示"未授权"提示而不伪造数据。
+ * - 学生个人能力分析已拆至 /teacher/analytics/students；本页只提供班级聚合，并通过
+ *   class_id 把当前班级筛选传给个人分析页，避免聚合和逐学生明细互相干扰。
  * - 图表全部手写 CSS/SVG（契约禁用新依赖，不引图表库）。
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
-import type { Analytics, ClassInfo, Paginated, StudentRow } from "../../api/types";
+import type { Analytics, ClassInfo, Paginated } from "../../api/types";
 import {
   Card,
   DataTable,
   EmptyState,
   ErrorState,
-  MasteryBadge,
   PageHeader,
   ProgressBar,
   Select,
   Spinner,
-  StatusBadge,
   type Column,
 } from "../../components";
 import {
   ANALYTICS_RANGE_OPTIONS,
   DATA_TYPE_OPTIONS,
   TASK_SOURCE_OPTIONS,
-  dataTypeLabel,
   errMsg,
-  fmtDateTime,
-  pct,
 } from "./utils";
 import type { GraphNode } from "../../api/types";
-
-/* ------------------------------------------------ 学生明细的页面本地类型
- * （api/types.ts 由并行代理维护，本页按 teacher.py student_analytics_detail
- * 的返回结构自留一份） */
-interface StudentMasteryRow {
-  cap_id: string;
-  cap_name: string;
-  /** '' = 通用掌握度（蓝图 §5 口径） */
-  scenario_id: string;
-  score: number;
-  updated_at: string;
-}
-
-interface StudentTaskRow {
-  id: string;
-  title: string;
-  status: string;
-  source: string;
-  /** 该任务最近一次提交得分（0..1），无提交为 null */
-  score: number | null;
-  updated_at: string;
-}
-
-interface MasteryEventRow {
-  cap_id: string;
-  scenario_id: string;
-  old_score: number;
-  new_score: number;
-  source: string;
-  created_at: string;
-}
-
-interface DiagnosticSummaryRow {
-  id: string;
-  file_format: string | null;
-  data_type: string | null;
-  scenario_id: string | null;
-  error_count: number;
-  severity_counts: Record<string, number>;
-  created_at: string;
-}
-
-/** GET /api/teacher/analytics/students/{student_id}?class_id= 响应 */
-interface StudentAnalyticsDetail {
-  student_id: string;
-  class_id: string;
-  mastery: StudentMasteryRow[];
-  tasks: StudentTaskRow[];
-  /** 未授权时为 null（diagnostics_note 带说明），授权后为摘要数组（PRD-06 §15 #2） */
-  diagnostics: DiagnosticSummaryRow[] | null;
-  diagnostics_note: string | null;
-  /** 新→旧最多 30 条；画趋势图需自行反转为旧→新 */
-  mastery_events: MasteryEventRow[];
-}
 
 /** 掌握度分数 → 热力色块背景（绿 120° → 红 0°，连续渐变，低饱和保证文字可读） */
 function heatColor(score: number): string {
@@ -116,18 +55,10 @@ export default function AnalyticsPage() {
   const [range, setRange] = useState("30d");
   const [scenarios, setScenarios] = useState<GraphNode[]>([]);
 
-  // ---- 分析结果与学生列表（个人能力地图的选择集） ----
+  // ---- 班级聚合结果 ----
   const [data, setData] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [students, setStudents] = useState<StudentRow[]>([]);
-  const [studentId, setStudentId] = useState("");
-  // ---- 选中学生的逐人明细（独立加载，失败不影响班级聚合面板） ----
-  const [detail, setDetail] = useState<StudentAnalyticsDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailError, setDetailError] = useState<string | null>(null);
-  // 重试计数：studentId 不变时点"重试"也要重新发请求，所以 effect 依赖它
-  const [detailRetry, setDetailRetry] = useState(0);
 
   // 班级列表 + 场景词表（SCN 节点）挂载时拉一次
   useEffect(() => {
@@ -191,72 +122,6 @@ export default function AnalyticsPage() {
     return () => controller.abort();
   }, [loadAnalytics]);
 
-  // 个人地图的学生选择集随班级走（与分析请求独立，失败只影响这一个面板）
-  useEffect(() => {
-    setStudentId("");
-    if (!classId) {
-      setStudents([]);
-      return;
-    }
-    const controller = new AbortController();
-    void api
-      .get<Paginated<StudentRow>>(`/api/teacher/classes/${classId}/students`, undefined, {
-        signal: controller.signal,
-      })
-      .then((res) => {
-        if (!controller.signal.aborted) setStudents(res.items);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setStudents([]);
-      });
-    return () => controller.abort();
-  }, [classId]);
-
-  const activeStudent = useMemo(
-    () => students.find((s) => s.id === studentId) ?? null,
-    [students, studentId],
-  );
-
-  // 选中学生后拉逐人明细；stale 标记防快速切换学生时旧响应覆盖新选择
-  useEffect(() => {
-    setDetail(null);
-    setDetailError(null);
-    if (!studentId || !classId) {
-      setDetailLoading(false);
-      return;
-    }
-    const controller = new AbortController();
-    setDetailLoading(true);
-    void api
-      .get<StudentAnalyticsDetail>(
-        `/api/teacher/analytics/students/${studentId}`,
-        {
-          class_id: classId,
-        },
-        { signal: controller.signal },
-      )
-      .then((res) => {
-        if (controller.signal.aborted) return;
-        setDetail(res);
-        setDetailLoading(false);
-      })
-      .catch((err) => {
-        if (controller.signal.aborted) return;
-        setDetailError(errMsg(err, "学生明细加载失败"));
-        setDetailLoading(false);
-      });
-    return () => controller.abort();
-  }, [studentId, classId, detailRetry]);
-
-  /** 场景 id → 中文名（'' = 通用掌握度；词表缺席时原样显示 id 兜底） */
-  const scenarioNameOf = useCallback(
-    (scenarioId: string) =>
-      scenarioId === ""
-        ? "通用"
-        : (scenarios.find((s) => s.id === scenarioId)?.label ?? scenarioId),
-    [scenarios],
-  );
-
   // These columns intentionally use stable minimum widths so small panels scroll horizontally.
   const heatmapColumns: Column<Analytics["heatmap"][number]>[] = [
     { key: "cap_name", title: "能力节点", width: "14rem" },
@@ -282,58 +147,6 @@ export default function AnalyticsPage() {
     },
     { key: "weak_count", title: "薄弱人数", width: "7rem" },
     { key: "student_count", title: "覆盖人数", width: "7rem" },
-  ];
-
-  const masteryColumns: Column<StudentMasteryRow>[] = [
-    { key: "cap_name", title: "能力节点", width: "14rem" },
-    {
-      key: "scenario_id",
-      title: "场景",
-      width: "8rem",
-      render: (row) => scenarioNameOf(row.scenario_id),
-    },
-    {
-      key: "score",
-      title: "掌握度",
-      width: "16rem",
-      render: (row) => (
-        <span className="flex items-center gap-2">
-          <MasteryBadge score={row.score} />
-          <ProgressBar
-            value={row.score}
-            tone={row.score < 0.4 ? "danger" : row.score < 0.8 ? "warning" : "success"}
-          />
-        </span>
-      ),
-    },
-    {
-      key: "updated_at",
-      title: "更新时间",
-      width: "11rem",
-      render: (row) => <span className="text-sm text-muted">{fmtDateTime(row.updated_at)}</span>,
-    },
-  ];
-
-  const taskColumns: Column<StudentTaskRow>[] = [
-    { key: "title", title: "任务", width: "16rem" },
-    {
-      key: "status",
-      title: "状态",
-      width: "8rem",
-      render: (row) => <StatusBadge status={row.status} />,
-    },
-    {
-      key: "score",
-      title: "最近得分",
-      width: "8rem",
-      render: (row) => (row.score === null ? "—" : `${Math.round(row.score * 100)}%`),
-    },
-    {
-      key: "updated_at",
-      title: "更新时间",
-      width: "11rem",
-      render: (row) => <span className="text-sm text-muted">{fmtDateTime(row.updated_at)}</span>,
-    },
   ];
 
   // 趋势图归一基准：取提交/完成的最大值，空数据时给 1 防止除零
@@ -364,45 +177,68 @@ export default function AnalyticsPage() {
 
   return (
     <div className="teacher-workbench-page teacher-analytics-page">
-      <PageHeader title="学情分析" sub="基于班级真实学习数据的薄弱定位与教学干预建议" />
+      <PageHeader
+        title="学情分析"
+        sub="基于班级真实学习数据的薄弱定位与教学干预建议"
+        actions={
+          <Link
+            className="btn btn-secondary"
+            to={
+              classId
+                ? `/teacher/analytics/students?class_id=${encodeURIComponent(classId)}`
+                : "/teacher/analytics/students"
+            }
+          >
+            学生能力分析
+          </Link>
+        }
+      />
 
-      {/* 筛选条（PRD §6.2 五项；班级必选，已自动选中第一个） */}
+      {/* 筛选条（PRD §6.2 五项；班级必选，已自动选中第一个）。两行显式分组，避免宽度变化导致筛选项随机换行。 */}
       <Card className="teacher-filter-surface mb-4">
-        <div className="flex items-center gap-3" style={{ flexWrap: "wrap" }}>
-          <Select
-            aria-label="班级"
-            options={classes.map((c) => ({ value: c.id, label: c.name }))}
-            value={classId}
-            onChange={(e) => setClassId(e.target.value)}
-          />
-          <Select
-            aria-label="数据类型"
-            options={DATA_TYPE_OPTIONS}
-            placeholder="全部数据类型"
-            value={dataType}
-            onChange={(e) => setDataType(e.target.value)}
-          />
-          <Select
-            aria-label="行业场景"
-            options={scenarios.map((s) => ({ value: s.id, label: s.label }))}
-            placeholder="全部场景"
-            value={scenarioId}
-            onChange={(e) => setScenarioId(e.target.value)}
-          />
-          <Select
-            aria-label="任务来源"
-            options={TASK_SOURCE_OPTIONS}
-            placeholder="全部来源"
-            value={source}
-            onChange={(e) => setSource(e.target.value)}
-          />
-          <Select
-            aria-label="时间范围"
-            options={ANALYTICS_RANGE_OPTIONS}
-            value={range}
-            onChange={(e) => setRange(e.target.value)}
-          />
-          {loading ? <Spinner size={16} /> : null}
+        <div className="teacher-analytics-filter-grid" role="group" aria-label="学情筛选条件">
+          <div className="teacher-analytics-filter-row teacher-analytics-filter-row-primary">
+            <Select
+              aria-label="班级"
+              options={classes.map((c) => ({ value: c.id, label: c.name }))}
+              value={classId}
+              onChange={(e) => setClassId(e.target.value)}
+            />
+            <Select
+              aria-label="数据类型"
+              options={DATA_TYPE_OPTIONS}
+              placeholder="全部数据类型"
+              value={dataType}
+              onChange={(e) => setDataType(e.target.value)}
+            />
+            <Select
+              aria-label="行业场景"
+              options={scenarios.map((s) => ({ value: s.id, label: s.label }))}
+              placeholder="全部场景"
+              value={scenarioId}
+              onChange={(e) => setScenarioId(e.target.value)}
+            />
+          </div>
+          <div className="teacher-analytics-filter-row teacher-analytics-filter-row-secondary">
+            <Select
+              aria-label="任务来源"
+              options={TASK_SOURCE_OPTIONS}
+              placeholder="全部来源"
+              value={source}
+              onChange={(e) => setSource(e.target.value)}
+            />
+            <Select
+              aria-label="时间范围"
+              options={ANALYTICS_RANGE_OPTIONS}
+              value={range}
+              onChange={(e) => setRange(e.target.value)}
+            />
+            {loading ? (
+              <span className="teacher-analytics-filter-loading" role="status" aria-label="正在加载">
+                <Spinner size={16} />
+              </span>
+            ) : null}
+          </div>
         </div>
       </Card>
 
@@ -430,7 +266,7 @@ export default function AnalyticsPage() {
         </div>
       ) : (
         <>
-          <div className="grid teacher-two-column mb-4">
+          <div className="mb-4">
             {/* 班级能力热力图：色块深浅=平均掌握度，红=薄弱（与图谱配色同口径） */}
             <Card
               title={`班级能力热力图（前 ${Math.min(10, data.heatmap.length)} 项）`}
@@ -449,161 +285,7 @@ export default function AnalyticsPage() {
               )}
             </Card>
 
-            {/* 学生个人能力地图：选择学生 + 个人聚合速览；逐能力明细在下方整宽区 */}
-            <Card title="学生个人能力地图">
-              {students.length === 0 ? (
-                <EmptyState title="班级暂无学生" hint="学生入班后即可查看个人学习数据" />
-              ) : (
-                <div className="flex flex-col gap-3">
-                  <Select
-                    aria-label="选择学生"
-                    options={students.map((s) => ({
-                      value: s.id,
-                      label: `${s.name}（${s.email}）`,
-                    }))}
-                    placeholder="选择学生查看个人数据"
-                    value={studentId}
-                    onChange={(e) => setStudentId(e.target.value)}
-                  />
-                  {activeStudent ? (
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-secondary">平均掌握度</span>
-                        <MasteryBadge score={activeStudent.avg_mastery} />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-secondary">任务完成率</span>
-                        <strong>{pct(activeStudent.completion_rate)}</strong>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-secondary">最近活跃</span>
-                        <span>{fmtDateTime(activeStudent.last_active)}</span>
-                      </div>
-                      <p className="text-xs text-muted">
-                        逐能力掌握度、最近任务与诊断摘要见下方明细区
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-secondary">选择学生后展示其逐能力学习明细</p>
-                  )}
-                </div>
-              )}
-            </Card>
           </div>
-
-          {/* 学生个人明细（整宽）：掌握度表格 / 最近任务 / 掌握度趋势 / 诊断摘要 */}
-          {studentId ? (
-            <Card title={`${activeStudent?.name ?? "学生"} 的学习明细`} className="mb-4">
-              {detailError && !detail ? (
-                <ErrorState message={detailError} onRetry={() => setDetailRetry((n) => n + 1)} />
-              ) : detailLoading || !detail ? (
-                <div className="loading-block">
-                  <Spinner /> 正在加载学生明细…
-                </div>
-              ) : (
-                <div className="flex flex-col gap-4">
-                  {/* 逐能力掌握度（含场景维度；色块口径与 MasteryBadge 阈值一致） */}
-                  <section>
-                    <h4 className="mb-2">逐能力掌握度（{detail.mastery.length}）</h4>
-                    {detail.mastery.length === 0 ? (
-                      <EmptyState title="暂无掌握度记录" hint="学生完成练习或诊断后将在此呈现" />
-                    ) : (
-                      <DataTable
-                        ariaLabel="学生逐能力掌握度"
-                        columns={masteryColumns}
-                        rows={detail.mastery}
-                        rowKey={(row) => `${row.cap_id}|${row.scenario_id}`}
-                      />
-                    )}
-                  </section>
-
-                  {/* 最近任务（后端已按更新时间倒序截到 20 条） */}
-                  <section>
-                    <h4 className="mb-2">最近任务（{detail.tasks.length}）</h4>
-                    {detail.tasks.length === 0 ? (
-                      <EmptyState
-                        title="暂无任务记录"
-                        hint="发布任务到班级后，学生任务将在此出现"
-                      />
-                    ) : (
-                      <DataTable
-                        ariaLabel="学生最近任务"
-                        columns={taskColumns}
-                        rows={detail.tasks}
-                        rowKey={(row) => row.id}
-                      />
-                    )}
-                  </section>
-
-                  {/* 掌握度变化趋势（mastery_events 新→旧，组件内反转为旧→新画线） */}
-                  <section>
-                    <h4 className="mb-2">掌握度变化趋势</h4>
-                    {detail.mastery_events.length === 0 ? (
-                      <p className="text-sm text-secondary">暂无掌握度变化记录</p>
-                    ) : (
-                      <MasteryTrendChart
-                        events={detail.mastery_events}
-                        capNames={Object.fromEntries(
-                          detail.mastery.map((m) => [m.cap_id, m.cap_name]),
-                        )}
-                      />
-                    )}
-                  </section>
-
-                  {/* 诊断摘要（PRD-06 §15 #2：未授权只展示提示，不展示数据） */}
-                  <section>
-                    <h4 className="mb-2">诊断详情</h4>
-                    {detail.diagnostics === null ? (
-                      <div
-                        className="text-sm text-secondary"
-                        style={{
-                          padding: "var(--space-3) var(--space-4)",
-                          background: "var(--color-warning-soft)",
-                          border: "1px solid var(--color-warning)",
-                          borderRadius: "var(--radius-md)",
-                        }}
-                      >
-                        <strong>该学生未授权诊断详情</strong>
-                        <p className="mt-2">
-                          {detail.diagnostics_note ??
-                            "学生可在个人中心开启「授权教师查看诊断」后，此处将展示其诊断摘要"}
-                        </p>
-                      </div>
-                    ) : detail.diagnostics.length === 0 ? (
-                      <EmptyState title="暂无诊断记录" hint="学生上传文件完成诊断后将在此汇总" />
-                    ) : (
-                      <ul className="flex flex-col gap-2">
-                        {detail.diagnostics.map((d) => (
-                          <li key={d.id} className="flex items-center justify-between gap-2">
-                            <span>
-                              {d.file_format ?? "未知格式"}
-                              <span className="text-xs text-muted">
-                                {" "}
-                                · {dataTypeLabel(d.data_type)} · {fmtDateTime(d.created_at)}
-                              </span>
-                            </span>
-                            <span className="flex items-center gap-2">
-                              {(d.severity_counts.major ?? 0) > 0 ? (
-                                <span className="badge badge-danger">
-                                  严重 {d.severity_counts.major}
-                                </span>
-                              ) : null}
-                              {(d.severity_counts.minor ?? 0) > 0 ? (
-                                <span className="badge badge-warning">
-                                  次要 {d.severity_counts.minor}
-                                </span>
-                              ) : null}
-                              <strong>{d.error_count} 个错误</strong>
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </section>
-                </div>
-              )}
-            </Card>
-          ) : null}
 
           {/* 任务完成趋势：纯 CSS 双系列柱状图（提交 vs 完成） */}
           <Card title="任务完成趋势" className="mb-4">
@@ -752,121 +434,6 @@ export default function AnalyticsPage() {
           </Card>
         </>
       )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------ 掌握度趋势迷你折线图 */
-
-/** 折线颜色按系列索引轮换（手写 SVG，遵守"不引图表库"约束；取主题同族色） */
-const TREND_LINE_COLORS = ["#4f46e5", "#16a34a", "#d97706"];
-const TREND_W = 360;
-const TREND_H = 140;
-const TREND_PAD_X = 12;
-const TREND_PAD_Y = 14;
-
-/**
- * 掌握度事件 → 迷你 SVG 折线（每个能力一条线）。
- *
- * 为什么只画事件数最多的 3 个能力：mastery_events 最多 30 条且混着多个
- * cap，全画上线条互相压盖反而读不出趋势；教师最关心的是"变化最频繁的
- * 那几个能力在涨还是跌"。
- */
-function MasteryTrendChart({
-  events,
-  capNames,
-}: {
-  events: MasteryEventRow[];
-  /** cap_id → 中文名（来自同一载荷的 mastery 行；事件本身不带名称） */
-  capNames: Record<string, string>;
-}) {
-  // 按 cap 分组（新→旧），取 Top3 后反转为旧→新，并补上最旧事件的
-  // old_score 作为起点——否则折线看不出"从哪个分数涨/跌过来"
-  const series = useMemo(() => {
-    const byCap = new Map<string, MasteryEventRow[]>();
-    for (const e of events) {
-      const arr = byCap.get(e.cap_id);
-      if (arr) arr.push(e);
-      else byCap.set(e.cap_id, [e]);
-    }
-    return [...byCap.entries()]
-      .sort((a, b) => b[1].length - a[1].length)
-      .slice(0, 3)
-      .map(([capId, rows]) => {
-        const ordered = [...rows].reverse();
-        return {
-          capId,
-          values: [ordered[0].old_score, ...ordered.map((r) => r.new_score)],
-        };
-      });
-  }, [events]);
-
-  /** x 坐标：每条线按自己的点数均布（不同能力事件数不同，各自归一） */
-  const xOf = (i: number, n: number) =>
-    n <= 1 ? TREND_W / 2 : TREND_PAD_X + (i / (n - 1)) * (TREND_W - 2 * TREND_PAD_X);
-  /** y 坐标：分数 0..1 映射到画布（y 轴向下，所以用 1-v 翻转） */
-  const yOf = (v: number) =>
-    TREND_PAD_Y + (1 - Math.min(1, Math.max(0, v))) * (TREND_H - 2 * TREND_PAD_Y);
-
-  return (
-    <div>
-      <svg
-        viewBox={`0 0 ${TREND_W} ${TREND_H}`}
-        style={{ width: "100%", maxWidth: 560, height: "auto", display: "block" }}
-        role="img"
-        aria-label="掌握度变化趋势图"
-      >
-        {/* 0% / 50% / 100% 参考线，帮助读出绝对水平而非只看相对起伏 */}
-        {[0, 0.5, 1].map((v) => (
-          <line
-            key={v}
-            x1={TREND_PAD_X}
-            x2={TREND_W - TREND_PAD_X}
-            y1={yOf(v)}
-            y2={yOf(v)}
-            stroke="var(--color-border)"
-            strokeDasharray={v === 0 ? undefined : "4 4"}
-          />
-        ))}
-        {series.map((s, si) => (
-          <g key={s.capId}>
-            {s.values.length > 1 ? (
-              <polyline
-                fill="none"
-                stroke={TREND_LINE_COLORS[si]}
-                strokeWidth={2}
-                points={s.values.map((v, i) => `${xOf(i, s.values.length)},${yOf(v)}`).join(" ")}
-              />
-            ) : null}
-            {s.values.map((v, i) => (
-              <circle
-                key={i}
-                cx={xOf(i, s.values.length)}
-                cy={yOf(v)}
-                r={2.5}
-                fill={TREND_LINE_COLORS[si]}
-              />
-            ))}
-          </g>
-        ))}
-      </svg>
-      <div className="flex gap-4 mt-2" style={{ flexWrap: "wrap" }}>
-        {series.map((s, si) => (
-          <span key={s.capId} className="text-xs text-secondary">
-            <span
-              style={{
-                display: "inline-block",
-                width: 10,
-                height: 10,
-                background: TREND_LINE_COLORS[si],
-                marginRight: 4,
-              }}
-            />
-            {capNames[s.capId] ?? s.capId}（最新 {Math.round(s.values[s.values.length - 1] * 100)}
-            %）
-          </span>
-        ))}
-      </div>
     </div>
   );
 }

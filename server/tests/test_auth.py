@@ -27,9 +27,8 @@ from bhzd_py.db import apply_migrations, connect, utc_now_iso
 from bhzd_py.deps import CurrentUser, csrf_protect
 from bhzd_py.errors import register_error_handlers
 from bhzd_py.routers import auth
-from bhzd_py.security import generate_token, hash_password, hash_token
+from bhzd_py.security import generate_token, hash_token
 
-INVITE_CODE = "test-teacher-invite"
 PASSWORD = "Passw0rd1"
 
 
@@ -59,7 +58,6 @@ def _build_app() -> FastAPI:
 def client(tmp_db_path, monkeypatch):
     """每测试一个全新应用 + 临时库；SMTP 强制为空（开发兜底模式）。"""
     monkeypatch.setenv("BHZD_SMTP_HOST", "")
-    monkeypatch.setenv("BHZD_TEACHER_INVITE_CODE", INVITE_CODE)
     monkeypatch.setenv("BHZD_CONFIG_ENCRYPTION_KEY", secrets.token_hex(32))
     reset_config_cache()
     conn = connect(get_config().resolved_database_path)
@@ -111,11 +109,14 @@ def _register(client: TestClient, email: str, password: str = PASSWORD, name: st
 
 
 def _register_and_verify(client: TestClient, email: str, password: str = PASSWORD) -> dict:
+    """Register a user under the no-mailbox-gate contract.
+
+    The helper name is retained so the broader auth suite keeps its existing
+    call sites; registration now activates the account immediately.
+    """
     resp = _register(client, email, password)
     assert resp.status_code == 201, resp.text
-    token = resp.json()["dev_verify_token"]
-    resp = client.post("/api/auth/verify-email", json={"token": token})
-    assert resp.status_code == 200, resp.text
+    assert resp.json()["user"]["email_verified"] is True
     return {"email": email, "password": password}
 
 
@@ -132,23 +133,14 @@ def _db():
 
 # ---------------------------------------------------------------- 完整流程
 
-def test_full_register_verify_login_session_logout_flow(client):
+def test_full_register_login_session_logout_flow(client):
     resp = _register(client, "flow@example.com")
     assert resp.status_code == 201, resp.text
     body = resp.json()
     assert body["user"]["role"] == "student"
     assert body["user"]["status"] == "active"
-    assert body["user"]["email_verified"] is False
-    # 未配置 SMTP 时回显开发令牌（生产响应无此字段）
-    dev_token = body["dev_verify_token"]
-
-    # 错误令牌不得通过
-    resp = client.post("/api/auth/verify-email", json={"token": "wrong-token"})
-    assert resp.status_code == 400
-    assert resp.json()["error"]["code"] == "TOKEN_INVALID"
-
-    resp = client.post("/api/auth/verify-email", json={"token": dev_token})
-    assert resp.status_code == 200
+    assert body["user"]["email_verified"] is True
+    assert "dev_verify_token" not in body
 
     resp = _login(client, "flow@example.com")
     assert resp.status_code == 200, resp.text
@@ -285,7 +277,6 @@ def test_production_smtp_failure_never_echoes_tokens_or_writes_outbox(
     monkeypatch.setenv("NODE_ENV", "production")
     monkeypatch.setenv("BHZD_DATABASE_PATH", tmp_db_path)
     monkeypatch.setenv("BHZD_CONFIG_ENCRYPTION_KEY", secrets.token_hex(32))
-    monkeypatch.setenv("BHZD_TEACHER_INVITE_CODE", "test-only-private-teacher-invite")
     monkeypatch.setenv("BHZD_SMTP_HOST", "smtp.example.test")
     monkeypatch.setenv("BHZD_SMTP_PORT", "2525")
     monkeypatch.setenv("BHZD_SMTP_SECURE", "false")
@@ -310,7 +301,7 @@ def test_production_smtp_failure_never_echoes_tokens_or_writes_outbox(
         registered = _register(production_client, "production-mail@example.com")
         assert registered.status_code == 201, registered.text
         registration_body = registered.json()
-        assert registration_body["mail_delivered"] is False
+        assert "mail_delivered" not in registration_body
         assert "dev_verify_token" not in registration_body
 
         forgot = production_client.post(
@@ -338,20 +329,32 @@ def test_duplicate_email_uniform_message(client):
     assert resp_verified.json()["error"]["message"] == resp_unverified.json()["error"]["message"]
 
 
-def test_teacher_invite_code_required(client):
-    # 教师角色无邀请码 / 错误邀请码 → 403
-    assert _register(client, "t1@example.com", role="teacher").status_code == 403
-    resp = _register(client, "t1@example.com", role="teacher", teacher_invite="wrong-code")
-    assert resp.status_code == 403
-    assert resp.json()["error"]["code"] == "INVITE_CODE_INVALID"
-    # 正确邀请码 → 201 且角色为 teacher
-    resp = _register(client, "t1@example.com", role="teacher", teacher_invite=INVITE_CODE)
-    assert resp.status_code == 201, resp.text
-    assert resp.json()["user"]["role"] == "teacher"
-    # 管理类角色不开放自助注册
-    resp = _register(client, "evil@example.com", role="system_admin", teacher_invite=INVITE_CODE)
-    assert resp.status_code == 403
-    assert resp.json()["error"]["code"] == "ROLE_NOT_ALLOWED"
+def test_teacher_registration_does_not_require_or_authorize_an_invite(client):
+    # 教师可不带邀请码注册；历史客户端附带任意旧字段时也不能改变授权结果。
+    without_invite = _register(client, "teacher-no-invite@example.com", role="teacher")
+    assert without_invite.status_code == 201, without_invite.text
+    assert without_invite.json()["user"]["role"] == "teacher"
+    # Registration must create a usable teacher account, not merely relax request validation.
+    teacher_login = _login(client, "teacher-no-invite@example.com")
+    assert teacher_login.status_code == 200, teacher_login.text
+    assert teacher_login.json()["user"]["role"] == "teacher"
+
+    legacy_invite = _register(
+        client,
+        "teacher-legacy-invite@example.com",
+        role="teacher",
+        teacher_invite="stale-client-value",
+    )
+    assert legacy_invite.status_code == 201, legacy_invite.text
+    assert legacy_invite.json()["user"]["role"] == "teacher"
+
+
+def test_administrator_roles_remain_closed_to_self_registration(client):
+    # 取消教师邀请码不扩大管理员权限：两类管理员仍只能由后台创建。
+    for role in ("content_admin", "system_admin"):
+        response = _register(client, f"{role}@example.com", role=role)
+        assert response.status_code == 403
+        assert response.json()["error"]["code"] == "ROLE_NOT_ALLOWED"
 
 
 # ---------------------------------------------------------------- 登录安全
@@ -475,22 +478,50 @@ def test_forgot_password_uniform_and_reset_revokes_sessions(client):
     assert row["n"] >= 1
 
 
-# ---------------------------------------------------------------- 重发验证邮件
+def test_change_password_verifies_current_and_revokes_other_sessions(client):
+    """A current-password change keeps this session and invalidates other devices."""
+    _register_and_verify(client, "change@example.com")
+    login = _login(client, "change@example.com")
+    assert login.status_code == 200
+    current_csrf = login.json()["csrf_token"]
 
-def test_resend_verification_rate_limit(client):
-    _register(client, "resend@example.com")  # 注册本身已发 1 封
+    # A second client represents another device logged into the same account.
+    with TestClient(_build_app()) as other_client:
+        other_login = _login(other_client, "change@example.com")
+        assert other_login.status_code == 200
+
+        changed = client.post(
+            "/api/auth/change-password",
+            headers={"x-csrf-token": current_csrf},
+            json={
+                "currentPasswordEnvelope": _password_envelope(client, PASSWORD),
+                "newPasswordEnvelope": _password_envelope(client, "NewPass123"),
+            },
+        )
+        assert changed.status_code == 200, changed.text
+        assert client.get("/api/auth/session").status_code == 200
+        assert other_client.get("/api/auth/session").status_code == 401
+
+    assert _login(client, "change@example.com").status_code == 401
+    assert _login(client, "change@example.com", password="NewPass123").status_code == 200
+
+    wrong_current = client.post(
+        "/api/auth/change-password",
+        headers={"x-csrf-token": client.get("/api/auth/session").json()["csrf_token"]},
+        json={
+            "currentPasswordEnvelope": _password_envelope(client, "WrongPass1"),
+            "newPasswordEnvelope": _password_envelope(client, "Another123"),
+        },
+    )
+    assert wrong_current.status_code == 400
+    assert wrong_current.json()["error"]["code"] == "CURRENT_PASSWORD_INVALID"
+
+
+# ---------------------------------------------------------------- 兼容性验证接口
+
+def test_resend_verification_not_required_for_new_accounts(client):
+    _register(client, "resend@example.com")
     assert _login(client, "resend@example.com").status_code == 200
-
-    # 每小时上限 3 封（含注册那封）：第 2、3 封成功，第 4 次请求被限流
-    assert client.post("/api/auth/resend-verification").status_code == 200
-    assert client.post("/api/auth/resend-verification").status_code == 200
-    resp = client.post("/api/auth/resend-verification")
-    assert resp.status_code == 429
-    assert resp.json()["error"]["code"] == "RESEND_LIMITED"
-
-    # 已验证后重发 → 400
-    _register_and_verify(client, "resend2@example.com")
-    assert _login(client, "resend2@example.com").status_code == 200
     resp = client.post("/api/auth/resend-verification")
     assert resp.status_code == 400
     assert resp.json()["error"]["code"] == "ALREADY_VERIFIED"

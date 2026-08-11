@@ -4,8 +4,8 @@
 - 读取端点用 get_admin_user；所有变更端点用 _admin_csrf（CSRF 校验 + 管理端
   会话 + system_admin 三重校验合一），与蓝图 §4"变更类请求必须带
   x-csrf-token"对齐。
-- Provider DTO 永不携带 api_key：只有 api_key_set 布尔位（PRD-06 §3.3"API
-  Key 明文仅录入时可见一次"）。审计 before/after 也先经 DTO 脱敏。
+- Provider DTO 永不携带 api_key：固定 api_key_masked 只证明服务端已有密钥
+  （PRD-06 §3.3），明文与密钥长度均不出服务端。审计 before/after 也先经 DTO 脱敏。
 - 同角色（primary/fallback/embedding/rerank）至多一个 provider：set-role
   与创建/更新里的角色赋值都在同一事务里先清后设，避免并发下出现两个主模型。
 - 指标端点（PRD-06 §13.1）全部用 SQL 诚实计算：无数据的指标返回 null 并
@@ -15,7 +15,9 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import re
 import secrets
 import sqlite3
 import uuid
@@ -64,7 +66,7 @@ def _ip(request: Request) -> str | None:
 # ================================================================ 模型供应商
 
 def _provider_dto(row: sqlite3.Row) -> dict[str, Any]:
-    """Provider 对外 DTO：密钥永不回显，只给 api_key_set 布尔位。"""
+    """Provider DTO keeps the key server-side while exposing a stable UI mask."""
     last_test: dict[str, Any] | None = None
     if row["last_test_json"]:
         try:
@@ -86,6 +88,9 @@ def _provider_dto(row: sqlite3.Row) -> dict[str, Any]:
         "timeout_seconds": row["timeout_seconds"],
         "extra": extra,
         "api_key_set": True,
+        # The editor can show that a credential exists without learning its
+        # value or length; connection tests decrypt it only on the server.
+        "api_key_masked": "********",
         "last_test": last_test,
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
@@ -177,6 +182,19 @@ class ProviderTransientTestIn(BaseModel):
     api_key: Any
     model: Any
     role: Any = "none"
+
+
+class ProviderSavedTransientTestIn(BaseModel):
+    """Selected model for a saved provider's non-persistent connection probe.
+
+    The browser may choose a model that is not saved yet, but it must never
+    submit the masked API key back to the server.  The route below decrypts
+    the existing credential in memory and uses only this bounded model value.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: Any
 
 
 class SetRoleIn(BaseModel):
@@ -353,6 +371,48 @@ async def test_transient_provider_connectivity(
     # shape. Do not persist this result: it represents an incomplete form, not
     # a durable provider configuration.
     return await providers.test_transient_provider(protocol, base_url, api_key, model, role)
+
+
+@router.post("/api/admin/providers/{provider_id}/test-connection")
+async def test_saved_provider_model_connectivity(
+    provider_id: str,
+    body: ProviderSavedTransientTestIn,
+    admin: CurrentUser = Depends(_admin_csrf),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Probe an edited model with the saved key without mutating provider state.
+
+    A model selector is intentionally tested before the administrator saves the
+    drawer.  Reusing the normal persisted endpoint here would silently probe
+    the old database model, while asking the browser for the real key would
+    break the key-masking contract.  This route keeps both concerns server-side
+    and does not write ``last_test_json`` or an audit record for an unsaved
+    selection.
+    """
+
+    if not isinstance(body.model, str) or not body.model.strip() or len(body.model) > 100:
+        raise ApiError(400, "INVALID_MODEL", "请先选择或填写模型名")
+    row = _get_provider_or_404(conn, provider_id)
+    if not row["enabled"]:
+        raise ApiError(400, "PROVIDER_NOT_TESTABLE", "已禁用的供应商不能执行连接测试")
+    if row["protocol"] not in _PROTOCOLS:
+        raise ApiError(400, "INVALID_PROTOCOL", "已保存的供应商协议不受支持")
+    url_error = validate_provider_base_url(row["base_url"])
+    if url_error is not None:
+        raise ApiError(400, "INVALID_BASE_URL", url_error)
+    try:
+        api_key = providers.decrypt_key(row)
+    except Exception:
+        # Keep the encrypted value and parser details out of the response.
+        raise ApiError(500, "PROVIDER_TEST_FAILED", "无法读取供应商密钥，请重新保存配置") from None
+    return await providers.test_transient_provider(
+        row["protocol"],
+        row["base_url"].strip(),
+        api_key,
+        body.model.strip(),
+        str(row["role"]),
+        _provider_extra(row),
+    )
 
 
 @router.post("/api/admin/providers/{provider_id}/discover-models")
@@ -1052,14 +1112,88 @@ def get_metrics(
 
 # ================================================================ 告警（PRD-06 §13.2）
 
+
+def _alert_fingerprint(alert: dict[str, Any]) -> str:
+    """Stable identity for one condition; changing current values must not defeat ignore."""
+
+    stable = {
+        "code": alert.get("code"),
+        "metric": alert.get("metric"),
+        "target_id": alert.get("target_id"),
+    }
+    return hashlib.sha256(json.dumps(stable, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _visible_alerts(conn: sqlite3.Connection, user_id: str) -> list[dict[str, Any]]:
+    """Evaluate, fingerprint, and apply only this administrator's active ignores."""
+
+    alerts = evaluate_alerts(conn)
+    for alert in alerts:
+        alert["fingerprint"] = _alert_fingerprint(alert)
+    active_fingerprints = [alert["fingerprint"] for alert in alerts]
+    if active_fingerprints:
+        placeholders = ",".join("?" for _ in active_fingerprints)
+        # Cleanup is global rather than scoped to the requesting administrator:
+        # an ignored condition must reappear for every administrator if it
+        # recovers before the original administrator opens the page again.
+        conn.execute(
+            f"DELETE FROM admin_alert_ignores WHERE fingerprint NOT IN ({placeholders})",
+            active_fingerprints,
+        )
+    else:
+        conn.execute("DELETE FROM admin_alert_ignores")
+    ignored = {
+        row["fingerprint"]
+        for row in conn.execute(
+            "SELECT fingerprint FROM admin_alert_ignores WHERE user_id = ?", (user_id,)
+        )
+    }
+    conn.commit()
+    return [alert for alert in alerts if alert["fingerprint"] not in ignored]
+
 @router.get("/api/admin/alerts")
 def get_alerts(
     admin: CurrentUser = Depends(get_admin_user),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict[str, Any]:
-    """实时评估全部告警项并返回当前触发中的告警（健康时 alerts 为空列表）。
+    """实时评估告警并隐藏当前管理员已忽略的活动条件。"""
 
-    按需计算、不落库不推送：MVP 尚无告警通道，管理端轮询本接口即闭环
-    （详见 bhzd_py/alerts.py 模块说明）。
-    """
-    return {"alerts": evaluate_alerts(conn), "evaluated_at": utc_now_iso()}
+    return {"alerts": _visible_alerts(conn, admin.user["id"]), "evaluated_at": utc_now_iso()}
+
+
+@router.post("/api/admin/alerts/{fingerprint}/ignore")
+def ignore_alert(
+    fingerprint: str,
+    request: Request,
+    current: CurrentUser = Depends(_admin_csrf),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Ignore one currently active alert for this administrator until recovery."""
+
+    if not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
+        raise ApiError(422, "VALIDATION_ERROR", "告警指纹无效")
+    active = evaluate_alerts(conn)
+    active_alert = next(
+        (alert for alert in active if _alert_fingerprint(alert) == fingerprint), None
+    )
+    if active_alert is None:
+        raise ApiError(404, "NOT_FOUND", "告警已恢复或不存在")
+    now = utc_now_iso()
+    conn.execute(
+        """INSERT INTO admin_alert_ignores (id, user_id, fingerprint, ignored_at)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(user_id, fingerprint) DO UPDATE SET ignored_at = excluded.ignored_at""",
+        (uuid.uuid4().hex, current.user["id"], fingerprint, now),
+    )
+    audit(
+        conn,
+        current.user,
+        "admin.ignore_alert",
+        target_type="system_alert",
+        target_id=fingerprint,
+        after={"code": active_alert.get("code"), "metric": active_alert.get("metric")},
+        ip=_ip(request),
+        user_agent=request.headers.get("user-agent"),
+    )
+    conn.commit()
+    return {"ignored": True, "fingerprint": fingerprint}

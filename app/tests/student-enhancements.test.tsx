@@ -302,7 +302,6 @@ function renderStudentSessionShell(initialEntry = "/profile") {
       <Route index element={<CockpitPage />} />
       <Route path="profile" element={<div>个人中心页面</div>} />
       <Route path="tasks" element={<div>学习任务页面</div>} />
-      <Route path="diagnostics" element={<div>标注诊断页面</div>} />
     </Route>,
     initialEntry,
   );
@@ -336,7 +335,7 @@ function installStudentSessionGet() {
 }
 
 describe("学生工作台全局会话栏", () => {
-  it("个人中心、任务和诊断页共享新建/打开/删除会话意图，且不创建空会话", async () => {
+  it("个人中心、任务和 Agent 共享新建/打开/删除会话意图，且不创建空会话", async () => {
     installStudentSessionGet();
     renderStudentSessionShell();
 
@@ -363,8 +362,8 @@ describe("学生工作台全局会话栏", () => {
       within(screen.getByTestId("composer")).getByRole("combobox", { name: "继续场景" }),
     ).toHaveTextContent("车载语音标注");
 
-    fireEvent.click(screen.getByRole("link", { name: "标注诊断" }));
-    expect(await screen.findByText("标注诊断页面")).toBeInTheDocument();
+    // 诊断上传和报告已经收敛到 Agent；独立入口不再出现在学生导航。
+    expect(screen.queryByRole("link", { name: "标注诊断" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("删除会话 跨页面学习会话"));
     const dialog = await screen.findByRole("dialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
@@ -390,6 +389,19 @@ describe("学生工作台全局会话栏", () => {
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     expect(await screen.findByText("跨页面学习会话")).toBeInTheDocument();
     expect(attempts).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("StudentLayout 学习导航", () => {
+  it("不再向学生展示已下线的知识问答入口", async () => {
+    installNotificationGet();
+    renderLayout();
+
+    // This targets the rendered student navigation rather than the retained
+    // backend/RAG modules, which may still be needed by other portal roles.
+    const navigation = await screen.findByRole("navigation", { name: "学生端" });
+    expect(within(navigation).queryByRole("link", { name: "知识问答" })).not.toBeInTheDocument();
+    expect(within(navigation).getByRole("link", { name: "学习任务" })).toBeInTheDocument();
   });
 });
 

@@ -73,8 +73,9 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     role: "primary",
     enabled: true,
     timeout_seconds: 30,
-    extra: {},
+    extra: { model_inputs: ["text", "image"] },
     api_key_set: true,
+    api_key_masked: "********",
     // A deliberately non-secret sentinel guards against accidentally rendering
     // a future backend field that contains a persisted credential.
     api_key: "stored-key-must-not-render",
@@ -89,6 +90,7 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     protocol: "chat_completions",
     model: "gpt-x",
     role: "none",
+    extra: {},
     last_test: {
       ok: false,
       latency_ms: 0,
@@ -111,6 +113,10 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     expect(screen.getByText("讯飞星辰")).toBeInTheDocument();
     expect(screen.getByText(/连接.*TIMEOUT/)).toBeInTheDocument();
     expect(screen.getByText("未测试")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "模型输入" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "启用" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("文本").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("图片").length).toBeGreaterThan(0);
     const fallbackRow = screen.getByText("备用模型").closest("tr")!;
     expect(within(fallbackRow).getByRole("button", { name: "删除" })).toBeInTheDocument();
     expect(within(fallbackRow).getByRole("button", { name: "删除" }).parentElement!).toHaveClass(
@@ -319,14 +325,14 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     expect(modelSelect).toHaveTextContent("GPT-4.1 Mini");
   });
 
-  it("编辑时 API Key 仅显示已保存状态且不回显，并可发现模型", async () => {
+  it("编辑时回显固定 API Key 掩码但不提交，并复用服务端密钥发现模型", async () => {
     mockedPost.mockResolvedValueOnce({ models: [{ id: "gpt-x", label: "GPT X" }] });
     renderPage(<ProvidersPage />);
     const row = (await screen.findByText("备用模型")).closest("tr")!;
     fireEvent.click(within(row).getByRole("button", { name: "编辑" }));
     expect(screen.getByText("API Key（已保存）")).toBeInTheDocument();
     const apiKeyInput = screen.getByPlaceholderText("输入以更换");
-    expect(apiKeyInput).toHaveValue("");
+    expect(apiKeyInput).toHaveValue("********");
     expect(screen.queryByDisplayValue("stored-key-must-not-render")).not.toBeInTheDocument();
 
     const modelInput = screen.getByPlaceholderText("例如：spark-x1 / gpt-4o-mini");
@@ -339,6 +345,10 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     await waitFor(() =>
       expect(mockedPost).toHaveBeenCalledWith("/api/admin/providers/p2/discover-models"),
     );
+    const savedDiscoveryCall = mockedPost.mock.calls.find(
+      ([path]) => path === "/api/admin/providers/p2/discover-models",
+    );
+    expect(savedDiscoveryCall).toEqual(["/api/admin/providers/p2/discover-models"]);
   });
 
   it("显示或隐藏只作用于本次输入的替换 API Key", async () => {
@@ -348,7 +358,7 @@ describe("ProvidersPage（PRD-04 §3）", () => {
 
     const apiKeyInput = screen.getByPlaceholderText("输入以更换");
     const showButton = screen.getByRole("button", { name: "显示 API Key" });
-    expect(apiKeyInput).toHaveValue("");
+    expect(apiKeyInput).toHaveValue("********");
     expect(apiKeyInput).toHaveAttribute("type", "password");
     expect(showButton).toBeDisabled();
 
@@ -369,7 +379,7 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     renderPage(<ProvidersPage />);
     const row = (await screen.findByText("备用模型")).closest("tr")!;
     fireEvent.click(within(row).getByRole("button", { name: "编辑" }));
-    expect(screen.getByPlaceholderText("输入以更换")).toHaveValue("");
+    expect(screen.getByPlaceholderText("输入以更换")).toHaveValue("********");
 
     fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
     await waitFor(() => expect(mockedPut).toHaveBeenCalled());
@@ -378,6 +388,34 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     // An empty replacement field preserves the server-stored credential instead of resubmitting it.
     expect(updateCall).toBeDefined();
     expect(updateCall?.[1]).not.toHaveProperty("api_key");
+  });
+
+  it("抽屉保存模型输入并在设置角色时自动启用供应商", async () => {
+    mockedPut.mockResolvedValueOnce({ ...P2, role: "primary", enabled: true });
+    renderPage(<ProvidersPage />);
+    const row = (await screen.findByText("备用模型")).closest("tr")!;
+    fireEvent.click(within(row).getByRole("button", { name: "编辑" }));
+
+    expect(screen.queryByLabelText("启用该供应商")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("combobox", { name: "模型输入" }));
+    fireEvent.click(screen.getByRole("option", { name: "文本" }));
+    fireEvent.click(screen.getByRole("option", { name: "图片" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "模型输入" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "角色" }));
+    fireEvent.click(screen.getByRole("option", { name: "主模型" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认设置" }));
+
+    await waitFor(() =>
+      expect(mockedPut).toHaveBeenCalledWith(
+        "/api/admin/providers/p2",
+        expect.objectContaining({
+          enabled: true,
+          extra: { model_inputs: ["text", "image"] },
+          role: "primary",
+        }),
+      ),
+    );
   });
 
   it("编辑抽屉隐藏固定说明，仅在需要操作时显示状态", async () => {
@@ -472,6 +510,33 @@ describe("ProvidersPage（PRD-04 §3）", () => {
       ),
     );
     expect(await within(testGroup).findByText(/连接 · ✓ 42ms/)).toBeInTheDocument();
+  });
+
+  it("编辑时更换模型通过已保存密钥测试当前选择", async () => {
+    mockedPost.mockResolvedValueOnce({
+      ok: true,
+      role: "none",
+      latency_ms: 31,
+      model: "new-model",
+      error: null,
+      tested_at: "2026-08-10T00:00:00Z",
+    });
+    renderPage(<ProvidersPage />);
+    const row = (await screen.findByText("备用模型")).closest("tr")!;
+    fireEvent.click(within(row).getByRole("button", { name: "编辑" }));
+    const modelInput = screen.getByPlaceholderText("例如：spark-x1 / gpt-4o-mini");
+    fireEvent.change(modelInput, { target: { value: "new-model" } });
+
+    const testGroup = screen.getByRole("group", { name: "连接测试" });
+    fireEvent.click(within(testGroup).getByRole("button", { name: "测试连接" }));
+    await waitFor(() =>
+      expect(mockedPost).toHaveBeenCalledWith(
+        "/api/admin/providers/p2/test-connection",
+        { model: "new-model" },
+        { timeoutMs: 9_000 },
+      ),
+    );
+    expect(await within(testGroup).findByText(/连接 · ✓ 31ms/)).toBeInTheDocument();
   });
 
   it("发现模型失败后仍允许手工填写模型名", async () => {

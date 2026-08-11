@@ -325,7 +325,7 @@ describe("指挥舱 · SSE 恢复", () => {
     act(() => latestStream().end());
 
     const gate = await screen.findByTestId("confirmation-gate");
-    fireEvent.click(within(gate).getByRole("button", { name: "确认" }));
+    fireEvent.click(within(gate).getByTestId("task-sync-button"));
     await waitFor(() => expect(FakeRunEventStream.instances).toHaveLength(2));
 
     act(() =>
@@ -348,7 +348,7 @@ describe("指挥舱 · SSE 恢复", () => {
     expect(await screen.findByText("确认后的续跑回复。")).toBeInTheDocument();
     expect(screen.queryByText("确认后的续跑摘要。")).not.toBeInTheDocument();
     expect(screen.getByTestId("agent-activity-timeline")).toBeInTheDocument();
-    expect(screen.getByTestId("agent-current-action")).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByTestId("agent-current-action")).toHaveAttribute("aria-expanded", "true");
   });
 });
 
@@ -358,16 +358,16 @@ describe("指挥舱 · 内嵌输入操作", () => {
 
     const shell = await screen.findByTestId("composer-input-shell");
     expect(within(shell).getByLabelText("对话输入")).toBeInTheDocument();
-    expect(within(shell).getByRole("button", { name: "上传诊断文件" })).toBeInTheDocument();
+    expect(within(shell).getByRole("button", { name: "添加对话附件" })).toBeInTheDocument();
     expect(within(shell).getByRole("button", { name: "发送" })).toBeInTheDocument();
   });
 
   it("点击内嵌上传按钮仍打开原有文件选择器", async () => {
     renderCockpit();
 
-    const fileInput = await screen.findByLabelText("上传标注结果文件");
+    const fileInput = await screen.findByLabelText("选择对话附件");
     const openPicker = vi.spyOn(fileInput, "click");
-    fireEvent.click(screen.getByRole("button", { name: "上传诊断文件" }));
+    fireEvent.click(screen.getByRole("button", { name: "添加对话附件" }));
 
     expect(openPicker).toHaveBeenCalledOnce();
     openPicker.mockRestore();
@@ -430,7 +430,7 @@ describe("指挥舱 · 诊断上传", () => {
     expect(scrollRegion).toContainElement(composer);
     expect(welcome).toContainElement(composer);
 
-    const fileInput = screen.getByLabelText("上传标注结果文件");
+    const fileInput = screen.getByLabelText("上传诊断文件");
     fireEvent.change(fileInput, {
       target: { files: [new File(["{}"], "result.json", { type: "application/json" })] },
     });
@@ -456,7 +456,7 @@ describe("指挥舱 · 诊断上传", () => {
     mockedPostForm.mockResolvedValue(REPORT);
     renderCockpit();
 
-    const fileInput = await screen.findByLabelText("上传标注结果文件");
+    const fileInput = await screen.findByLabelText("上传诊断文件");
     fireEvent.change(fileInput, {
       target: { files: [new File(["{}"], "result.json", { type: "application/json" })] },
     });
@@ -484,7 +484,7 @@ describe("指挥舱 · 诊断上传", () => {
   it("生成补强计划 → 以 attachment 携带 diagnostic_token 发起运行", async () => {
     mockedPostForm.mockResolvedValue(REPORT);
     renderCockpit();
-    const fileInput = await screen.findByLabelText("上传标注结果文件");
+    const fileInput = await screen.findByLabelText("上传诊断文件");
     fireEvent.change(fileInput, {
       target: { files: [new File(["{}"], "result.json", { type: "application/json" })] },
     });
@@ -505,16 +505,16 @@ describe("指挥舱 · 诊断上传", () => {
     expect(latestStream().runId).toBe("r1");
   });
 
-  it("非法文件类型 → 中文错误提示，不发请求", async () => {
+  it("普通文本文件 → 走通用 Agent 附件上传并在输入框预览", async () => {
     renderCockpit();
-    const fileInput = await screen.findByLabelText("上传标注结果文件");
+    const fileInput = await screen.findByLabelText("选择对话附件");
     fireEvent.change(fileInput, {
       target: { files: [new File(["x"], "notes.txt", { type: "text/plain" })] },
     });
-    expect(
-      await screen.findByText("仅支持 JSON / TextGrid / VOC XML 标注文件"),
-    ).toBeInTheDocument();
-    expect(mockedPostForm).not.toHaveBeenCalled();
+    // Text files are now conversational context rather than rejected as an
+    // invalid diagnostic payload; diagnostics retain their JSON/XML/TextGrid route.
+    expect(await screen.findByTestId("composer-media-preview")).toBeInTheDocument();
+    expect(mockedPostForm).toHaveBeenCalledWith("/api/runs/attachments", expect.any(FormData));
   });
 });
 
@@ -538,7 +538,33 @@ describe("指挥舱 · 会话管理", () => {
         return {
           ...CONVERSATION,
           messages: [
-            { id: "m1", run_id: "r0", role: "user", content: "我想学 NER", created_at: "" },
+            {
+              id: "m1",
+              run_id: "r0",
+              role: "user",
+              content: "我想学 NER",
+              created_at: "",
+              attachments: [
+                {
+                  id: "history-image",
+                  ordinal: 0,
+                  name: "labels.png",
+                  kind: "image",
+                  mime_type: "image/png",
+                  size: 3_072,
+                  thumbnail_url: "/api/messages/m1/attachments/history-image/thumbnail",
+                },
+                {
+                  id: "history-document",
+                  ordinal: 1,
+                  name: "guideline.pdf",
+                  kind: "document",
+                  mime_type: "application/pdf",
+                  size: 2_048,
+                  thumbnail_url: null,
+                },
+              ],
+            },
             {
               id: "m2",
               run_id: "r0",
@@ -567,6 +593,11 @@ describe("指挥舱 · 会话管理", () => {
     fireEvent.click(await screen.findByText("旧会话"));
     expect(await screen.findByText("我想学 NER")).toBeInTheDocument();
     expect(screen.getByText("好的，先看规范。")).toBeInTheDocument();
+    expect(screen.getByAltText("labels.png 缩略图")).toHaveAttribute(
+      "src",
+      "/api/messages/m1/attachments/history-image/thumbnail",
+    );
+    expect(screen.getByText("guideline.pdf")).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getByTestId("workbench-close-request")).toHaveTextContent("1"),
     );
@@ -866,7 +897,7 @@ describe("指挥舱 · 确认门过期", () => {
       }),
     );
     const gate = await screen.findByTestId("confirmation-gate");
-    fireEvent.click(within(gate).getByRole("button", { name: "确认" }));
+    fireEvent.click(within(gate).getByTestId("task-sync-button"));
 
     // 过期后刷新 run（GET /api/runs/r1），确认门随之关闭
     await waitFor(() => expect(mockedGet).toHaveBeenCalledWith("/api/runs/r1"));

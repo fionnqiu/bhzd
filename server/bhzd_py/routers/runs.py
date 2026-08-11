@@ -1,7 +1,7 @@
 """Agent 运行与会话路由（蓝图 §6.2）。
 
 要点：
-- 所有变更类端点走 csrf_protect + 邮箱验证门（PRD-06 §3.2 未验证禁止 Agent）。
+- 所有变更类端点走 csrf_protect；邮箱状态不再是 Agent 使用门槛。
 - POST /api/runs 只负责建会话/建行/落用户消息，编排经
   `orchestrator.spawn` 投递到进程级后台 loop（TestClient 的 per-request
   portal 会取消请求 loop 上的挂起任务，故不用 asyncio.create_task）。
@@ -19,11 +19,13 @@ import time
 import uuid
 from typing import Any, AsyncIterator
 
-from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..agent import conversation_memory
+from ..agent import media
+from ..agent import providers
 from ..agent.composer import sanitize_model_text
 from ..agent import events as agent_events
 from ..agent.orchestrator import execute_run, spawn
@@ -129,13 +131,6 @@ def get_agent_db():
         conn.close()
 
 
-def _require_verified(current: CurrentUser) -> CurrentUser:
-    """csrf_protect 已加载会话，这里叠加邮箱验证门（PRD-06 §3.2）。"""
-    if current.user["email_verified_at"] is None:
-        raise ApiError(403, "EMAIL_NOT_VERIFIED", "请先完成邮箱验证后再使用此功能")
-    return current
-
-
 def _emit_telemetry(db: sqlite3.Connection, user_id: str, name: str, props: dict) -> None:
     try:
         from ..telemetry import emit_event  # B1，惰性导入
@@ -161,6 +156,98 @@ def _conversation_dto(row: sqlite3.Row) -> dict[str, Any]:
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
+
+
+def _attachment_thumbnail_url(message_id: str, attachment_id: str) -> str:
+    """Build a cookie-authenticated URL instead of exposing a static media path."""
+
+    return f"/api/messages/{message_id}/attachments/{attachment_id}/thumbnail"
+
+
+def _attachment_dto(row: sqlite3.Row) -> dict[str, Any]:
+    """Project persisted attachment metadata without returning its BLOB."""
+
+    has_thumbnail = bool(row["has_thumbnail"])
+    return {
+        "id": row["id"],
+        "ordinal": row["ordinal"],
+        "name": row["filename"],
+        "kind": row["kind"],
+        "mime_type": row["mime_type"],
+        "size": row["byte_size"],
+        "thumbnail_url": (
+            _attachment_thumbnail_url(row["message_id"], row["id"])
+            if has_thumbnail
+            else None
+        ),
+    }
+
+
+def _load_message_attachments(
+    db: sqlite3.Connection, message_id: str
+) -> list[dict[str, Any]]:
+    """Load one message's ordered, client-safe attachment projection."""
+
+    rows = db.execute(
+        """
+        SELECT id, message_id, ordinal, filename, kind, mime_type, byte_size,
+               thumbnail IS NOT NULL AS has_thumbnail
+        FROM message_attachments
+        WHERE message_id = ?
+        ORDER BY ordinal ASC
+        """,
+        (message_id,),
+    ).fetchall()
+    return [_attachment_dto(row) for row in rows]
+
+
+def _load_conversation_attachments(
+    db: sqlite3.Connection, conversation_id: str
+) -> dict[str, list[dict[str, Any]]]:
+    """Group one conversation's attachments without an unbounded SQL IN list."""
+
+    rows = db.execute(
+        """
+        SELECT attachment.id, attachment.message_id, attachment.ordinal,
+               attachment.filename, attachment.kind, attachment.mime_type,
+               attachment.byte_size, attachment.thumbnail IS NOT NULL AS has_thumbnail
+        FROM message_attachments AS attachment
+        JOIN messages AS message ON message.id = attachment.message_id
+        WHERE message.conversation_id = ?
+        ORDER BY message.created_at ASC, message.rowid ASC, attachment.ordinal ASC
+        """,
+        (conversation_id,),
+    ).fetchall()
+    attachments_by_message: dict[str, list[dict[str, Any]]] = {}
+    for attachment in rows:
+        attachments_by_message.setdefault(attachment["message_id"], []).append(
+            _attachment_dto(attachment)
+        )
+    return attachments_by_message
+
+
+def _message_dto(
+    row: sqlite3.Row, *, attachments: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
+    """Apply the same answer privacy projection to current and historic messages."""
+
+    dto = {
+        "id": row["id"],
+        "run_id": row["run_id"],
+        "role": row["role"],
+        # Older assistant rows may contain a provider-emitted thinking block.
+        # Sanitize at the API projection so history never reintroduces content
+        # hidden from the live stream.
+        "content": (
+            sanitize_model_text(row["content"])
+            if row["role"] == "assistant"
+            else row["content"]
+        ),
+        "created_at": row["created_at"],
+    }
+    if attachments is not None:
+        dto["attachments"] = attachments
+    return dto
 
 
 def _load_own_conversation(
@@ -452,7 +539,6 @@ async def create_conversation(
     current: CurrentUser = Depends(csrf_protect),
     db: sqlite3.Connection = Depends(get_agent_db),
 ) -> dict[str, Any]:
-    _require_verified(current)
     conversation_id = uuid.uuid4().hex
     now = utc_now_iso()
     db.execute(
@@ -489,23 +575,11 @@ async def get_conversation(
         """,
         (conversation_id,),
     ).fetchall()
+    attachments_by_message = _load_conversation_attachments(db, conversation_id)
     return {
         **_conversation_dto(row),
         "messages": [
-            {
-                "id": m["id"],
-                "run_id": m["run_id"],
-                "role": m["role"],
-                # Older assistant rows may contain a provider-emitted thinking
-                # block. Sanitize at the API projection so history never
-                # reintroduces content hidden from the live stream.
-                "content": (
-                    sanitize_model_text(m["content"])
-                    if m["role"] == "assistant"
-                    else m["content"]
-                ),
-                "created_at": m["created_at"],
-            }
+            _message_dto(m, attachments=attachments_by_message.get(m["id"], []))
             for m in messages
         ],
         "activities_by_run": _project_conversation_activities(
@@ -550,6 +624,42 @@ async def delete_conversation(
     return {"deleted": True}
 
 
+@router.get("/messages/{message_id}/attachments/{attachment_id}/thumbnail")
+def get_message_attachment_thumbnail(
+    message_id: str,
+    attachment_id: str,
+    current: CurrentUser = Depends(get_current_user),
+    db: sqlite3.Connection = Depends(get_agent_db),
+) -> Response:
+    """Read a derived preview only after proving message and conversation ownership."""
+
+    attachment = db.execute(
+        """
+        SELECT attachment.thumbnail, attachment.thumbnail_mime_type
+        FROM message_attachments AS attachment
+        JOIN messages AS message ON message.id = attachment.message_id
+        JOIN conversations AS conversation ON conversation.id = message.conversation_id
+        WHERE attachment.id = ?
+          AND attachment.message_id = ?
+          AND conversation.user_id = ?
+          AND conversation.deleted_at IS NULL
+        """,
+        (attachment_id, message_id, current.user["id"]),
+    ).fetchone()
+    if attachment is None or attachment["thumbnail"] is None:
+        # Treat missing thumbnails exactly like unauthorized objects. This
+        # prevents probing whether a different learner sent an image or a file.
+        raise ApiError(404, "NOT_FOUND", "附件缩略图不存在")
+
+    return Response(
+        content=bytes(attachment["thumbnail"]),
+        media_type=attachment["thumbnail_mime_type"],
+        # Message previews are private conversation data. Browser caches must
+        # not make them durable outside the authenticated application session.
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
 # ---------------------------------------------------------------------------
 # 运行
 # ---------------------------------------------------------------------------
@@ -560,7 +670,242 @@ class RunCreate(BaseModel):
     input: str = Field(min_length=1, max_length=4000)
     scenario_id: str | None = None
     data_type: str | None = None
+    # `attachment` remains a compatibility envelope for historic clients and
+    # diagnostic-token runs. New Agent messages use the bounded list below.
     attachment: dict[str, Any] | None = None
+    attachments: list[dict[str, Any]] | None = None
+
+
+@router.post("/runs/attachments", status_code=201)
+def upload_run_attachment(
+    file: UploadFile = File(...),
+    current: CurrentUser = Depends(csrf_protect),
+) -> dict[str, Any]:
+    """Accept one allow-listed file for a short-lived, user-owned Agent run."""
+
+    content = file.file.read(media.MAX_MEDIA_BYTES + 1)
+    try:
+        item = media.store(
+            current.user["id"],
+            file.filename or "upload",
+            file.content_type or "",
+            content,
+        )
+    except ValueError as exc:
+        if str(exc) == "media_too_large":
+            raise ApiError(413, "PAYLOAD_TOO_LARGE", "文件不能超过 20MB") from exc
+        if str(exc) == "media_total_too_large":
+            raise ApiError(413, "ATTACHMENTS_TOO_LARGE", "待发送附件总量不能超过 100MB") from exc
+        if str(exc) == "pdf_ocr_page_limit":
+            raise ApiError(422, "PDF_OCR_PAGE_LIMIT", "扫描 PDF 最多支持 12 页，请拆分后重新上传") from exc
+        if str(exc) == "pdf_ocr_no_text":
+            raise ApiError(
+                422,
+                "PDF_OCR_NO_TEXT",
+                "PDF 未识别到可读取文字，请上传更清晰的扫描件或文字版 PDF",
+            ) from exc
+        if str(exc) == "pdf_ocr_failed":
+            raise ApiError(422, "PDF_OCR_FAILED", "PDF OCR 处理失败，请稍后重试") from exc
+        if str(exc) == "document_parse_failed":
+            raise ApiError(422, "DOCUMENT_PARSE_FAILED", "文件无法解析为可读取文本") from exc
+        raise ApiError(415, "UNSUPPORTED_MEDIA_TYPE", "不支持该文件类型") from exc
+    return {
+        "attachment_token": item.token,
+        "name": item.filename,
+        "mime_type": item.mime_type,
+        "kind": item.kind,
+        "size": item.size,
+        "expires_at": item.expires_at,
+    }
+
+
+@router.delete("/runs/attachments/{token}", status_code=204)
+def discard_run_attachment(
+    token: str,
+    current: CurrentUser = Depends(csrf_protect),
+) -> None:
+    """Release a removed draft attachment so it no longer occupies cache quota."""
+
+    if media.get(token, current.user["id"]) is None:
+        raise ApiError(404, "NOT_FOUND", "附件不存在、已过期或不属于当前账号")
+    media.discard(token, current.user["id"])
+
+
+@router.get("/runs/attachments/{token}/preview")
+def preview_run_attachment(
+    token: str,
+    current: CurrentUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Return only parsed document text for the owner's temporary preview."""
+
+    item = media.get(token, current.user["id"])
+    if item is None:
+        raise ApiError(404, "NOT_FOUND", "附件不存在、已过期或不属于当前账号")
+    if item.kind != "document" or item.extracted_text is None:
+        raise ApiError(415, "PREVIEW_UNAVAILABLE", "当前文件不支持文本预览")
+    # Text extraction is already bounded for model safety; this tighter UI
+    # projection prevents a modal from rendering an excessive document at once.
+    preview_limit = 80_000
+    content = item.extracted_text[:preview_limit]
+    return {
+        "name": item.filename,
+        "mime_type": item.mime_type,
+        "content": content,
+        "truncated": len(item.extracted_text) > preview_limit,
+    }
+
+
+def _validate_attachment(
+    attachment: dict[str, Any] | None, user_id: str
+) -> dict[str, str] | None:
+    """Validate an attachment and return only the token-shaped run envelope.
+
+    The browser uploads bytes to the short-lived media cache first.  Runs only
+    need the opaque token to resolve that cache later, so arbitrary client
+    fields (and especially accidental base64 payloads) are discarded before
+    ``plan_json`` is written.  The established diagnostic token remains a
+    separate compatibility path.
+    """
+
+    if not attachment:
+        return None
+    token = attachment.get("attachment_token")
+    diagnostic_token = attachment.get("diagnostic_token")
+    if token is not None and diagnostic_token is not None:
+        raise ApiError(422, "INVALID_ATTACHMENT", "附件令牌无效")
+    if token is None:
+        # Existing diagnostic-token runs retain their established contract.
+        if isinstance(diagnostic_token, str) and diagnostic_token:
+            return {"diagnostic_token": diagnostic_token}
+        raise ApiError(422, "INVALID_ATTACHMENT", "附件令牌无效")
+    if not isinstance(token, str) or not token:
+        raise ApiError(422, "INVALID_ATTACHMENT", "附件令牌无效")
+    if media.get(token, user_id) is None:
+        raise ApiError(403, "FORBIDDEN", "附件不属于当前账号或已过期")
+    return {"attachment_token": token}
+
+
+def _validate_attachments(
+    attachment: dict[str, Any] | None,
+    attachments: list[dict[str, Any]] | None,
+    user_id: str,
+) -> dict[str, Any] | None:
+    """Validate new multi-file envelopes without weakening legacy callers."""
+
+    if attachment is not None and attachments is not None:
+        raise ApiError(422, "INVALID_ATTACHMENT", "附件令牌无效")
+    if attachments is None:
+        return _validate_attachment(attachment, user_id)
+    if not attachments:
+        return None
+    if len(attachments) > 10:
+        raise ApiError(422, "TOO_MANY_ATTACHMENTS", "一次最多发送 10 个文件")
+
+    tokens: list[str] = []
+    seen: set[str] = set()
+    total_size = 0
+    for entry in attachments:
+        token = entry.get("attachment_token") if isinstance(entry, dict) else None
+        if not isinstance(token, str) or not token or token in seen:
+            raise ApiError(422, "INVALID_ATTACHMENT", "附件令牌无效")
+        item = media.get(token, user_id)
+        if item is None:
+            raise ApiError(403, "FORBIDDEN", "附件不属于当前账号或已过期")
+        seen.add(token)
+        tokens.append(token)
+        total_size += item.size
+    if total_size > media.MAX_USER_MEDIA_BYTES:
+        raise ApiError(413, "ATTACHMENTS_TOO_LARGE", "待发送附件总量不能超过 100MB")
+    return {"attachments": [{"attachment_token": token} for token in tokens]}
+
+
+def _media_items_from_envelope(
+    attachment: dict[str, Any] | None, user_id: str
+) -> list[media.MediaAttachment]:
+    """Resolve only validated short-lived media tokens for capability gating."""
+
+    if not isinstance(attachment, dict):
+        return []
+    rows = attachment.get("attachments")
+    tokens = (
+        [entry.get("attachment_token") for entry in rows if isinstance(entry, dict)]
+        if isinstance(rows, list)
+        else [attachment.get("attachment_token")]
+    )
+    # Validation above has already enforced ownership and uniqueness. A token
+    # can still expire in the tiny interval before this read; reject that race
+    # rather than creating a run that silently loses its selected attachment.
+    items: list[media.MediaAttachment] = []
+    for token in tokens:
+        if not isinstance(token, str):
+            continue
+        item = media.get(token, user_id)
+        if item is None:
+            raise ApiError(403, "FORBIDDEN", "附件不属于当前账号或已过期")
+        items.append(item)
+    return items
+
+
+def _validate_media_provider_capability(
+    db: sqlite3.Connection, attachment: dict[str, Any] | None, user_id: str
+) -> list[media.MediaAttachment]:
+    """Reject media that no active primary/fallback model can actually inspect."""
+
+    items = _media_items_from_envelope(attachment, user_id)
+    media_kinds = {item.kind for item in items if item.kind in {"image", "audio", "video"}}
+    if not media_kinds or providers.has_compatible_media_provider(db, items):
+        return items
+    labels = {"image": "图片", "audio": "音频", "video": "视频"}
+    kind_text = "、".join(
+        labels[kind] for kind in ("image", "audio", "video") if kind in media_kinds
+    )
+    raise ApiError(
+        422,
+        "ATTACHMENT_MEDIA_UNSUPPORTED",
+        f"当前主模型和回退模型均无法处理{kind_text}附件。请在“模型供应商”中选择实际支持该类型的模型，并勾选相应输入能力后重试。",
+    )
+
+
+def _persist_message_attachments(
+    db: sqlite3.Connection,
+    *,
+    message_id: str,
+    items: list[media.MediaAttachment],
+    created_at: str,
+) -> None:
+    """Persist display-only metadata and optional derived previews for one message."""
+
+    for ordinal, item in enumerate(items):
+        thumbnail: media.MediaThumbnail | None = None
+        if item.kind == "image":
+            try:
+                thumbnail = media.thumbnail_for(item)
+            except Exception:
+                # A preview is deliberately optional. Keep a successful media
+                # run sendable if a decoder has an unexpected local failure,
+                # while never falling back to storing the original upload.
+                logger.warning("Unable to derive attachment thumbnail", exc_info=True)
+
+        db.execute(
+            """
+            INSERT INTO message_attachments
+              (id, message_id, ordinal, filename, kind, mime_type, byte_size,
+               thumbnail, thumbnail_mime_type, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                uuid.uuid4().hex,
+                message_id,
+                ordinal,
+                item.filename,
+                item.kind,
+                item.mime_type,
+                item.size,
+                thumbnail.content if thumbnail is not None else None,
+                thumbnail.mime_type if thumbnail is not None else None,
+                created_at,
+            ),
+        )
 
 
 @router.post("/runs", status_code=202)
@@ -569,7 +914,16 @@ async def create_run(
     current: CurrentUser = Depends(csrf_protect),
     db: sqlite3.Connection = Depends(get_agent_db),
 ) -> dict[str, Any]:
-    _require_verified(current)
+    # Validate before creating a conversation so a forged or cross-user token
+    # cannot leave an otherwise empty conversation behind.
+    normalized_attachment = _validate_attachments(
+        body.attachment, body.attachments, current.user["id"]
+    )
+    # Fail before creating a conversation/message so an incompatible media
+    # request cannot look successful and then reach a text-only model.
+    media_items = _validate_media_provider_capability(
+        db, normalized_attachment, current.user["id"]
+    )
     now = utc_now_iso()
 
     if body.conversation_id:
@@ -609,7 +963,9 @@ async def create_run(
     # attachment 无 schema 列（003 契约不可改）：暂存于 plan_json，
     # 编排器构建计划时读取后覆盖为真正的计划
     seed_plan = (
-        json.dumps({"attachment": body.attachment}, ensure_ascii=False) if body.attachment else None
+        json.dumps({"attachment": normalized_attachment}, ensure_ascii=False)
+        if normalized_attachment
+        else None
     )
     db.execute(
         """
@@ -636,6 +992,15 @@ async def create_run(
         VALUES (?, ?, ?, 'user', ?, ?)
         """,
         (message_id, conversation_id, run_id, body.input, now),
+    )
+    # Tokens remain only in the run envelope for the active provider call.
+    # Message history records server-verified display facts, never the upload
+    # token, the original bytes, or parsed document content.
+    _persist_message_attachments(
+        db,
+        message_id=message_id,
+        items=media_items,
+        created_at=now,
     )
     db.commit()
     # The request message is indexed after its source row commits. Retrieval
@@ -664,7 +1029,18 @@ async def create_run(
 
     config = get_config()
     spawn(execute_run(run_id, config.resolved_database_path))
-    return {"run_id": run_id, "conversation_id": conversation_id}
+    user_message = db.execute(
+        "SELECT id, run_id, role, content, created_at FROM messages WHERE id = ?",
+        (message_id,),
+    ).fetchone()
+    return {
+        "run_id": run_id,
+        "conversation_id": conversation_id,
+        "user_message": _message_dto(
+            user_message,
+            attachments=_load_message_attachments(db, message_id),
+        ),
+    }
 
 
 def _load_own_run(db: sqlite3.Connection, run_id: str, user_id: str) -> sqlite3.Row:

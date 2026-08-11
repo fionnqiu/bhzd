@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import sqlite3
 import threading
 import time
@@ -27,7 +28,7 @@ from ..config import get_config
 from ..db import connect, utc_now_iso
 from ..tools import registry
 from ..tools.registry import ToolContext
-from . import composer, conversation_memory, events, intents, prompts
+from . import composer, conversation_memory, events, intents, media, prompts
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,38 @@ _ARCHIVE_ACTIONS = {"rag.archive_document"}
 _MESSAGE_CHUNK = 40  # message.delta 单帧上限（契约：≤40 字符）
 
 _RUN_TERMINAL = ("completed", "failed", "cancelled")
+
+# Only generic L3 profiles can influence a normal learner task.  Response-style
+# and language profiles may mention a data type incidentally, so they are kept
+# out of this lookup instead of being treated as task-scope choices.
+_L3_TASK_PREFERENCE_KINDS = frozenset({
+    intents.KIND_LEARN_GOAL,
+    intents.KIND_PRESET_START,
+    intents.KIND_TASK_CONVERT,
+})
+_L3_PREFERENCE_CUE_RE = re.compile(
+    r"(?:current\s+learner\s+preference\s*[:：]|"
+    r"当前(?:学习者|用户)偏好\s*[:：]|"
+    r"\b(?:i\s+)?(?:prefer|like|want|need)\b|"
+    r"我(?:喜欢|希望|偏好)|请(?:用|给我))",
+    re.IGNORECASE,
+)
+_L3_UNSAFE_CONTENT_RE = re.compile(
+    r"(?:"
+    r"\b(?:password|passwd|passphrase|secret|credential|api[-_ ]?key|"
+    r"access[-_ ]?token|refresh[-_ ]?token|session[-_ ]?id|bearer|"
+    r"authorization|csrf|cookie|private[-_ ]?key|client[-_ ]?secret|"
+    r"token|jwt)\b|"
+    r"\b(?:chain[-_ ]?of[-_ ]?thought|thought[-_ ]?process|system[-_ ]?prompt|"
+    r"developer[-_ ]?message|tool[-_ ]?(?:call|result|arguments?)|"
+    r"function[-_ ]?call|traceback|stack[-_ ]?trace)\b|"
+    r"\{\s*[\"'](?:args|arguments|tool_name|result|function)[\"']\s*:|"
+    r"<\s*/?\s*(?:think|analysis|reasoning)\b|"
+    r"密码|密钥|令牌|私钥|授权头|推理过程|思维链|系统提示|"
+    r"工具调用|工具参数|工具结果|内部指令"
+    r")",
+    re.IGNORECASE,
+)
 
 # 运行失败给学生看的统一中文文案（堆栈只进服务端日志，PRD-01 §3.5）
 _GENERIC_ERROR = "处理本次请求时出现问题，请稍后重试"
@@ -146,6 +179,137 @@ def _context_values(
     )
 
 
+def _has_data_type_signal(text: str | None) -> bool:
+    """Return whether text explicitly names any supported annotation type.
+
+    ``intents.detect`` intentionally returns ``None`` for an ambiguous phrase
+    such as ``图像或视频``.  That is still an explicit user selection attempt,
+    so it must block a historical preference from silently choosing one side.
+    ASCII keywords use word boundaries to avoid treating words such as
+    ``context`` as the ``text`` type.
+    """
+
+    normalized = (text or "").casefold()
+    for keywords in intents.DATA_TYPE_KEYWORDS.values():
+        for keyword in keywords:
+            candidate = keyword.casefold()
+            if candidate.isascii() and candidate.isalnum():
+                if re.search(
+                    rf"(?<![a-z0-9]){re.escape(candidate)}(?![a-z0-9])",
+                    normalized,
+                ):
+                    return True
+            elif candidate in normalized:
+                return True
+    return False
+
+
+def _l3_preferred_data_type(
+    db: sqlite3.Connection, *, user_id: str
+) -> str | None:
+    """Read one safe, explicitly sourced generic L3 preference as an enum.
+
+    L3 is a private profile layer, not a prompt transcript.  The query requires
+    an active ``profile:general`` item with a user-message provenance link, and
+    the return value is reduced to a canonical data-type enum.  Preference text
+    (especially legacy or poisoned rows) never leaves this function.
+    """
+
+    if not get_config().private_memory_enabled:
+        return None
+    try:
+        rows = db.execute(
+            """
+            SELECT memory.content
+            FROM private_memory_items AS memory
+            WHERE memory.user_id = ?
+              AND memory.layer = 'l3'
+              AND memory.kind = 'profile'
+              AND memory.memory_key = 'profile:general'
+              AND memory.status = 'active'
+              AND EXISTS (
+                  SELECT 1
+                  FROM private_memory_sources AS source
+                  JOIN messages AS message ON message.id = source.message_id
+                  JOIN conversations AS source_conversation
+                    ON source_conversation.id = message.conversation_id
+                  WHERE source.memory_id = memory.id
+                    AND message.role = 'user'
+                    AND source_conversation.user_id = memory.user_id
+              )
+            ORDER BY memory.created_at DESC, memory.rowid DESC
+            LIMIT 12
+            """,
+            (user_id,),
+        ).fetchall()
+    except sqlite3.Error:
+        # Deployments upgrading from pre-layered-memory schemas should keep
+        # task planning available; an absent optional table means no preference.
+        logger.warning("L3 task preference lookup failed", exc_info=True)
+        return None
+
+    for row in rows:
+        content = row["content"]
+        if not isinstance(content, str):
+            continue
+        candidate = " ".join(content.strip().split())
+        if (
+            not candidate
+            or len(candidate) > 512
+            or _L3_UNSAFE_CONTENT_RE.search(candidate)
+            or not _L3_PREFERENCE_CUE_RE.search(candidate)
+        ):
+            continue
+        # Standalone JSON is treated as an execution payload even when its
+        # field names are unfamiliar; no structured value should become a task
+        # preference by accident.
+        payload_candidate = candidate.strip()
+        if payload_candidate.startswith(("{", "[")):
+            try:
+                json.loads(payload_candidate)
+            except (TypeError, ValueError):
+                pass
+            else:
+                continue
+        # This detector is deliberately applied only to the private profile
+        # text and returns an enum; the original content is never prompt input.
+        preference_body = re.sub(
+            r"^(?:current\s+learner\s+preference|当前(?:学习者|用户)偏好)\s*[:：]\s*",
+            "",
+            candidate,
+            flags=re.IGNORECASE,
+        )
+        data_type = intents.detect(preference_body).data_type
+        if data_type in intents.DATA_TYPE_KEYWORDS:
+            return data_type
+    return None
+
+
+def _apply_l3_task_preference(
+    db: sqlite3.Connection,
+    intent: intents.Intent,
+    *,
+    user_id: str,
+    task_text: str,
+    current_text: str,
+) -> intents.Intent:
+    """Fill an omitted learner task type from a safe explicit L3 preference."""
+
+    if (
+        intent.kind not in _L3_TASK_PREFERENCE_KINDS
+        or intent.data_type is not None
+        or _has_data_type_signal(task_text)
+        or _has_data_type_signal(current_text)
+    ):
+        return intent
+    preferred = _l3_preferred_data_type(db, user_id=user_id)
+    if preferred is None:
+        return intent
+    # Keep the current request as the task goal; only the missing enum slot is
+    # filled, so an historical preference cannot overwrite current wording.
+    return intents.apply_context(intent, data_type=preferred, prefer_context=True)
+
+
 def _resolve_initial_intent(
     db: sqlite3.Connection,
     run: sqlite3.Row,
@@ -176,12 +340,19 @@ def _resolve_initial_intent(
     run_data_type, run_scenario_id, conversation_data_type, conversation_scenario_id = (
         _context_values(run, conversation)
     )
-    # Scope precedence is explicit run > clarification > conversation > current
-    # input.  A fresh recognized intent deliberately skips the clarification
-    # tier, which is what prevents a new request from inheriting old slots.
+    # Scenario scope remains explicit run > clarification > conversation >
+    # current input. A fresh recognized intent deliberately skips the
+    # clarification tier, preventing a new request from inheriting old slots.
+    # For data type, a current explicit signal must remain visible; otherwise
+    # an old conversation default would silently defeat a new choice.
+    conversation_data_type_for_scope = (
+        None
+        if not resumed and _has_data_type_signal(run["input_text"])
+        else conversation_data_type
+    )
     resolved = intents.apply_context(
         detected,
-        data_type=conversation_data_type,
+        data_type=conversation_data_type_for_scope,
         scenario_id=conversation_scenario_id,
         prefer_context=not resumed,
     )
@@ -224,12 +395,22 @@ def _persist_message(
             content=content,
             created_at=created_at,
         )
+        if role == "assistant":
+            # L1-L3 extraction opens its own connection after the reply is
+            # durable, so embedding/provider latency can never postpone the
+            # completed run or its final SSE event.
+            conversation_memory.schedule_layered_capture(
+                database_path=get_config().resolved_database_path,
+                user_id=owner["user_id"],
+                conversation_id=conversation_id,
+                run_id=run_id,
+            )
     return message_id
 
 
 def _load_chat_history(
     db: sqlite3.Connection, conversation_id: str, *, limit: int = 30
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     """Return the most recent persisted chat turns for one conversation."""
 
     rows = db.execute(
@@ -930,7 +1111,11 @@ def _emit_usage_if_any(
 
 
 async def _complete_direct_chat(
-    db: sqlite3.Connection, run: sqlite3.Row, conversation_id: str
+    db: sqlite3.Connection,
+    run: sqlite3.Row,
+    conversation_id: str,
+    *,
+    media_attachments: list[media.MediaAttachment] | None = None,
 ) -> bool:
     """Try an LLM answer for a chat or clarification turn; return True if handled.
 
@@ -939,7 +1124,29 @@ async def _complete_direct_chat(
     """
 
     history = _load_chat_history(db, conversation_id)
-    if not history or history[-1].get("content") != run["input_text"]:
+    if media_attachments:
+        # The durable user row contains text only. Replace that current-turn
+        # entry in memory with text plus all temporary files so binary content
+        # never reaches persisted messages or replayable events.
+        multimodal_content: list[dict[str, Any]] = [{"type": "text", "text": run["input_text"]}]
+        for item in media_attachments:
+            composer.append_attachment_user_content(
+                multimodal_content,
+                filename=item.filename,
+                mime_type=item.mime_type,
+                content=item.content,
+                kind=item.kind,
+                extracted_text=item.extracted_text,
+            )
+        if (
+            history
+            and history[-1].get("role") == "user"
+            and history[-1].get("content") == run["input_text"]
+        ):
+            history[-1] = {"role": "user", "content": multimodal_content}
+        else:
+            history.append({"role": "user", "content": multimodal_content})
+    elif not history or history[-1].get("content") != run["input_text"]:
         history.append({"role": "user", "content": run["input_text"]})
     memory_context = conversation_memory.format_context(
         conversation_memory.retrieve_context(
@@ -1227,17 +1434,50 @@ async def execute_run(run_id: str, db_path: str) -> None:
             except json.JSONDecodeError:
                 attachment = None
 
+        legacy_media_token = (
+            attachment.get("attachment_token")
+            if isinstance(attachment, dict) and isinstance(attachment.get("attachment_token"), str)
+            else None
+        )
+        attachment_rows = attachment.get("attachments") if isinstance(attachment, dict) else None
+        media_tokens = (
+            [entry["attachment_token"] for entry in attachment_rows if isinstance(entry, dict)
+             and isinstance(entry.get("attachment_token"), str)]
+            if isinstance(attachment_rows, list)
+            else ([legacy_media_token] if legacy_media_token else [])
+        )
+        media_attachments = [
+            item for token in media_tokens if (item := media.get(token, run["user_id"])) is not None
+        ]
         intent, goal_text = _resolve_initial_intent(db, run, conv, attachment)
+        intent = _apply_l3_task_preference(
+            db,
+            intent,
+            user_id=run["user_id"],
+            task_text=goal_text,
+            current_text=run["input_text"],
+        )
 
         is_identity_turn = intent.kind == intents.KIND_AGENT_IDENTITY
         is_recall_turn = intent.kind == intents.KIND_CONVERSATION_RECALL
         needs_direct_chat = is_identity_turn or is_recall_turn or intents.next_question(intent) is not None or (
             intent.kind == intents.KIND_DIAGNOSE_UPLOAD
             and not (attachment and attachment.get("diagnostic_token"))
-        )
+        ) or bool(media_tokens)
         if needs_direct_chat:
-            if await _complete_direct_chat(db, run, run["conversation_id"]):
-                return
+            try:
+                if await _complete_direct_chat(
+                    db,
+                    run,
+                    run["conversation_id"],
+                    media_attachments=media_attachments,
+                ):
+                    return
+            finally:
+                # Media tokens are single-run capabilities. Releasing them
+                # after direct composition prevents replay or token reuse.
+                for token in media_tokens:
+                    media.discard(token, run["user_id"])
             if is_identity_turn:
                 # Do not let an unavailable provider reclassify an identity
                 # question as a planning request and trigger RAG tools.

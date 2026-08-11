@@ -52,14 +52,13 @@ const PresetsPage = lazyRoute(() => import("../pages/student/PresetsPage"));
 const GraphPage = lazyRoute(() => import("../pages/student/GraphPage"));
 const TasksPage = lazyRoute(() => import("../pages/student/TasksPage"));
 const TaskDetailPage = lazyRoute(() => import("../pages/student/TaskDetailPage"));
-const DiagnosticsPage = lazyRoute(() => import("../pages/student/DiagnosticsPage"));
-const RagQaPage = lazyRoute(() => import("../pages/student/RagQaPage"));
 const ProfilePage = lazyRoute(() => import("../pages/student/ProfilePage"));
 const DashboardPage = lazyRoute(() => import("../pages/teacher/DashboardPage"));
 const ClassesPage = lazyRoute(() => import("../pages/teacher/ClassesPage"));
 const ClassDetailPage = lazyRoute(() => import("../pages/teacher/ClassDetailPage"));
 const TaskPublishPage = lazyRoute(() => import("../pages/teacher/TaskPublishPage"));
 const AnalyticsPage = lazyRoute(() => import("../pages/teacher/AnalyticsPage"));
+const StudentAnalyticsPage = lazyRoute(() => import("../pages/teacher/StudentAnalyticsPage"));
 const DocumentsPage = lazyRoute(() => import("../pages/rag/DocumentsPage"));
 const UploadPage = lazyRoute(() => import("../pages/rag/UploadPage"));
 const DocumentDetailPage = lazyRoute(() => import("../pages/rag/DocumentDetailPage"));
@@ -140,7 +139,7 @@ const RAG_ADMIN_ROLES: Role[] = ["system_admin"];
 
 /** 全站路由表（测试与生产共用） */
 export const routes: RouteObject[] = [
-  // ---- 公共认证页（蓝图 §14：/login /register /verify-email /forgot-password /reset-password）
+  // ---- 公共认证页（/verify-email 保留为历史邮件链接的兼容落地页）
   { path: "/login", element: <LoginPage /> },
   { path: "/register", element: <RegisterPage /> },
   { path: "/verify-email", element: <VerifyEmailPage /> },
@@ -165,8 +164,12 @@ export const routes: RouteObject[] = [
       { path: "graph", element: <GraphPage /> },
       { path: "tasks", element: <TasksPage /> },
       { path: "tasks/:id", element: <TaskDetailPage /> },
-      { path: "diagnostics", element: <DiagnosticsPage /> },
-      { path: "rag-qa", element: <RagQaPage /> },
+      // 诊断现已是 Agent 的内置能力；保留旧书签兼容入口，避免历史链接落到
+      // 已下线的独立页面。replace 保证浏览器后退不会再次回到旧入口。
+      { path: "diagnostics", element: <Navigate to="/" replace /> },
+      // The student knowledge-QA board is retired.  Keep legacy links usable
+      // by returning to the Agent workbench instead of leaving old bookmarks at a 404.
+      { path: "rag-qa", element: <Navigate to="/" replace /> },
       { path: "profile", element: <ProfilePage /> },
     ],
   },
@@ -185,6 +188,7 @@ export const routes: RouteObject[] = [
       { path: "classes/:id", element: <ClassDetailPage /> },
       { path: "tasks", element: <TaskPublishPage /> },
       { path: "analytics", element: <AnalyticsPage /> },
+      { path: "analytics/students", element: <StudentAnalyticsPage /> },
       // Keep old review links useful for the RAG administrator without retaining a teacher review screen.
       {
         path: "review",

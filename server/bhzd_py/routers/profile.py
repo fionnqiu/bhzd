@@ -49,6 +49,25 @@ def _scenario_names() -> dict[str, str]:
         return {}
 
 
+def _active_class_dtos(conn: sqlite3.Connection, user_id: str) -> list[dict[str, str]]:
+    """Return the learner's current, non-archived classes without exposing invite codes.
+
+    Enrollment rows are retained after leaving for historical task/audit joins, so the
+    profile deliberately filters on ``left_at`` instead of deleting membership data.
+    """
+    rows = conn.execute(
+        """
+        SELECT c.id, c.name, e.joined_at
+        FROM class_enrollments e
+        JOIN classes c ON c.id = e.class_id
+        WHERE e.student_id = ? AND e.left_at IS NULL AND c.archived_at IS NULL
+        ORDER BY e.joined_at DESC, c.name ASC
+        """,
+        (user_id,),
+    ).fetchall()
+    return [{"id": row["id"], "name": row["name"], "joined_at": row["joined_at"]} for row in rows]
+
+
 @router.get("/api/profile/mastery")
 def profile_mastery(
     scenario_id: str | None = None,
@@ -154,6 +173,7 @@ def profile_overview(
 
     # 收藏资料真实数据（008 起有 favorites 表）；聚合页只带最近 20 条保持轻量
     favorites = _list_favorites(conn, user_id, limit=20)
+    classes = _active_class_dtos(conn, user_id)
 
     return {
         "user": {
@@ -166,6 +186,7 @@ def profile_overview(
         "recent_diagnostic_summaries": [dict(s) for s in summaries],
         "growth": growth,
         "favorites": favorites,
+        "classes": classes,
         "settings": {"share_diagnostics": _read_share_flag(conn, user_id)},
     }
 
@@ -458,17 +479,23 @@ def join_class(
         (clazz["id"], current.user["id"]),
     ).fetchone()
     if existing is not None and existing["left_at"] is None:
-        return {"class_id": clazz["id"], "class_name": clazz["name"], "already_enrolled": True}
+        return {
+            "class_id": clazz["id"],
+            "class_name": clazz["name"],
+            "joined_at": existing["joined_at"],
+            "already_enrolled": True,
+        }
+    joined_at = utc_now_iso()
     if existing is not None:
         conn.execute(
             "UPDATE class_enrollments SET joined_at = ?, left_at = NULL "
             "WHERE class_id = ? AND student_id = ?",
-            (utc_now_iso(), clazz["id"], current.user["id"]),
+            (joined_at, clazz["id"], current.user["id"]),
         )
     else:
         conn.execute(
             "INSERT INTO class_enrollments (class_id, student_id, joined_at) VALUES (?, ?, ?)",
-            (clazz["id"], current.user["id"], utc_now_iso()),
+            (clazz["id"], current.user["id"], joined_at),
         )
     conn.commit()
     audit(
@@ -479,7 +506,51 @@ def join_class(
         target_id=clazz["id"],
         after={"via": "invite_code"},
     )
-    return {"class_id": clazz["id"], "class_name": clazz["name"], "already_enrolled": False}
+    return {
+        "class_id": clazz["id"],
+        "class_name": clazz["name"],
+        "joined_at": joined_at,
+        "already_enrolled": False,
+    }
+
+
+@router.delete("/api/student/classes/{class_id}")
+def leave_class(
+    class_id: str,
+    current: CurrentUser = Depends(csrf_protect),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, str]:
+    """Leave one current class while retaining the enrollment row for history.
+
+    The active-row check keeps the operation idempotent-safe and prevents a student
+    from learning whether another student's enrollment exists.
+    """
+    enrollment = conn.execute(
+        """
+        SELECT c.id, c.name
+        FROM class_enrollments e
+        JOIN classes c ON c.id = e.class_id
+        WHERE e.class_id = ? AND e.student_id = ? AND e.left_at IS NULL
+        """,
+        (class_id, current.user["id"]),
+    ).fetchone()
+    if enrollment is None:
+        raise ApiError(404, "CLASS_ENROLLMENT_NOT_FOUND", "你当前未加入该班级")
+    now = utc_now_iso()
+    conn.execute(
+        "UPDATE class_enrollments SET left_at = ? WHERE class_id = ? AND student_id = ?",
+        (now, class_id, current.user["id"]),
+    )
+    conn.commit()
+    audit(
+        conn,
+        current.user,
+        "class.leave",
+        target_type="class",
+        target_id=class_id,
+        after={"left_at": now},
+    )
+    return {"class_id": enrollment["id"], "class_name": enrollment["name"], "message": "已退出班级"}
 
 
 # ---------------------------------------------------------------- 个人设置（PRD-06 §15 #2）

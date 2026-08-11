@@ -1,8 +1,67 @@
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ChatMessage } from "./types";
+import { FileImage, FileText, FileVideo, Music2 } from "lucide-react";
+import { AgentAvatar } from "../../../components";
+import type { ChatAttachment, ChatMessage } from "./types";
 
 const markdownPlugins = [remarkGfm];
+
+function formatFileSize(size: number): string {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function attachmentKindLabel(kind: ChatAttachment["kind"]): string {
+  if (kind === "image") return "图片";
+  if (kind === "audio") return "音频";
+  if (kind === "video") return "视频";
+  return "文件";
+}
+
+function attachmentIcon(kind: ChatAttachment["kind"]) {
+  if (kind === "audio") return <Music2 size={20} aria-hidden="true" />;
+  if (kind === "video") return <FileVideo size={20} aria-hidden="true" />;
+  if (kind === "document") return <FileText size={20} aria-hidden="true" />;
+  return <FileImage size={20} aria-hidden="true" />;
+}
+
+function MessageAttachmentBand({ attachments }: { attachments: ChatAttachment[] }) {
+  return (
+    <ul
+      className="message-attachment-strip"
+      aria-label={`本条消息携带的 ${attachments.length} 个附件`}
+    >
+      {attachments.map((attachment) => {
+        // A persisted thumbnail is same-origin and owner-scoped. It must win
+        // over the temporary blob URL so a refresh never depends on browser state.
+        const imageSource =
+          attachment.kind === "image" ? attachment.thumbnailUrl ?? attachment.previewUrl : null;
+        const kindLabel = attachmentKindLabel(attachment.kind);
+        return (
+          <li
+            key={attachment.id}
+            className="message-attachment"
+            data-testid="message-attachment"
+            aria-label={`${kindLabel}附件 ${attachment.name}，${formatFileSize(attachment.size)}`}
+          >
+            <span className={`message-attachment-thumb message-attachment-thumb-${attachment.kind}`}>
+              {imageSource ? (
+                <img src={imageSource} alt={`${attachment.name} 缩略图`} />
+              ) : (
+                attachmentIcon(attachment.kind)
+              )}
+            </span>
+            <span className="message-attachment-details">
+              <strong title={attachment.name}>{attachment.name}</strong>
+              <span>{kindLabel} · {formatFileSize(attachment.size)}</span>
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 /**
  * Keep Agent-provided links useful without allowing scheme-based navigation
@@ -54,22 +113,32 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
       className={`bubble bubble-${message.role}`}
       aria-label={isAssistant ? "标航智导回复" : "你的消息"}
     >
-      {isAssistant ? <span className="message-label">标航智导</span> : null}
-      <div className={`bubble-content${isAssistant ? " bubble-markdown" : ""}`}>
-        {isAssistant ? (
-          <ReactMarkdown
-            remarkPlugins={markdownPlugins}
-            skipHtml
-            urlTransform={safeMarkdownUrl}
-            components={markdownComponents}
-          >
-            {message.content}
-          </ReactMarkdown>
-        ) : (
-          message.content
-        )}
-        {message.streaming ? <span className="bubble-cursor" aria-hidden /> : null}
-      </div>
+      {isAssistant ? (
+        <AgentAvatar className="assistant-avatar" decorative />
+      ) : null}
+      {isAssistant ? (
+        // Keep the assistant identity and rich reply in one column so the
+        // fixed avatar never pushes the label beside the response on narrow screens.
+        <div className="assistant-reply-body">
+          <span className="message-label">标航智导</span>
+          <div className="bubble-content bubble-markdown">
+            <ReactMarkdown
+              remarkPlugins={markdownPlugins}
+              skipHtml
+              urlTransform={safeMarkdownUrl}
+              components={markdownComponents}
+            >
+              {message.content}
+            </ReactMarkdown>
+            {message.streaming ? <span className="bubble-cursor" aria-hidden /> : null}
+          </div>
+        </div>
+      ) : (
+        <div className="bubble-user-body">
+          {message.attachments?.length ? <MessageAttachmentBand attachments={message.attachments} /> : null}
+          <div className="bubble-content">{message.content}</div>
+        </div>
+      )}
     </article>
   );
 }

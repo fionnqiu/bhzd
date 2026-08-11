@@ -14,6 +14,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query, Request
 
 from ..deps import CurrentUser, get_current_user, get_db
+from ..diagnosis.engine import load_teaching_units
 from ..errors import ApiError
 from ..graphx import reason
 from ..mastery.service import MASTERED_THRESHOLD
@@ -48,6 +49,49 @@ def _status_of(score: float | None) -> str:
     if score < WEAK_LINE:
         return "weak"
     return "beginner"
+
+
+def _available_learning_materials(detail: dict[str, Any]) -> list[dict[str, str]]:
+    """Project a CAP's consumable teaching units without treating graph RES nodes as materials.
+
+    Graph task nodes are a curriculum catalogue, while a learning task needs an
+    actual student-visible teaching unit.  Require both the reviewed graph-link
+    flags and a current local unit title so a stale catalogue reference cannot
+    create a broken resource entry for a student.
+    """
+    unit_titles = {
+        str(unit["id"]): str(unit.get("title") or unit["id"])
+        for unit in load_teaching_units()
+        if unit.get("id")
+    }
+    materials: list[dict[str, str]] = []
+    seen_unit_ids: set[str] = set()
+    for task in detail.get("tasks", []):
+        if not isinstance(task, dict):
+            continue
+        for link in task.get("teaching_unit_links", []):
+            if not isinstance(link, dict):
+                continue
+            unit_id = link.get("unit_id")
+            if (
+                not isinstance(unit_id, str)
+                or unit_id in seen_unit_ids
+                or not link.get("consumable")
+                or not link.get("student_visible")
+                or not link.get("in_student_visible_index")
+                or link.get("review_status") != "published"
+                or unit_id not in unit_titles
+            ):
+                continue
+            seen_unit_ids.add(unit_id)
+            materials.append(
+                {
+                    "type": "teaching_unit",
+                    "ref_id": unit_id,
+                    "title": unit_titles[unit_id],
+                }
+            )
+    return materials
 
 
 @router.get("/api/graph/overview")
@@ -94,6 +138,9 @@ def node_detail(
     detail = reason.node_detail(node_id)
     if detail is None:
         raise ApiError(404, "NODE_NOT_FOUND", "图谱节点不存在")
+    # Keep the browser on a narrow, student-safe DTO instead of making it
+    # reconstruct course eligibility from generic graph task nodes.
+    detail["learning_materials"] = _available_learning_materials(detail)
     current = _optional_user(request, conn)
     if current and node_id.startswith("CAP"):
         rows = conn.execute(

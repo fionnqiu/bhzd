@@ -82,7 +82,7 @@ export default function LoginPage() {
         </form>
         <div className="auth-links">
           <Link to="/forgot-password">忘记密码？</Link>
-          <Link to="/register">注册学生账号</Link>
+          <Link to="/register">注册</Link>
         </div>
       </div>
     </div>

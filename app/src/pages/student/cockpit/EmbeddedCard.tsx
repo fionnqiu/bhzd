@@ -140,7 +140,7 @@ function CardBody({ card }: { card: EmbeddedCardData }) {
       return (
         <div>
           <p className="text-success">
-            学习任务「{String(result.title ?? "")}」已创建。
+            学习任务「{String(result.title ?? "")}」已同步。
           </p>
           <Link className="text-sm" to="/tasks">
             前往学习任务查看 →
@@ -241,8 +241,8 @@ function CardBody({ card }: { card: EmbeddedCardData }) {
       return (
         <>
           <DiagnosticReportContent report={report} />
-          <Link className="text-sm mt-2" to="/diagnostics">
-            前往标注诊断查看历史 →
+          <Link className="text-sm mt-2" to="/">
+            返回 Agent 查看诊断结果 →
           </Link>
         </>
       );

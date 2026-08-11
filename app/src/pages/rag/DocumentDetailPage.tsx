@@ -15,7 +15,7 @@
  */
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import type {
   DocumentDetailResponse,
@@ -48,6 +48,7 @@ import {
   LEDGER_AUTH_LABELS,
   LicenseBadge,
   REVIEW_ACTION_LABELS,
+  safeRagReturnPath,
   scenarioLabel,
   SOURCE_TYPE_LABELS,
   STAGE_LABELS,
@@ -57,8 +58,8 @@ import {
 /** 向量统计拉取上限：超出时如实标注"仅统计前 N 条" */
 const CHUNK_STATS_LIMIT = 200;
 const CHUNK_PREVIEW_COUNT = 5;
-/** 召回记录分页大小（recall_logs 按时间倒序，详情页只看最近命中） */
-const RECALL_LIMIT = 10;
+/** 召回记录默认分页大小（recall_logs 按时间倒序，详情页只看最近命中） */
+const DEFAULT_RECALL_LIMIT = 10;
 
 /** 敏感信息标志的结构（pipeline.py scan_sensitive_info） */
 interface SensitiveFlags {
@@ -87,7 +88,12 @@ const RECALL_CHANNEL_LABELS: Record<string, string> = {
 export default function DocumentDetailPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
+  const returnTo = safeRagReturnPath(
+    (location.state as { returnTo?: unknown } | null)?.returnTo ??
+      new URLSearchParams(location.search).get("returnTo"),
+  );
 
   const [detail, setDetail] = useState<DocumentDetailResponse | null>(null);
   const [chunks, setChunks] = useState<RagChunk[]>([]);
@@ -106,6 +112,7 @@ export default function DocumentDetailPage() {
   const [recallItems, setRecallItems] = useState<RecallRecord[]>([]);
   const [recallTotal, setRecallTotal] = useState(0);
   const [recallOffset, setRecallOffset] = useState(0);
+  const [recallLimit, setRecallLimit] = useState(DEFAULT_RECALL_LIMIT);
   const [recallLoading, setRecallLoading] = useState(false);
   const [recallError, setRecallError] = useState<string | null>(null);
 
@@ -159,7 +166,7 @@ export default function DocumentDetailPage() {
     try {
       const res = await api.get<{ items: RecallRecord[]; total: number }>(
         `/api/rag/documents/${id}/recall-records`,
-        { limit: RECALL_LIMIT, offset: recallOffset },
+        { limit: recallLimit, offset: recallOffset },
         { signal },
       );
       if (signal?.aborted) return;
@@ -170,7 +177,7 @@ export default function DocumentDetailPage() {
     } finally {
       if (!signal?.aborted) setRecallLoading(false);
     }
-  }, [id, recallOffset]);
+  }, [id, recallOffset, recallLimit]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -211,7 +218,7 @@ export default function DocumentDetailPage() {
     try {
       await api.delete(`/api/rag/documents/${id}`);
       toast.success("资料已删除");
-      navigate("/rag-admin", { replace: true });
+      navigate(returnTo, { replace: true });
     } catch (err) {
       toast.error(errText(err));
       setDeleteOpen(false);
@@ -319,8 +326,8 @@ export default function DocumentDetailPage() {
       <PageHeader
         title={doc.title}
         actions={
-          <Link to="/rag-admin" className="btn btn-ghost">
-            ← 返回资料库
+          <Link to={returnTo} className="btn btn-ghost">
+            ← 返回
           </Link>
         }
       />
@@ -451,7 +458,11 @@ export default function DocumentDetailPage() {
         title={`切片列表（共 ${chunkTotal} 条）`}
         className="mt-4"
         actions={
-          <Link to={`/rag-admin/documents/${id}/chunks`} className="btn btn-secondary btn-sm">
+          <Link
+            to={`/rag-admin/documents/${id}/chunks?returnTo=${encodeURIComponent(returnTo)}`}
+            state={{ returnTo }}
+            className="btn btn-secondary btn-sm"
+          >
             打开切片编辑器
           </Link>
         }
@@ -522,9 +533,13 @@ export default function DocumentDetailPage() {
             />
             <Pagination
               offset={recallOffset}
-              limit={RECALL_LIMIT}
+              limit={recallLimit}
               total={recallTotal}
               onChange={setRecallOffset}
+              onLimitChange={(nextLimit) => {
+                setRecallLimit(nextLimit);
+                setRecallOffset(0);
+              }}
             />
           </>
         )}

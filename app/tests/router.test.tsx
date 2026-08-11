@@ -4,7 +4,7 @@
  * 复用生产路由表 `routes`（createMemoryRouter）而非另写测试路由——
  * 守卫行为只有挂在真实路由树上才有意义，否则测的是测试自己。
  */
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { routes } from "../src/app/router";
@@ -60,7 +60,7 @@ function makeUser(role: User["role"]): User {
 /** 以指定路径渲染完整应用壳（与生产 Provider 组合一致） */
 function renderAt(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
-  return render(
+  const view = render(
     <ToastProvider>
       <AuthProvider>
         <ScenarioProvider>
@@ -69,6 +69,7 @@ function renderAt(path: string) {
       </AuthProvider>
     </ToastProvider>,
   );
+  return { ...view, router };
 }
 
 /** Deliberately throws so the test exercises the real data-router error element. */
@@ -82,14 +83,10 @@ beforeEach(() => {
 
 describe("路由守卫", () => {
   it("未登录访问 / 重定向到 /login", async () => {
-    mockedGet.mockRejectedValue(
-      new ApiRequestError(401, "UNAUTHORIZED", "请先登录"),
-    );
+    mockedGet.mockRejectedValue(new ApiRequestError(401, "UNAUTHORIZED", "请先登录"));
     renderAt("/");
     // 登录页的标题出现即证明守卫已重定向
-    expect(
-      await screen.findByRole("heading", { name: "登录" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "登录" })).toBeInTheDocument();
   });
 
   it("学生角色访问 /admin/providers 看到 403 页", async () => {
@@ -109,9 +106,7 @@ describe("路由守卫", () => {
       csrf_token: "tok",
     });
     renderAt("/admin/providers");
-    expect(
-      await screen.findByRole("heading", { name: "模型供应商" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "模型供应商" })).toBeInTheDocument();
   });
 
   it("教师访问学生端、RAG 管理和旧资源审核地址均看到 403 页", async () => {
@@ -136,20 +131,52 @@ describe("路由守卫", () => {
     expect(ragPortal?.roles).toEqual(["system_admin"]);
   });
 
+  it("教师端不再暴露教学 Agent 路由", () => {
+    const teacherRoute = routes.find((route) => route.path === "/teacher");
+    const childPaths = teacherRoute?.children?.map((route) => route.path);
+
+    expect(childPaths).not.toContain("agent");
+  });
+
+  it("学生访问旧 /rag-qa 书签时回到 Agent 工作台", async () => {
+    // Exercise the production route tree: a legacy URL must stay useful while
+    // the retired knowledge-QA screen is no longer exposed in student navigation.
+    mockedGet.mockImplementation(async (path: string) => {
+      if (path === "/api/auth/session") {
+        return { user: makeUser("student"), csrf_token: "tok" };
+      }
+      if (path === "/api/notifications/unread-count") return { unread: 0 };
+      if (path === "/api/onboarding/assessment") return { status: "completed" };
+      if (
+        ["/api/conversations", "/api/presets", "/api/tasks", "/api/profile/mastery"].includes(path)
+      ) {
+        return { items: [], total: 0 };
+      }
+      return { items: [], total: 0 };
+    });
+
+    const { router } = renderAt("/rag-qa");
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/"));
+    // Route chunks stay lazy in production.  Under the full parallel suite the
+    // workbench transform can outlast Testing Library's one-second default, so
+    // keep the assertion on the real welcome state with a bounded chunk budget.
+    expect(
+      await screen.findByTestId("cockpit-welcome", {}, { timeout: 5_000 }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "知识问答" })).not.toBeInTheDocument();
+  });
+
   it("页面渲染失败时显示可恢复的路由错误状态，而不是白屏", async () => {
     const errorElement = routes[0]?.errorElement;
     if (!errorElement) throw new Error("router must provide a top-level error element");
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
     try {
-      const router = createMemoryRouter([
-        { path: "/", element: <BrokenRoute />, errorElement },
-      ]);
+      const router = createMemoryRouter([{ path: "/", element: <BrokenRoute />, errorElement }]);
       render(<RouterProvider router={router} />);
 
-      expect(await screen.findByRole("alert")).toHaveTextContent(
-        "页面加载出现问题，请稍后重试。",
-      );
+      expect(await screen.findByRole("alert")).toHaveTextContent("页面加载出现问题，请稍后重试。");
     } finally {
       consoleError.mockRestore();
     }

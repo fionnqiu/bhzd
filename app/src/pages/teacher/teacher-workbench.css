@@ -98,37 +98,107 @@
   row-gap: var(--space-3);
 }
 
+.teacher-analytics-filter-grid {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* Keep the required 3+2 grouping stable on wide screens; each row owns its grid so
+   a narrow second row cannot pull one of the primary filters onto a third line. */
+.teacher-analytics-filter-row {
+  display: grid;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.teacher-analytics-filter-row-primary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.teacher-analytics-filter-row-secondary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.teacher-analytics-filter-row .select {
+  min-width: 0;
+  width: 100%;
+}
+
+/* The student detail page intentionally has exactly two filters; keep them side by side on
+   desktop while allowing a single readable column on narrow screens. */
+.teacher-student-analytics-filter-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.teacher-student-analytics-filter-row .select {
+  min-width: 0;
+  width: 100%;
+}
+
+.teacher-analytics-filter-loading {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  color: var(--color-text-muted);
+}
+
 .teacher-class-detail-page .teacher-filter-surface .select,
 .teacher-analytics-page .teacher-filter-surface .select {
   min-width: 10rem;
 }
 
-/* Task publishing is intentionally explicit so the preview can move below the editor. */
+/* The two columns are independent stacks: a shared grid would make a tall preview push the editor down. */
 .teacher-task-publish-layout {
   display: grid;
-  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.85fr);
   gap: var(--space-5);
   align-items: start;
 }
 
 .teacher-task-editor-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
-  gap: var(--space-5);
-  align-items: start;
-}
-
-.teacher-task-editor-layout > .flex,
-.teacher-task-editor-layout > .teacher-task-preview {
   min-width: 0;
 }
 
-.teacher-task-preview {
+.teacher-task-editor-layout > .flex,
+.teacher-task-review-layout {
+  min-width: 0;
+}
+
+.teacher-task-review-layout {
   position: sticky;
   top: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  align-self: start;
+  width: 100%;
   max-height: calc(100dvh - var(--space-8));
+  gap: var(--space-4);
   overflow-y: auto;
   scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+
+/* All review cards share one bounded surface so the task list, preview, and publish controls scroll
+   together. A single boundary prevents each card from appearing to use a different fixed height. */
+.teacher-task-review-layout > .card,
+.teacher-task-review-layout > .teacher-task-preview {
+  width: 100%;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+/* The parent owns the sticky position and scroll boundary; keeping this wrapper in normal flow
+   makes the nested preview card the same width and height model as its neighboring cards. */
+.teacher-task-preview {
+  position: static;
+  max-height: none;
+  overflow: visible;
 }
 
 .teacher-enroll-row,
@@ -166,6 +236,7 @@
 }
 
 .teacher-task-publish-page .teacher-task-preview .card {
+  width: 100%;
   box-shadow: var(--shadow-md);
 }
 
@@ -173,30 +244,12 @@
   overflow-wrap: anywhere;
 }
 
-@media (max-width: 1180px) {
-  .teacher-task-publish-layout {
-    grid-template-columns: minmax(190px, 230px) minmax(0, 1fr);
-  }
-
-  .teacher-task-editor-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  /* Mid-width editors keep form controls readable by placing the preview below. */
-  .teacher-task-preview {
-    position: static;
-    max-height: none;
-    overflow: visible;
-  }
-}
-
 @media (max-width: 900px) {
   .teacher-dashboard-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .teacher-task-publish-layout,
-  .teacher-task-editor-layout {
+  .teacher-task-publish-layout {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -206,13 +259,13 @@
     overflow: visible;
   }
 
-  .teacher-task-publish-layout > .card {
-    order: 0;
+  .teacher-task-review-layout {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    scrollbar-gutter: auto;
   }
 
-  .teacher-task-editor-layout > .teacher-task-preview {
-    order: 2;
-  }
 }
 
 @media (max-width: 640px) {
@@ -236,6 +289,12 @@
   .teacher-class-detail-page .teacher-filter-surface .card-body > .flex,
   .teacher-analytics-page .teacher-filter-surface .card-body > .flex {
     align-items: stretch;
+  }
+
+  .teacher-analytics-filter-row-primary,
+  .teacher-analytics-filter-row-secondary,
+  .teacher-student-analytics-filter-row {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .teacher-class-detail-page .teacher-filter-surface .select,

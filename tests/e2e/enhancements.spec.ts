@@ -17,8 +17,7 @@ const TEACHER = { email: "teacher@demo.bhzd", password: "Demo1234!" };
 test("入学测评：新注册学生被引导完成测评并生成初始能力地图", async ({
   page,
 }) => {
-  // API 注册新学生。验证令牌的获取按环境自适应：
-  // 未配置 SMTP → 响应带 dev_verify_token；SMTP 故障/已配置 → 链接写入后端 mail_outbox.log
+  // API 注册新学生。注册即时生效，不再依赖验证令牌或邮件投递。
   const email = `e2e-${Date.now() % 1000000}@demo.bhzd`;
   const ctx = await request.newContext({ baseURL: FRONTEND_ORIGIN });
   const reg = await ctx.post("/api/auth/register", {
@@ -30,22 +29,7 @@ test("入学测评：新注册学生被引导完成测评并生成初始能力�
   });
   expect(reg.status()).toBeLessThan(300);
   const regBody = await reg.json();
-  let token: string | undefined = regBody.dev_verify_token;
-  if (!token) {
-    // 从后端发件箱日志取最新一条验证链接（SMTP 故障存档 / 开发兜底同一路径）
-    const { readFileSync } = await import("node:fs");
-    const outbox = readFileSync(
-      "E:/AgentWorkspaces/bhzd/var/mail_outbox.log",
-      "utf-8",
-    );
-    const matches = [
-      ...outbox.matchAll(/verify-email\?token=([A-Za-z0-9_-]+)/g),
-    ];
-    expect(matches.length, "发件箱应存在验证链接").toBeGreaterThan(0);
-    token = matches[matches.length - 1][1];
-  }
-  const verify = await ctx.post("/api/auth/verify-email", { data: { token } });
-  expect(verify.status()).toBe(200);
+  expect(regBody.user.email_verified).toBe(true);
   await ctx.dispose();
 
   // UI 登录 → 未完成测评应被引导到 /onboarding

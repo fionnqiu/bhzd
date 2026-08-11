@@ -1,0 +1,319 @@
+/*
+ * Shared assistant presentation primitives.  These styles deliberately expose
+ * only lifecycle state and server-issued task titles; no selector invites a
+ * raw reasoning transcript or independently scrollable trace.
+ */
+.agent-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 28%, transparent);
+  background: color-mix(in srgb, var(--color-primary-soft) 78%, var(--color-surface));
+  color: var(--color-primary);
+}
+
+.agent-avatar-spark {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.agent-orb {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--color-primary);
+}
+
+.agent-orb-glyph {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-primary-soft) 84%, transparent);
+}
+
+.agent-orb-dot {
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.2;
+  animation: agent-orb-pulse 1.65s ease-in-out infinite;
+  animation-delay: calc(var(--agent-orb-index) * -90ms);
+}
+
+.agent-orb-retrieving .agent-orb-dot {
+  animation-name: agent-orb-scan;
+}
+
+.agent-orb-generating .agent-orb-dot {
+  animation-name: agent-orb-build;
+}
+
+.agent-orb-finalizing .agent-orb-dot {
+  animation-name: agent-orb-settle;
+}
+
+.agent-orb-pill {
+  min-width: 0;
+  padding: 4px 8px 4px 5px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 18%, var(--color-border));
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
+.agent-orb-pill .agent-orb-glyph {
+  width: 16px;
+  height: 16px;
+  flex-basis: 16px;
+  gap: 1px;
+  padding: 2px;
+  color: var(--color-primary);
+}
+
+.agent-task-list,
+.agent-thinking-reasoning {
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 17%, var(--color-border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-primary-soft) 38%, var(--color-surface));
+}
+
+.agent-task-list-head,
+.agent-thinking-head {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px var(--space-3);
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: var(--color-text-secondary);
+  text-align: left;
+}
+
+.agent-task-list-head:hover,
+.agent-thinking-head:hover {
+  background: color-mix(in srgb, var(--color-primary-soft) 60%, transparent);
+}
+
+.agent-task-list-title,
+.agent-thinking-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.agent-task-list-title > span:last-child,
+.agent-thinking-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-task-list-title > span:last-child {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.agent-task-list-count,
+.agent-thinking-duration {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.agent-task-list-head > svg,
+.agent-thinking-head > svg {
+  flex: 0 0 auto;
+  transition: transform var(--motion-fast) var(--ease-standard);
+}
+
+.agent-task-list-head > svg.is-collapsed,
+.agent-thinking-head > svg.is-collapsed {
+  transform: rotate(-90deg);
+}
+
+.agent-task-list-fold,
+.agent-thinking-fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--motion-fast) var(--ease-standard);
+}
+
+.agent-task-list-fold[data-open],
+.agent-thinking-fold[data-open] {
+  grid-template-rows: 1fr;
+}
+
+.agent-task-list-inner,
+.agent-thinking-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.agent-task-list-items {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 2px var(--space-3) var(--space-3);
+  list-style: none;
+}
+
+.agent-task-list-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.agent-task-list-item svg {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+}
+
+.agent-task-list-item > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-task-list-item.is-done {
+  color: var(--color-text-muted);
+}
+
+.agent-task-list-item.is-done > span {
+  text-decoration: line-through;
+}
+
+.agent-task-list-item.is-done svg {
+  color: var(--color-success);
+}
+
+.agent-task-list-item.is-active svg {
+  color: var(--color-primary);
+  animation: agent-task-active 1.2s ease-in-out infinite;
+}
+
+.agent-thinking-reasoning {
+  width: fit-content;
+  max-width: min(100%, 34rem);
+}
+
+.agent-thinking-reasoning:not(.is-completed) .agent-thinking-label {
+  background: linear-gradient(
+    100deg,
+    var(--color-text-secondary) 15%,
+    var(--color-primary) 48%,
+    var(--color-text-secondary) 82%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: agent-thinking-shimmer 1.8s linear infinite;
+}
+
+.agent-thinking-kicker {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
+.agent-thinking-label {
+  min-width: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+@keyframes agent-orb-pulse {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: scale(0.74);
+  }
+  42% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes agent-orb-scan {
+  0%,
+  100% {
+    opacity: 0.18;
+    transform: translateX(-1px) scale(0.75);
+  }
+  48% {
+    opacity: 1;
+    transform: translateX(1px) scale(1);
+  }
+}
+
+@keyframes agent-orb-build {
+  0%,
+  100% {
+    opacity: 0.18;
+    transform: translateY(1px) scale(0.72);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-1px) scale(1);
+  }
+}
+
+@keyframes agent-orb-settle {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes agent-task-active {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes agent-thinking-shimmer {
+  to {
+    background-position: -220% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-orb-dot,
+  .agent-task-list-item.is-active svg,
+  .agent-thinking-reasoning:not(.is-completed) .agent-thinking-label {
+    animation: none;
+  }
+
+  .agent-task-list-head > svg,
+  .agent-thinking-head > svg,
+  .agent-task-list-fold,
+  .agent-thinking-fold {
+    transition: none;
+  }
+}

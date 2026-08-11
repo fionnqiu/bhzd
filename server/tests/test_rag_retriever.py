@@ -201,6 +201,24 @@ def test_gibberish_query_below_threshold_and_refused(db_path, uploader_id):
     assert answer.related_cap_ids == []
 
 
+def test_answer_can_limit_recall_to_selected_documents(db_path, uploader_id):
+    """Answer synthesis must honor the same document scope as recall testing."""
+    selected = insert_doc(db_path, uploader_id, title="选定资料")
+    insert_chunk(db_path, selected, WAKE_CONTENT)
+    outside = insert_doc(db_path, uploader_id, title="未选资料")
+    insert_chunk(db_path, outside, WAKE_CONTENT)
+
+    answer = _answer(
+        db_path,
+        "唤醒词边界误差要求是多少",
+        document_ids=[selected],
+    )
+
+    assert answer.refused is False
+    assert answer.citations
+    assert {citation["document_id"] for citation in answer.citations} == {selected}
+
+
 def test_retrieval_ignores_incompatible_embedding_models_and_dimensions(
     db_path, uploader_id, monkeypatch
 ):

@@ -201,3 +201,119 @@ def test_task_detail_includes_caps_and_attempts(api):
     assert body["caps"] == [{"cap_id": CAP, "cap_name": "切割音频并对齐"}]
     assert body["steps"][0]["title"] == "第一步"
     assert body["attempts"] == []
+
+
+def test_task_detail_hides_answer_key_and_restores_latest_pending_attempt(api):
+    """学生详情只拿到可出题 rubric，并可在刷新后恢复待确认提交。"""
+    user = api.login_as("detail-recovery@test.local")
+    task = _create_task(api, user)
+    _set_rubric(api, user, task["id"])
+    api.client.post(f"/api/tasks/{task['id']}/start", headers=user["headers"])
+    submitted = api.client.post(
+        f"/api/tasks/{task['id']}/submit",
+        json={"answers": {"q1": "42", "q2": "sad"}},
+        headers=user["headers"],
+    )
+    assert submitted.status_code == 200, submitted.text
+
+    detail = api.client.get(f"/api/tasks/{task['id']}")
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    # `expected` remains server-only in rubric_json; it is absent before the
+    # student starts a new answer, while post-submit feedback stays recoverable.
+    assert body["rubric"] == [
+        {"key": "q1", "hint": "注意单位换算", "weight": 2.0},
+        {"key": "q2", "weight": 1.0},
+    ]
+    assert all("expected" not in item for item in body["rubric"])
+    latest = body["latest_attempt"]
+    assert latest["id"] == submitted.json()["attempt_id"]
+    assert latest["mastery_applied"] is False
+    assert latest["answers"] == {"q1": "42", "q2": "sad"}
+    assert latest["feedback"] == submitted.json()["feedback"]
+    assert latest["mastery_preview"] == submitted.json()["mastery_preview"]
+
+
+def test_apply_mastery_rejects_a_superseded_pending_attempt(api):
+    """重新提交后只能确认最新预览，避免把已经过期的结果写入掌握度。"""
+    user = api.login_as("latest-attempt@test.local")
+    task = _create_task(api, user)
+    _set_rubric(api, user, task["id"])
+    api.client.post(f"/api/tasks/{task['id']}/start", headers=user["headers"])
+    first = api.client.post(
+        f"/api/tasks/{task['id']}/submit",
+        json={"answers": {"q1": "42", "q2": "sad"}},
+        headers=user["headers"],
+    ).json()
+    second = api.client.post(
+        f"/api/tasks/{task['id']}/submit",
+        json={"answers": {"q1": "42", "q2": "happy"}},
+        headers=user["headers"],
+    ).json()
+
+    stale = api.client.post(
+        f"/api/tasks/{task['id']}/apply-mastery",
+        json={"attempt_id": first["attempt_id"]},
+        headers=user["headers"],
+    )
+    assert stale.status_code == 409
+    assert stale.json()["error"]["code"] == "ATTEMPT_NOT_CURRENT"
+
+    current = api.client.post(
+        f"/api/tasks/{task['id']}/apply-mastery",
+        json={"attempt_id": second["attempt_id"]},
+        headers=user["headers"],
+    )
+    assert current.status_code == 200, current.text
+    assert current.json()["status"] == "completed"
+
+
+def test_task_detail_strips_practice_answer_fixtures_but_keeps_practice_display(api):
+    """练习展示不能携带评分 fixture；完整性评分仍从数据库中的原件读取键集合。"""
+    user = api.login_as("practice-redaction@test.local")
+    task = _create_task(api, user)
+    practice = {
+        "questions": [
+            {
+                "key": "q1",
+                "prompt": "请填写标注结果",
+                "hint": "核对字段完整性",
+                "expected": "仅服务端可见",
+                "answers": {"q1": "仅服务端可见"},
+            }
+        ],
+        "samples": [
+            {
+                "input": {"text": "待标注文本"},
+                "expected": "标准标注",
+                "nested": {"correct_answer": "标准标注", "context": "保留给学生"},
+            }
+        ],
+        "checklist": ["已检查字段", {"answer": "不应转成展示文本"}],
+        "answers": {"q1": "仅服务端可见"},
+        "expected": {"q1": "仅服务端可见"},
+    }
+    api.conn.execute(
+        "UPDATE learning_tasks SET practice_json = ? WHERE id = ?",
+        (json.dumps(practice, ensure_ascii=False), task["id"]),
+    )
+    api.conn.commit()
+
+    detail = api.client.get(f"/api/tasks/{task['id']}")
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["practice"] == {
+        "questions": [{"key": "q1", "prompt": "请填写标注结果", "hint": "核对字段完整性"}],
+        "samples": [{"input": {"text": "待标注文本"}, "nested": {"context": "保留给学生"}}],
+        "checklist": ["已检查字段"],
+    }
+
+    # The stored practice.answers still supplies q1 as the completeness key;
+    # redaction changes the response DTO only, not deterministic scoring.
+    api.client.post(f"/api/tasks/{task['id']}/start", headers=user["headers"])
+    submitted = api.client.post(
+        f"/api/tasks/{task['id']}/submit",
+        json={"answers": {"q1": "学生作答"}},
+        headers=user["headers"],
+    )
+    assert submitted.status_code == 200, submitted.text
+    assert submitted.json()["score"] == pytest.approx(1.0)

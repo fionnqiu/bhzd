@@ -90,6 +90,7 @@
   --z-modal: 70;
   --z-select: 75;
   --z-dropdown: 50;
+  --z-toast: 100;
 
   /* Motion stays short and directional so repeated work remains responsive. */
   --motion-press: 100ms;
@@ -283,6 +284,9 @@ ol {
 button {
   font-family: inherit;
   cursor: pointer;
+  /* Buttons are commands, so CJK labels stay as one recognisable unit.  Groups
+     may reflow at small widths, but a command itself must never wrap mid-label. */
+  white-space: nowrap;
 }
 
 input,
@@ -632,6 +636,24 @@ img {
 }
 
 /* -------------------------------------------------------------- 按钮 */
+/* 个人中心的入班操作必须保持单行，避免窄栏把关键动作拆成两行。 */
+.profile-join-class-button {
+  min-width: 6rem;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.profile-class-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -650,6 +672,7 @@ img {
     color var(--motion-fast) var(--ease-standard),
     transform var(--motion-press) var(--ease-out);
   user-select: none;
+  white-space: nowrap;
 }
 
 .btn:disabled {
@@ -843,6 +866,16 @@ img {
 .select-trigger:hover:not(:disabled) {
   background: var(--color-surface-muted);
   border-color: var(--color-border-strong);
+}
+
+/* Pagination controls share the compact action height so the toolbar stays aligned. */
+.pagination-page-size .select-trigger,
+.pagination-page-input {
+  min-height: 28px;
+  height: 28px;
+  padding: 4px var(--space-3);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
 }
 
 .select-trigger:disabled,
@@ -1483,6 +1516,49 @@ html[data-theme="dark"]
   background: var(--color-surface);
 }
 
+/* Task metadata contains several optional pills. Keep each readable as a
+   whole unit so flex wrapping moves it to the next line on narrow screens
+   instead of shrinking CJK text into a vertical column. */
+.task-detail-meta > span {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.task-detail-section-title {
+  margin: 0;
+  font: inherit;
+}
+
+.task-detail-resource-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.task-detail-status-note {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--color-primary);
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.task-detail-checklist-item {
+  min-width: 0;
+}
+
+.task-detail-checklist-item input {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+@media (max-width: 560px) {
+  .task-detail-progress-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 /* -------------------------------------------------------------- 模态/抽屉/下拉 */
 .overlay {
   position: fixed;
@@ -1669,13 +1745,21 @@ html[data-theme="dark"]
 /* -------------------------------------------------------------- 页签 */
 .tabs {
   display: flex;
+  /* Keep mode tabs on one semantic row. On compact viewports the row itself
+     scrolls horizontally so tab order and active-state geometry stay stable. */
+  flex-wrap: nowrap;
   gap: var(--space-1);
   border-bottom: 1px solid var(--color-border);
   margin-bottom: var(--space-4);
   overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
 }
 
 .tab {
+  /* Content-sized tabs avoid uneven widths while flex-shrink: 0 prevents a
+     narrow viewport from squeezing labels into unreadable controls. */
+  flex: 0 0 auto;
   padding: 8px var(--space-4);
   border: none;
   background: none;
@@ -1699,18 +1783,10 @@ html[data-theme="dark"]
   font-weight: 600;
 }
 
-/* Graph mode tabs may still overflow on narrow screens, but their scrollbar is
-   visual noise in the compact filter row. Keep the rule scoped so shared Tabs
-   in teacher and RAG pages retain their existing affordance. */
+/* Graph mode inherits the shared single-row behavior while retaining a stable
+   gutter for browsers that expose an overlay scrollbar. */
 .graph-view-mode-tabs .tabs {
-  scrollbar-gutter: auto;
-  scrollbar-width: none;
-}
-
-.graph-view-mode-tabs .tabs::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
+  scrollbar-gutter: stable;
 }
 
 /* -------------------------------------------------------------- 空态/错误态 */
@@ -1850,22 +1926,6 @@ html[data-theme="dark"]
   margin-top: 2px;
 }
 
-/* 邮箱验证横幅：未验证用户的核心能力被服务端拦截，必须全局显眼提示 */
-.verify-banner {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-6);
-  background: var(--color-warning-soft);
-  border-bottom: 1px solid #fde68a;
-  color: #92400e;
-  font-size: var(--font-size-sm);
-}
-
-.verify-banner .btn {
-  flex-shrink: 0;
-}
-
 /* -------------------------------------------------------------- 认证页 */
 .auth-page {
   min-height: 100vh;
@@ -1937,6 +1997,98 @@ html[data-theme="dark"]
   color: var(--color-success);
 }
 
+/* 全局右上角弹幕：固定于视口安全区，避免遮挡页面中心内容。 */
+.toast-viewport {
+  position: fixed;
+  top: max(20px, env(safe-area-inset-top));
+  right: max(20px, env(safe-area-inset-right));
+  z-index: var(--z-toast);
+  display: flex;
+  /* Size to the widest active notification, then constrain all messages to
+     the requested viewport share instead of reserving a fixed empty panel. */
+  width: fit-content;
+  max-width: min(30vw, calc(100vw - 40px));
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-height: 40px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid;
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  pointer-events: auto;
+  animation: motion-popover-enter var(--motion-surface) var(--ease-out) both;
+}
+
+.toast-message {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.toast-success {
+  border-color: #b7eb8f;
+  background: #f6ffed;
+}
+
+.toast-error {
+  border-color: #ffccc7;
+  background: #fff2f0;
+}
+
+.toast-info {
+  border-color: #91caff;
+  background: #e6f4ff;
+}
+
+.toast-warning {
+  border-color: #ffe58f;
+  background: #fffbe6;
+}
+
+.toast-close {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.toast-close:hover {
+  color: var(--color-text);
+}
+
+@media (max-width: 560px) {
+  .toast-viewport {
+    top: max(12px, env(safe-area-inset-top));
+    right: max(12px, env(safe-area-inset-right));
+    max-width: calc(100vw - 24px);
+  }
+
+  .toast {
+    min-height: 40px;
+    gap: 10px;
+    padding: 8px 12px;
+  }
+}
+
 /* 开发模式令牌提示（未配置 SMTP 时后端回显 dev_*_token） */
 .dev-token-box {
   margin-top: var(--space-4);
@@ -1985,6 +2137,10 @@ html[data-theme="dark"]
 
 .flex-col {
   flex-direction: column;
+}
+
+.flex-wrap {
+  flex-wrap: wrap;
 }
 
 .items-center {
@@ -2978,6 +3134,99 @@ html[data-theme="dark"]
 /* Chunk editing needs a simultaneous source, list, and edit view on wide
    screens. The editor moves below the source/list pair before controls become
    too narrow, then becomes a document-style single column on compact screens. */
+/* RAG document multi-select: one stable trigger and one shared listbox keep long document
+   names readable without turning the filter card into a second scrollable panel. */
+.rag-document-multi-select {
+  position: relative;
+  min-width: 0;
+}
+
+.rag-document-multi-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 36px;
+  padding: 7px var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  text-align: left;
+}
+
+.rag-document-multi-select-trigger[aria-expanded="true"] {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-soft);
+}
+
+.rag-document-multi-select-summary,
+.rag-document-multi-select-option-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rag-document-multi-select-clear {
+  position: absolute;
+  top: 50%;
+  right: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+.rag-document-multi-select-listbox {
+  position: absolute;
+  z-index: var(--z-dropdown);
+  top: calc(100% + var(--space-1));
+  left: 0;
+  width: 100%;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.rag-document-multi-select-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 34px;
+  padding: 6px var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+}
+
+.rag-document-multi-select-option:hover,
+.rag-document-multi-select-option[aria-selected="true"] {
+  background: var(--color-primary-soft);
+}
+
+.rag-document-multi-select-empty {
+  display: block;
+  padding: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
 .shell[data-shell-variant="operations-workbench"] .rag-chunk-editor-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1fr);
@@ -3528,6 +3777,13 @@ html[data-theme="dark"] .shell[data-shell-variant="operations-workbench"] .sideb
     border-color: var(--color-border);
     background: var(--color-surface);
     box-shadow: 0 4px 14px rgba(23, 33, 43, 0.12);
+  }
+
+  /* A focused drawer owns the compact viewport. Keep the shell toggle behind
+     its overlay so it cannot sit over a form title or steal the first tap. */
+  body:has(.drawer[data-focus-trap="active"]) .shell-mobile-nav-toggle {
+    z-index: calc(var(--z-drawer) - 1);
+    visibility: hidden;
   }
 
   .main-content,

@@ -34,9 +34,15 @@ export { default as ErrorState } from "./ErrorState";
 export { default as Tag } from "./Tag";
 export { default as SearchInput } from "./SearchInput";
 export { default as Pagination } from "./Pagination";
-export { default as EmailVerifyBanner } from "./EmailVerifyBanner";
 export { default as PlaceholderPage } from "./PlaceholderPage";
+export {
+  AgentAvatar,
+  AgentOrb,
+  AgentTaskList,
+  AgentThinkingReasoning,
+} from "./agent/AgentPresentation";
 
 export type { Column } from "./DataTable";
 export type { SelectOption } from "./Select";
 export type { ToastKind } from "./Toast";
+export type { AgentOrbPhase, AgentTaskStep } from "./agent/AgentPresentation";

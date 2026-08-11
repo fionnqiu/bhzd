@@ -210,6 +210,7 @@ def _provider_test_alerts(db: sqlite3.Connection) -> list[dict]:
         alerts.append(
             {
                 "code": "PROVIDER_CONN_FAILURE",
+                "target_id": pid,
                 "level": "critical",
                 "message": (
                     f"模型供应商「{name}」连接测试已连续失败 {streak} 次"

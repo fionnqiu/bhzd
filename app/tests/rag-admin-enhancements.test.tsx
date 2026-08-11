@@ -363,6 +363,7 @@ describe("SecurityPage 系统告警（PRD-06 §13.2）", () => {
           alerts: [
             {
               code: "AGENT_RUN_FAILURE_RATE",
+              fingerprint: "a".repeat(64),
               level: "critical",
               message: "近 5 分钟智能体运行失败率超过阈值",
               metric: "agent_run_failure_rate_5m",
@@ -397,5 +398,37 @@ describe("SecurityPage 系统告警（PRD-06 §13.2）", () => {
     renderPage(<SecurityPage />);
     expect(await screen.findByText(/当前无告警/)).toBeInTheDocument();
     expect(screen.getByText("审计覆盖")).toBeInTheDocument(); // 第 11 张策略卡仍在
+  });
+
+  it("按管理员忽略告警并从当前列表移除", async () => {
+    const fingerprint = "b".repeat(64);
+    mockedGet.mockImplementation((path: string) => {
+      if (path === "/api/admin/alerts")
+        return Promise.resolve({
+          alerts: [
+            {
+              code: "AGENT_RUN_FAILURE_RATE",
+              fingerprint,
+              level: "critical",
+              message: "需要忽略的运行告警",
+              metric: "agent_run_failure_rate_5m",
+              threshold: 0.1,
+              current: 0.4,
+            },
+          ],
+          evaluated_at: "2026-08-01T00:00:00Z",
+        });
+      return Promise.reject(new Error(`未打桩的 GET ${path}`));
+    });
+    mockedPost.mockResolvedValue({ ignored: true, fingerprint });
+
+    renderPage(<SecurityPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "忽略" }));
+
+    await waitFor(() =>
+      expect(mockedPost).toHaveBeenCalledWith(`/api/admin/alerts/${fingerprint}/ignore`),
+    );
+    await waitFor(() => expect(screen.queryByText("需要忽略的运行告警")).not.toBeInTheDocument());
+    expect(screen.getByText(/当前无告警/)).toBeInTheDocument();
   });
 });

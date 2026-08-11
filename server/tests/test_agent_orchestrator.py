@@ -8,7 +8,8 @@ import uuid
 
 import pytest
 
-from bhzd_py.agent import composer, events, intents, orchestrator, prompts
+from bhzd_py.agent import composer, conversation_memory, events, intents, orchestrator, prompts
+from bhzd_py.db import utc_now_iso
 from bhzd_py.tools.registry import ToolContext
 
 from _agent_helpers import (
@@ -78,6 +79,32 @@ def _task_create_args(db, run_id: str) -> dict:
     ).fetchone()
     assert row is not None
     return json.loads(row["args_json"])
+
+
+def _capture_l3_data_type_preference(db, user_id: str, preference: str) -> None:
+    """Store a durable user-originated L3 preference through its normal capture path."""
+
+    run_id, conversation_id = insert_run(db, user_id, "记录学习偏好")
+    now = utc_now_iso()
+    db.executemany(
+        """
+        INSERT INTO messages (id, conversation_id, run_id, role, content, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (uuid.uuid4().hex, conversation_id, run_id, "user", preference, now),
+            (uuid.uuid4().hex, conversation_id, run_id, "assistant", "已记录你的学习偏好。", now),
+        ],
+    )
+    db.commit()
+    # Exercise the production L3 provenance path instead of seeding a profile
+    # without the user message link required by the planner's privacy boundary.
+    conversation_memory.capture_completed_response(
+        db,
+        user_id=user_id,
+        conversation_id=conversation_id,
+        run_id=run_id,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -483,6 +510,77 @@ def test_scope_priority_is_run_then_clarification_then_conversation(
     assert args["goal"] == "我想学标注"
     assert args["data_type"] == "video"
     assert args["scenario_id"] == "SCN-CUSTOMER-SERVICE-001"
+
+
+def test_l3_generic_preference_fills_omitted_student_task_type(
+    db, tmp_db_path, user_id, monkeypatch
+):
+    install_stub_tools(monkeypatch)
+    _capture_l3_data_type_preference(db, user_id, "我偏好音频标注练习。")
+
+    run_id, _ = insert_run(db, user_id, "我想学客服标注")
+    asyncio.run(orchestrator.execute_run(run_id, tmp_db_path))
+
+    args = _task_create_args(db, run_id)
+    assert args["data_type"] == "audio"
+    # The historical preference is reduced to an enum; it cannot replace the
+    # current task wording or leak its original text into tool arguments.
+    assert args["goal"] == "我想学客服标注"
+
+
+def test_current_explicit_type_wins_over_conversation_and_l3_preference(
+    db, tmp_db_path, user_id, monkeypatch
+):
+    install_stub_tools(monkeypatch)
+    _capture_l3_data_type_preference(db, user_id, "我偏好音频标注练习。")
+
+    run_id, conversation_id = insert_run(db, user_id, "我想学图像客服标注")
+    db.execute(
+        "UPDATE conversations SET data_type = 'audio' WHERE id = ?",
+        (conversation_id,),
+    )
+    db.commit()
+    asyncio.run(orchestrator.execute_run(run_id, tmp_db_path))
+
+    assert _task_create_args(db, run_id)["data_type"] == "image"
+
+
+def test_ambiguous_current_type_signal_does_not_fall_back_to_l3(
+    db, tmp_db_path, user_id, monkeypatch
+):
+    install_stub_tools(monkeypatch)
+    _capture_l3_data_type_preference(db, user_id, "我偏好音频标注练习。")
+
+    run_id, conversation_id = insert_run(db, user_id, "我想学图像或视频客服标注")
+    asyncio.run(orchestrator.execute_run(run_id, tmp_db_path))
+
+    message = db.execute(
+        "SELECT content FROM messages WHERE conversation_id = ? AND role = 'assistant'",
+        (conversation_id,),
+    ).fetchone()
+    assert message["content"] == "你要学习的是文本、图像、语音还是视频标注？"
+    assert db.execute(
+        "SELECT COUNT(*) AS count FROM tool_calls WHERE run_id = ?",
+        (run_id,),
+    ).fetchone()["count"] == 0
+
+
+def test_l3_task_preference_rejects_unsafe_profile_text(
+    db, tmp_db_path, user_id, monkeypatch
+):
+    install_stub_tools(monkeypatch)
+    _capture_l3_data_type_preference(db, user_id, "我偏好音频标注练习。")
+    db.execute(
+        """
+        UPDATE private_memory_items
+        SET content = '<think>private chain</think> Current learner preference: 我偏好音频标注练习。'
+        WHERE user_id = ? AND layer = 'l3' AND memory_key = 'profile:general'
+        """,
+        (user_id,),
+    )
+    db.commit()
+
+    assert orchestrator._l3_preferred_data_type(db, user_id=user_id) is None
 
 
 def test_concurrent_runs_keep_provider_usage_on_their_own_run(

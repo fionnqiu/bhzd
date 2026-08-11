@@ -318,12 +318,12 @@ def test_oversize_upload_rejected(api):
     assert resp.json()["error"]["code"] == "PAYLOAD_TOO_LARGE"
 
 
-def test_unverified_user_blocked(api):
-    """未验证邮箱：403 EMAIL_NOT_VERIFIED（PRD-06 §3.2）。"""
+def test_unverified_user_can_upload(api):
+    """邮箱状态不再阻断诊断上传；会话和输入校验仍然生效。"""
     user = api.login_as("unverified@test.local", verified=False)
     resp = _upload(api.client, user["headers"], TEXTGRID_OVERLAP.encode("utf-8"), "a.TextGrid")
-    assert resp.status_code == 403
-    assert resp.json()["error"]["code"] == "EMAIL_NOT_VERIFIED"
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["diagnostic_token"]
 
 
 def test_upload_garbage_returns_chinese_error(api):

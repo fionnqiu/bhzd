@@ -13,7 +13,7 @@
  *   删除用收藏行 id（后端按 id 删，item_id 不具备全局唯一性）。
  * - share_diagnostics 默认关闭（PRD-06 待确认项 #2 的产品决策）：关闭时教师
  *   只能看班级聚合统计，开启后才可查看本人诊断详情；开关改动即 PATCH 生效。
- * - 修改密码引导走 /forgot-password 流程（邮件令牌重置），站内不另做表单。
+ * - 修改密码在站内校验原密码；成功后当前会话保留，其他设备会话由服务端吊销。
  *
  * 类型说明：api/types.ts 由其他任务并行维护，新增 DTO（收藏/趋势/设置）
  * 一律页内声明，与后端 profile.py 响应逐字段对齐。
@@ -23,8 +23,10 @@ import { Link, useNavigate } from "react-router-dom";
 import { api } from "../../api/client";
 import type {
   JoinClassResponse,
+  LeaveClassResponse,
   MasteryRecord,
   Paginated,
+  ProfileClass,
   ProfileOverview,
   TaskSummary,
 } from "../../api/types";
@@ -38,13 +40,16 @@ import {
   Field,
   Input,
   MasteryBadge,
+  Modal,
   PageHeader,
   ProgressBar,
   Spinner,
   StatusBadge,
   Tag,
+  ConfirmDialog,
   useToast,
 } from "../../components";
+import { createPasswordEnvelope } from "../../auth/passwordCrypto";
 import {
   errMsg,
   formatDateTime,
@@ -142,6 +147,12 @@ export default function ProfilePage() {
   const [inviteCode, setInviteCode] = useState("");
   const [joining, setJoining] = useState(false);
   const [savingShare, setSavingShare] = useState(false);
+  const [leaveClassTarget, setLeaveClassTarget] = useState<ProfileClass | null>(null);
+  const [passwordChangeOpen, setPasswordChangeOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
 
   // 能力趋势抽屉：点击能力行打开，drawer 内拉该 cap 近 30 天事件序列
   const [trendCap, setTrendCap] = useState<MasteryRecord | null>(null);
@@ -235,6 +246,21 @@ export default function ProfilePage() {
         res.already_enrolled ? `你已在「${res.class_name}」班级中` : `已加入「${res.class_name}」`,
       );
       setInviteCode("");
+      if (res.joined_at) {
+        setProfile((prev) => {
+          if (!prev) return prev;
+          const classes = prev.classes ?? [];
+          const nextClass = {
+            id: res.class_id,
+            name: res.class_name,
+            joined_at: res.joined_at,
+          };
+          return {
+            ...prev,
+            classes: [nextClass, ...classes.filter((item) => item.id !== res.class_id)],
+          };
+        });
+      }
     } catch (err) {
       toast.error(errMsg(err));
     } finally {
@@ -242,10 +268,56 @@ export default function ProfilePage() {
     }
   };
 
-  /** 收藏点击：按条目类型跳到对应页面（文档/引用→问答，单元→预设，节点→图谱） */
+  /** 退出班级仅标记 left_at，保持历史任务和审计关联可追溯。 */
+  const leaveClass = async (clazz: ProfileClass) => {
+    try {
+      await api.delete<LeaveClassResponse>(`/api/student/classes/${clazz.id}`);
+      setProfile((prev) =>
+        prev ? { ...prev, classes: (prev.classes ?? []).filter((item) => item.id !== clazz.id) } : prev,
+      );
+      setLeaveClassTarget(null);
+      toast.success(`已退出「${clazz.name}」`);
+    } catch (err) {
+      toast.error(errMsg(err));
+    }
+  };
+
+  /** 原密码改密：两项密码分别加密传输，成功后服务端吊销其他设备会话。 */
+  const changePassword = async () => {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      toast.error("请完整填写密码字段");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("两次输入的新密码不一致");
+      return;
+    }
+    setChangingPassword(true);
+    try {
+      const [currentPasswordEnvelope, newPasswordEnvelope] = await Promise.all([
+        createPasswordEnvelope(currentPassword),
+        createPasswordEnvelope(newPassword),
+      ]);
+      await api.post("/api/auth/change-password", {
+        currentPasswordEnvelope,
+        newPasswordEnvelope,
+      });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordChangeOpen(false);
+      toast.success("密码修改成功，其他设备已退出登录");
+    } catch (err) {
+      toast.error(errMsg(err));
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
+  /** 收藏点击：知识问答入口已移除，旧资料收藏安全回到 Agent 工作台。 */
   const openFavorite = (favorite: FavoriteItem) => {
     if (favorite.item_type === "rag_document" || favorite.item_type === "citation") {
-      navigate(`/rag-qa?doc=${encodeURIComponent(favorite.item_id)}`);
+      navigate("/");
     } else if (favorite.item_type === "graph_node") {
       navigate(`/graph?node=${encodeURIComponent(favorite.item_id)}`);
     } else if (favorite.item_type === "teaching_unit") {
@@ -394,8 +466,8 @@ export default function ProfilePage() {
           <Card
             title="诊断摘要"
             actions={
-              <Link to="/diagnostics" className="text-sm">
-                去诊断 →
+              <Link to="/" className="text-sm">
+                去 Agent 查看 →
               </Link>
             }
           >
@@ -449,7 +521,7 @@ export default function ProfilePage() {
           {favorites.length === 0 ? (
             <EmptyState
               title="还没有收藏"
-              hint="在知识问答的引用卡片上点击 ☆ 即可收藏常用资料"
+              hint="收藏常用学习资料后会显示在这里"
             />
           ) : (
             <div className="flex flex-col gap-2">
@@ -500,11 +572,34 @@ export default function ProfilePage() {
               <span className="text-secondary">邮箱：</span>
               {profile.user.email}
             </p>
-            <Link to="/forgot-password" className="btn btn-secondary btn-sm">
-              修改密码（通过重置邮件）
-            </Link>
+            <Button variant="secondary" size="sm" onClick={() => setPasswordChangeOpen(true)}>
+              修改密码（使用原密码）
+            </Button>
           </div>
           <div className="flex flex-col gap-4">
+            <Field label="已加入班级" hint="你可以查看当前班级，退出后仍可使用邀请码重新加入。">
+              {(profile.classes ?? []).length === 0 ? (
+                <p className="text-sm text-secondary">暂未加入班级</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {(profile.classes ?? []).map((clazz) => (
+                    <div key={clazz.id} className="profile-class-row">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-sm">{clazz.name}</span>
+                        <span className="text-xs text-muted">加入于 {formatDateTime(clazz.joined_at)}</span>
+                      </div>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => setLeaveClassTarget(clazz)}
+                      >
+                        退出班级
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Field>
             <Field label="加入班级" hint="输入教师提供的班级邀请码">
               <div className="flex items-center gap-2">
                 <Input
@@ -513,7 +608,13 @@ export default function ProfilePage() {
                   value={inviteCode}
                   onChange={(e) => setInviteCode(e.target.value)}
                 />
-                <Button variant="secondary" loading={joining} onClick={joinClass}>
+                {/* 固定最小宽度，防止弹性输入框挤压操作目标。 */}
+                <Button
+                  variant="secondary"
+                  className="profile-join-class-button"
+                  loading={joining}
+                  onClick={joinClass}
+                >
                   加入班级
                 </Button>
               </div>
@@ -537,6 +638,69 @@ export default function ProfilePage() {
           </div>
         </div>
       </Card>
+
+      {/* 原密码改密弹窗：前端先校验必填和确认值，后端再验证原密码与策略。 */}
+      <Modal
+        open={passwordChangeOpen}
+        title="修改密码"
+        onClose={() => {
+          if (!changingPassword) setPasswordChangeOpen(false);
+        }}
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              disabled={changingPassword}
+              onClick={() => setPasswordChangeOpen(false)}
+            >
+              取消
+            </Button>
+            <Button variant="primary" loading={changingPassword} onClick={() => void changePassword()}>
+              保存新密码
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <Field label="原密码">
+            <Input
+              type="password"
+              aria-label="原密码"
+              autoComplete="current-password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+            />
+          </Field>
+          <Field label="新密码" hint="至少 8 位，且同时包含字母和数字">
+            <Input
+              type="password"
+              aria-label="新密码"
+              autoComplete="new-password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
+          </Field>
+          <Field label="确认新密码">
+            <Input
+              type="password"
+              aria-label="确认新密码"
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+            />
+          </Field>
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        open={leaveClassTarget !== null}
+        title="退出班级"
+        description={leaveClassTarget ? `确认退出「${leaveClassTarget.name}」吗？退出后可使用邀请码重新加入。` : undefined}
+        confirmText="退出班级"
+        danger
+        onConfirm={() => (leaveClassTarget ? leaveClass(leaveClassTarget) : undefined)}
+        onCancel={() => setLeaveClassTarget(null)}
+      />
 
       {/* 能力趋势抽屉：近 30 天掌握度事件折线（mastery/trend 升序序列） */}
       <Drawer

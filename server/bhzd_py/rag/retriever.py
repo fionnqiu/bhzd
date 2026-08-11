@@ -418,6 +418,7 @@ def answer_question(
     scenario_id: str | None = None,
     data_type: str | None = None,
     published_only: bool = True,
+    document_ids: list[str] | None = None,
     composer=None,
 ) -> RagAnswer:
     """召回 + 证据压缩 + LLM/模板合成 + 引用组装；无可靠依据时拒答不编造（AC6）。
@@ -430,7 +431,12 @@ def answer_question(
         db,
         config,
         question,
-        RagFilters(scenario_id=scenario_id, data_type=data_type, published_only=published_only),
+        RagFilters(
+            scenario_id=scenario_id,
+            data_type=data_type,
+            published_only=published_only,
+            document_ids=document_ids,
+        ),
     )
 
     if not result.hits or result.below_threshold:

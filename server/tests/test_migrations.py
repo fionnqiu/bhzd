@@ -12,7 +12,9 @@ EXPECTED_MIGRATIONS = [
     "001_identity.sql", "002_org.sql", "003_agent.sql", "004_learning.sql",
     "005_rag.sql", "006_admin.sql", "007_recall_logs.sql",
     "008_learning_social.sql", "009_notifications.sql", "010_indexes.sql",
-    "011_conversation_memory.sql",
+    "011_conversation_memory.sql", "012_private_layered_memory.sql",
+    "013_teacher_agent_scope.sql", "014_admin_alert_ignores.sql",
+    "015_message_attachments.sql",
 ]
 
 EXPECTED_TABLES = {
@@ -25,7 +27,8 @@ EXPECTED_TABLES = {
     "eval_cases", "eval_runs", "rag_settings", "provider_configs", "audit_logs",
     "recall_logs",
     "favorites", "diagnostic_cache", "notifications",
-    "conversation_memory_chunks",
+    "conversation_memory_chunks", "private_memory_items", "private_memory_sources",
+    "private_memory_fts", "admin_alert_ignores", "message_attachments",
 }
 
 # Each plan mirrors a production predicate and ordering requirement.  Checking the
@@ -111,6 +114,20 @@ INDEX_PLAN_CASES = (
         "idx_conversation_memory_scope_created",
     ),
     (
+        "layered private memory",
+        "SELECT id FROM private_memory_items WHERE user_id = ? AND status = 'active' "
+        "ORDER BY created_at DESC",
+        ("user-1",),
+        "idx_private_memory_scope_active",
+    ),
+    (
+        "teacher agent conversations",
+        "SELECT id FROM conversations WHERE user_id = ? AND agent_scope = 'teacher' "
+        "AND class_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC",
+        ("teacher-1", "class-1"),
+        "idx_teacher_agent_conversations_owner_class",
+    ),
+    (
         "unfiltered audit log page",
         "SELECT id FROM audit_logs ORDER BY created_at DESC LIMIT ? OFFSET ?",
         (50, 0),
@@ -137,6 +154,39 @@ def test_fresh_database_applies_all_migrations(tmp_db_path):
         for table in ("user_sessions", "admin_sessions"):
             cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
             assert "csrf_token" in cols
+        attachment_fk = conn.execute("PRAGMA foreign_key_list(message_attachments)").fetchall()
+        # The history deletion route removes messages explicitly; this FK keeps
+        # their retained previews from becoming durable orphaned private data.
+        assert any(
+            row["table"] == "messages" and row["on_delete"] == "CASCADE"
+            for row in attachment_fk
+        )
+    finally:
+        conn.close()
+
+
+def test_teacher_agent_scope_rejects_unbound_teacher_rows(tmp_db_path):
+    """013 must prevent a direct insert from bypassing class-scoped API checks."""
+
+    conn = connect(tmp_db_path)
+    try:
+        apply_migrations(conn)
+        now = "2026-08-09T00:00:00+00:00"
+        conn.execute(
+            """
+            INSERT INTO users (id, email, name, role, status, created_at, updated_at)
+            VALUES ('teacher-1', 'teacher-scope@test.local', '教师', 'teacher', 'active', ?, ?)
+            """,
+            (now, now),
+        )
+        with pytest.raises(Exception, match="invalid agent conversation scope"):
+            conn.execute(
+                """
+                INSERT INTO conversations (id, user_id, title, created_at, updated_at, agent_scope)
+                VALUES ('conversation-1', 'teacher-1', 'bad scope', ?, ?, 'teacher')
+                """,
+                (now, now),
+            )
     finally:
         conn.close()
 

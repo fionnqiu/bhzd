@@ -513,6 +513,49 @@ def test_admin_alerts_healthy_database_is_empty(api):
     assert _alerts(api) == []
 
 
+def test_admin_alert_ignore_is_scoped_and_expires_after_recovery(api):
+    """Ignore state is private to one admin and stale rows are cleared on recovery."""
+    first_admin = _login_admin(api, "alert-ignore-one@test.local")
+    conv_id = uuid.uuid4().hex
+    now = db_module.utc_now_iso()
+    api.conn.execute(
+        "INSERT INTO conversations (id, user_id, created_at, updated_at) VALUES (?, ?, ?, ?)",
+        (conv_id, first_admin["user_id"], now, now),
+    )
+    for i in range(10):
+        api.conn.execute(
+            "INSERT INTO agent_runs (id, conversation_id, user_id, status, input_text, created_at) "
+            "VALUES (?, ?, ?, ?, '测试输入', ?)",
+            (
+                uuid.uuid4().hex,
+                conv_id,
+                first_admin["user_id"],
+                "failed" if i < 2 else "completed",
+                now,
+            ),
+        )
+    api.conn.commit()
+
+    active = next(alert for alert in _alerts(api) if alert["code"] == "AGENT_RUN_FAILURE_RATE")
+    fingerprint = active["fingerprint"]
+    ignored = api.client.post(
+        f"/api/admin/alerts/{fingerprint}/ignore", headers=first_admin["headers"]
+    )
+    assert ignored.status_code == 200, ignored.text
+    assert ignored.json() == {"ignored": True, "fingerprint": fingerprint}
+    assert not [
+        alert for alert in _alerts(api) if alert["fingerprint"] == fingerprint
+    ]
+
+    _login_admin(api, "alert-ignore-two@test.local")
+    assert any(alert["fingerprint"] == fingerprint for alert in _alerts(api))
+
+    api.conn.execute("UPDATE agent_runs SET status = 'completed'")
+    api.conn.commit()
+    assert _alerts(api) == []
+    assert api.conn.execute("SELECT COUNT(*) FROM admin_alert_ignores").fetchone()[0] == 0
+
+
 def test_admin_alerts_agent_run_failure(api):
     """5 分钟内失败率 >10%（样本≥10）→ critical 告警。"""
     admin = _login_admin(api)

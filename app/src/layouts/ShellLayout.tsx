@@ -9,7 +9,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
-import { EmailVerifyBanner } from "../components";
 import { isTopmostFocusTrap, useFocusTrap } from "../components/useFocusTrap";
 import { usePresence } from "../components/usePresence";
 import { DesktopSidebarContext } from "./DesktopSidebarContext";
@@ -559,7 +558,6 @@ export default function ShellLayout({
         >
           <Menu size={20} />
         </button>
-        <EmailVerifyBanner />
         {isStudentWorkbench && studentWorkbenchFloatingActions ? (
           // The notification must remain globally reachable without creating a
           // page-level toolbar or reducing the Cockpit's usable conversation height.

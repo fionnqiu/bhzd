@@ -22,8 +22,9 @@
  *   的 due_change 分支），因此与内容编辑（会升版本）拆成两个独立入口。
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Sparkles, Trash2, X } from "lucide-react";
+import { useLocation } from "react-router-dom";
 import { api } from "../../api/client";
 import type {
   Citation,
@@ -116,6 +117,50 @@ function emptyForm(): FormState {
   };
 }
 
+/** Convert unknown persisted values into safe controlled-input text. */
+function editorText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value === undefined || value === null) return "";
+  try {
+    return JSON.stringify(value) ?? "";
+  } catch {
+    return String(value);
+  }
+}
+
+/**
+ * Read both current teacher-task steps and early Agent drafts.  The first
+ * Agent release stored its explanatory text as `description`; the publisher
+ * owns the same text as editable `notes`, so compatibility belongs at this
+ * boundary rather than allowing a re-save to discard it.
+ */
+function stepRowFromTask(step: TeacherTask["steps"][number]): StepRow {
+  const legacy = step as typeof step & { description?: unknown };
+  return {
+    title: editorText(step.title),
+    notes: editorText(step.notes ?? legacy.description),
+    commonErrors: editorText(step.common_errors),
+  };
+}
+
+/**
+ * Keep legacy Agent rubrics editable after handoff.  New drafts are normalized
+ * server-side, but existing rows still use `criterion/description/points` and
+ * would otherwise fail before the save request can be made.
+ */
+function rubricRowFromTask(rubric: NonNullable<TeacherTask["rubric"]>[number]): RubricRow {
+  const legacy = rubric as typeof rubric & {
+    criterion?: unknown;
+    description?: unknown;
+    points?: unknown;
+  };
+  return {
+    key: editorText(rubric.key ?? legacy.criterion),
+    expected: editorText(rubric.expected ?? legacy.description),
+    weight: editorText(rubric.weight ?? legacy.points),
+  };
+}
+
 /** 后端行 → 表单（cap 名称来自已拉取的 CAP 节点映射，缺席时回退 id） */
 function formFromTask(task: TeacherTask, capNames: Record<string, string>): FormState {
   return {
@@ -126,16 +171,8 @@ function formFromTask(task: TeacherTask, capNames: Record<string, string>): Form
     dataType: task.data_type ?? "",
     scenarioId: task.scenario_id ?? "",
     caps: task.cap_ids.map((cid) => ({ id: cid, name: capNames[cid] ?? cid })),
-    steps: task.steps.map((s) => ({
-      title: s.title ?? "",
-      notes: s.notes ?? "",
-      commonErrors: s.common_errors ?? "",
-    })),
-    rubric: (task.rubric ?? []).map((r) => ({
-      key: r.key,
-      expected: typeof r.expected === "string" ? r.expected : JSON.stringify(r.expected),
-      weight: r.weight === undefined ? "" : String(r.weight),
-    })),
+    steps: task.steps.map(stepRowFromTask),
+    rubric: (task.rubric ?? []).map(rubricRowFromTask),
     resources: task.resources.map((r) => ({
       type: r.type,
       title: r.title,
@@ -143,19 +180,35 @@ function formFromTask(task: TeacherTask, capNames: Record<string, string>): Form
       url: typeof r.url === "string" ? r.url : undefined,
       citation: r.citation as Citation | undefined,
     })),
-    classId: "",
+    // Agent drafts are already scoped to an owned class.  Preselecting it
+    // removes a redundant step, but the teacher must still review and click
+    // the separate publish action before any student record is created.
+    classId: task.class_id ?? "",
     dueAt: "",
     counts: true,
   };
 }
 
+/** Read the one-shot task handoff used when Teacher Agent opens the publisher. */
+function taskIdFromNavigationState(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const taskId = (value as { taskId?: unknown }).taskId;
+  return typeof taskId === "string" && taskId.trim() ? taskId : null;
+}
+
+/** Query state keeps the Agent-to-publisher handoff recoverable after refresh. */
+function taskIdFromSearch(search: string): string | null {
+  const taskId = new URLSearchParams(search).get("taskId");
+  return taskId && taskId.trim() ? taskId : null;
+}
+
 type SourceTab = "manual" | "rag" | "preset" | "history";
 
 const SOURCE_TABS = [
-  { key: "manual", label: "手动输入岗位任务" },
-  { key: "rag", label: "从已发布资料选择" },
-  { key: "preset", label: "从预设模板选择" },
-  { key: "history", label: "从历史任务复制" },
+  { key: "manual", label: "手动输入" },
+  { key: "rag", label: "已发布资料" },
+  { key: "preset", label: "预设模板" },
+  { key: "history", label: "历史任务" },
 ];
 
 const RESOURCE_TYPE_LABELS: Record<string, string> = {
@@ -199,7 +252,15 @@ interface AiBannerState {
 /* ---------------------------------------------------------------- 页面 */
 
 export default function TaskPublishPage() {
+  const location = useLocation();
   const toast = useToast();
+  // Query state survives reload and copied links; router state remains a
+  // compatibility fallback for handoffs created before this repair.
+  const agentTaskIdRef = useRef<string | null>(
+    taskIdFromSearch(location.search) ?? taskIdFromNavigationState(location.state),
+  );
+  const [agentTaskHandoffError, setAgentTaskHandoffError] = useState<string | null>(null);
+  const [agentTaskHandoffRetry, setAgentTaskHandoffRetry] = useState(0);
 
   // ---- 左栏：我的教学任务 ----
   const [tasks, setTasks] = useState<TeacherTask[] | null>(null);
@@ -289,6 +350,34 @@ export default function TaskPublishPage() {
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadTasks]);
+
+  useEffect(() => {
+    const taskId = agentTaskIdRef.current;
+    if (!taskId) return;
+    const controller = new AbortController();
+    setAgentTaskHandoffError(null);
+
+    // Fetch the exact owned draft instead of depending on the task-list
+    // timing.  This keeps an Agent handoff correct after refresh and when the
+    // list is unavailable or later becomes paginated.
+    void api
+      .get<TeacherTask>(`/api/teacher/tasks/${taskId}`, undefined, { signal: controller.signal })
+      .then((task) => {
+        if (controller.signal.aborted) return;
+        setForm(formFromTask(task, capNames));
+        setErrors({});
+        setAiBanner(null);
+        setDueEdit("");
+        agentTaskIdRef.current = null;
+        void loadTasks();
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setAgentTaskHandoffError(errMsg(error, "无法加载 Agent 草稿，请重试"));
+        }
+      });
+    return () => controller.abort();
+  }, [agentTaskHandoffRetry, capNames, loadTasks]);
 
   /* ------------------------------------------------ 来源页签的数据加载 */
 
@@ -500,6 +589,9 @@ export default function TaskPublishPage() {
   };
 
   const copyFromHistory = (task: TeacherTask) => {
+    // Copying a historical task is an intentional replacement for any pending Agent handoff.
+    agentTaskIdRef.current = null;
+    setAgentTaskHandoffError(null);
     const copied = formFromTask(task, capNames);
     patchForm({
       ...copied,
@@ -616,6 +708,158 @@ export default function TaskPublishPage() {
     [scenarios, form.scenarioId],
   );
 
+  // The selection list stays beside the preview so teachers can compare an existing task before
+  // changing the draft. Keeping it separate also prevents a third visual column on wide screens.
+  const taskSelection = (
+    <Card
+      className="teacher-task-selection"
+      title="我的教学任务"
+      actions={
+        <Button
+          size="sm"
+          onClick={() => {
+            // A deliberate new-task action must win over a slow handoff-detail response.
+            agentTaskIdRef.current = null;
+            setAgentTaskHandoffError(null);
+            setForm(emptyForm());
+            setErrors({});
+            resetTransient();
+          }}
+        >
+          新建任务
+        </Button>
+      }
+    >
+      {tasksError ? (
+        <ErrorState message={tasksError} onRetry={() => void loadTasks()} />
+      ) : tasks === null ? (
+        <div className="loading-block">
+          <Spinner /> 加载中…
+        </div>
+      ) : tasks.length === 0 ? (
+        <p className="text-sm text-secondary">还没有教学任务，点击「新建任务」开始组装第一张任务卡。</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {tasks.map((task) => (
+            <li key={task.id}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-block"
+                style={{
+                  justifyContent: "flex-start",
+                  textAlign: "left",
+                  height: "auto",
+                  padding: "var(--space-2) var(--space-3)",
+                  border:
+                    form.taskId === task.id
+                      ? "1px solid var(--color-primary-border)"
+                      : "1px solid transparent",
+                  background: form.taskId === task.id ? "var(--color-primary-soft)" : undefined,
+                }}
+                onClick={() => {
+                  // Do not let an outstanding Agent handoff overwrite a task the teacher selected.
+                  agentTaskIdRef.current = null;
+                  setForm(formFromTask(task, capNames));
+                  setErrors({});
+                  setAgentTaskHandoffError(null);
+                  resetTransient();
+                }}
+              >
+                <span className="flex flex-col gap-1 w-full">
+                  <span className="flex items-center justify-between">
+                    <strong>{task.title}</strong>
+                    {task.published_count > 0 ? (
+                      <span className="badge badge-success">已发布 {task.published_count}</span>
+                    ) : (
+                      <span className="badge badge-neutral">草稿</span>
+                    )}
+                  </span>
+                  <span className="text-xs text-muted">
+                    v{task.version} · 更新于 {fmtDateTime(task.updated_at)}
+                  </span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+
+  // Publishing is kept next to the live preview: class and deadline choices are easier to review
+  // against the student-facing card than when they sit at the end of the long editing column.
+  const publishSettings = (
+    <Card className="teacher-task-publish-settings" title="发布设置">
+      <div className="grid teacher-task-publish-fields">
+        <Field label="选择班级" required error={errors.classId}>
+          <Select
+            options={classes.map((c) => ({ value: c.id, label: c.name }))}
+            placeholder="请选择班级"
+            aria-label="选择班级"
+            value={form.classId}
+            invalid={!!errors.classId}
+            onChange={(e) => patchForm({ classId: e.target.value })}
+          />
+        </Field>
+        <Field label="截止时间">
+          <Input
+            type="datetime-local"
+            value={form.dueAt}
+            onChange={(e) => patchForm({ dueAt: e.target.value })}
+          />
+        </Field>
+      </div>
+      <label className="flex items-center gap-2 mt-2">
+        <input
+          type="checkbox"
+          checked={form.counts}
+          onChange={(e) => patchForm({ counts: e.target.checked })}
+        />
+        计入掌握度（学生完成本任务后按成绩更新能力掌握度）
+      </label>
+
+      {/* Published-task deadlines patch student copies directly, so this must not share the draft's versioned save path. */}
+      {form.taskId && form.publishedCount > 0 ? (
+        <div
+          className="mt-3"
+          style={{
+            borderTop: "1px solid var(--color-border)",
+            paddingTop: "var(--space-3)",
+          }}
+        >
+          <Field label="调整已发布任务的截止时间">
+            <div className="flex items-center gap-2">
+              <Input
+                type="datetime-local"
+                aria-label="新的截止时间"
+                value={dueEdit}
+                onChange={(e) => setDueEdit(e.target.value)}
+              />
+              <Button
+                variant="secondary"
+                onClick={() => void updatePublishedDue()}
+                loading={dueSaving}
+                disabled={!dueEdit}
+              >
+                更新截止时间
+              </Button>
+            </div>
+          </Field>
+          <p className="text-xs text-muted mt-2">修改截止时间将通知本班学生并记录审计（不生成新版本）</p>
+        </div>
+      ) : null}
+
+      <div className="flex gap-2 mt-4">
+        <Button variant="secondary" onClick={() => void saveDraft()} loading={saving}>
+          保存草稿
+        </Button>
+        <Button onClick={() => void publish()} loading={publishing}>
+          发布
+        </Button>
+      </div>
+    </Card>
+  );
+
   /* ------------------------------------------------ 渲染 */
 
   return (
@@ -625,79 +869,19 @@ export default function TaskPublishPage() {
         sub="把企业岗位任务转化为课堂任务，发布到班级后学生即可执行"
       />
 
-      {/* The outer grid keeps task selection available while the editor remains fluid. */}
-      <div className="teacher-task-publish-layout">
-        {/* ============ 左栏：我的教学任务 ============ */}
-        <Card
-          title="我的教学任务"
-          actions={
-            <Button
-              size="sm"
-              onClick={() => {
-                setForm(emptyForm());
-                setErrors({});
-                resetTransient();
-              }}
-            >
-              新建教学任务
-            </Button>
-          }
-        >
-          {tasksError ? (
-            <ErrorState message={tasksError} onRetry={() => void loadTasks()} />
-          ) : tasks === null ? (
-            <div className="loading-block">
-              <Spinner /> 加载中…
-            </div>
-          ) : tasks.length === 0 ? (
-            <p className="text-sm text-secondary">
-              还没有教学任务，点击「新建教学任务」开始组装第一张任务卡。
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {tasks.map((task) => (
-                <li key={task.id}>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-block"
-                    style={{
-                      justifyContent: "flex-start",
-                      textAlign: "left",
-                      height: "auto",
-                      padding: "var(--space-2) var(--space-3)",
-                      border:
-                        form.taskId === task.id
-                          ? "1px solid var(--color-primary-border)"
-                          : "1px solid transparent",
-                      background: form.taskId === task.id ? "var(--color-primary-soft)" : undefined,
-                    }}
-                    onClick={() => {
-                      setForm(formFromTask(task, capNames));
-                      setErrors({});
-                      resetTransient();
-                    }}
-                  >
-                    <span className="flex flex-col gap-1 w-full">
-                      <span className="flex items-center justify-between">
-                        <strong>{task.title}</strong>
-                        {task.published_count > 0 ? (
-                          <span className="badge badge-success">已发布 {task.published_count}</span>
-                        ) : (
-                          <span className="badge badge-neutral">草稿</span>
-                        )}
-                      </span>
-                      <span className="text-xs text-muted">
-                        v{task.version} · 更新于 {fmtDateTime(task.updated_at)}
-                      </span>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
+      {agentTaskHandoffError ? (
+        <ErrorState
+          message={agentTaskHandoffError}
+          onRetry={() => {
+            setAgentTaskHandoffError(null);
+            setAgentTaskHandoffRetry((current) => current + 1);
+          }}
+        />
+      ) : null}
 
-        {/* ============ 右区：编辑器 + 常驻预览 ============ */}
+      {/* Two independent workspaces keep editing on the left and review/publishing on the right. */}
+      <div className="teacher-task-publish-layout">
+        {/* ============ 左栏：来源与任务内容编辑 ============ */}
         <div className="teacher-task-editor-layout">
           <div className="flex flex-col gap-4">
             {/* 已发布任务编辑提醒（PRD-06 §10.1：生成新版本，不覆盖学生任务） */}
@@ -1119,80 +1303,12 @@ export default function TaskPublishPage() {
               </Field>
             </Card>
 
-            {/* 发布设置（PRD §5.2：班级 / 截止时间 / 是否计入掌握度） */}
-            <Card title="发布设置">
-              <div className="grid teacher-task-publish-fields">
-                <Field label="选择班级" required error={errors.classId}>
-                  <Select
-                    options={classes.map((c) => ({ value: c.id, label: c.name }))}
-                    placeholder="请选择班级"
-                    aria-label="选择班级"
-                    value={form.classId}
-                    invalid={!!errors.classId}
-                    onChange={(e) => patchForm({ classId: e.target.value })}
-                  />
-                </Field>
-                <Field label="截止时间">
-                  <Input
-                    type="datetime-local"
-                    value={form.dueAt}
-                    onChange={(e) => patchForm({ dueAt: e.target.value })}
-                  />
-                </Field>
-              </div>
-              <label className="flex items-center gap-2 mt-2">
-                <input
-                  type="checkbox"
-                  checked={form.counts}
-                  onChange={(e) => patchForm({ counts: e.target.checked })}
-                />
-                计入掌握度（学生完成本任务后按成绩更新能力掌握度）
-              </label>
-
-              {/* 已发布任务的截止时间调整（PRD-06 §10.1）：与上面的"发布到新
-                  班级"截止时间相互独立——这里 PATCH 已发学生副本，不升版本 */}
-              {form.taskId && form.publishedCount > 0 ? (
-                <div
-                  className="mt-3"
-                  style={{
-                    borderTop: "1px solid var(--color-border)",
-                    paddingTop: "var(--space-3)",
-                  }}
-                >
-                  <Field label="调整已发布任务的截止时间">
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="datetime-local"
-                        aria-label="新的截止时间"
-                        value={dueEdit}
-                        onChange={(e) => setDueEdit(e.target.value)}
-                      />
-                      <Button
-                        variant="secondary"
-                        onClick={() => void updatePublishedDue()}
-                        loading={dueSaving}
-                        disabled={!dueEdit}
-                      >
-                        更新截止时间
-                      </Button>
-                    </div>
-                  </Field>
-                  <p className="text-xs text-muted mt-2">
-                    修改截止时间将通知本班学生并记录审计（不生成新版本）
-                  </p>
-                </div>
-              ) : null}
-
-              <div className="flex gap-2 mt-4">
-                <Button variant="secondary" onClick={() => void saveDraft()} loading={saving}>
-                  保存草稿
-                </Button>
-                <Button onClick={() => void publish()} loading={publishing}>
-                  发布
-                </Button>
-              </div>
-            </Card>
           </div>
+        </div>
+
+        {/* ============ 右栏：任务选择、预览与发布 ============ */}
+        <aside className="teacher-task-review-layout">
+          {taskSelection}
 
           {/* ============ 常驻预览（PRD §5.4：发布前必须展示预览） ============ */}
           <div className="teacher-task-preview">
@@ -1288,7 +1404,8 @@ export default function TaskPublishPage() {
               </p>
             </Card>
           </div>
-        </div>
+          {publishSettings}
+        </aside>
       </div>
     </div>
   );

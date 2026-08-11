@@ -11,6 +11,7 @@
  *   详情失败则退化为"仅指标"视图。
  */
 
+import { Pencil, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../api/client";
 import type {
@@ -23,6 +24,7 @@ import type {
 import {
   Button,
   Card,
+  ConfirmDialog,
   DataTable,
   EmptyState,
   ErrorState,
@@ -45,8 +47,9 @@ import {
   fmtTime,
   SCENARIO_OPTIONS,
 } from "./ragShared";
+import RagDocumentMultiSelect from "./RagDocumentMultiSelect";
 
-const LIMIT = 20;
+const DEFAULT_LIMIT = 20;
 /** 历史对比展示的最近运行条数（服务端列表，最新在前） */
 const HISTORY_LIMIT = 10;
 /** running 状态轮询兜底：2s × 15 = 30s 上限 */
@@ -88,12 +91,15 @@ export default function EvalCasesPage() {
   const [cases, setCases] = useState<EvalCase[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
+  const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [checked, setChecked] = useState<string[]>([]);
 
   // 新建用例
   const [createOpen, setCreateOpen] = useState(false);
+  const [editingCase, setEditingCase] = useState<EvalCase | null>(null);
+  const [deletingCase, setDeletingCase] = useState<EvalCase | null>(null);
   const [question, setQuestion] = useState("");
   const [expected, setExpected] = useState("");
   const [mustDocs, setMustDocs] = useState<string[]>([]);
@@ -116,7 +122,7 @@ export default function EvalCasesPage() {
     setError(null);
     try {
       const res = await api.get<Paginated<EvalCase>>("/api/rag/eval-cases", {
-        limit: LIMIT,
+        limit,
         offset,
       }, { signal });
       if (signal?.aborted) return;
@@ -127,7 +133,7 @@ export default function EvalCasesPage() {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [offset]);
+  }, [offset, limit]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -183,14 +189,15 @@ export default function EvalCasesPage() {
     }
   };
 
-  const createCase = async () => {
+  // Create and edit share one form so document/filter snapshots remain identical across both flows.
+  const saveCase = async () => {
     if (!question.trim()) {
       toast.error("请填写问题");
       return;
     }
     setCreating(true);
     try {
-      await api.post("/api/rag/eval-cases", {
+      const payload = {
         question: question.trim(),
         expected_answer: expected.trim() || null,
         must_hit_document_ids: mustDocs,
@@ -200,9 +207,16 @@ export default function EvalCasesPage() {
           data_type: filterDataType || null,
           published_only: true,
         },
-      });
-      toast.success("评测用例已创建");
+      };
+      if (editingCase) {
+        await api.patch(`/api/rag/eval-cases/${editingCase.id}`, payload);
+        toast.success("评测用例已更新");
+      } else {
+        await api.post("/api/rag/eval-cases", payload);
+        toast.success("评测用例已创建");
+      }
       setCreateOpen(false);
+      setEditingCase(null);
       setQuestion("");
       setExpected("");
       setMustDocs([]);
@@ -211,6 +225,40 @@ export default function EvalCasesPage() {
       toast.error(errText(err));
     } finally {
       setCreating(false);
+    }
+  };
+
+  /** Prepare a complete local draft so an edit does not accidentally erase existing filters. */
+  const openEditCase = (caseItem: EvalCase) => {
+    setEditingCase(caseItem);
+    setQuestion(caseItem.question);
+    setExpected(caseItem.expected_answer ?? "");
+    setMustDocs(caseItem.must_hit_document_ids);
+    setFilterScenario(String(caseItem.filters.scenario_id ?? ""));
+    setFilterDataType(String(caseItem.filters.data_type ?? ""));
+    setCreateOpen(true);
+  };
+
+  const openCreateCase = () => {
+    setEditingCase(null);
+    setQuestion("");
+    setExpected("");
+    setMustDocs([]);
+    setFilterScenario("");
+    setFilterDataType("");
+    setCreateOpen(true);
+  };
+
+  const deleteCase = async () => {
+    if (!deletingCase) return;
+    try {
+      await api.delete(`/api/rag/eval-cases/${deletingCase.id}`);
+      setChecked((current) => current.filter((id) => id !== deletingCase.id));
+      setDeletingCase(null);
+      toast.success("评测用例已删除");
+      await load();
+    } catch (err) {
+      toast.error(errText(err, "删除评测用例失败"));
     }
   };
 
@@ -282,6 +330,21 @@ export default function EvalCasesPage() {
       width: "140px",
       render: (c) => <span className="text-sm text-secondary">{fmtTime(c.created_at)}</span>,
     },
+    {
+      key: "actions",
+      title: "操作",
+      width: "116px",
+      render: (c) => (
+        <span className="flex items-center gap-1">
+          <Button size="sm" variant="ghost" aria-label={`编辑用例：${clamp(c.question, 20)}`} title="编辑" onClick={() => openEditCase(c)}>
+            <Pencil size={15} aria-hidden="true" />
+          </Button>
+          <Button size="sm" variant="ghost" aria-label={`删除用例：${clamp(c.question, 20)}`} title="删除" onClick={() => setDeletingCase(c)}>
+            <Trash2 size={15} aria-hidden="true" />
+          </Button>
+        </span>
+      ),
+    },
   ];
 
   // DataTable 泛型要求行上有可选 id：用 case_id 补一个（仅前端行类型，不改 DTO）
@@ -328,7 +391,7 @@ export default function EvalCasesPage() {
             <Button loading={running} onClick={() => void runEval(null)}>
               运行全部评测
             </Button>
-            <Button variant="secondary" onClick={() => setCreateOpen(true)}>
+            <Button variant="secondary" onClick={openCreateCase}>
               新建用例
             </Button>
           </>
@@ -351,7 +414,16 @@ export default function EvalCasesPage() {
               />
             }
           />
-          <Pagination offset={offset} limit={LIMIT} total={total} onChange={setOffset} />
+          <Pagination
+            offset={offset}
+            limit={limit}
+            total={total}
+            onChange={setOffset}
+            onLimitChange={(nextLimit) => {
+              setLimit(nextLimit);
+              setOffset(0);
+            }}
+          />
         </>
       )}
 
@@ -450,15 +522,17 @@ export default function EvalCasesPage() {
       {/* 新建用例弹窗 */}
       <Modal
         open={createOpen}
-        title="新建评测用例"
-        onClose={() => setCreateOpen(false)}
+        title={editingCase ? "编辑评测用例" : "新建评测用例"}
+        onClose={() => {
+          if (!creating) setCreateOpen(false);
+        }}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setCreateOpen(false)}>
+            <Button variant="ghost" disabled={creating} onClick={() => setCreateOpen(false)}>
               取消
             </Button>
-            <Button loading={creating} onClick={() => void createCase()}>
-              创建用例
+            <Button loading={creating} onClick={() => void saveCase()}>
+              {editingCase ? "保存修改" : "创建用例"}
             </Button>
           </>
         }
@@ -470,22 +544,12 @@ export default function EvalCasesPage() {
           <Textarea value={expected} onChange={(e) => setExpected(e.target.value)} placeholder="期望回答的要点…" />
         </Field>
         <Field label="必须命中文档（不选则该用例用于验证拒答）">
-          <div style={{ maxHeight: 140, overflowY: "auto" }}>
-            {docOptions.map((doc) => (
-              <label key={doc.id} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={mustDocs.includes(doc.id)}
-                  onChange={() =>
-                    setMustDocs((prev) =>
-                      prev.includes(doc.id) ? prev.filter((v) => v !== doc.id) : [...prev, doc.id],
-                    )
-                  }
-                />
-                {doc.title}
-              </label>
-            ))}
-          </div>
+          <RagDocumentMultiSelect
+            label="必须命中文档"
+            documents={docOptions}
+            value={mustDocs}
+            onChange={setMustDocs}
+          />
         </Field>
         <div className="grid grid-cols-2">
           <Field label="限定场景（可选）">
@@ -509,6 +573,16 @@ export default function EvalCasesPage() {
           </Field>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={deletingCase !== null}
+        title="删除评测用例"
+        description={deletingCase ? `确认删除「${clamp(deletingCase.question, 50)}」吗？历史评测结果会保留。` : undefined}
+        confirmText="删除"
+        danger
+        onConfirm={deleteCase}
+        onCancel={() => setDeletingCase(null)}
+      />
     </div>
   );
 }

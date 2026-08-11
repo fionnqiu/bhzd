@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "../src/auth/AuthContext";
 import LoginPage from "../src/auth/LoginPage";
+import RegisterPage from "../src/auth/RegisterPage";
 import { ApiRequestError, api } from "../src/api/client";
 
 vi.mock("../src/api/client", () => {
@@ -66,6 +67,19 @@ function renderLogin() {
   );
 }
 
+function renderRegister() {
+  return render(
+    <AuthProvider>
+      <MemoryRouter initialEntries={["/register"]}>
+        <Routes>
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/login" element={<div>登录页占位</div>} />
+        </Routes>
+      </MemoryRouter>
+    </AuthProvider>,
+  );
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   // 会话引导返回 401（未登录），让登录页正常渲染
@@ -81,6 +95,18 @@ describe("LoginPage", () => {
     expect(screen.getByPlaceholderText("you@example.com")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("请输入密码")).toBeInTheDocument();
     expect(screen.getByText("标航智导")).toBeInTheDocument();
+  });
+
+  it("使用简洁的注册入口文案", async () => {
+    renderLogin();
+
+    // Keep the compact link label stable so the login card does not reintroduce
+    // the older, wider student-only wording on small viewports.
+    expect(await screen.findByRole("link", { name: "注册" })).toHaveAttribute(
+      "href",
+      "/register",
+    );
+    expect(screen.queryByRole("link", { name: "注册学生账号" })).not.toBeInTheDocument();
   });
 
   it("提交邮箱密码调用 /api/auth/login 并跳转首页", async () => {
@@ -161,5 +187,76 @@ describe("LoginPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
 
     expect(await screen.findByText("邮箱或密码不正确")).toBeInTheDocument();
+  });
+});
+
+describe("RegisterPage", () => {
+  async function chooseTeacherRole() {
+    fireEvent.click(screen.getByRole("combobox", { name: /角色/ }));
+    fireEvent.click(await screen.findByRole("option", { name: "教师" }));
+  }
+
+  function fillRegisterForm(password: string, confirm: string) {
+    fireEvent.change(screen.getByPlaceholderText("真实姓名或昵称"), {
+      target: { value: "王老师" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("you@example.com"), {
+      target: { value: "teacher@example.com" },
+    });
+    const passwordInputs = screen.getAllByLabelText(/密码/);
+    fireEvent.change(passwordInputs[0], { target: { value: password } });
+    fireEvent.change(passwordInputs[1], { target: { value: confirm } });
+  }
+
+  it("教师自助注册不显示邀请码，并且请求不携带已废弃字段", async () => {
+    mockedPost.mockResolvedValue({
+      user: {
+        id: "t1",
+        email: "teacher@example.com",
+        name: "王老师",
+        role: "teacher",
+        status: "active",
+        email_verified: true,
+      },
+      message: "注册成功",
+    });
+    renderRegister();
+
+    expect(await screen.findByRole("heading", { name: "注册账号" })).toBeInTheDocument();
+    await chooseTeacherRole();
+    expect(screen.queryByText(/邀请码/)).not.toBeInTheDocument();
+
+    fillRegisterForm("Passw0rd1", "Passw0rd1");
+    fireEvent.click(screen.getByRole("button", { name: "注册" }));
+
+    await waitFor(() => {
+      expect(mockedPost).toHaveBeenCalledWith("/api/auth/register", {
+        email: "teacher@example.com",
+        name: "王老师",
+        role: "teacher",
+        passwordEnvelope: {
+          keyId: "test-key",
+          encryptedKey: "wrapped-key",
+          iv: "test-iv",
+          ciphertext: "test-ciphertext",
+        },
+      });
+    });
+    // The envelope wrapper must not accidentally revive retired invitation data.
+    expect(mockedPost.mock.calls[0]?.[1]).not.toHaveProperty("teacher_invite");
+    expect(await screen.findByRole("heading", { name: "注册成功" })).toBeInTheDocument();
+    expect(screen.getByText(/账号已启用，可使用 teacher@example\.com 直接登录。/)).toBeInTheDocument();
+  });
+
+  it("密码不一致时不发起教师注册请求", async () => {
+    renderRegister();
+
+    expect(await screen.findByRole("heading", { name: "注册账号" })).toBeInTheDocument();
+    await chooseTeacherRole();
+    fillRegisterForm("Passw0rd1", "Passw0rd2");
+    fireEvent.click(screen.getByRole("button", { name: "注册" }));
+
+    expect(await screen.findByText("两次输入的密码不一致")).toBeInTheDocument();
+    expect(mockedPost).not.toHaveBeenCalled();
   });
 });

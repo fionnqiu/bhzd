@@ -18,7 +18,9 @@ def _set_valid_production_env(monkeypatch, database_path: str) -> None:
     monkeypatch.setenv("NODE_ENV", "production")
     monkeypatch.setenv("BHZD_DATABASE_PATH", database_path)
     monkeypatch.setenv("BHZD_CONFIG_ENCRYPTION_KEY", secrets.token_hex(32))
-    monkeypatch.setenv("BHZD_TEACHER_INVITE_CODE", "test-only-private-teacher-invite")
+    # Explicitly remove the retired setting so this production fixture proves it
+    # is no longer a startup prerequisite, even when a developer exported it locally.
+    monkeypatch.delenv("BHZD_TEACHER_INVITE_CODE", raising=False)
     monkeypatch.setenv("BHZD_SMTP_HOST", "smtp.example.test")
     monkeypatch.setenv("BHZD_SMTP_PORT", "2525")
     monkeypatch.setenv("BHZD_MAIL_FROM", "BHZD Test <noreply@example.test>")
@@ -40,7 +42,7 @@ def test_production_startup_fails_closed_before_migrations(tmp_db_path, monkeypa
     monkeypatch.setenv("NODE_ENV", "production")
     monkeypatch.setenv("BHZD_DATABASE_PATH", tmp_db_path)
     monkeypatch.setenv("BHZD_CONFIG_ENCRYPTION_KEY", "")
-    monkeypatch.setenv("BHZD_TEACHER_INVITE_CODE", "bhzd-teacher-2026")
+    monkeypatch.delenv("BHZD_TEACHER_INVITE_CODE", raising=False)
     monkeypatch.setenv("BHZD_SMTP_HOST", "")
     monkeypatch.setenv("BHZD_MAIL_FROM", "")
     monkeypatch.setenv("BHZD_PUBLIC_ORIGIN", "http://127.0.0.1:5173")
@@ -54,8 +56,8 @@ def test_production_startup_fails_closed_before_migrations(tmp_db_path, monkeypa
     reset_config_cache()
 
 
-def test_valid_production_profile_starts_and_uses_secure_cookie_policy(tmp_db_path, monkeypatch):
-    """A complete explicit production profile remains startable without SMTP traffic."""
+def test_production_profile_starts_without_teacher_invite_code(tmp_db_path, monkeypatch):
+    """A complete production profile starts without the retired invite setting."""
     _set_valid_production_env(monkeypatch, tmp_db_path)
     with TestClient(create_app()) as client:
         assert client.get("/api/health").status_code == 200

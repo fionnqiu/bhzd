@@ -42,7 +42,7 @@ export interface AuthContextValue {
   login: (email: string, password: string) => Promise<SessionResponse>;
   logout: () => Promise<void>;
   register: (input: RegisterInput) => Promise<RegisterResponse>;
-  /** 重新拉取会话（轮换 CSRF 并刷新用户信息，如邮箱验证完成后） */
+  /** 重新拉取会话（轮换 CSRF 并刷新用户信息） */
   refreshSession: () => Promise<void>;
   hasRole: (...roles: Role[]) => boolean;
 }
@@ -51,8 +51,9 @@ export interface RegisterInput {
   email: string;
   name: string;
   password: string;
+  // Keep the public role surface deliberately narrow: choosing teacher must
+  // never let a browser request either kind of administrative account.
   role?: "student" | "teacher";
-  teacher_invite?: string;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);

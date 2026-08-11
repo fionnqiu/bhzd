@@ -7,11 +7,9 @@
   它本就只发给该会话持有者，无回推风险面。
 - 重复邮箱、找回密码一律给统一话术：不暴露"该邮箱是否已注册/是否已验证"
   （PRD-06 §3.4 边界条件）。
-- 未配置 SMTP 时走开发兜底：链接追加写入 mail_outbox.log，并在响应里返回
-  ``dev_verify_token`` / ``dev_reset_token``。**这两个字段仅供开发/测试**，
-  生产必须配置 BHZD_SMTP_*，配置后响应不再携带这两个字段。
-- 邮箱未验证不拦截登录，只拦截 Agent/RAG 等核心能力（由 deps.require_verified_user
-  在各业务路由强制，PRD-06 §3.2）。
+- 未配置 SMTP 时，遗留验证重发和密码重置会把链接追加写入 mail_outbox.log，
+  并仅在开发响应中返回令牌；生产必须配置 BHZD_SMTP_*，不得回显令牌。
+- 邮箱验证不再是登录或业务能力的前置条件；保留历史验证接口仅用于兼容旧链接。
 - 登出不强制 CSRF：它只靠 cookie 识别并吊销会话本身，最坏后果是被迫重新登录，
   而要求 CSRF 会让"令牌丢失后无法登出"成为死锁。
 """
@@ -40,6 +38,7 @@ from ..deps import (
     CurrentUser,
     _load_any_session,
     _load_valid_session,
+    csrf_protect,
     get_current_user,
     get_db,
 )
@@ -88,7 +87,9 @@ class RegisterIn(BaseModel):
     name: str = Field(min_length=1, max_length=50)
     password_envelope: PasswordEnvelope = Field(alias="passwordEnvelope")
     role: str = "student"
-    teacher_invite: str | None = None
+    # Deprecated: keep accepting this retired wire field so older teacher-registration clients
+    # do not receive a 422 after the invite gate is removed; it is never authorized against.
+    teacher_invite: str | None = Field(default=None, deprecated=True)
 
 
 class VerifyEmailIn(BaseModel):
@@ -115,6 +116,15 @@ class ResetPasswordIn(BaseModel):
 
     token: str
     password_envelope: PasswordEnvelope = Field(alias="passwordEnvelope")
+
+
+class ChangePasswordIn(BaseModel):
+    """Current and replacement passwords, both sent through the encrypted envelope."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    current_password_envelope: PasswordEnvelope = Field(alias="currentPasswordEnvelope")
+    new_password_envelope: PasswordEnvelope = Field(alias="newPasswordEnvelope")
 
 
 # ---------------------------------------------------------------- 口令公钥与内部助手
@@ -369,7 +379,26 @@ def _revoke_all_sessions(conn: sqlite3.Connection, user_id: str) -> None:
         )
 
 
-# ---------------------------------------------------------------- 注册 / 邮箱验证
+def _revoke_other_sessions(conn: sqlite3.Connection, current: CurrentUser) -> None:
+    """Revoke every session except the one that authenticated this password change."""
+    now = utc_now_iso()
+    current_table = "admin_sessions" if current.is_admin_session else "user_sessions"
+    for table in ("user_sessions", "admin_sessions"):
+        if table == current_table:
+            conn.execute(
+                f"UPDATE {table} SET revoked_at = ? "
+                "WHERE user_id = ? AND id != ? AND revoked_at IS NULL",
+                (now, current.user["id"], current.session_id),
+            )
+        else:
+            conn.execute(
+                f"UPDATE {table} SET revoked_at = ? "
+                "WHERE user_id = ? AND revoked_at IS NULL",
+                (now, current.user["id"]),
+            )
+
+
+# ---------------------------------------------------------------- 注册 / 历史邮箱链接兼容
 
 @router.post("/api/auth/register", status_code=201)
 def register(
@@ -377,7 +406,6 @@ def register(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict[str, Any]:
-    config = get_config()
     password = _decrypt_auth_password(request, body.password_envelope)
     _check_password_policy(password)
     name = body.name.strip()
@@ -388,8 +416,6 @@ def register(
     if role not in ("student", "teacher"):
         # 内容/系统管理员只能由管理员后台创建，绝不开放自助注册
         raise ApiError(403, "ROLE_NOT_ALLOWED", "该角色不支持自助注册，请联系系统管理员开通")
-    if role == "teacher" and body.teacher_invite != config.teacher_invite_code:
-        raise ApiError(403, "INVITE_CODE_INVALID", "教师邀请码不正确，请向系统管理员索取")
 
     email = body.email.lower()
     existing = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
@@ -399,30 +425,26 @@ def register(
 
     now = utc_now_iso()
     user_id = uuid.uuid4().hex
+    # 邮箱验证已取消为全局强制门槛；新账号直接进入可用状态，同时保留
+    # 旧字段和兼容接口，避免历史客户端因 DTO 结构变化而失效。
     conn.execute(
         "INSERT INTO users (id, email, name, role, status, school_id, email_verified_at,"
-        " created_at, updated_at) VALUES (?, ?, ?, ?, 'active', NULL, NULL, ?, ?)",
-        (user_id, email, name, role, now, now),
+        " created_at, updated_at) VALUES (?, ?, ?, ?, 'active', NULL, ?, ?, ?)",
+        (user_id, email, name, role, now, now, now),
     )
     conn.execute(
         "INSERT INTO user_credentials (user_id, password_hash, algo, updated_at)"
         " VALUES (?, ?, 'argon2id', ?)",
         (user_id, hash_password(password), now),
     )
+    # 注册不再通过发送验证邮件间接提交事务，必须在凭据落库后显式提交，
+    # 否则下一次请求无法读取刚创建的账号和密码哈希。
+    conn.commit()
     user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-    dev_token, delivery = _send_verification_mail(conn, config, user)
-
     result: dict[str, Any] = {
         "user": _user_dto(user),
-        "message": "注册成功，验证邮件已发送，请查收",
+        "message": "注册成功，请直接登录",
     }
-    if dev_token is not None and config.allow_dev_mail_outbox:
-        # 仅开发模式（未配置 SMTP）回显；生产响应永远没有该字段
-        result["dev_verify_token"] = dev_token
-    if delivery == "failed":
-        # SMTP 故障：账号已创建，提示改走重发（邮件发送失败不回显令牌，防泄露）
-        result["mail_delivered"] = False
-        result["message"] = "注册成功，但验证邮件发送失败，请稍后使用重发功能"
     return result
 
 
@@ -617,6 +639,45 @@ def session_info(
 
 
 # ---------------------------------------------------------------- 找回 / 重置密码
+
+
+@router.post("/api/auth/change-password")
+def change_password(
+    body: ChangePasswordIn,
+    request: Request,
+    current: CurrentUser = Depends(csrf_protect),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, str]:
+    """Change the authenticated user's password after verifying the current one.
+
+    The current session remains usable so the profile flow does not strand the user;
+    all other sessions are revoked as credential-compromise containment.
+    """
+    current_password = _decrypt_auth_password(request, body.current_password_envelope)
+    new_password = _decrypt_auth_password(request, body.new_password_envelope)
+    credential = conn.execute(
+        "SELECT password_hash FROM user_credentials WHERE user_id = ?",
+        (current.user["id"],),
+    ).fetchone()
+    if credential is None or not _password_matches(credential["password_hash"], current_password):
+        raise ApiError(400, "CURRENT_PASSWORD_INVALID", "原密码不正确")
+    if current_password == new_password:
+        raise ApiError(400, "PASSWORD_UNCHANGED", "新密码不能与原密码相同")
+    _check_password_policy(new_password)
+    conn.execute(
+        "UPDATE user_credentials SET password_hash = ?, updated_at = ? WHERE user_id = ?",
+        (hash_password(new_password), utc_now_iso(), current.user["id"]),
+    )
+    _revoke_other_sessions(conn, current)
+    conn.commit()
+    audit(
+        conn,
+        current.user,
+        "auth.password_change",
+        target_type="user",
+        target_id=current.user["id"],
+    )
+    return {"message": "密码修改成功，其他设备已退出登录"}
 
 @router.post("/api/auth/forgot-password")
 def forgot_password(

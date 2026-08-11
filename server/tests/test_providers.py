@@ -836,6 +836,117 @@ def test_chat_stream_reasoning_deltas_are_ignored(db):
     assert events[0] == {"delta": "visible"}
 
 
+def test_multimodal_messages_are_mapped_per_provider_protocol(db):
+    """Images/audio use native blocks while unsupported video becomes text."""
+
+    provider_id = _add_provider(role="primary")
+    row = _provider_row(provider_id)
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "请描述附件"},
+                {
+                    "type": "media_attachment",
+                    "filename": "photo.png",
+                    "mime_type": "image/png",
+                    "data": "aW1hZ2U=",
+                },
+            ],
+        }
+    ]
+
+    openai_body = providers._cc_body(row, messages, stream=False)
+    assert openai_body["messages"][0]["content"] == [
+        {"type": "text", "text": "请描述附件"},
+        {
+            "type": "image_url",
+            "image_url": {"url": "data:image/png;base64,aW1hZ2U="},
+        },
+    ]
+
+    audio = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "转写音频"},
+                {
+                    "type": "media_attachment",
+                    "filename": "voice.mp3",
+                    "mime_type": "audio/mpeg",
+                    "data": "YXVkaW8=",
+                },
+            ],
+        }
+    ]
+    audio_body = providers._cc_body(row, audio, stream=False)
+    assert audio_body["messages"][0]["content"][1] == {
+        "type": "input_audio",
+        "input_audio": {"data": "YXVkaW8=", "format": "mp3"},
+    }
+
+    anthropic_body = providers._anthropic_body(row, messages, stream=False)
+    assert anthropic_body["messages"][0]["content"][1] == {
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": "image/png",
+            "data": "aW1hZ2U=",
+        },
+    }
+
+    video = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "分析视频"},
+                {
+                    "type": "media_attachment",
+                    "filename": "clip.mp4",
+                    "mime_type": "video/mp4",
+                    "data": "dmVkaW8=",
+                },
+            ],
+        }
+    ]
+    xunfei_frame = providers._xunfei_frame(row, video, "generalv3.5")
+    xunfei_text = xunfei_frame["payload"]["message"]["text"][0]["content"]
+    assert "clip.mp4" in xunfei_text
+    assert "dmVkaW8=" not in xunfei_text
+
+
+def test_media_candidate_selection_requires_declared_model_input_and_wire_support(db):
+    """A text-only chat model must not win a media run merely by accepting JSON."""
+
+    _add_provider(role="primary", extra={"model_inputs": ["text"]})
+    fallback_id = _add_provider(
+        role="fallback",
+        base_url="https://fallback.example.com/v1",
+        extra={"model_inputs": ["text", "image"]},
+    )
+    image = [("image", "image/png")]
+    video = [("video", "video/mp4")]
+
+    assert [row["id"] for row in providers._candidate_rows("primary", image)] == [fallback_id]
+    assert providers._candidate_rows("primary", video) == []
+
+    conn = connect(get_config().resolved_database_path)
+    try:
+        class Attachment:
+            kind = "image"
+            mime_type = "image/png"
+
+        assert providers.has_compatible_media_provider(conn, [Attachment()])
+        conn.execute(
+            "UPDATE provider_configs SET extra_json = ? WHERE id = ?",
+            (json.dumps({"model_inputs": ["text"]}), fallback_id),
+        )
+        conn.commit()
+        assert not providers.has_compatible_media_provider(conn, [Attachment()])
+    finally:
+        conn.close()
+
+
 def test_xunfei_signed_ws_url_signature(db):
     url = providers._signed_ws_url(
         "https://spark-api.xf-yun.com", "/v3.5/chat", "mykey:mysecret"

@@ -11,6 +11,7 @@ import type {
   Confirmation,
   ConversationDetail,
   CreateRunResponse,
+  MessageAttachment,
   PlanStep,
   RunDetail,
   ToolCall,
@@ -23,6 +24,7 @@ import type {
   ActivityEntry,
   ActivityStage,
   ActivityStatus,
+  ChatAttachment,
   ChatMessage,
   CockpitStatus,
   EmbeddedCardData,
@@ -83,6 +85,27 @@ function safeActivityText(value: string | null | undefined): string | undefined 
 
 const SENSITIVE_RESULT_KEY =
   /^(?:authorization|proxy-authorization|cookie|set-cookie|api[_ -]?key|access[_ -]?token|token|secret|password|session[_ -]?id|diagnostic[_ -]?token)$/i;
+
+const TASK_SYNC_CONFIRMATION_COMMANDS = new Set([
+  "同步到系统中",
+  "同步到学习任务",
+  "同步到学习任务中",
+  "同步任务",
+  "确认同步",
+  "确认创建",
+  "创建任务",
+  "保存任务",
+]);
+
+/**
+ * Recognize only short, explicit sync confirmations after removing harmless
+ * whitespace and punctuation. Broader wording stays in the normal chat path
+ * so the composer never turns a question into an unintended system write.
+ */
+export function isTaskSyncConfirmationCommand(input: string): boolean {
+  const normalized = input.replace(/[\s，,。！!、]/g, "").toLowerCase();
+  return TASK_SYNC_CONFIRMATION_COMMANDS.has(normalized);
+}
 
 /** Last-mile guard for typed result cards when an older server omits redaction. */
 function safeToolResult(value: unknown, depth = 0): unknown {
@@ -265,6 +288,33 @@ function visiblePlanSteps(steps: PlanStep[]): PlanStep[] {
   return steps;
 }
 
+function projectMessageAttachments(
+  attachments: MessageAttachment[] | undefined,
+): ChatAttachment[] | undefined {
+  return attachments?.map((attachment) => ({
+    id: attachment.id,
+    name: attachment.name,
+    kind: attachment.kind,
+    mimeType: attachment.mime_type,
+    size: attachment.size,
+    thumbnailUrl: attachment.thumbnail_url ?? null,
+  }));
+}
+
+function mergePersistedMessageAttachments(
+  localAttachments: ChatAttachment[] | undefined,
+  persistedAttachments: ChatAttachment[] | undefined,
+): ChatAttachment[] | undefined {
+  if (!persistedAttachments) return localAttachments;
+  return persistedAttachments.map((attachment, index) => ({
+    ...attachment,
+    // Keep the transferred URL long enough for CockpitPage to revoke it. The
+    // renderer always prefers thumbnailUrl, while a missing safe thumbnail can
+    // still use this live image preview until the next history projection.
+    previewUrl: attachment.kind === "image" ? (localAttachments?.[index]?.previewUrl ?? null) : null,
+  }));
+}
+
 export function useCockpitRun(scenarioId: string) {
   const toast = useToast();
   const [status, setStatus] = useState<CockpitStatus>("idle");
@@ -308,6 +358,13 @@ export function useCockpitRun(scenarioId: string) {
   // retry timer per card so CONFIRMATION_NOT_EXPIRED cannot strand a disabled UI.
   const expiryRetryTimerRef = useRef<number | null>(null);
   const confirmationRef = useRef<Confirmation | null>(null);
+  // The confirm and cancel buttons are siblings. A ref closes the brief window
+  // before React disables them, so one task preview cannot submit two writes.
+  const confirmationActionRef = useRef<string | null>(null);
+  // Composer submission is declared before the confirmation callback below.
+  // A ref lets a typed confirmation phrase reuse that same guarded write path
+  // without creating a second Agent run or duplicating confirmation logic.
+  const confirmRef = useRef<() => Promise<void>>(async () => {});
   // UI buttons normally reflect `status`, but a ref closes the synchronous
   // double-submit window before React has committed the first planning state.
   const startInFlightRef = useRef(false);
@@ -978,9 +1035,22 @@ export function useCockpitRun(scenarioId: string) {
   }, [clearExpiryRetry, clearReconcileRetry]);
 
   const start = useCallback(
-    async (input: string, options: StartRunOptions = {}) => {
+    async (input: string, options: StartRunOptions = {}): Promise<boolean> => {
       const text = input.trim();
-      if (!text || startInFlightRef.current) return;
+      if (!text) return false;
+      const pendingConfirmation = confirmationRef.current;
+      if (
+        pendingConfirmation?.action_type === "task.create" &&
+        isTaskSyncConfirmationCommand(text)
+      ) {
+        // Treat an explicit natural-language sync request as confirmation of
+        // the already reviewed task card. This preserves the server's existing
+        // preview/ownership/expiry checks instead of asking the model to act.
+        setMessages((prev) => [...prev, { id: nextId("user"), role: "user", content: text }]);
+        await confirmRef.current();
+        return true;
+      }
+      if (startInFlightRef.current) return false;
       startInFlightRef.current = true;
       closeStream();
       clearRunState();
@@ -989,7 +1059,16 @@ export function useCockpitRun(scenarioId: string) {
       runIdRef.current = null;
       setRunId(null);
       lastInputRef.current = { input: text, options };
-      setMessages((prev) => [...prev, { id: nextId("user"), role: "user", content: text }]);
+      const localUserMessageId = nextId("user");
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: localUserMessageId,
+          role: "user",
+          content: text,
+          attachments: options.messageAttachments?.map((attachment) => ({ ...attachment })),
+        },
+      ]);
       setStatus("planning");
       try {
         const res = await api.post<CreateRunResponse>("/api/runs", {
@@ -998,10 +1077,29 @@ export function useCockpitRun(scenarioId: string) {
           data_type: options.dataType ?? null,
           conversation_id: conversationIdRef.current,
           attachment: options.attachment ?? null,
+          attachments: options.attachments ?? null,
         });
         setRunId(res.run_id);
         runIdRef.current = res.run_id;
         setConversationId(res.conversation_id);
+        const persistedUserMessage = res.user_message;
+        const persistedAttachments = projectMessageAttachments(persistedUserMessage?.attachments);
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.id === localUserMessageId
+              ? {
+                  ...message,
+                  id: persistedUserMessage?.id ?? message.id,
+                  runId: res.run_id,
+                  content: persistedUserMessage?.content ?? message.content,
+                  attachments: mergePersistedMessageAttachments(
+                    message.attachments,
+                    persistedAttachments,
+                  ),
+                }
+              : message,
+          ),
+        );
         // POST success means the server created this run, so a local pending
         // row gives immediate feedback until its durable progress frame arrives.
         appendActivity(
@@ -1009,11 +1107,20 @@ export function useCockpitRun(scenarioId: string) {
             activityId: `planning:${res.run_id}`,
           }),
         );
+        // The Composer owns temporary media state. Notify it only after this
+        // response proves the server persisted the user turn and its attachments.
+        options.onAccepted?.();
         attachStream(res.run_id);
+        return true;
       } catch (err) {
+        // A rejected create request never produced a durable turn. Remove its
+        // optimistic row so retrying does not create a ghost duplicate that
+        // disappears after the next history reload.
+        setMessages((prev) => prev.filter((message) => message.id !== localUserMessageId));
         startInFlightRef.current = false;
         setStatus("failed");
         setError(err instanceof ApiRequestError ? err.message : "网络异常，请稍后重试");
+        return false;
       }
     },
     [appendActivity, attachStream, clearRunState, closeStream],
@@ -1022,8 +1129,16 @@ export function useCockpitRun(scenarioId: string) {
   /** 失败重试：按最近一次输入原样重发 */
   const retry = useCallback(() => {
     const last = lastInputRef.current;
-    if (last) void start(last.input, last.options);
-  }, [start]);
+    if (!last) return;
+    if (runIdRef.current && last.options.attachments?.length) {
+      // Media tokens are intentionally one-shot and the completed run may have
+      // already discarded them. A retry must not fake success with a text-only
+      // request or send an expired token; the learner can explicitly re-upload.
+      toast.error("原附件已随上一轮处理，如需重新分析请重新上传文件。");
+      return;
+    }
+    void start(last.input, last.options);
+  }, [start, toast]);
 
   /** 410 后刷新 run：计划/轨迹/确认单与后端对齐（确认门过期需重新生成预览） */
   const refreshRun = useCallback(async () => {
@@ -1044,10 +1159,12 @@ export function useCockpitRun(scenarioId: string) {
   }, [attachStream, reconcileRun]);
 
   const confirm = useCallback(async () => {
-    if (!confirmation) return;
+    if (!confirmation || confirmationActionRef.current === confirmation.id) return;
+    const confirmationId = confirmation.id;
+    confirmationActionRef.current = confirmationId;
     setConfirming(true);
     try {
-      await api.post(`/api/confirmations/${confirmation.id}/confirm`, {});
+      await api.post(`/api/confirmations/${confirmationId}/confirm`, {});
       // 确认后编排器续跑计划，状态回到工具执行，等待 SSE 后续事件
       clearExpiryRetry();
       setConfirmation(null);
@@ -1071,15 +1188,21 @@ export function useCockpitRun(scenarioId: string) {
         toast.error(err instanceof ApiRequestError ? err.message : "操作失败，请稍后重试");
       }
     } finally {
+      if (confirmationActionRef.current === confirmationId) {
+        confirmationActionRef.current = null;
+      }
       setConfirming(false);
     }
   }, [attachStream, clearExpiryRetry, confirmation, refreshRun, toast]);
+  confirmRef.current = confirm;
 
   const cancel = useCallback(async () => {
-    if (!confirmation) return;
+    if (!confirmation || confirmationActionRef.current === confirmation.id) return;
+    const confirmationId = confirmation.id;
+    confirmationActionRef.current = confirmationId;
     setConfirming(true);
     try {
-      await api.post(`/api/confirmations/${confirmation.id}/cancel`, {});
+      await api.post(`/api/confirmations/${confirmationId}/cancel`, {});
       clearExpiryRetry();
       setConfirmation(null);
       // 取消即整轮完成、不落任何写（PRD 边界）；系统气泡如实告知
@@ -1103,6 +1226,9 @@ export function useCockpitRun(scenarioId: string) {
         toast.error(err instanceof ApiRequestError ? err.message : "操作失败，请稍后重试");
       }
     } finally {
+      if (confirmationActionRef.current === confirmationId) {
+        confirmationActionRef.current = null;
+      }
       setConfirming(false);
     }
   }, [clearExpiryRetry, confirmation, refreshRun, settleVisibleActivities, toast]);
@@ -1212,6 +1338,7 @@ export function useCockpitRun(scenarioId: string) {
                   ? ("system" as const)
                   : ("assistant" as const),
             content: m.content,
+            attachments: projectMessageAttachments(m.attachments),
           })),
       );
     },

@@ -7,8 +7,8 @@ import { useAuth } from "./AuthContext";
 
 /**
  * 注册页（POST /api/auth/register）。
- * 学生自助注册；教师需邀请码（auth.py：role=teacher 时校验 teacher_invite）。
- * 注册后不建会话——需先完成邮箱验证，故成功态引导去验证而不是直接登录。
+ * 学生和教师都可自助注册；管理员角色仍不属于公开注册范围。
+ * 邮箱验证已取消，注册成功后直接提示用户登录。
  */
 export default function RegisterPage() {
   const { register } = useAuth();
@@ -18,7 +18,6 @@ export default function RegisterPage() {
     password: "",
     confirm: "",
     role: "student" as "student" | "teacher",
-    teacher_invite: "",
   });
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<RegisterResponse | null>(null);
@@ -41,7 +40,6 @@ export default function RegisterPage() {
         name: form.name.trim(),
         password: form.password,
         role: form.role,
-        teacher_invite: form.role === "teacher" ? form.teacher_invite.trim() : undefined,
       });
       setResult(res);
     } catch (err) {
@@ -53,7 +51,7 @@ export default function RegisterPage() {
     }
   };
 
-  // 成功态：提示查收验证邮件；开发模式后端回显 dev_verify_token，给可点链接
+  // 注册已即时生效；保留独立登录步骤，不改变现有会话和跳转契约。
   if (result) {
     return (
       <div className="auth-page">
@@ -63,17 +61,7 @@ export default function RegisterPage() {
           </div>
           <h1 className="auth-title">注册成功</h1>
           <div className="form-alert form-alert-success">{result.message}</div>
-          <p className="text-sm text-secondary">
-            验证邮件已发送至 {result.user.email}，请完成邮箱验证后登录。
-          </p>
-          {result.dev_verify_token ? (
-            <div className="dev-token-box">
-              开发模式（未配置 SMTP）：
-              <Link to={`/verify-email?token=${encodeURIComponent(result.dev_verify_token)}`}>
-                点击这里直接完成邮箱验证
-              </Link>
-            </div>
-          ) : null}
+          <p className="text-sm text-secondary">账号已启用，可使用 {result.user.email} 直接登录。</p>
           <div className="auth-links">
             <Link to="/login">前往登录</Link>
           </div>
@@ -111,7 +99,7 @@ export default function RegisterPage() {
               required
             />
           </Field>
-          <Field label="角色" required hint="教师账号需要邀请码，请向系统管理员索取">
+          <Field label="角色" required>
             <Select
               value={form.role}
               onChange={(e) => update("role")(e.target.value)}
@@ -121,16 +109,6 @@ export default function RegisterPage() {
               ]}
             />
           </Field>
-          {form.role === "teacher" ? (
-            <Field label="教师邀请码" required>
-              <Input
-                value={form.teacher_invite}
-                onChange={(e) => update("teacher_invite")(e.target.value)}
-                placeholder="请输入邀请码"
-                required
-              />
-            </Field>
-          ) : null}
           <Field label="密码" required hint="至少 8 位，需同时包含字母和数字">
             <Input
               type="password"

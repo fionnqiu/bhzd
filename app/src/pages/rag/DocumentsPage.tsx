@@ -15,7 +15,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { api } from "../../api/client";
 import type { Paginated, RagDocument } from "../../api/types";
 import {
@@ -39,11 +39,12 @@ import {
   fmtTime,
   IndexStatusBadge,
   ReviewStatusBadge,
+  safeRagReturnPath,
   SCENARIO_OPTIONS,
   SOURCE_TYPE_LABELS,
 } from "./ragShared";
 
-const LIMIT = 20;
+const DEFAULT_LIMIT = 20;
 
 const REVIEW_FILTER_OPTIONS = [
   { value: "pending", label: "待审核" },
@@ -144,10 +145,13 @@ function BatchResultView({
 }
 
 export default function DocumentsPage() {
+  const location = useLocation();
+  const returnTo = safeRagReturnPath(`${location.pathname}${location.search}`);
   const toast = useToast();
   const [items, setItems] = useState<RagDocument[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
+  const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -177,7 +181,7 @@ export default function DocumentsPage() {
     setLoading(true);
     setError(null);
     const query = {
-      limit: LIMIT,
+      limit,
       data_type: dataType || undefined,
       scenario_id: scenarioId || undefined,
       review_status: reviewStatus || undefined,
@@ -203,8 +207,8 @@ export default function DocumentsPage() {
           limit: 1,
         }, { signal });
         if (signal?.aborted) return;
-        const start = Math.max(0, head.total - offset - LIMIT);
-        // 窗口大小必须是 total-offset-start：末页不足一页时若仍按 LIMIT 拉取，
+        const start = Math.max(0, head.total - offset - limit);
+        // 窗口大小必须是 total-offset-start：末页不足一页时若仍按当前页大小拉取，
         // 会把上一页的内容重复带进末页
         const size = Math.max(1, head.total - offset - start);
         const page = await api.get<Paginated<RagDocument>>("/api/rag/documents", {
@@ -221,7 +225,7 @@ export default function DocumentsPage() {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [offset, dataType, scenarioId, reviewStatus, indexStatus, q, sortAsc]);
+  }, [offset, limit, dataType, scenarioId, reviewStatus, indexStatus, q, sortAsc]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -428,7 +432,14 @@ export default function DocumentsPage() {
     {
       key: "title",
       title: "标题",
-      render: (doc) => <Link to={`/rag-admin/documents/${doc.id}`}>{doc.title}</Link>,
+      render: (doc) => (
+        <Link
+          to={`/rag-admin/documents/${doc.id}?returnTo=${encodeURIComponent(returnTo)}`}
+          state={{ returnTo }}
+        >
+          {doc.title}
+        </Link>
+      ),
     },
     {
       key: "file_type",
@@ -589,7 +600,16 @@ export default function DocumentsPage() {
               />
             }
           />
-          <Pagination offset={offset} limit={LIMIT} total={total} onChange={setOffset} />
+          <Pagination
+            offset={offset}
+            limit={limit}
+            total={total}
+            onChange={setOffset}
+            onLimitChange={(nextLimit) => {
+              setLimit(nextLimit);
+              setOffset(0);
+            }}
+          />
         </>
       )}
 

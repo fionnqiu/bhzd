@@ -135,6 +135,14 @@ export function errText(err: unknown, fallback = "操作失败，请稍后重试
   return fallback;
 }
 
+/** Keep detail-page return targets inside the RAG admin shell; never trust an external URL. */
+export function safeRagReturnPath(value: unknown): string {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+    return "/rag-admin";
+  }
+  return value.startsWith("/rag-admin") ? value : "/rag-admin";
+}
+
 /** 截断长文本（表格/预览用） */
 export function clamp(text: string, max = 120): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;

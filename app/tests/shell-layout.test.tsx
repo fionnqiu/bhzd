@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { Database, SearchCheck } from "lucide-react";
 import { PageHeader } from "../src/components";
+import AdminLayout from "../src/layouts/AdminLayout";
 import ShellLayout from "../src/layouts/ShellLayout";
 import {
   StudentWorkbenchShellProvider,
@@ -196,6 +197,27 @@ describe("ShellLayout student workbench navigation", () => {
 });
 
 describe("ShellLayout operations workbench navigation", () => {
+  it("renames the user navigation label without changing its route", () => {
+    render(
+      <MemoryRouter initialEntries={["/admin/users"]}>
+        <Routes>
+          <Route element={<AdminLayout />}>
+            <Route path="/admin/users" element={<PageHeader title="用户管理" />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const navigation = screen.getByRole("navigation", { name: "系统管理" });
+    // The label is presentation-only; the existing route continues to carry
+    // the server-enforced users permission contract.
+    expect(within(navigation).getByRole("link", { name: "用户管理" })).toHaveAttribute(
+      "href",
+      "/admin/users",
+    );
+    expect(within(navigation).queryByRole("link", { name: "用户权限" })).not.toBeInTheDocument();
+  });
+
   it("renders ungrouped navigation without a top bar or breadcrumb", async () => {
     renderOperationsShell();
 

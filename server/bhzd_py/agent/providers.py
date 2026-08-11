@@ -185,6 +185,100 @@ def _extra(row: sqlite3.Row) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+# A gateway accepting the Chat Completions schema does not prove that its
+# configured model can inspect binary input. Keep that operator-declared model
+# capability separate from the protocol blocks implemented by this adapter.
+_MEDIA_INPUT_TYPES = frozenset({"image", "audio", "video"})
+_PROTOCOL_MEDIA_INPUTS: dict[str, frozenset[str]] = {
+    "chat_completions": frozenset({"image", "audio"}),
+    "anthropic_messages": frozenset({"image"}),
+    "xunfei_spark": frozenset(),
+    "xunfei_xingchen": frozenset(),
+}
+
+
+def model_inputs(row: sqlite3.Row) -> frozenset[str]:
+    """Return the allow-listed inputs declared for one saved model.
+
+    Older provider rows predate ``extra.model_inputs``. Treating them as text
+    only preserves ordinary chat while preventing a text model from receiving
+    image/audio/video blocks merely because its gateway accepts their shape.
+    """
+
+    stored = _extra(row).get("model_inputs")
+    if not isinstance(stored, list):
+        return frozenset({"text"})
+    return frozenset(value for value in stored if value in {"text", *_MEDIA_INPUT_TYPES})
+
+
+def _supports_media_attachment(row: sqlite3.Row, kind: str, mime_type: str) -> bool:
+    """Require both an explicit model declaration and a mapped wire format."""
+
+    if kind not in _MEDIA_INPUT_TYPES:
+        return True
+    inputs = model_inputs(row)
+    if "text" not in inputs or kind not in inputs:
+        return False
+    if kind not in _PROTOCOL_MEDIA_INPUTS.get(row["protocol"], frozenset()):
+        return False
+    # Chat Completions only has a portable audio mapping for WAV and MP3.
+    return kind != "audio" or _audio_format(mime_type) is not None
+
+
+def _candidate_rows_from_connection(db: sqlite3.Connection, role: str) -> list[sqlite3.Row]:
+    """Load the standard primary/fallback order from an existing connection."""
+
+    rows: list[sqlite3.Row] = []
+    primary_row = get_enabled_provider(db, role)
+    if primary_row is not None:
+        rows.append(primary_row)
+    if role == "primary":
+        fallback_row = get_enabled_provider(db, "fallback")
+        if fallback_row is not None:
+            rows.append(fallback_row)
+    return rows
+
+
+def has_compatible_media_provider(
+    db: sqlite3.Connection, attachments: list[Any], *, role: str = "primary"
+) -> bool:
+    """Report whether one normal fallback candidate can process every media item.
+
+    Document attachments are parsed into untrusted text before this boundary,
+    so they intentionally do not require a multimodal model declaration.
+    """
+
+    requirements = [
+        (str(getattr(item, "kind", "")), str(getattr(item, "mime_type", "")))
+        for item in attachments
+        if str(getattr(item, "kind", "")) in _MEDIA_INPUT_TYPES
+    ]
+    if not requirements:
+        return True
+    return any(
+        all(_supports_media_attachment(row, kind, mime_type) for kind, mime_type in requirements)
+        for row in _candidate_rows_from_connection(db, role)
+    )
+
+
+def _media_requirements_from_messages(messages: list[dict]) -> list[tuple[str, str]]:
+    """Extract private media markers without exposing bytes to provider selection."""
+
+    requirements: list[tuple[str, str]] = []
+    for message in messages:
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict) or block.get("type") != "media_attachment":
+                continue
+            mime_type = str(block.get("mime_type") or "").split(";", 1)[0].lower()
+            kind = mime_type.split("/", 1)[0]
+            if kind in _MEDIA_INPUT_TYPES:
+                requirements.append((kind, mime_type))
+    return requirements
+
+
 def _error_label(exc: Exception) -> str:
     """把异常映射为安全短码：绝不含 URL、密钥、请求体等敏感内容。"""
     if isinstance(exc, ProviderError):
@@ -440,7 +534,15 @@ def _cc_body(
     stream: bool,
     max_tokens_override: int | None = None,
 ) -> dict[str, Any]:
-    body: dict[str, Any] = {"model": row["model"], "messages": messages, "stream": stream}
+    # Translate the orchestrator's private media marker only at the provider
+    # boundary. This keeps base64 bytes out of persistence, SSE, and logs while
+    # allowing image/audio-capable OpenAI-compatible models to receive them.
+    wire_messages = _openai_messages(messages)
+    body: dict[str, Any] = {
+        "model": row["model"],
+        "messages": wire_messages,
+        "stream": stream,
+    }
     extra = _extra(row)
     # 温度/最大 token 等采样参数只有显式配置才下发，避免覆盖服务端默认
     for key in ("temperature", "max_tokens", "top_p"):
@@ -589,6 +691,124 @@ async def _cc_stream(
 
 # ---------------------------------------------------------------- anthropic_messages 协议
 
+
+def _media_fallback_text(block: dict[str, Any]) -> str:
+    """Describe unsupported media without exposing its token or binary data."""
+
+    mime_type = str(block.get("mime_type") or "media").split(";", 1)[0].lower()
+    kind = mime_type.split("/", 1)[0] if "/" in mime_type else "media"
+    filename = str(block.get("filename") or "附件")[:160]
+    return f"[已附加{kind}文件：{filename}。当前模型接口不支持直接解析该媒体，请根据文字继续回答。]"
+
+
+def _audio_format(mime_type: str) -> str | None:
+    """Return the two audio formats accepted by Chat Completions input_audio."""
+
+    normalized = mime_type.split(";", 1)[0].lower()
+    return {
+        "audio/wav": "wav",
+        "audio/x-wav": "wav",
+        "audio/mpeg": "mp3",
+        "audio/mp3": "mp3",
+    }.get(normalized)
+
+
+def _openai_content(content: Any) -> Any:
+    """Map internal text/media blocks to OpenAI Chat Completions content."""
+
+    if not isinstance(content, list):
+        return content
+    mapped: list[dict[str, Any]] = []
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") != "media_attachment":
+            if block.get("type") == "text" and isinstance(block.get("text"), str):
+                mapped.append({"type": "text", "text": block["text"]})
+            continue
+        mime_type = str(block.get("mime_type") or "").split(";", 1)[0].lower()
+        data = block.get("data")
+        if not isinstance(data, str) or not data:
+            mapped.append({"type": "text", "text": _media_fallback_text(block)})
+        elif mime_type.startswith("image/"):
+            mapped.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{mime_type};base64,{data}"},
+                }
+            )
+        else:
+            audio_format = _audio_format(mime_type)
+            if mime_type.startswith("audio/") and audio_format:
+                mapped.append(
+                    {
+                        "type": "input_audio",
+                        "input_audio": {"data": data, "format": audio_format},
+                    }
+                )
+            else:
+                # Chat Completions has no portable video block. Keep the user
+                # request usable for providers that only understand text.
+                mapped.append({"type": "text", "text": _media_fallback_text(block)})
+    return mapped
+
+
+def _openai_messages(messages: list[dict]) -> list[dict[str, Any]]:
+    """Copy messages while converting only their content fields."""
+
+    return [
+        {**message, "content": _openai_content(message.get("content"))}
+        for message in messages
+    ]
+
+
+def _anthropic_content(content: Any) -> Any:
+    """Map internal blocks to Anthropic's text/image content block format."""
+
+    if not isinstance(content, list):
+        return content
+    mapped: list[dict[str, Any]] = []
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") == "text" and isinstance(block.get("text"), str):
+            mapped.append({"type": "text", "text": block["text"]})
+            continue
+        if block.get("type") != "media_attachment":
+            continue
+        mime_type = str(block.get("mime_type") or "").split(";", 1)[0].lower()
+        data = block.get("data")
+        if mime_type.startswith("image/") and isinstance(data, str) and data:
+            mapped.append(
+                {
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": mime_type, "data": data},
+                }
+            )
+        else:
+            # Anthropic's Messages API currently has no portable audio/video
+            # block, so retain a truthful text-only description instead.
+            mapped.append({"type": "text", "text": _media_fallback_text(block)})
+    return mapped
+
+
+def _text_content(content: Any) -> str:
+    """Project a message into safe text for protocols without multimodal input."""
+
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return str(content or "")
+    parts: list[str] = []
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") == "text" and isinstance(block.get("text"), str):
+            parts.append(block["text"])
+        elif block.get("type") == "media_attachment":
+            parts.append(_media_fallback_text(block))
+    return "\n".join(parts)
+
 def _anthropic_url(row: sqlite3.Row) -> str:
     # 官方端点是 {base}/v1/messages；base 已带 /v1 时不重复拼接
     base = row["base_url"].rstrip("/")
@@ -604,7 +824,11 @@ def _anthropic_body(
 ) -> dict[str, Any]:
     extra = _extra(row)
     # Anthropic 协议里 system 是顶层字段而非消息角色，必须剥离
-    system_parts = [str(m.get("content", "")) for m in messages if m.get("role") == "system"]
+    system_parts = [
+        _text_content(m.get("content", ""))
+        for m in messages
+        if m.get("role") == "system"
+    ]
     chat = [m for m in messages if m.get("role") != "system"]
     body: dict[str, Any] = {
         "model": row["model"],
@@ -614,7 +838,11 @@ def _anthropic_body(
             else int(extra.get("max_tokens", 2048))
         ),  # This protocol requires an explicit output budget.
         "messages": [
-            {"role": m.get("role", "user"), "content": str(m.get("content", ""))} for m in chat
+            {
+                "role": m.get("role", "user"),
+                "content": _anthropic_content(m.get("content", "")),
+            }
+            for m in chat
         ],
         "stream": stream,
     }
@@ -872,7 +1100,13 @@ def _xunfei_frame(
         "payload": {
             "message": {
                 "text": [
-                    {"role": m.get("role", "user"), "content": str(m.get("content", ""))}
+                    {
+                        "role": m.get("role", "user"),
+                        # Xunfei's text-only frame receives a bounded media
+                        # description; the attachment bytes never cross this
+                        # adapter boundary for an unsupported protocol.
+                        "content": _text_content(m.get("content", "")),
+                    }
                     for m in messages
                 ]
             }
@@ -1021,20 +1255,26 @@ async def _stream_strict(row: sqlite3.Row, messages: list[dict]) -> AsyncIterato
         raise ProviderError(f"unknown_protocol_{protocol}")
 
 
-def _candidate_rows(role: str) -> list[sqlite3.Row]:
-    """按回退顺序取候选 provider 行（行数据已物化，连接可立即关闭）。"""
+def _candidate_rows(
+    role: str, media_requirements: list[tuple[str, str]] | None = None
+) -> list[sqlite3.Row]:
+    """Load fallback candidates and omit rows unable to process current media."""
+
     conn = db_connect(get_config().resolved_database_path)
     try:
-        rows: list[sqlite3.Row] = []
-        primary_row = get_enabled_provider(conn, role)
-        if primary_row is not None:
-            rows.append(primary_row)
-        if role == "primary":
-            # 回退链只对对话主角色有意义（PRD-04 §3.3：一主一备）
-            fallback_row = get_enabled_provider(conn, "fallback")
-            if fallback_row is not None:
-                rows.append(fallback_row)
-        return rows
+        rows = _candidate_rows_from_connection(conn, role)
+        if not media_requirements:
+            return rows
+        # The route rejects an incompatible request before persistence. This
+        # second filter keeps direct/internal calls on the same safe contract.
+        return [
+            row
+            for row in rows
+            if all(
+                _supports_media_attachment(row, kind, mime_type)
+                for kind, mime_type in media_requirements
+            )
+        ]
     finally:
         conn.close()
 
@@ -1046,7 +1286,7 @@ async def complete(messages: list[dict], *, role: str = "primary") -> dict | Non
     无可用 provider 或全部调用失败（已按 primary→fallback 尝试回退）返回
     ``None``，调用方据此走模板降级合成。
     """
-    for row in _candidate_rows(role):
+    for row in _candidate_rows(role, _media_requirements_from_messages(messages)):
         try:
             return await _complete_strict(row, messages)
         except Exception as exc:
@@ -1067,7 +1307,7 @@ async def stream_deltas(
     final_model: str | None = None
     final_usage: dict[str, Any] | None = None
     final_provider_id: str | None = None
-    for row in _candidate_rows(role):
+    for row in _candidate_rows(role, _media_requirements_from_messages(messages)):
         try:
             # Capture identity before consuming deltas so a mid-stream failure
             # after emitted text still attributes its terminal usage correctly.

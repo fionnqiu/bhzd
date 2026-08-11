@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { api } from "../../api/client";
 import type { Paginated, RagDocument, SourceLedger } from "../../api/types";
 import {
@@ -37,9 +37,10 @@ import {
   LEDGER_REVIEW_LABELS,
   LedgerAuthBadge,
   SOURCE_TYPE_OPTIONS,
+  safeRagReturnPath,
 } from "./ragShared";
 
-const LIMIT = 20;
+const DEFAULT_LIMIT = 20;
 
 /** 抽屉表单状态（新建空表单 / 编辑预填共用） */
 interface LedgerForm {
@@ -115,10 +116,13 @@ function RiskTags({ ledger }: { ledger: SourceLedger }) {
 }
 
 export default function LedgersPage() {
+  const location = useLocation();
+  const returnTo = safeRagReturnPath(`${location.pathname}${location.search}`);
   const toast = useToast();
   const [items, setItems] = useState<SourceLedger[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
+  const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [docTitles, setDocTitles] = useState<Record<string, string>>({});
@@ -135,7 +139,7 @@ export default function LedgersPage() {
     setError(null);
     try {
       const res = await api.get<Paginated<SourceLedger>>("/api/source-ledgers", {
-        limit: LIMIT,
+        limit,
         offset,
       }, { signal });
       if (signal?.aborted) return;
@@ -146,7 +150,7 @@ export default function LedgersPage() {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [offset]);
+  }, [offset, limit]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -287,7 +291,16 @@ export default function LedgersPage() {
             loading={loading}
             empty={<EmptyState title="暂无台账" hint="新建来源台账后，上传资料时可绑定作为权威来源" />}
           />
-          <Pagination offset={offset} limit={LIMIT} total={total} onChange={setOffset} />
+          <Pagination
+            offset={offset}
+            limit={limit}
+            total={total}
+            onChange={setOffset}
+            onLimitChange={(nextLimit) => {
+              setLimit(nextLimit);
+              setOffset(0);
+            }}
+          />
         </>
       )}
 
@@ -380,7 +393,10 @@ export default function LedgersPage() {
                 <ul>
                   {detail.related_document_ids.map((docId) => (
                     <li key={docId} className="mb-2 text-sm">
-                      <Link to={`/rag-admin/documents/${docId}`}>
+                      <Link
+                        to={`/rag-admin/documents/${docId}?returnTo=${encodeURIComponent(returnTo)}`}
+                        state={{ returnTo }}
+                      >
                         {docTitles[docId] ?? `${docId.slice(0, 8)}…`}
                       </Link>
                     </li>

@@ -126,13 +126,127 @@ def _do_transition(row: sqlite3.Row, action: str) -> str:
 
 
 def _task_json(row: sqlite3.Row, key: str, default: Any) -> Any:
-    raw = row[key]
+    return _json_value(row[key], default)
+
+
+def _json_value(raw: Any, default: Any) -> Any:
+    """安全解析持久化 JSON；旧数据异常时保留接口可用而非让详情页白屏。"""
     if raw is None:
         return default
+    if isinstance(raw, (dict, list)):
+        return raw
     try:
         return json.loads(raw)
-    except json.JSONDecodeError:
+    except (TypeError, json.JSONDecodeError):
         return default
+
+
+def _student_rubric(rubric: Any) -> list[dict[str, Any]] | None:
+    """构造学生可见评分项，永不把内部答案键随任务详情返回。
+
+    评分仍使用数据库中的完整 rubric；此 DTO 仅保留出题和学习引导所需字段。
+    对早期错误保存的对象形 rubric 返回空列表，避免前端把对象当列表遍历。
+    """
+    if rubric is None:
+        return None
+    if not isinstance(rubric, list):
+        return []
+
+    visible: list[dict[str, Any]] = []
+    for item in rubric:
+        if not isinstance(item, dict):
+            continue
+        key = item.get("key")
+        if key is None or not str(key).strip():
+            continue
+        public_item: dict[str, Any] = {"key": str(key)}
+        if item.get("hint") is not None:
+            public_item["hint"] = str(item["hint"])
+        try:
+            public_item["weight"] = float(item.get("weight", 1.0))
+        except (TypeError, ValueError):
+            # 权重只是学生端的展示信息，异常值不应使任务详情不可读。
+            pass
+        visible.append(public_item)
+    return visible
+
+
+# practice_json may also hold scoring fixtures for completeness scoring. Those
+# names must not cross the student detail boundary, including inside raw sample
+# objects that the page renders as JSON.
+_PRACTICE_ANSWER_KEYS = {
+    "answer",
+    "answers",
+    "answerkey",
+    "correctanswer",
+    "expected",
+    "expectedanswer",
+    "groundtruth",
+    "referenceanswer",
+    "solution",
+    "solutions",
+}
+
+
+def _is_practice_answer_key(key: Any) -> bool:
+    """Recognize common answer-key spellings despite case, spacing, or separators."""
+    normalized = re.sub(r"[\s_-]+", "", str(key)).casefold()
+    return normalized in _PRACTICE_ANSWER_KEYS
+
+
+def _student_sample(value: Any) -> Any:
+    """Copy a display sample while recursively dropping fields that disclose answers."""
+    if isinstance(value, list):
+        return [_student_sample(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            str(key): _student_sample(item)
+            for key, item in value.items()
+            if not _is_practice_answer_key(key)
+        }
+    return value
+
+
+def _student_practice(practice: Any) -> dict[str, Any] | None:
+    """Build the student-safe practice DTO without altering the stored scoring fixture.
+
+    The page only consumes questions, samples, and checklist. Whitelisting those
+    display fields prevents top-level answers/expected maps from leaking, while
+    sample sanitization keeps authored inputs visible without exposing nested keys.
+    """
+    if practice is None:
+        return None
+    if not isinstance(practice, dict):
+        return {}
+
+    visible: dict[str, Any] = {}
+    raw_questions = practice.get("questions")
+    if isinstance(raw_questions, list):
+        questions: list[dict[str, str]] = []
+        for raw_question in raw_questions:
+            if not isinstance(raw_question, dict):
+                continue
+            question = {
+                key: str(raw_question[key])
+                for key in ("key", "prompt", "question", "title", "hint")
+                if raw_question.get(key) is not None
+            }
+            if question:
+                questions.append(question)
+        visible["questions"] = questions
+
+    raw_samples = practice.get("samples")
+    if isinstance(raw_samples, list):
+        visible["samples"] = [_student_sample(sample) for sample in raw_samples]
+
+    raw_checklist = practice.get("checklist")
+    if isinstance(raw_checklist, list):
+        # Checklist entries are display text only; structured objects could hide
+        # a fixture value when coerced to a string by the frontend.
+        visible["checklist"] = [
+            str(item) for item in raw_checklist if isinstance(item, (str, int, float, bool))
+        ]
+    return visible
 
 
 def _latest_score(conn: sqlite3.Connection, task_id: str) -> float | None:
@@ -141,6 +255,15 @@ def _latest_score(conn: sqlite3.Connection, task_id: str) -> float | None:
         (task_id,),
     ).fetchone()
     return float(row["score"]) if row and row["score"] is not None else None
+
+
+def _latest_attempt(conn: sqlite3.Connection, task_id: str) -> sqlite3.Row | None:
+    """取最后一次提交，统一详情恢复与确认掌握度的“当前尝试”语义。"""
+    return conn.execute(
+        "SELECT * FROM task_attempts WHERE task_id = ? "
+        "ORDER BY attempt_number DESC, created_at DESC, id DESC LIMIT 1",
+        (task_id,),
+    ).fetchone()
 
 
 def _task_summary(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
@@ -160,6 +283,70 @@ def _task_summary(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
         "due_at": row["due_at"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
+    }
+
+
+def _mastery_preview_for_score(
+    conn: sqlite3.Connection,
+    task_row: sqlite3.Row,
+    user_id: str,
+    score: float | None,
+) -> list[dict]:
+    """按当前掌握度计算待确认尝试的预览，保持刷新后的展示与实际应用一致。"""
+    cap_ids = _task_json(task_row, "cap_ids_json", [])
+    if (
+        score is None
+        or not task_row["counts_toward_mastery"]
+        or not isinstance(cap_ids, list)
+        or not cap_ids
+    ):
+        return []
+
+    delta = mastery_service.exercise_delta(float(score))
+    scenario_id = task_row["scenario_id"] or ""
+    return mastery_service.preview_from_deltas(
+        conn,
+        user_id,
+        [
+            {"cap_id": str(cap_id), "scenario_id": scenario_id, "delta": delta}
+            for cap_id in cap_ids
+        ],
+    )
+
+
+def _attempt_detail(
+    conn: sqlite3.Connection,
+    task_row: sqlite3.Row,
+    user_id: str,
+    attempt: sqlite3.Row | None,
+) -> dict | None:
+    """将最近提交还原为页面可恢复的反馈状态。
+
+    feedback 是提交后才产生的学习反馈；它与详情 rubric 分开返回，因此评分答案
+    不会在开始作答前泄露。预览不持久化，而是以当前掌握度重算，确保刷新后确认
+    的结果与 apply-mastery 的真实写入一致。
+    """
+    if attempt is None:
+        return None
+
+    answers = _json_value(attempt["submission_json"], {})
+    feedback = _json_value(attempt["feedback_json"], [])
+    mastery_applied = bool(attempt["mastery_applied"])
+    can_apply = not mastery_applied and task_row["status"] == "submitted"
+    return {
+        "id": attempt["id"],
+        "attempt_number": attempt["attempt_number"],
+        "score": float(attempt["score"]) if attempt["score"] is not None else None,
+        "mastery_applied": mastery_applied,
+        "created_at": attempt["created_at"],
+        "answers": answers if isinstance(answers, dict) else {},
+        "feedback": feedback if isinstance(feedback, list) else [],
+        "mastery_preview": _mastery_preview_for_score(
+            conn,
+            task_row,
+            user_id,
+            float(attempt["score"]) if can_apply and attempt["score"] is not None else None,
+        ),
     }
 
 
@@ -203,7 +390,10 @@ def _score_submission(task_row: sqlite3.Row, answers: dict[str, Any]) -> tuple[f
     完整性分 = 非空答案数 / 期望键数（期望键取 practice_json 的 answers/
     expected 字段，都没有则以提交键为全集，即"有答即有分"的下限口径）。
     """
-    rubric = _task_json(task_row, "rubric_json", None)
+    raw_rubric = _task_json(task_row, "rubric_json", None)
+    # A few early Agent cards stored a rubric object. Filter to actual rows so
+    # those records safely use completeness scoring instead of crashing on .get.
+    rubric = [item for item in raw_rubric if isinstance(item, dict)] if isinstance(raw_rubric, list) else []
     if rubric:
         total_weight = 0.0
         earned = 0.0
@@ -211,7 +401,10 @@ def _score_submission(task_row: sqlite3.Row, answers: dict[str, Any]) -> tuple[f
         for item in rubric:
             key = str(item.get("key"))
             expected = item.get("expected")
-            weight = float(item.get("weight", 1.0))
+            try:
+                weight = float(item.get("weight", 1.0))
+            except (TypeError, ValueError):
+                weight = 1.0
             got = answers.get(key)
             ok = _matches(expected, got)
             total_weight += weight
@@ -231,6 +424,8 @@ def _score_submission(task_row: sqlite3.Row, answers: dict[str, Any]) -> tuple[f
 
     # 无 rubric：完整性分（口径见 docstring）
     practice = _task_json(task_row, "practice_json", {}) or {}
+    if not isinstance(practice, dict):
+        practice = {}
     expected_keys: list[str] = []
     for field in ("answers", "expected"):
         if isinstance(practice.get(field), dict):
@@ -369,7 +564,7 @@ def task_detail(
     current: CurrentUser = Depends(get_current_user),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
-    """任务详情：步骤/资源/评分规则/练习 + 能力中文名 + 图谱关联节点。"""
+    """学生任务详情：学习材料、无答案键的评分项和可恢复的最近提交。"""
     row = _get_own_task(conn, task_id, current.user["id"])
     cap_ids = _task_json(row, "cap_ids_json", [])
     names = _cap_names()
@@ -398,12 +593,15 @@ def task_detail(
         "WHERE task_id = ? ORDER BY attempt_number DESC",
         (task_id,),
     ).fetchall()
+    latest_attempt = _latest_attempt(conn, task_id)
     return {
         **_task_summary(conn, row),
         "steps": _task_json(row, "steps_json", []),
         "resources": _task_json(row, "resources_json", []),
-        "rubric": _task_json(row, "rubric_json", None),
-        "practice": _task_json(row, "practice_json", None),
+        # The stored rubric retains expected values for deterministic grading;
+        # the student DTO intentionally strips them before leaving the server.
+        "rubric": _student_rubric(_task_json(row, "rubric_json", None)),
+        "practice": _student_practice(_task_json(row, "practice_json", None)),
         "caps": caps,
         "linked": linked,
         "teacher_id": row["teacher_id"],
@@ -411,6 +609,7 @@ def task_detail(
         "version": row["version"],
         "parent_task_id": row["parent_task_id"],
         "attempts": [dict(a) for a in attempts],
+        "latest_attempt": _attempt_detail(conn, row, current.user["id"], latest_attempt),
     }
 
 
@@ -518,20 +717,8 @@ def submit_task(
     )
     conn.commit()
 
-    # 掌握度预览：仅当任务计入掌握度且挂了能力节点；公式来自 mastery 单点
-    cap_ids = _task_json(row, "cap_ids_json", [])
-    mastery_preview: list[dict] = []
-    if row["counts_toward_mastery"] and cap_ids:
-        delta = mastery_service.exercise_delta(score)
-        scenario_id = row["scenario_id"] or ""
-        mastery_preview = mastery_service.preview_from_deltas(
-            conn,
-            current.user["id"],
-            [
-                {"cap_id": cid, "scenario_id": scenario_id, "delta": delta}
-                for cid in cap_ids
-            ],
-        )
+    # Reuse the detail recovery calculation so immediate and post-refresh previews agree.
+    mastery_preview = _mastery_preview_for_score(conn, row, current.user["id"], score)
     return {
         "attempt_id": attempt_id,
         "score": score,
@@ -556,6 +743,11 @@ def apply_mastery(
     ).fetchone()
     if attempt is None:
         raise ApiError(404, "ATTEMPT_NOT_FOUND", "提交记录不存在")
+    latest_attempt = _latest_attempt(conn, task_id)
+    if latest_attempt is None or latest_attempt["id"] != attempt["id"]:
+        # A later resubmission supersedes prior previews; applying an old one
+        # would make the persisted result differ from the detail page's current state.
+        raise ApiError(409, "ATTEMPT_NOT_CURRENT", "请确认最近一次提交的掌握度变化")
     if attempt["mastery_applied"]:
         # 幂等重放：不重复加分，如实告知已应用过
         return {"applied": [], "already_applied": True, "status": row["status"]}

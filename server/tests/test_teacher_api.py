@@ -80,6 +80,44 @@ def test_class_enroll_and_join_by_code(api):
     assert regenerated.json()["invite_code"] != clazz["invite_code"]
 
 
+def test_student_profile_lists_active_classes_and_soft_leaves(api):
+    """Profile class rows follow active enrollment state and leave preserves history."""
+    teacher = api.login_as("t-profile-class@test.local", name="班主任", role="teacher")
+    first = _create_class(api, teacher, "个人中心一班")
+    second = _create_class(api, teacher, "个人中心二班")
+    student = api.login_as("s-profile-class@test.local", name="班级学生")
+
+    for clazz in (first, second):
+        joined = api.client.post(
+            "/api/student/join-class",
+            json={"invite_code": clazz["invite_code"]},
+            headers=student["headers"],
+        )
+        assert joined.status_code == 200, joined.text
+        assert joined.json()["joined_at"]
+
+    overview = api.client.get("/api/profile")
+    assert overview.status_code == 200, overview.text
+    assert {item["name"] for item in overview.json()["classes"]} == {
+        "个人中心一班",
+        "个人中心二班",
+    }
+
+    left = api.client.delete(
+        f"/api/student/classes/{first['id']}", headers=student["headers"]
+    )
+    assert left.status_code == 200, left.text
+    assert left.json()["class_name"] == "个人中心一班"
+    remaining = api.client.get("/api/profile").json()["classes"]
+    assert [item["name"] for item in remaining] == ["个人中心二班"]
+
+    enrollment = api.conn.execute(
+        "SELECT left_at FROM class_enrollments WHERE class_id = ? AND student_id = ?",
+        (first["id"], student["user_id"]),
+    ).fetchone()
+    assert enrollment["left_at"] is not None
+
+
 def test_class_students_aggregates_task_mastery_and_activity_in_one_response(api):
     """班级学生卡保留任务、掌握度和最新学习足迹的既有聚合口径。"""
     teacher = api.login_as("t-aggregate@test.local", role="teacher")

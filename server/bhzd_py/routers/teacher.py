@@ -152,6 +152,10 @@ def _teacher_task_dto(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
         "rubric": _task_json(row, "rubric_json", None),
         "practice": _task_json(row, "practice_json", None),
         "status": row["status"],
+        # Agent-created drafts retain their source class so the publisher can
+        # preselect it.  The DTO is owner-scoped, and publishing still checks
+        # the current teacher-to-class grant before any student copy is made.
+        "class_id": row["class_id"],
         "version": row["version"],
         "parent_task_id": row["parent_task_id"],
         "published_count": published,
@@ -850,6 +854,74 @@ class PublishBody(BaseModel):
     counts_toward_mastery: bool = True
 
 
+def publish_teacher_task_rows(
+    conn: sqlite3.Connection,
+    *,
+    task_id: str,
+    teacher_id: str,
+    class_id: str,
+    due_at: str | None = None,
+    counts_toward_mastery: bool = True,
+) -> dict[str, Any]:
+    """Copy an owned teacher task to every active class student.
+
+    Callers own the surrounding transaction so the Agent confirmation route can
+    atomically settle its confirmation, template row, student copies, and
+    notifications. The HTTP publish route uses the same helper to keep both
+    entry points subject to identical ownership and fan-out rules.
+    """
+    row = _get_own_teacher_task(conn, task_id, teacher_id)
+    _get_owned_class(conn, class_id, teacher_id)
+    student_ids = _class_student_ids(conn, [class_id])
+    now = utc_now_iso()
+    for student_id in student_ids:
+        conn.execute(
+            """
+            INSERT INTO learning_tasks
+              (id, user_id, title, goal, data_type, scenario_id, cap_ids_json, source,
+               status, steps_json, resources_json, rubric_json, practice_json,
+               counts_toward_mastery, teacher_id, class_id, due_at, version,
+               parent_task_id, created_by, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'teacher', 'not_started', ?, ?, ?, ?, ?, ?, ?, ?, 1,
+                    ?, ?, ?, ?)
+            """,
+            (
+                uuid.uuid4().hex,
+                student_id,
+                row["title"],
+                row["goal"],
+                row["data_type"],
+                row["scenario_id"],
+                row["cap_ids_json"],
+                row["steps_json"],
+                row["resources_json"],
+                row["rubric_json"],
+                row["practice_json"],
+                1 if counts_toward_mastery else 0,
+                teacher_id,
+                class_id,
+                due_at,
+                task_id,
+                teacher_id,
+                now,
+                now,
+            ),
+        )
+    # Notifications share the transaction with task copies, so students never
+    # see a publish notice for a task row that was rolled back.
+    due_note = f"，截止时间 {due_at}" if due_at else ""
+    notify_many(
+        conn,
+        student_ids,
+        "task_published",
+        row["title"],
+        body=f"教师发布了新任务「{row['title']}」{due_note}，请到学习任务中查看",
+        ref_type="task",
+        ref_id=task_id,
+    )
+    return {"published": len(student_ids), "class_id": class_id}
+
+
 @router.post("/api/teacher/tasks/{task_id}/publish", status_code=201)
 def publish_teacher_task(
     task_id: str,
@@ -859,62 +931,20 @@ def publish_teacher_task(
 ) -> dict:
     """发布到班级：为每个在班学生复制一行任务（同事务），返回发布份数。"""
     _require_teacher_role(current)
-    row = _get_own_teacher_task(conn, task_id, current.user["id"])
-    _get_owned_class(conn, body.class_id, current.user["id"])
-    student_ids = _class_student_ids(conn, [body.class_id])
-    now = utc_now_iso()
-    # 同事务批量复制：要么全班都有，要么都不发，不留半发布状态
     with transaction(conn):
-        for sid in student_ids:
-            conn.execute(
-                """
-                INSERT INTO learning_tasks
-                  (id, user_id, title, goal, data_type, scenario_id, cap_ids_json, source,
-                   status, steps_json, resources_json, rubric_json, practice_json,
-                   counts_toward_mastery, teacher_id, class_id, due_at, version,
-                   parent_task_id, created_by, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'teacher', 'not_started', ?, ?, ?, ?, ?, ?, ?, ?, 1,
-                        ?, ?, ?, ?)
-                """,
-                (
-                    uuid.uuid4().hex,
-                    sid,
-                    row["title"],
-                    row["goal"],
-                    row["data_type"],
-                    row["scenario_id"],
-                    row["cap_ids_json"],
-                    row["steps_json"],
-                    row["resources_json"],
-                    row["rubric_json"],
-                    row["practice_json"],
-                    1 if body.counts_toward_mastery else 0,
-                    current.user["id"],
-                    body.class_id,
-                    body.due_at,
-                    task_id,
-                    current.user["id"],
-                    now,
-                    now,
-                ),
-            )
-        # 发布触达：每个在班学生一条站内通知（PRD-06 §10.1）；
-        # 与任务副本同事务，不会出现"任务没发成却收到通知"的半截状态
-        due_note = f"，截止时间 {body.due_at}" if body.due_at else ""
-        notify_many(
+        published = publish_teacher_task_rows(
             conn,
-            student_ids,
-            "task_published",
-            row["title"],
-            body=f"教师发布了新任务「{row['title']}」{due_note}，请到学习任务中查看",
-            ref_type="task",
-            ref_id=task_id,
+            task_id=task_id,
+            teacher_id=current.user["id"],
+            class_id=body.class_id,
+            due_at=body.due_at,
+            counts_toward_mastery=body.counts_toward_mastery,
         )
     audit(conn, current.user, "teacher_task.publish", target_type="learning_task",
           target_id=task_id,
-          after={"class_id": body.class_id, "published": len(student_ids),
+          after={"class_id": body.class_id, "published": published["published"],
                  "due_at": body.due_at})
-    return {"published": len(student_ids), "class_id": body.class_id}
+    return published
 
 
 # ---------------------------------------------------------------- Agent 任务卡生成（PRD-02 §5.3）

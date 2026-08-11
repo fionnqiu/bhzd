@@ -407,6 +407,10 @@ export default function GraphPage() {
     if (!detail) return;
     setCreating(true);
     try {
+      // The graph API returns only reviewed, student-consumable units.  Persist
+      // that projection with the task so opening the detail page never depends
+      // on re-resolving mutable graph links in the browser.
+      const resources = detail.learning_materials ?? [];
       const task = await api.post<TaskSummary>("/api/tasks", {
         title: `学习「${nodeLabel(detail)}」`,
         goal: detail.description ?? `掌握「${nodeLabel(detail)}」`,
@@ -417,6 +421,7 @@ export default function GraphPage() {
             description: detail.description ?? "",
           },
         ],
+        resources,
         source: "agent",
       });
       toast.success("学习任务已创建");

@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { api } from "../../api/client";
 import type {
   DocumentPipelineResponse,
@@ -40,6 +40,7 @@ import {
   LICENSE_OPTIONS,
   SCENARIO_OPTIONS,
   SOURCE_TYPE_OPTIONS,
+  safeRagReturnPath,
   VISIBILITY_OPTIONS,
 } from "./ragShared";
 
@@ -53,7 +54,18 @@ interface SelectedCap {
   label: string;
 }
 
+interface SelectedFilesImportResult {
+  files: { total: number; imported: number; failed: number; queued: number };
+  auto_publish: boolean;
+  samples?: {
+    imported?: { items: Array<{ id: string; file: string }>; remaining: number };
+    failed?: { items: Array<{ file: string; reason: string }>; remaining: number };
+  };
+}
+
 export default function UploadPage() {
+  const location = useLocation();
+  const returnTo = safeRagReturnPath(`${location.pathname}${location.search}`);
   const toast = useToast();
 
   // ---- 文件 ----
@@ -61,6 +73,10 @@ export default function UploadPage() {
   const [fileError, setFileError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const batchFilesInputRef = useRef<HTMLInputElement>(null);
+  const batchFolderInputRef = useRef<HTMLInputElement>(null);
+  const [batchFiles, setBatchFiles] = useState<File[]>([]);
+  const [batchFileError, setBatchFileError] = useState<string | null>(null);
 
   // ---- 元数据（PRD-03 §5.2 必填项 + 台账/能力关联） ----
   const [title, setTitle] = useState("");
@@ -72,7 +88,7 @@ export default function UploadPage() {
   const [dataTypes, setDataTypes] = useState<string[]>([]);
   const [scenarioIds, setScenarioIds] = useState<string[]>([]);
   const [caps, setCaps] = useState<SelectedCap[]>([]);
-  const [visibility, setVisibility] = useState("teacher");
+  const [visibility, setVisibility] = useState("student");
   const [licenseStatus, setLicenseStatus] = useState("");
   const [autoSubmit, setAutoSubmit] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -88,6 +104,8 @@ export default function UploadPage() {
   // ---- 提交状态 ----
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<DocumentPipelineResponse | null>(null);
+  const [importingBatch, setImportingBatch] = useState(false);
+  const [batchImportResult, setBatchImportResult] = useState<SelectedFilesImportResult | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -123,6 +141,30 @@ export default function UploadPage() {
     setFile(f);
     // 标题留空时用文件名兜底（仍可改）：减少重复录入
     if (!title.trim()) setTitle(f.name.replace(/\.[^.]+$/, ""));
+  };
+
+  /** Validate a browser file-list once so file and directory selection share the same limits. */
+  const pickBatchFiles = (list: FileList | null | undefined) => {
+    setBatchFileError(null);
+    const selected = Array.from(list ?? []);
+    const valid: File[] = [];
+    const rejected: string[] = [];
+    for (const candidate of selected) {
+      const ext = `.${candidate.name.split(".").pop()?.toLowerCase() ?? ""}`;
+      if (!ACCEPT.split(",").includes(ext)) {
+        rejected.push(`${candidate.name}：格式不支持`);
+      } else if (candidate.size > MAX_BYTES) {
+        rejected.push(`${candidate.name}：超过 50MB`);
+      } else if (candidate.size === 0) {
+        rejected.push(`${candidate.name}：文件为空`);
+      } else {
+        valid.push(candidate);
+      }
+    }
+    setBatchFiles(valid);
+    if (rejected.length > 0) {
+      setBatchFileError(`已跳过 ${rejected.length} 个文件：${rejected.slice(0, 3).join("；")}`);
+    }
   };
 
   const toggleIn = (list: string[], value: string, set: (v: string[]) => void) => {
@@ -176,6 +218,18 @@ export default function UploadPage() {
     return Object.keys(errors).length === 0;
   };
 
+  const validateBatch = (): boolean => {
+    const errors: Record<string, string> = {};
+    if (batchFiles.length === 0) errors.file = "请选择要导入的文件或目录";
+    if (!sourceType) errors.sourceType = "请选择资料类型";
+    if (!sourceName.trim()) errors.sourceName = "请填写来源（未填来源不得上传）";
+    if (!version.trim()) errors.version = "请填写版本号";
+    if (dataTypes.length === 0) errors.dataTypes = "请至少选择一种适用数据类型";
+    if (!licenseStatus) errors.licenseStatus = "请选择授权状态（未填授权状态不得上传）";
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const submit = async () => {
     if (!validate() || !file) return;
     setSubmitting(true);
@@ -205,6 +259,39 @@ export default function UploadPage() {
     }
   };
 
+  /** Upload explicit browser selections; the server never scans a client or repository path. */
+  const importSelectedFiles = async () => {
+    if (!validateBatch()) return;
+    setImportingBatch(true);
+    try {
+      const form = new FormData();
+      batchFiles.forEach((selected) => form.append("files", selected));
+      form.append("source_type", sourceType);
+      form.append("source_name", sourceName.trim());
+      if (sourceUrl.trim()) form.append("source_url", sourceUrl.trim());
+      if (ledgerId) form.append("source_ledger_id", ledgerId);
+      form.append("version", version.trim());
+      form.append("license_status", licenseStatus);
+      // Batch publication is deliberately student-scoped, matching the approved teaching default.
+      form.append("visibility", "student");
+      dataTypes.forEach((value) => form.append("data_types", value));
+      scenarioIds.forEach((value) => form.append("scenario_ids", value));
+      caps.forEach((cap) => form.append("cap_ids", cap.id));
+      form.append("auto_publish", "true");
+      const imported = await api.postForm<SelectedFilesImportResult>(
+        "/api/rag/documents/batch-import",
+        form,
+        { timeoutMs: 600_000 },
+      );
+      setBatchImportResult(imported);
+      toast.success(`已排入 ${imported.files.queued} 份资料的处理与自动发布队列`);
+    } catch (err) {
+      toast.error(errText(err, "批量导入失败，请稍后重试"));
+    } finally {
+      setImportingBatch(false);
+    }
+  };
+
   // ---- 上传成功态：状态 + 任务 + 详情/队列入口（PRD-03 §5.3） ----
   if (result) {
     return (
@@ -224,7 +311,11 @@ export default function UploadPage() {
               ) : null}
             </p>
             <div className="flex gap-2 mt-2">
-              <Link to={`/rag-admin/documents/${result.document.id}`} className="btn btn-primary">
+              <Link
+                to={`/rag-admin/documents/${result.document.id}?returnTo=${encodeURIComponent(returnTo)}`}
+                state={{ returnTo }}
+                className="btn btn-primary"
+              >
                 查看资料详情
               </Link>
               <Link to="/rag-admin/jobs" className="btn btn-secondary">
@@ -246,6 +337,63 @@ export default function UploadPage() {
         title="上传资料"
         sub="支持 PDF / Word / Markdown / TXT / CSV / Excel，单文件不超过 50MB；上传后进入解析 → 切片 → 索引流程"
       />
+
+      <Card title="批量导入" className="mb-4">
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-secondary">
+            可选择多个文件或整个目录（每批最多 1000 个）；系统只上传你明确选择的文件，不会扫描固定的 docs/ragData。
+            每份资料会逐一解析、切片、索引并通过门禁后自动发布到学生端。
+          </p>
+          <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+            <Button variant="secondary" onClick={() => batchFilesInputRef.current?.click()}>
+              选择文件
+            </Button>
+            <Button variant="secondary" onClick={() => batchFolderInputRef.current?.click()}>
+              选择目录
+            </Button>
+            <Button loading={importingBatch} disabled={batchFiles.length === 0} onClick={() => void importSelectedFiles()}>
+              {importingBatch ? "正在导入并建立队列" : "导入所选资料并自动发布"}
+            </Button>
+          </div>
+          <input
+            ref={batchFilesInputRef}
+            type="file"
+            accept={ACCEPT}
+            multiple
+            hidden
+            aria-label="选择多个文件"
+            onChange={(event) => pickBatchFiles(event.target.files)}
+          />
+          <input
+            ref={(node) => {
+              batchFolderInputRef.current = node;
+              // Chromium's directory picker is a progressive enhancement; other browsers still
+              // expose the regular file picker without receiving an invalid server path.
+              node?.setAttribute("webkitdirectory", "");
+            }}
+            type="file"
+            accept={ACCEPT}
+            multiple
+            hidden
+            aria-label="选择目录"
+            onChange={(event) => pickBatchFiles(event.target.files)}
+          />
+          {batchFiles.length > 0 ? (
+            <p className="text-sm" role="status">
+              已选择 {batchFiles.length} 个有效文件，将使用当前元数据批量导入。
+            </p>
+          ) : null}
+          {batchFileError || fieldErrors.file ? (
+            <p className="field-error-text">{batchFileError ?? fieldErrors.file}</p>
+          ) : null}
+          {batchImportResult ? (
+            <p className="text-sm" role="status">
+              批量结果：共 {batchImportResult.files.total} 个，导入 {batchImportResult.files.imported} 个，
+              失败 {batchImportResult.files.failed} 个，已排队 {batchImportResult.files.queued} 个。
+            </p>
+          ) : null}
+        </div>
+      </Card>
 
       {/* 上传区（PRD-03 §5.1：拖拽 + 文件选择） */}
       <Card title="文件上传" className="mb-4">

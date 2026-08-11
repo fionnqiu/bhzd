@@ -7,7 +7,7 @@
  *   sources_note 与 llm_used 徽章，且填入后所有字段仍可编辑；
  * - PRD-06 §10.1 已发布任务截止时间调整：选中已发布任务时出现"不生成新版本"
  *   说明，提交只 PATCH due_at；
- * - PRD-02 §6 学生个人能力地图：选择学生后调 analytics/students/{id} 渲染
+ * - PRD-02 §6 学生个人能力地图：在独立分析页选择学生后调 analytics/students/{id} 渲染
  *   掌握度表格/最近任务/趋势图，诊断未授权时展示提示而非数据；
  * - PRD-06 §15 #2 班级详情"查看诊断"：403 SHARE_NOT_GRANTED → "学生未授权"
  *   空态；授权 → 摘要表 + 可展开的逐条错误报告。
@@ -21,6 +21,7 @@ import type { ReactElement } from "react";
 import { ToastProvider } from "../src/components";
 import TaskPublishPage from "../src/pages/teacher/TaskPublishPage";
 import AnalyticsPage from "../src/pages/teacher/AnalyticsPage";
+import StudentAnalyticsPage from "../src/pages/teacher/StudentAnalyticsPage";
 import ClassDetailPage from "../src/pages/teacher/ClassDetailPage";
 import { ApiRequestError, api } from "../src/api/client";
 
@@ -280,7 +281,7 @@ describe("TaskPublishPage：已发布任务截止时间调整（PRD-06 §10.1）
 
 /* ---------------------------------------------------------------- 学情：学生个人明细 */
 
-describe("AnalyticsPage：学生个人能力地图明细（PRD-02 §6）", () => {
+describe("StudentAnalyticsPage：学生个人能力地图明细（PRD-02 §6）", () => {
   const student = {
     id: "s1",
     name: "张三",
@@ -368,10 +369,12 @@ describe("AnalyticsPage：学生个人能力地图明细（PRD-02 §6）", () =>
   });
 
   it("选择学生后按 class_id 拉取明细，渲染掌握度/任务/趋势，未授权诊断展示提示", async () => {
-    renderPage(<AnalyticsPage />, "/teacher/analytics");
+    renderPage(<StudentAnalyticsPage />, "/teacher/analytics/students?class_id=c1");
 
     // 通过可见组合框完成选择，覆盖 Portal 选项列表而非隐藏的表单值桥接层。
-    fireEvent.click(await screen.findByRole("combobox", { name: "选择学生" }));
+    const studentSelect = await screen.findByRole("combobox", { name: "学生" });
+    await waitFor(() => expect(studentSelect).not.toBeDisabled());
+    fireEvent.click(studentSelect);
     fireEvent.click(await screen.findByRole("option", { name: "张三（zhangsan@demo.bhzd）" }));
 
     // 明细请求必须带 class_id（教师数据权限以班级为边界）

@@ -16,6 +16,7 @@ import json
 import sqlite3
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -209,6 +210,157 @@ def upload_sample(client: TestClient, headers: dict, **overrides) -> dict:
     }
 
 
+def _write_local_ragdata_package(root):
+    """Create a minimal governed package to exercise the server-only import boundary."""
+    materials = root / "materials"
+    sources = root / "sources"
+    materials.mkdir(parents=True)
+    sources.mkdir()
+    (sources / "SRC-ONE__table.md").write_text(
+        "# 来源台账：表格来源\n"
+        "| 字段 | 值 |\n| --- | --- |\n"
+        "| **来源编码** | `SRC-ONE` |\n| **来源名称** | 表格来源 |\n"
+        "| **发布方** | 测试发布方 |\n| **来源类型** | textbook |\n"
+        "| **版本** | 2026 |\n| **授权状态** | approved |\n",
+        encoding="utf-8",
+    )
+    (sources / "SRC-TBK-WANG-2020__knowledge-graph.md").write_text(
+        "---\nsource_id: SRC-TBK-WANG-2020\ntitle: 知识图谱教材\nversion: 2020\n"
+        "category: textbook\nissued_by: 测试出版社\nurl: https://example.test/kg\n"
+        "status: approved\n---\n",
+        encoding="utf-8",
+    )
+    (materials / "mat_one.md").write_text(
+        "---\nid: MAT-ONE\ntitle: 第一份资料\nversion: v1\nsource: SRC-ONE\n"
+        "source_type: textbook\nlicense_status: authorized\ndata_types: text\nvisibility: teacher\n"
+        "---\n# 第一份资料\n用于验证表格来源台账。\n",
+        encoding="utf-8",
+    )
+    (materials / "mat_tbk_020_kg_methodology_v1_0.md").write_text(
+        "---\nid: MAT-KG\ntitle: 知识图谱资料\nversion: v1\nsource: SRC-TBK-WANG-2020\n"
+        "source_type: textbook\nlicense_status: authorized\ndata_types: text\nvisibility: teacher\n"
+        "---\n# 知识图谱资料\n用于验证重复来源编码规范化。\n",
+        encoding="utf-8",
+    )
+
+
+def test_import_local_ragdata_is_admin_only_idempotent_and_teacher_draft(
+    client, db_path, system_admin, student, tmp_path, monkeypatch
+):
+    """The package import must preserve traceability without exposing student content."""
+    from bhzd_py.routers import rag_admin
+
+    package_root = tmp_path / "ragData"
+    _write_local_ragdata_package(package_root)
+    monkeypatch.setattr(rag_admin, "_LOCAL_RAGDATA_ROOT", package_root)
+    monkeypatch.setattr(rag_admin, "_LOCAL_RAGDATA_MATERIALS", package_root / "materials")
+    monkeypatch.setattr(rag_admin, "_LOCAL_RAGDATA_SOURCES", package_root / "sources")
+
+    response = client.post("/api/rag/import-local-ragdata", headers=as_user(client, student))
+    assert response.status_code == 403
+
+    response = client.post(
+        "/api/rag/import-local-ragdata", headers=as_user(client, system_admin)
+    )
+    assert response.status_code == 202, response.text
+    payload = response.json()
+    assert payload["sources"] == {"total": 2, "created": 2, "skipped": 0, "failed": 0}
+    assert payload["documents"] == {
+        "total": 2,
+        "imported": 2,
+        "skipped": 0,
+        "failed": 0,
+        "queued": 2,
+    }
+
+    conn = connect(db_path)
+    ledgers = conn.execute("SELECT source_code FROM source_ledgers ORDER BY source_code").fetchall()
+    documents = conn.execute(
+        "SELECT visibility, status, license_status, source_name, storage_path FROM rag_documents"
+    ).fetchall()
+    conn.close()
+    assert [row["source_code"] for row in ledgers] == ["SRC-ONE", "SRC-TBK-WANGHAOFEN-2020"]
+    assert len(documents) == 2
+    assert all(row["visibility"] == "teacher" for row in documents)
+    assert all(row["status"] == "indexed" for row in documents)
+    assert all(row["license_status"] == "authorized" for row in documents)
+    assert any(row["source_name"] == "知识图谱教材" for row in documents)
+    assert all(row["storage_path"] and Path(row["storage_path"]).is_file() for row in documents)
+
+    response = client.post(
+        "/api/rag/import-local-ragdata", headers=as_user(client, system_admin)
+    )
+    assert response.status_code == 202, response.text
+    assert response.json()["documents"]["skipped"] == 2
+
+
+def test_import_local_ragdata_auto_publish_runs_after_pipeline(
+    client, db_path, system_admin, tmp_path, monkeypatch
+):
+    """The local package may auto-publish only after durable parse/chunk/index succeeds."""
+    from bhzd_py.routers import rag_admin
+
+    package_root = tmp_path / "ragData"
+    _write_local_ragdata_package(package_root)
+    monkeypatch.setattr(rag_admin, "_LOCAL_RAGDATA_ROOT", package_root)
+    monkeypatch.setattr(rag_admin, "_LOCAL_RAGDATA_MATERIALS", package_root / "materials")
+    monkeypatch.setattr(rag_admin, "_LOCAL_RAGDATA_SOURCES", package_root / "sources")
+
+    response = client.post(
+        "/api/rag/import-local-ragdata",
+        json={"auto_publish": True},
+        headers=as_user(client, system_admin),
+    )
+    assert response.status_code == 202, response.text
+    assert response.json()["auto_publish"] is True
+
+    conn = connect(db_path)
+    rows = conn.execute("SELECT status, visibility FROM rag_documents ORDER BY title").fetchall()
+    conn.close()
+    assert [(row["status"], row["visibility"]) for row in rows] == [
+        ("published", "student"),
+        ("published", "student"),
+    ]
+
+
+def test_batch_import_selected_files_queues_and_auto_publishes(
+    client, db_path, system_admin
+):
+    """Browser-selected files use the normal pipeline and report bad siblings separately."""
+    response = client.post(
+        "/api/rag/documents/batch-import",
+        files=[
+            ("files", ("第一份.md", "# 第一份\n正文内容".encode("utf-8"), "text/markdown")),
+            ("files", ("不支持.exe", b"binary", "application/octet-stream")),
+        ],
+        data={
+            "source_type": "standard",
+            "source_name": "BHZD 教学资料组",
+            "version": "v1.0",
+            "license_status": "authorized",
+            "visibility": "student",
+            "data_types": "text",
+            "auto_publish": "true",
+        },
+        headers=as_user(client, system_admin),
+    )
+    assert response.status_code == 202, response.text
+    payload = response.json()
+    assert payload["files"] == {"total": 2, "imported": 1, "failed": 1, "queued": 1}
+    assert payload["auto_publish"] is True
+    assert payload["samples"]["failed"]["items"][0]["file"] == "不支持.exe"
+
+    conn = connect(db_path)
+    rows = conn.execute(
+        "SELECT title, status, visibility, storage_path FROM rag_documents"
+    ).fetchall()
+    conn.close()
+    assert [(row["title"], row["status"], row["visibility"]) for row in rows] == [
+        ("第一份", "published", "student")
+    ]
+    assert Path(rows[0]["storage_path"]).is_file()
+
+
 def publish_sample(client: TestClient, headers: dict, doc_id: str) -> None:
     response = client.post(f"/api/rag/documents/{doc_id}/submit-review", headers=headers)
     assert response.status_code == 200, response.text
@@ -266,6 +418,33 @@ def test_full_journey_upload_publish_query(client, db_path, system_admin, studen
     assert response.json()["refused"] is True
 
 
+def test_batch_publish_student_reuses_document_guards(client, db_path, system_admin):
+    """Batch publishing must use the same review and release boundary as one document."""
+    headers = as_user(client, system_admin)
+    doc_id = upload_sample(client, headers)["document"]["id"]
+
+    submitted = client.post(
+        "/api/rag/documents/batch",
+        json={"ids": [doc_id], "action": "submit_review"},
+        headers=headers,
+    )
+    assert submitted.status_code == 200, submitted.text
+    assert submitted.json()["results"] == [{"id": doc_id, "ok": True}]
+
+    published = client.post(
+        "/api/rag/documents/batch",
+        json={"ids": [doc_id], "action": "publish_student"},
+        headers=headers,
+    )
+    assert published.status_code == 200, published.text
+    assert published.json()["results"] == [{"id": doc_id, "ok": True}]
+
+    conn = connect(db_path)
+    row = conn.execute("SELECT status, visibility FROM rag_documents WHERE id = ?", (doc_id,)).fetchone()
+    conn.close()
+    assert (row["status"], row["visibility"]) == ("published", "student")
+
+
 def test_upload_returns_queued_snapshot_before_background_pipeline(client, db_path, system_admin):
     """202 必须先暴露可轮询任务，而不是等待解析、切片和嵌入完成。"""
     body = upload_sample(client, as_user(client, system_admin))
@@ -289,14 +468,14 @@ def test_student_forced_published_only(client, db_path, system_admin, student):
     assert response.json()["refused"] is True
 
 
-def test_unverified_student_blocked(client, db_path):
-    """邮箱未验证禁止使用 RAG 问答（PRD-06 §3.2）。"""
+def test_unverified_student_can_query(client, db_path):
+    """历史未验证账号也可访问 RAG；学生仍只检索已发布资料。"""
     user_id = create_user(db_path, "unverified@test.local", "student", verified=False)
     session = create_session(db_path, user_id)
     headers = as_user(client, session)
     response = client.post("/api/rag/query", json={"question": "你好"}, headers=headers)
-    assert response.status_code == 403
-    assert response.json()["error"]["code"] == "EMAIL_NOT_VERIFIED"
+    assert response.status_code == 200, response.text
+    assert response.json()["refused"] is True
 
 
 # ---------------------------------------------------------------- 守卫
@@ -588,6 +767,63 @@ def test_eval_run_metrics_keys(client, db_path, system_admin):
     assert detail.status_code == 200
     assert detail.json()["metrics"]["recall_at_k"] == 1.0
     assert len(detail.json()["case_results"]) == 2
+
+
+def test_eval_case_edit_delete_validate_documents_and_audit(client, db_path, system_admin):
+    """Evaluation cases remain editable while completed run snapshots are independent rows."""
+
+    headers = as_user(client, system_admin)
+    document = upload_sample(client, headers)["document"]
+    created = client.post(
+        "/api/rag/eval-cases",
+        json={
+            "question": "初始问题",
+            "must_hit_document_ids": [document["id"]],
+            "filters": {"published_only": True},
+        },
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    case_id = created.json()["case"]["id"]
+
+    patched = client.patch(
+        f"/api/rag/eval-cases/{case_id}",
+        json={
+            "question": "更新后的问题",
+            "expected_answer": "正确答案",
+            "must_hit_document_ids": [document["id"], document["id"]],
+        },
+        headers=headers,
+    )
+    assert patched.status_code == 200, patched.text
+    payload = patched.json()["case"]
+    assert payload["question"] == "更新后的问题"
+    assert payload["expected_answer"] == "正确答案"
+    assert payload["must_hit_document_ids"] == [document["id"]]
+
+    invalid = client.patch(
+        f"/api/rag/eval-cases/{case_id}",
+        json={"must_hit_document_ids": ["missing-document"]},
+        headers=headers,
+    )
+    assert invalid.status_code == 422
+
+    deleted = client.delete(f"/api/rag/eval-cases/{case_id}", headers=headers)
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json()["deleted"] is True
+    assert client.delete(f"/api/rag/eval-cases/{case_id}", headers=headers).status_code == 404
+
+    conn = connect(db_path)
+    actions = [
+        row["action"]
+        for row in conn.execute(
+            "SELECT action FROM audit_logs WHERE target_type='eval_case' AND target_id=? ORDER BY created_at",
+            (case_id,),
+        )
+    ]
+    conn.close()
+    assert "rag.update_eval_case" in actions
+    assert "rag.delete_eval_case" in actions
 
 
 # ---------------------------------------------------------------- 来源台账

@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import type { Paginated, RagChunk, RagDocument } from "../../api/types";
 import {
@@ -30,9 +30,9 @@ import {
   Textarea,
   useToast,
 } from "../../components";
-import { clamp, errText } from "./ragShared";
+import { clamp, errText, safeRagReturnPath } from "./ragShared";
 
-const LIMIT = 50;
+const DEFAULT_LIMIT = 50;
 
 /** 逗号（中英文）分隔输入 → 字符串数组（关键词/能力 id 共用） */
 function parseList(input: string): string[] {
@@ -44,12 +44,18 @@ function parseList(input: string): string[] {
 
 export default function ChunkEditorPage() {
   const { id = "" } = useParams();
+  const location = useLocation();
+  const returnTo = safeRagReturnPath(
+    (location.state as { returnTo?: unknown } | null)?.returnTo ??
+      new URLSearchParams(location.search).get("returnTo"),
+  );
   const toast = useToast();
 
   const [doc, setDoc] = useState<RagDocument | null>(null);
   const [chunks, setChunks] = useState<RagChunk[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
+  const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -85,7 +91,7 @@ export default function ChunkEditorPage() {
           api.get<Paginated<RagChunk>>(
             `/api/rag/documents/${id}/chunks`,
             {
-              limit: LIMIT,
+              limit,
               offset,
             },
             { signal },
@@ -109,7 +115,7 @@ export default function ChunkEditorPage() {
         if (!signal?.aborted) setLoading(false);
       }
     },
-    [id, offset, selectedId, syncDrafts],
+    [id, offset, limit, selectedId, syncDrafts],
   );
 
   useEffect(() => {
@@ -117,7 +123,7 @@ export default function ChunkEditorPage() {
     void load(false, controller.signal);
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offset]);
+  }, [offset, limit]);
 
   const dirty = useMemo(() => {
     if (!selected) return false;
@@ -264,7 +270,11 @@ export default function ChunkEditorPage() {
         title={`切片编辑器${doc ? `：${doc.title}` : ""}`}
         sub="修改内容保存后立即重新嵌入；拆分/合并会重排切片序号"
         actions={
-          <Link to={`/rag-admin/documents/${id}`} className="btn btn-ghost">
+          <Link
+            to={`/rag-admin/documents/${id}?returnTo=${encodeURIComponent(returnTo)}`}
+            state={{ returnTo }}
+            className="btn btn-ghost"
+          >
             ← 返回资料详情
           </Link>
         }
@@ -278,7 +288,11 @@ export default function ChunkEditorPage() {
           title="暂无切片"
           hint="资料尚未完成解析切片，请先在资料详情页触发解析"
           action={
-            <Link to={`/rag-admin/documents/${id}`} className="btn btn-primary">
+            <Link
+              to={`/rag-admin/documents/${id}?returnTo=${encodeURIComponent(returnTo)}`}
+              state={{ returnTo }}
+              className="btn btn-primary"
+            >
               前往资料详情
             </Link>
           }
@@ -451,7 +465,16 @@ export default function ChunkEditorPage() {
               )}
             </Card>
           </div>
-          <Pagination offset={offset} limit={LIMIT} total={total} onChange={setOffset} />
+          <Pagination
+            offset={offset}
+            limit={limit}
+            total={total}
+            onChange={setOffset}
+            onLimitChange={(nextLimit) => {
+              setLimit(nextLimit);
+              setOffset(0);
+            }}
+          />
         </>
       )}
     </div>

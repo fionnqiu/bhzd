@@ -135,12 +135,11 @@ def get_admin_user(
 def require_verified_user(
     current: CurrentUser = Depends(get_current_user),
 ) -> CurrentUser:
-    """邮箱验证门（PRD-06 §3.2）：未验证邮箱禁止使用 Agent / RAG 问答等核心能力。
+    """兼容保留旧依赖名，但不再把邮箱状态作为能力门槛。
 
-    各业务路由按需 `Depends(require_verified_user)`；认证类路由（重发验证邮件等）不得使用。
+    数据库字段和验证接口继续保留，便于兼容历史客户端；所有应用能力
+    都直接复用当前会话，不再因为缺少邮箱验证而拒绝请求。
     """
-    if current.user["email_verified_at"] is None:
-        raise ApiError(403, "EMAIL_NOT_VERIFIED", "请先完成邮箱验证后再使用此功能")
     return current
 
 

@@ -10,7 +10,7 @@
  * - 空态按 PRD-06 §7.2 给三条学习入口（预设/指挥舱/诊断），不展示空白页。
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../api/client";
 import type { Paginated, TaskStatus, TaskSummary } from "../../api/types";
 import {
@@ -84,6 +84,7 @@ interface BatchResponse {
 
 export default function TasksPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
   const { scenarios } = useScenario();
   const capNames = useCapNames();
@@ -305,7 +306,7 @@ export default function TasksPage() {
                 <Link to="/" className="btn btn-secondary">
                   打开 Agent 指挥舱
                 </Link>
-                <Link to="/diagnostics" className="btn btn-secondary">
+                <Link to="/" className="btn btn-secondary">
                   上传标注诊断
                 </Link>
               </div>
@@ -365,7 +366,14 @@ export default function TasksPage() {
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <Button size="sm" onClick={() => navigate(`/tasks/${task.id}`)}>
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      navigate(`/tasks/${task.id}`, {
+                        state: { returnTo: `${location.pathname}${location.search}` },
+                      })
+                    }
+                  >
                     {NEXT_ACTION[task.status]}
                   </Button>
                   {task.status !== "archived" ? (

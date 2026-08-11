@@ -78,23 +78,29 @@ export default function ChatStream({ run, onFocusComposer, onAcceptSuggestion }:
     return () => scrollRegion.removeEventListener("scroll", updateFollowPreference);
   }, []);
 
-  // Message and visible-card references change for streamed replies and tool
-  // outputs. Follow them without pulling readers away from historical content.
+  // Safe activity and plan updates can increase the transcript before any
+  // assistant token arrives. Include them in the same guarded follow rule so a
+  // reader already at the bottom sees live progress, while the 48px preference
+  // above still protects someone reading earlier messages.
   useEffect(() => {
     if (!pageScrollRegion(bottomRef.current) || !followBottomRef.current) return;
     // jsdom 未实现 scrollIntoView，可选调用兜底（测试环境直接跳过）。浏览器会让
     // 主页面滚动到锚点，而非再次创建消息列表内部的独立滚动条。
     bottomRef.current?.scrollIntoView?.({ block: "end" });
   }, [
+    run.activities,
     run.cards,
+    run.citations,
+    run.confirmation,
+    run.confirming,
     run.error,
+    run.historicalActivitiesByRun,
     run.messages,
+    run.planSteps,
+    run.reconciledActivity,
     run.status,
     run.streamRecovery,
     run.suggestion,
-    run.confirmation,
-    run.confirming,
-    run.citations,
   ]);
 
   // RAG execution remains available to the backend and citation panel, but its
@@ -110,6 +116,17 @@ export default function ChatStream({ run, onFocusComposer, onAcceptSuggestion }:
     ? run.messages.filter((message) => message.id !== liveReply.id)
     : run.messages;
   const isLive = ["planning", "tool_running", "awaiting_confirmation"].includes(run.status);
+  // This bounded lifecycle copy replaces the former standalone thinking card. It
+  // is deliberately passed only to the single execution record summary; raw model
+  // reasoning never enters the transcript.
+  const processingLabel =
+    run.status === "planning"
+      ? "正在整理学习目标"
+      : run.status === "tool_running"
+        ? "正在准备练习内容"
+        : run.status === "awaiting_confirmation"
+          ? "等待确认"
+          : null;
 
   return (
     <div className="chat-stream" data-testid="chat-stream">
@@ -133,6 +150,7 @@ export default function ChatStream({ run, onFocusComposer, onAcceptSuggestion }:
             planSteps={run.planSteps}
             currentActivity={run.reconciledActivity}
             activityGroupId={`live-${run.runId}`}
+            processingLabel={processingLabel}
             live={isLive}
           />
         ) : null}

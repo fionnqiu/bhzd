@@ -138,10 +138,10 @@ describe("指挥舱 · 欢迎态", () => {
     });
   });
 
-  it("诊断快捷入口复用 Composer 的文件选择器，不会启动 Agent 运行", async () => {
+  it("诊断快捷入口打开专用诊断选择器，不会启动 Agent 运行", async () => {
     renderCockpit();
 
-    const fileInput = await screen.findByLabelText("上传标注结果文件");
+    const fileInput = await screen.findByLabelText("上传诊断文件");
     const openPicker = vi.spyOn(fileInput, "click");
     fireEvent.click(screen.getByRole("button", { name: "结果诊断" }));
 
@@ -158,6 +158,17 @@ describe("指挥舱 · 欢迎态", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
     await screen.findByTestId("chat-stream");
+    // The pre-answer state is the same bounded lifecycle summary used by the
+    // execution record; no standalone thinking widget is rendered.
+    const executionRecord = await screen.findByTestId("agent-activity-timeline");
+    expect(within(executionRecord).getByTestId("agent-current-action")).toHaveTextContent(
+      /执行计划|正在整理学习目标|正在准备练习内容/,
+    );
+    expect(within(executionRecord).getByTestId("agent-current-action")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.queryByTestId("agent-thinking-state")).not.toBeInTheDocument();
     const conversationInfo = screen.getByRole("status", { name: "当前对话信息" });
     expect(conversationInfo).toHaveTextContent("学习会话");
     expect(conversationInfo).not.toHaveTextContent("继续场景：");
@@ -273,11 +284,13 @@ describe("指挥舱 · 运行事件流", () => {
     });
 
     expect(screen.getByTestId("agent-activity-timeline")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-current-action")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("正在制定学习计划")).toBeInTheDocument();
     expect(screen.queryByText("关键词：BIO")).not.toBeInTheDocument();
     expect(screen.queryByText("top-secret")).not.toBeInTheDocument();
   });
 
-  it("终态保留已折叠的执行记录", async () => {
+  it("终态默认展开安全处理过程面板", async () => {
     await startRun();
     emit("run.started", { seq: 1 });
     emit("run.progress", {
@@ -290,7 +303,14 @@ describe("指挥舱 · 运行事件流", () => {
     emit("run.completed", { seq: 3, summary: "已完成本次处理。" });
 
     expect(screen.getByTestId("agent-activity-timeline")).toBeInTheDocument();
-    expect(screen.getByTestId("agent-current-action")).toHaveAttribute("aria-expanded", "false");
+    const summary = screen.getByTestId("agent-current-action");
+    expect(summary).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("agent-activity-history")).toBeInTheDocument();
+    expect(summary).toHaveTextContent("处理完成");
+
+    fireEvent.click(summary);
+    expect(summary).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByTestId("agent-activity-history")).not.toBeInTheDocument();
   });
 
   it("RAG 生命周期显示安全检索摘要，不显示思考原文", async () => {
@@ -314,6 +334,14 @@ describe("指挥舱 · 运行事件流", () => {
     expect(screen.getByTestId("agent-activity-timeline")).toHaveTextContent(
       "命中 0 条资料，耗时 1 ms",
     );
+    // A row owns its status beside the stage label. Keeping only two direct
+    // children prevents completed labels from reforming a detached right column.
+    const retrievalRow = document.querySelector<HTMLElement>(".agent-activity-row-retrieval");
+    if (!retrievalRow) throw new Error("retrieval activity row must be visible after expansion");
+    expect(retrievalRow.children).toHaveLength(2);
+    expect(
+      retrievalRow.querySelector(".agent-activity-row-primary .agent-activity-status"),
+    ).toHaveTextContent("已完成");
     expect(screen.queryByText("正在理解你的目标")).not.toBeInTheDocument();
     emit("run.progress", {
       seq: 5,
@@ -434,7 +462,7 @@ describe("指挥舱 · 运行事件流", () => {
     expect(screen.getByTestId("agent-activity-timeline")).toBeInTheDocument();
   });
 
-  it("实时工具生命周期可从终态执行记录展开查看", async () => {
+  it("终态处理面板展示安全摘要而不泄露工具载荷", async () => {
     await startRun();
     emit("tool.call.requested", {
       seq: 1,
@@ -456,12 +484,13 @@ describe("指挥舱 · 运行事件流", () => {
     });
     emit("run.completed", { seq: 3, summary: "已完成" });
     expect(screen.getByTestId("agent-activity-timeline")).toBeInTheDocument();
-    expect(screen.getByTestId("agent-current-action")).toHaveAttribute("aria-expanded", "false");
-    fireEvent.click(screen.getByTestId("agent-current-action"));
+    expect(screen.getByTestId("agent-current-action")).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByTestId("agent-activity-history")).toBeInTheDocument();
+    expect(screen.queryByText("执行检查 · 参数 2 项，具体值已隐藏")).not.toBeInTheDocument();
+    expect(screen.queryByText("执行完成，返回 1 项")).not.toBeInTheDocument();
   });
 
-  it("连续工具调用在终态保留折叠记录且不泄露参数", async () => {
+  it("连续工具调用在终态保留安全处理面板且不泄露参数", async () => {
     await startRun();
     emit("run.started", { seq: 1 });
     emit("tool.call.requested", {
@@ -505,7 +534,7 @@ describe("指挥舱 · 运行事件流", () => {
     emit("run.completed", { seq: 7, summary: "已完成" });
 
     expect(screen.getByTestId("agent-activity-timeline")).toBeInTheDocument();
-    expect(screen.getByTestId("agent-current-action")).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByTestId("agent-current-action")).toHaveAttribute("aria-expanded", "true");
     expect(screen.queryByText("token=never-rendered")).not.toBeInTheDocument();
   });
 
@@ -596,6 +625,45 @@ describe("指挥舱 · 运行事件流", () => {
     }
   });
 
+  it("位于底部时，新的安全处理阶段会继续跟随", async () => {
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(Element.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+
+    try {
+      await startRun();
+      const scrollRegion = document.querySelector<HTMLElement>(".cockpit-content-scroll");
+      expect(scrollRegion).not.toBeNull();
+      Object.defineProperties(scrollRegion!, {
+        clientHeight: { configurable: true, value: 200 },
+        scrollHeight: { configurable: true, value: 1_000 },
+      });
+      Object.defineProperty(scrollRegion!, "scrollTop", { configurable: true, value: 800 });
+      fireEvent.scroll(scrollRegion!);
+      scrollIntoView.mockClear();
+
+      // The status remains planning here. This assertion specifically proves
+      // that activity-array changes, rather than only chat-token changes,
+      // drive the guarded bottom-follow behavior.
+      emit("run.progress", {
+        seq: 1,
+        phase: "planning",
+        status: "running",
+        title: "正在制定计划",
+      });
+
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    } finally {
+      Object.defineProperty(Element.prototype, "scrollIntoView", {
+        configurable: true,
+        value: originalScrollIntoView,
+      });
+    }
+  });
+
   it("tool.call.completed(task.preview) → 嵌入任务卡", async () => {
     await startRun();
     emit("tool.call.requested", {
@@ -626,9 +694,12 @@ describe("指挥舱 · 运行事件流", () => {
     const card = await screen.findByTestId("embedded-task.preview");
     expect(within(card).getByText("NER 标注练习任务")).toBeInTheDocument();
     expect(within(card).getByText("实体识别")).toBeInTheDocument();
+    // A read-only preview never receives a write CTA until task.create has
+    // emitted its own confirmation, which prevents tool-call ID mismatches.
+    expect(screen.queryByTestId("task-sync-button")).not.toBeInTheDocument();
   });
 
-  it("confirmation.required 在对话画布内显示确认门，确认后仍执行 POST confirm", async () => {
+  it("任务确认门提供一键同步，并通过既有确认端点创建任务", async () => {
     mockedPost.mockImplementation(async (path: string) => {
       if (path === "/api/runs") return { run_id: "r1", conversation_id: "c1" };
       if (path === "/api/events") return { accepted: 1 };
@@ -674,12 +745,105 @@ describe("指挥舱 · 运行事件流", () => {
     });
 
     const gate = await screen.findByTestId("confirmation-gate");
-    expect(within(gate).getByText("待确认：创建学习任务")).toBeInTheDocument();
+    const syncButton = within(gate).getByTestId("task-sync-button");
+    expect(syncButton).toHaveTextContent("同步到学习任务");
     expect(screen.getByTestId("agent-activity-timeline")).toBeInTheDocument();
 
-    fireEvent.click(within(gate).getByRole("button", { name: "确认" }));
+    fireEvent.click(syncButton);
     await waitFor(() => expect(screen.queryByTestId("confirmation-gate")).not.toBeInTheDocument());
     expect(mockedPost).toHaveBeenCalledWith("/api/confirmations/conf-1/confirm", {});
+
+    emit("tool.call.completed", {
+      seq: 4,
+      tool_call_id: "tc-write",
+      tool: "task.create",
+      status: "completed",
+      duration_ms: 9,
+      is_write: true,
+      result: { task_id: "t1", title: "NER 标注练习任务" },
+    });
+    const receipt = await screen.findByTestId("embedded-task.create");
+    expect(within(receipt).getByText("学习任务「NER 标注练习任务」已同步。")).toBeInTheDocument();
+    expect(within(receipt).getByRole("link", { name: "前往学习任务查看 →" })).toHaveAttribute(
+      "href",
+      "/tasks",
+    );
+  });
+
+  it("待确认任务收到“同步到学习任务中”时复用确认端点，而不是发送普通聊天", async () => {
+    mockedPost.mockImplementation(async (path: string) => {
+      if (path === "/api/runs") return { run_id: "r1", conversation_id: "c1" };
+      if (path === "/api/events") return { accepted: 1 };
+      if (path === "/api/confirmations/conf-text-sync/confirm") {
+        return { status: "confirmed", result: { task_id: "t1" } };
+      }
+      throw new ApiRequestError(404, "NOT_FOUND", `未预期的 POST ${path}`);
+    });
+    await startRun();
+    emit("confirmation.required", {
+      seq: 1,
+      confirmation: {
+        id: "conf-text-sync",
+        action_type: "task.create",
+        status: "pending",
+        expires_at: new Date(Date.now() + 1800_000).toISOString(),
+        created_at: new Date().toISOString(),
+        preview: { action: "task.create", summary: "将创建学习任务" },
+      },
+    });
+
+    const input = await screen.findByLabelText("对话输入");
+    fireEvent.change(input, { target: { value: "同步到学习任务中" } });
+    const sendButton = screen.getByRole("button", { name: "发送" });
+    await waitFor(() => expect(sendButton).toBeEnabled());
+    fireEvent.click(sendButton);
+
+    await waitFor(() =>
+      expect(mockedPost).toHaveBeenCalledWith("/api/confirmations/conf-text-sync/confirm", {}),
+    );
+    expect(mockedPost.mock.calls.filter(([path]) => path === "/api/runs")).toHaveLength(1);
+    expect(screen.getByText("同步到学习任务中")).toBeInTheDocument();
+  });
+
+  it("任务同步请求未完成时，连续点击只提交一次确认", async () => {
+    let resolveConfirmation: (() => void) | undefined;
+    // Keep the write pending so the second interaction exercises the synchronous
+    // confirmation lock rather than relying only on the rendered disabled state.
+    const confirmationRequest = new Promise<{ status: string; result: Record<string, never> }>(
+      (resolve) => {
+        resolveConfirmation = () => resolve({ status: "confirmed", result: {} });
+      },
+    );
+    mockedPost.mockImplementation(async (path: string) => {
+      if (path === "/api/runs") return { run_id: "r1", conversation_id: "c1" };
+      if (path === "/api/events") return { accepted: 1 };
+      if (path === "/api/confirmations/conf-duplicate/confirm") return confirmationRequest;
+      throw new ApiRequestError(404, "NOT_FOUND", `未预期的 POST ${path}`);
+    });
+    await startRun();
+    emit("confirmation.required", {
+      seq: 1,
+      confirmation: {
+        id: "conf-duplicate",
+        action_type: "task.create",
+        status: "pending",
+        expires_at: new Date(Date.now() + 1800_000).toISOString(),
+        created_at: new Date().toISOString(),
+        preview: { action: "task.create", summary: "将创建学习任务" },
+      },
+    });
+
+    const syncButton = await screen.findByTestId("task-sync-button");
+    fireEvent.click(syncButton);
+    fireEvent.click(syncButton);
+    expect(
+      mockedPost.mock.calls.filter(
+        ([path]) => path === "/api/confirmations/conf-duplicate/confirm",
+      ),
+    ).toHaveLength(1);
+
+    await act(async () => resolveConfirmation?.());
+    await waitFor(() => expect(screen.queryByTestId("confirmation-gate")).not.toBeInTheDocument());
   });
 
   it("run.failed → 中文错误 + 重试按原输入重发（不暴露堆栈）", async () => {

@@ -1,0 +1,107 @@
+/* Provider-specific layout stays local so the shared drawer remains compatible
+   with detail panels that do not have persistent form actions. */
+.provider-drawer-body {
+  padding-bottom: var(--space-4);
+}
+
+.provider-drawer-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.provider-timeout-test-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.65fr) minmax(0, 1.35fr);
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.provider-timeout-test-row > .field {
+  margin-bottom: 0;
+}
+
+.provider-timeout-test-row .provider-form-test {
+  margin: 0;
+}
+
+.provider-input-types {
+  position: relative;
+}
+
+.provider-input-types-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 40px;
+  gap: var(--space-2);
+  padding: 8px var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.provider-input-types-trigger:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+.provider-input-types-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-input-types-listbox {
+  position: absolute;
+  z-index: 1;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  display: grid;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+}
+
+.provider-input-types-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 6px var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.provider-input-types-option:hover,
+.provider-input-types-option[aria-selected="true"] {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-hover);
+}
+
+.provider-input-types-option:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+@media (max-width: 560px) {
+  .provider-timeout-test-row {
+    grid-template-columns: 1fr;
+  }
+}

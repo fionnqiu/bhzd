@@ -46,8 +46,6 @@ export interface SessionResponse {
 export interface RegisterResponse {
   user: User;
   message: string;
-  /** 仅开发模式（未配置 SMTP）回显；生产响应没有该字段 */
-  dev_verify_token?: string;
 }
 
 export interface ForgotPasswordResponse {
@@ -73,12 +71,26 @@ export interface Conversation {
 
 export type MessageRole = "user" | "assistant" | "system" | "tool";
 
+/** Durable metadata for a learner-visible attachment; file bytes stay off the conversation DTO. */
+export interface MessageAttachment {
+  id: string;
+  ordinal: number;
+  name: string;
+  kind: "image" | "document" | "audio" | "video";
+  mime_type: string;
+  size: number;
+  /** Relative, owner-scoped URL for a derived image thumbnail only. */
+  thumbnail_url?: string | null;
+}
+
 export interface Message {
   id: string;
   run_id: string | null;
   role: MessageRole;
   content: string;
   created_at: string;
+  /** Optional so conversations saved before attachment persistence remain readable. */
+  attachments?: MessageAttachment[];
 }
 
 /**
@@ -217,6 +229,26 @@ export interface RunDetail {
 export interface CreateRunResponse {
   run_id: string;
   conversation_id: string;
+  /** Present on current servers so the optimistic user row can adopt durable attachment URLs. */
+  user_message?: Message;
+}
+
+/** POST /api/runs/attachments response; bytes remain server-side and expire quickly. */
+export interface RunAttachmentResponse {
+  attachment_token: string;
+  name: string;
+  mime_type: string;
+  kind: "image" | "video" | "audio" | "document";
+  size: number;
+  expires_at: number;
+}
+
+/** Owner-scoped parsed text returned only for an active document preview. */
+export interface RunAttachmentPreviewResponse {
+  name: string;
+  mime_type: string;
+  content: string;
+  truncated: boolean;
 }
 
 /** POST /api/confirmations/{id}/confirm 响应（confirmations.py） */
@@ -406,6 +438,13 @@ export interface GraphOverview {
   edges: GraphEdge[];
 }
 
+/** 图谱详情投影出的可分配课程；仅包含已发布、学生可见且可消费的教学单元。 */
+export interface GraphLearningMaterial {
+  type: "teaching_unit";
+  ref_id: string;
+  title: string;
+}
+
 /** GET /api/graph/nodes/{id}（graphx/reason.py node_detail + graph.py 叠加 mastery） */
 export interface GraphNodeDetail extends GraphNode {
   prerequisites: GraphNode[];
@@ -415,6 +454,8 @@ export interface GraphNodeDetail extends GraphNode {
   certificates: GraphNode[];
   scenarios: GraphNode[];
   related: GraphNode[];
+  /** 图谱路由已完成可见性校验，供“开始学习”直接写入任务材料。 */
+  learning_materials?: GraphLearningMaterial[];
   /** 仅登录用户查询 CAP 节点时存在 */
   mastery?: {
     scenario_id: string;
@@ -462,6 +503,28 @@ export interface RubricItem {
   hint?: string;
 }
 
+/** 学生任务详情中的评分项；服务端会剥离内部 expected 答案键。 */
+export interface StudentRubricItem {
+  key: string;
+  weight?: number;
+  hint?: string;
+}
+
+/** 学生详情只接受可渲染的练习字段；评分答案继续留在服务端 practice_json。 */
+export interface StudentTaskPracticeQuestion {
+  key?: string;
+  prompt?: string;
+  question?: string;
+  title?: string;
+  hint?: string;
+}
+
+export interface StudentTaskPractice {
+  questions?: StudentTaskPracticeQuestion[];
+  samples?: unknown[];
+  checklist?: string[];
+}
+
 /** 列表项 DTO（tasks.py `_task_summary`） */
 export interface TaskSummary {
   id: string;
@@ -493,8 +556,8 @@ export interface TaskAttempt {
 export interface TaskDetail extends TaskSummary {
   steps: TaskStep[];
   resources: TaskResource[];
-  rubric: RubricItem[] | null;
-  practice: Record<string, unknown> | null;
+  rubric: StudentRubricItem[] | null;
+  practice: StudentTaskPractice | null;
   caps: { cap_id: string; cap_name: string }[];
   linked: {
     certificates: { id: string; name: string }[];
@@ -506,6 +569,8 @@ export interface TaskDetail extends TaskSummary {
   version: number;
   parent_task_id: string | null;
   attempts: TaskAttempt[];
+  /** 最近一次提交，用于刷新后恢复作答、反馈和待确认的掌握度预览。 */
+  latest_attempt: TaskLatestAttempt | null;
 }
 
 export interface FeedbackItem {
@@ -514,6 +579,14 @@ export interface FeedbackItem {
   got: unknown;
   ok: boolean;
   hint: string;
+}
+
+/** GET /api/tasks/{id} 的最近提交恢复载荷（只属于当前学生）。 */
+export interface TaskLatestAttempt extends TaskAttempt {
+  mastery_applied: boolean;
+  answers: Record<string, unknown>;
+  feedback: FeedbackItem[];
+  mastery_preview: MasteryChange[];
 }
 
 /** POST /api/tasks/{id}/submit（tasks.py） */
@@ -632,13 +705,29 @@ export interface ProfileOverview {
   /** P1 规划项，MVP 恒为空数组（profile.py 如实返回） */
   favorites: unknown[];
   favorites_note: string;
+  /** 当前仍在籍的班级；退出班级后由 profile.py 过滤掉历史 enrollment。 */
+  classes: ProfileClass[];
+}
+
+export interface ProfileClass {
+  id: string;
+  name: string;
+  joined_at: string;
 }
 
 /** POST /api/student/join-class（profile.py） */
 export interface JoinClassResponse {
   class_id: string;
   class_name: string;
+  joined_at: string;
   already_enrolled: boolean;
+}
+
+/** DELETE /api/student/classes/{class_id} */
+export interface LeaveClassResponse {
+  class_id: string;
+  class_name: string;
+  message: string;
 }
 
 /* ================================================================ RAG 问答 */
@@ -961,6 +1050,8 @@ export interface TeacherTask {
   rubric: RubricItem[] | null;
   practice: Record<string, unknown> | null;
   status: TaskStatus;
+  /** Agent 草稿的来源班级；手动创建的教师草稿可为空。 */
+  class_id: string | null;
   version: number;
   parent_task_id: string | null;
   /** 已发布的学生副本份数（发布状态由副本数推导） */
@@ -1018,7 +1109,7 @@ export type ProviderProtocol =
 
 export type ProviderRole = "primary" | "fallback" | "embedding" | "rerank" | "none";
 
-/** Provider DTO（admin.py `_provider_dto`；密钥永不回显，只有 api_key_set） */
+/** Provider DTO；服务端只回显固定掩码，编辑器不得把掩码当作替换密钥提交。 */
 export interface ProviderConfig {
   id: string;
   name: string;
@@ -1030,6 +1121,7 @@ export interface ProviderConfig {
   timeout_seconds: number;
   extra: Record<string, unknown>;
   api_key_set: boolean;
+  api_key_masked: string;
   last_test: ProviderTestResult | null;
   created_at: string;
   updated_at: string;

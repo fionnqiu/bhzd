@@ -24,6 +24,24 @@ _DATA_TYPE_LABELS = {
     "video": "视频",
 }
 
+# Task scoring persists a list of {key, expected, weight, hint?}. Keeping the
+# default in that same shape prevents Agent-created tasks from storing a visual
+# rubric object that the task page and deterministic scorer cannot consume.
+_DEFAULT_RUBRIC: list[dict[str, Any]] = [
+    {
+        "key": "规范符合性",
+        "expected": "符合规范定义",
+        "weight": 60,
+        "hint": "逐项核对规范定义和示例。",
+    },
+    {
+        "key": "完整性",
+        "expected": "完整无遗漏",
+        "weight": 40,
+        "hint": "检查边界、字段和必填项是否遗漏。",
+    },
+]
+
 
 def _cap_names(cap_ids: list[str]) -> list[dict[str, str]]:
     """cap_id → 名称（graphx 惰性查询；未就绪时以 id 代名称，不阻断组卡）。"""
@@ -45,6 +63,36 @@ def _cap_names(cap_ids: list[str]) -> list[dict[str, str]]:
     return named
 
 
+def _task_rubric(raw: Any) -> list[dict[str, Any]]:
+    """规范化 Agent 输入及旧版 rules 对象为任务评分器需要的列表契约。"""
+    candidates = raw
+    if isinstance(raw, dict):
+        candidates = raw.get("rules")
+    if not isinstance(candidates, list):
+        return [dict(item) for item in _DEFAULT_RUBRIC]
+
+    rubric: list[dict[str, Any]] = []
+    for item in candidates:
+        if not isinstance(item, dict):
+            continue
+        key = item.get("key") or item.get("criterion") or item.get("rule")
+        if key is None or not str(key).strip():
+            continue
+        # Older cards call these description/score; normalize them once before
+        # persistence so the student page and scorer share one stable shape.
+        expected = item.get("expected", item.get("description", item.get("rule", str(key))))
+        weight = item.get("weight", item.get("points", item.get("score", 1.0)))
+        rubric.append(
+            {
+                "key": str(key),
+                "expected": expected,
+                "weight": weight,
+                **({"hint": str(item["hint"])} if item.get("hint") is not None else {}),
+            }
+        )
+    return rubric or [dict(item) for item in _DEFAULT_RUBRIC]
+
+
 def build_task_card(args: dict[str, Any]) -> dict[str, Any]:
     """组装 TaskCard（不落库）。步骤至少 2 步（契约要求）。"""
     data_type = args.get("data_type")
@@ -58,13 +106,7 @@ def build_task_card(args: dict[str, Any]) -> dict[str, Any]:
         {"title": "自查常见错误", "description": "对照评分规则自查并修正"},
     ]
     resources = args.get("resources") or []
-    rubric = args.get("rubric") or {
-        "full_score": 100,
-        "rules": [
-            {"rule": "标注结果符合规范定义", "score": 60},
-            {"rule": "边界/字段完整无遗漏", "score": 40},
-        ],
-    }
+    rubric = _task_rubric(args.get("rubric"))
     return {
         "title": title,
         "goal": goal,

@@ -129,8 +129,17 @@ def _parse_docx(file_bytes: bytes) -> ParsedDoc:
 
 
 def _parse_markdown(file_bytes: bytes) -> ParsedDoc:
-    """md/txt 解析：按 markdown 标题切分章节块，正文原样累积。"""
+    """md/txt 解析：跳过受控 YAML 头后按 markdown 标题切分章节块。"""
     text = file_bytes.decode("utf-8", errors="replace")
+    lines = text.lstrip("\ufeff").splitlines()
+    if lines and lines[0].strip() == "---":
+        # RAG package documents need front matter for governed import, but it
+        # is operational metadata rather than learner-facing source content.
+        # Removing only a closed leading block preserves ordinary markdown
+        # horizontal rules elsewhere in a document.
+        closing = next((index for index, line in enumerate(lines[1:], start=1) if line.strip() == "---"), None)
+        if closing is not None:
+            lines = lines[closing + 1 :]
     blocks: list[Block] = []
     current_title: str | None = None
     buffer: list[str] = []
@@ -141,7 +150,7 @@ def _parse_markdown(file_bytes: bytes) -> ParsedDoc:
             blocks.append(Block(text=body, page=None, section_title=current_title))
         buffer.clear()
 
-    for line in text.splitlines():
+    for line in lines:
         match = _MD_HEADING_RE.match(line)
         if match:
             flush()

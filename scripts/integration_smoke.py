@@ -112,13 +112,13 @@ def login(c: TestClient, email: str, password: str = DEMO_PASSWORD) -> dict:
     return {"x-csrf-token": csrf}
 
 
-def register_verified_student(c: TestClient) -> tuple[str, dict]:
+def register_active_student(c: TestClient) -> tuple[str, dict]:
     """Create a genuinely new student for flows the seeded demo student cannot prove.
 
     The demo student is intentionally already onboarded, enrolled, and diagnostic-share
     enabled so the product walkthrough starts at the cockpit.  P0 regression checks for
     first-use onboarding and the default-deny diagnostics policy must instead exercise a
-    new account through the real password-envelope and email-verification contract.
+    new account through the real password-envelope and immediate activation contract.
     """
     # Use a syntactically routable domain because EmailStr deliberately rejects
     # reserved test TLDs before the local no-SMTP delivery branch can run.
@@ -132,11 +132,7 @@ def register_verified_student(c: TestClient) -> tuple[str, dict]:
         },
     )
     assert registered.status_code == 201, f"register fixture: {registered.status_code}"
-    dev_token = registered.json().get("dev_verify_token")
-    # Do not print the token: it is a one-time credential even in the disposable test DB.
-    assert isinstance(dev_token, str) and dev_token, "development verification token unavailable"
-    verified = c.post("/api/auth/verify-email", json={"token": dev_token})
-    assert verified.status_code == 200, f"verify fixture: {verified.status_code}"
+    assert registered.json()["user"]["email_verified"] is True
     return email, login(c, email)
 
 
@@ -164,7 +160,7 @@ def _run_smoke() -> int:
     app = create_app()
     # 角色和新生 fixture 各自使用独立 cookie jar，避免后登录覆盖会话。
     cs, ct, ca, cf = TestClient(app), TestClient(app), TestClient(app), TestClient(app)
-    fresh_student_email, hf = register_verified_student(cf)
+    fresh_student_email, hf = register_active_student(cf)
 
     print("== 学生端链路 ==")
     hs = login(cs, "student@demo.bhzd")

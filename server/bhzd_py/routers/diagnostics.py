@@ -99,12 +99,6 @@ def _evict_report(token: str) -> None:
         conn.close()
 
 
-def _require_verified(current: CurrentUser) -> None:
-    """诊断属核心能力，走邮箱验证门（PRD-06 §3.2）；csrf_protect 只验会话不验邮箱。"""
-    if current.user["email_verified_at"] is None:
-        raise ApiError(403, "EMAIL_NOT_VERIFIED", "请先完成邮箱验证后再使用此功能")
-
-
 def _track(conn: sqlite3.Connection, user_id: str | None, name: str, props: dict) -> None:
     """埋点：优先走 B1 的 telemetry 模块；缺席时直接写 analytics_events 兜底。
 
@@ -207,7 +201,6 @@ def upload_diagnostic(
     跨线程用连接直接 ProgrammingError。同步端点与依赖在同一线程池链路执行，
     文件读取走 UploadFile.file（Starlette 的同步 SpooledTemporaryFile）。
     """
-    _require_verified(current)
     content = file.file.read()
     if len(content) > MAX_UPLOAD_BYTES:
         raise ApiError(413, "PAYLOAD_TOO_LARGE", "文件超过 20MB 上限，请拆分或压缩后再上传")
@@ -258,7 +251,6 @@ def save_summary(
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
     """确认门动作（蓝图 §6.3）：存诊断摘要 + 掌握度预览生效（source='diagnostic'）。"""
-    _require_verified(current)
     entry = get_cached_report(body.diagnostic_token)
     if entry is None:
         # 区分"从未存在/别人的"与"已过期"：过期给 410（确认门口径 §6.2）

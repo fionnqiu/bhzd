@@ -8,6 +8,11 @@ export interface DrawerProps {
   title: ReactNode;
   onClose: () => void;
   children: ReactNode;
+  /** Optional persistent action area outside the drawer's scrollable content. */
+  footer?: ReactNode;
+  /** Lets form drawers opt into local layout rules without changing detail drawers. */
+  bodyClassName?: string;
+  footerClassName?: string;
   /**
    * The default keeps existing detail drawers unchanged. Cockpit panels can
    * opt into the opposite edge without introducing a second focus-trapped
@@ -20,16 +25,29 @@ export interface DrawerProps {
  * 右侧抽屉：图谱节点详情、工具结果"专注视图"（NF19 两级展示的第二级）
  * 等需要保留背景上下文的中等信息量场景。
  */
-export default function Drawer({ open, title, onClose, children, side = "right" }: DrawerProps) {
+export default function Drawer({
+  open,
+  title,
+  onClose,
+  children,
+  footer,
+  bodyClassName,
+  footerClassName,
+  side = "right",
+}: DrawerProps) {
   const { isPresent, motionState } = usePresence(open);
   const panelRef = useRef<HTMLElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
-  const retainedContentRef = useRef({ children, title });
+  const retainedContentRef = useRef<{
+    children: ReactNode;
+    title: ReactNode;
+    footer: ReactNode;
+  }>({ children, title, footer });
 
   // Detail drawers commonly clear their source object on close. Retaining the
   // previous content prevents the slide-out from becoming an empty surface.
-  if (open) retainedContentRef.current = { children, title };
-  const content = open ? { children, title } : retainedContentRef.current;
+  if (open) retainedContentRef.current = { children, title, footer };
+  const content = open ? { children, title, footer } : retainedContentRef.current;
 
   useEffect(() => {
     if (!open) return;
@@ -87,7 +105,14 @@ export default function Drawer({ open, title, onClose, children, side = "right" 
             ×
           </IconButton>
         </div>
-        <div className="drawer-body">{content.children}</div>
+        <div className={["drawer-body", bodyClassName ?? ""].filter(Boolean).join(" ")}>
+          {content.children}
+        </div>
+        {content.footer ? (
+          <div className={["drawer-footer", footerClassName ?? ""].filter(Boolean).join(" ")}>
+            {content.footer}
+          </div>
+        ) : null}
       </aside>
     </>
   );

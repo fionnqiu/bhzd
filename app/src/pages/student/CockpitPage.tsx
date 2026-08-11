@@ -16,14 +16,16 @@ import type { ConversationDetail, MasteryRecord, Paginated } from "../../api/typ
 import { useScenario } from "../../app/ScenarioContext";
 import { Button, Card, ConfirmDialog, ErrorState, useToast } from "../../components";
 import { useStudentWorkbenchShell } from "../../layouts/StudentWorkbenchShellContext";
-import { useCockpitRun } from "./cockpit/useCockpitRun";
+import { isTaskSyncConfirmationCommand, useCockpitRun } from "./cockpit/useCockpitRun";
 import { useOnboardingGate } from "./OnboardingPage";
 import { useDiagnosticUpload } from "./cockpit/useDiagnosticUpload";
+import { useMediaUpload } from "./cockpit/useMediaUpload";
 import WelcomeState, { type QuickAction } from "./cockpit/WelcomeState";
 import ChatStream, { ConversationInfoBar } from "./cockpit/ChatStream";
 import Composer, { type ComposerHandle } from "./cockpit/Composer";
 import { DiagnosticReportContent } from "./cockpit/EmbeddedCard";
 import { trackEvent } from "./cockpit/constants";
+import type { ChatAttachment } from "./cockpit/types";
 import "./cockpit/cockpit.css";
 
 export default function CockpitPage() {
@@ -33,12 +35,20 @@ export default function CockpitPage() {
   const toast = useToast();
   const run = useCockpitRun(scenarioId);
   const upload = useDiagnosticUpload(scenarioId);
+  const mediaUpload = useMediaUpload();
+  const { releasePersistedImagePreviews } = mediaUpload;
   // Keep the portal callbacks stable while the transcript receives streamed
   // updates; otherwise each activity frame would rebuild the outer sidebar.
   const { start, reset, loadConversation, conversationId, runId } = run;
   const sending = ["planning", "tool_running", "awaiting_confirmation"].includes(run.status);
 
   const [composerValue, setComposerValue] = useState("");
+  // Keep the composer locked while an Agent run is active, except for the
+  // exact text confirmation that completes an already reviewed task preview.
+  const canConfirmTaskWithText =
+    run.status === "awaiting_confirmation" &&
+    run.confirmation?.action_type === "task.create" &&
+    isTaskSyncConfirmationCommand(composerValue);
   const composerRef = useRef<ComposerHandle>(null);
   const refreshedRunRef = useRef<string | null>(null);
   const consumedSessionIntentRef = useRef<number | null>(null);
@@ -55,6 +65,20 @@ export default function CockpitPage() {
   // 快捷入口数据独立失败兜底为空列表，主流程不受辅助信息影响。
   const [mastery, setMastery] = useState<MasteryRecord[]>([]);
   const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
+
+  useEffect(() => {
+    // The durable thumbnail takes precedence in MessageBubble. Revoke the
+    // transferred blob only after that URL reaches message state so a sent
+    // image never flashes blank between Composer cleanup and history hydration.
+    const persistedPreviewUrls = run.messages.flatMap((message) =>
+      (message.attachments ?? []).flatMap((attachment) =>
+        attachment.kind === "image" && attachment.thumbnailUrl && attachment.previewUrl
+          ? [attachment.previewUrl]
+          : [],
+      ),
+    );
+    releasePersistedImagePreviews(persistedPreviewUrls);
+  }, [releasePersistedImagePreviews, run.messages]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -107,7 +131,55 @@ export default function CockpitPage() {
     [mastery],
   );
 
-  const sendGoal = useCallback((goal: string) => void start(goal), [start]);
+  const sendGoal = useCallback(
+    async (goal: string): Promise<boolean> => {
+      const attachments = mediaUpload.attachments.map(({ attachment_token }) => ({
+        attachment_token,
+      }));
+      const messageAttachments: ChatAttachment[] = mediaUpload.attachments.map((attachment) => ({
+        id: attachment.attachment_token,
+        name: attachment.name,
+        kind: attachment.kind,
+        mimeType: attachment.mime_type,
+        size: attachment.size,
+        previewUrl: attachment.previewUrl,
+      }));
+      const started = await start(
+        goal,
+        attachments.length
+          ? {
+              attachments,
+              messageAttachments,
+              // `start` also invokes this after a create-request retry succeeds.
+              // That keeps the Composer and persisted user row in one ownership flow.
+              onAccepted: mediaUpload.consume,
+            }
+          : undefined,
+      );
+      // Keep local cards after a rejected run request so the learner can retry
+      // with the same files. `onAccepted` clears them only after server acceptance.
+      return started;
+    },
+    [mediaUpload.attachments, mediaUpload.consume, start],
+  );
+
+  const handleComposerUpload = useCallback(
+    (files: File[]) => {
+      // The Composer is a conversation surface: every supported selection,
+      // including JSON/TextGrid/XML, must become current-turn Agent context.
+      void mediaUpload.upload(files);
+    },
+    [mediaUpload.upload],
+  );
+
+  const handleDiagnosticUpload = useCallback(
+    (file: File) => {
+      // Diagnostics retain their report-and-confirm workflow only when the
+      // learner deliberately enters through the dedicated quick action.
+      void upload.upload(file);
+    },
+    [upload.upload],
+  );
 
   /**
    * 欢迎态快捷入口只预填文本并交回学生确认；上传需要用户选取真实文件，
@@ -129,7 +201,7 @@ export default function CockpitPage() {
         }
         case "upload":
           trackEvent("preset_clicked", { preset_id: "upload-diagnose", source: "welcome" });
-          composerRef.current?.openFilePicker();
+          composerRef.current?.openDiagnosticPicker();
           break;
       }
     },
@@ -209,12 +281,21 @@ export default function CockpitPage() {
       onSend={() => {
         const text = composerValue.trim();
         if (!text) return;
-        sendGoal(text);
-        setComposerValue("");
+        void sendGoal(text).then((started) => {
+          // Do not discard a failed message. It may reference attachments
+          // that remain selected specifically so the learner can retry.
+          if (started) setComposerValue("");
+        });
       }}
-      onUpload={(file) => void upload.upload(file)}
+      onUpload={handleComposerUpload}
+      onDiagnosticUpload={handleDiagnosticUpload}
       sending={sending}
-      uploading={upload.uploading}
+      allowSendWhileSending={canConfirmTaskWithText}
+      uploading={upload.uploading || mediaUpload.uploading}
+      uploadingAttachments={mediaUpload.uploadingAttachments}
+      mediaAttachments={mediaUpload.attachments}
+      onRemoveMedia={mediaUpload.remove}
+      onLoadDocumentPreview={mediaUpload.loadDocumentPreview}
       scenarioId={scenarioId}
       scenarioOptions={scenarios.map((scenario) => ({ value: scenario.id, label: scenario.name }))}
       onScenarioChange={setScenarioId}
@@ -251,8 +332,6 @@ export default function CockpitPage() {
                 onAcceptSuggestion={(id) => setScenarioId(id)}
               />
             )}
-
-            {upload.error ? <ErrorState message={upload.error} onRetry={upload.dismiss} /> : null}
 
             {upload.report ? (
               <Card

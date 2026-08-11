@@ -35,6 +35,7 @@ from .routers import (
     runs,
     tasks,
     teacher,
+    teacher_agent,
 )
 from .security import create_password_encryption_material
 
@@ -54,6 +55,7 @@ ROUTER_MODULES: tuple[ModuleType, ...] = (
     rag_query,
     rag_admin,
     teacher,
+    teacher_agent,
     admin,
     notifications,
     events,

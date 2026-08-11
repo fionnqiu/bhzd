@@ -128,6 +128,61 @@ def test_direct_chat_hides_reasoning_blocks_across_stream_chunks(
     assert "internal reasoning" not in message["content"]
 
 
+def test_direct_chat_hides_untagged_leading_reasoning_before_stream_events(
+    db, tmp_db_path, user_id, monkeypatch
+):
+    """A split reasoning label must not enter durable deltas before final text."""
+
+    class _FakeProviders:
+        @staticmethod
+        async def stream_deltas(_messages, *, role):
+            assert role == "primary"
+            yield {"delta": "anal"}
+            yield {"delta": "ysis: private chain of thought"}
+            yield {"delta": " continues\nFinal: "}
+            yield {"delta": "请先复习音频切分的边界规则。"}
+            yield {"done": True, "model": "model-a", "provider_id": "provider-a"}
+
+    monkeypatch.setattr(composer, "_providers", lambda: _FakeProviders)
+    run_id, conv_id = insert_run(db, user_id, "test untagged reasoning filter")
+    asyncio.run(orchestrator.execute_run(run_id, tmp_db_path))
+
+    message = db.execute(
+        "SELECT content FROM messages WHERE conversation_id = ? AND role = 'assistant'",
+        (conv_id,),
+    ).fetchone()
+    assert message["content"] == "请先复习音频切分的边界规则。"
+
+    deltas = [
+        row["payload"]["delta"]
+        for row in fetch_events(tmp_db_path, run_id)
+        if row["event_type"] == events.MESSAGE_DELTA
+    ]
+    assert "".join(deltas) == message["content"]
+    assert all("private chain of thought" not in delta for delta in deltas)
+    assert all("analysis:" not in delta.lower() for delta in deltas)
+
+
+def test_stream_text_preserves_normal_leading_content(monkeypatch):
+    """Normal answers still stream promptly once their first token is unambiguous."""
+
+    class _FakeProviders:
+        @staticmethod
+        async def stream_deltas(_messages, *, role):
+            assert role == "primary"
+            yield {"delta": "普通回答"}
+            yield {"delta": "会保持原有内容。"}
+            yield {"done": True}
+
+    async def collect() -> list[str]:
+        return [
+            delta async for delta in composer.stream_text([{"role": "user", "content": "test"}])
+        ]
+
+    monkeypatch.setattr(composer, "_providers", lambda: _FakeProviders)
+    assert asyncio.run(collect()) == ["普通回答", "会保持原有内容。"]
+
+
 def test_identity_question_uses_direct_chat_without_rag_tools(
     db, tmp_db_path, user_id, monkeypatch
 ):
@@ -137,6 +192,7 @@ def test_identity_question_uses_direct_chat_without_rag_tools(
             assert role == "primary"
             assert messages[0]["content"] == prompts.CHAT_SYSTEM
             assert "Never guess or claim a specific provider" in messages[0]["content"]
+            assert "do not claim that you have no system interface" in messages[0]["content"]
             assert messages[-1] == {"role": "user", "content": "你是什么模型？"}
             yield {"delta": "我是标航智导的学习助手，当前会话无法确认底层模型版本。"}
             yield {

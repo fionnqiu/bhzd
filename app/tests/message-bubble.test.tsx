@@ -8,6 +8,58 @@ function message(role: ChatMessage["role"], content: string): ChatMessage {
 }
 
 describe("助手消息 Markdown 预览", () => {
+  it("为用户消息按发送顺序显示真实图片缩略图和文件卡片", () => {
+    render(
+      <MessageBubble
+        message={{
+          ...message("user", "请一起查看这些资料"),
+          attachments: [
+            {
+              id: "attachment-image",
+              name: "board.png",
+              kind: "image",
+              mimeType: "image/png",
+              size: 1_536,
+              thumbnailUrl: "/api/messages/m1/attachments/attachment-image/thumbnail",
+            },
+            {
+              id: "attachment-document",
+              name: "lesson-plan.pdf",
+              kind: "document",
+              mimeType: "application/pdf",
+              size: 2_048,
+            },
+          ],
+        }}
+      />,
+    );
+
+    const cards = screen.getAllByTestId("message-attachment");
+    expect(cards).toHaveLength(2);
+    expect(cards[0]).toHaveTextContent("board.png");
+    expect(cards[1]).toHaveTextContent("lesson-plan.pdf");
+    expect(screen.getByAltText("board.png 缩略图")).toHaveAttribute(
+      "src",
+      "/api/messages/m1/attachments/attachment-image/thumbnail",
+    );
+    expect(screen.getByRole("list", { name: "本条消息携带的 2 个附件" })).toBeInTheDocument();
+  });
+
+  it("为助手回复渲染不进入无障碍树的导航头像", () => {
+    const { container } = render(<MessageBubble message={message("assistant", "学习建议")} />);
+
+    const avatar = container.querySelector(".assistant-avatar");
+    expect(avatar).toBeInTheDocument();
+    expect(avatar).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByRole("article", { name: "标航智导回复" })).toBeInTheDocument();
+  });
+
+  it("不为用户消息渲染助手头像", () => {
+    const { container } = render(<MessageBubble message={message("user", "这是用户消息")} />);
+
+    expect(container.querySelector(".assistant-avatar")).toBeNull();
+  });
+
   it("将流式助手内容渲染为标题、强调、列表、代码和 GFM 表格", () => {
     const { container } = render(
       <MessageBubble

@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { api } from "../../api/client";
 import type {
   DocumentDetailResponse,
@@ -45,6 +45,7 @@ import {
   fmtTime,
   LICENSE_LABELS,
   REVIEW_ACTION_LABELS,
+  safeRagReturnPath,
   scenarioLabel,
   SOURCE_TYPE_LABELS,
   VISIBILITY_LABELS,
@@ -61,6 +62,8 @@ interface ReviewTarget {
 }
 
 export default function PublishReviewPage() {
+  const location = useLocation();
+  const returnTo = safeRagReturnPath(`${location.pathname}${location.search}`);
   const toast = useToast();
   const [tab, setTab] = useState("pending");
 
@@ -192,7 +195,18 @@ export default function PublishReviewPage() {
   };
 
   const queueColumns: Column<ReviewQueueItem>[] = [
-    { key: "title", title: "标题", render: (item) => <Link to={`/rag-admin/documents/${item.id}`}>{item.title}</Link> },
+    {
+      key: "title",
+      title: "标题",
+      render: (item) => (
+        <Link
+          to={`/rag-admin/documents/${item.id}?returnTo=${encodeURIComponent(returnTo)}`}
+          state={{ returnTo }}
+        >
+          {item.title}
+        </Link>
+      ),
+    },
     { key: "uploader_name", title: "上传人", width: "110px", render: (item) => item.uploader_name ?? "—" },
     {
       key: "source_type",
@@ -227,7 +241,18 @@ export default function PublishReviewPage() {
   ];
 
   const recordColumns: Column<RagDocument>[] = [
-    { key: "title", title: "标题", render: (doc) => <Link to={`/rag-admin/documents/${doc.id}`}>{doc.title}</Link> },
+    {
+      key: "title",
+      title: "标题",
+      render: (doc) => (
+        <Link
+          to={`/rag-admin/documents/${doc.id}?returnTo=${encodeURIComponent(returnTo)}`}
+          state={{ returnTo }}
+        >
+          {doc.title}
+        </Link>
+      ),
+    },
     { key: "status", title: "结果", width: "100px", render: (doc) => <StatusBadge status={doc.status} /> },
     {
       key: "source_name",
@@ -360,7 +385,11 @@ export default function PublishReviewPage() {
                 ))
               )}
               {doc ? (
-                <Link to={`/rag-admin/documents/${doc.id}/chunks`} className="text-sm">
+                <Link
+                  to={`/rag-admin/documents/${doc.id}/chunks?returnTo=${encodeURIComponent(returnTo)}`}
+                  state={{ returnTo }}
+                  className="text-sm"
+                >
                   打开切片编辑器 →
                 </Link>
               ) : null}

@@ -2,8 +2,8 @@
  * 安全配置（/admin/security）——系统告警 + 安全策略只读视图（PRD-04 §6 / PRD-06 §13.2）。
  *
  * 为什么告警置顶：失败率/超时率类告警是"正在发生"的运行时风险，优先级高于
- * 静态策略说明；告警由 GET /api/admin/alerts 实时评估（不落库不推送，MVP 无
- * 告警通道），管理端打开本页或手动刷新即完成一次评估闭环。
+ * 静态策略说明；告警由 GET /api/admin/alerts 实时评估，忽略状态按管理员保存，
+ * 管理端打开本页或手动刷新即完成一次评估闭环。
  *
  * 下半部分仍是纯静态策略页：首期安全策略全部内置于后端常量（security.py /
  * deps.py / 蓝图 §4），没有配置端点；页面如实展示"已启用"状态与机制说明，
@@ -11,14 +11,16 @@
  * 与 security.py 常量逐一核对过。
  */
 
+import { EyeOff } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../api/client";
 import { Button, Card, PageHeader, Spinner, Tag } from "../../components";
 import { errText, fmtTime } from "./adminShared";
 
-/** 系统告警项（GET /api/admin/alerts；alerts.py evaluate_alerts 实时评估结果） */
+/** 系统告警项（GET /api/admin/alerts；服务端为当前管理员附加稳定指纹）。 */
 interface SystemAlert {
   code: string;
+  fingerprint: string;
   level: "critical" | "warning" | string;
   message: string;
   metric: string;
@@ -78,7 +80,7 @@ const POLICIES: Policy[] = [
   {
     name: "API Key 加密",
     nf: "NF2",
-    desc: "供应商 API Key 使用 AES-256-GCM 加密落库；仅录入时提交一次，永不回显、不进日志与审计快照。",
+    desc: "供应商 API Key 使用 AES-256-GCM 加密落库；编辑时仅显示固定掩码，可留空复用已保存密钥；明文不进日志与审计快照。",
   },
   {
     name: "诊断原文件不持久化",
@@ -113,11 +115,14 @@ export default function SecurityPage() {
   const [evaluatedAt, setEvaluatedAt] = useState<string | null>(null);
   const [alertsError, setAlertsError] = useState<string | null>(null);
   const [alertsLoading, setAlertsLoading] = useState(false);
+  const [ignoringFingerprint, setIgnoringFingerprint] = useState<string | null>(null);
+  const [ignoreError, setIgnoreError] = useState<string | null>(null);
 
-  /** 拉取实时告警评估（PRD-06 §13.2：按需计算不落库，刷新即重新评估） */
+  /** 拉取实时告警评估；服务端按当前管理员过滤已忽略的活动告警。 */
   const loadAlerts = useCallback(async (signal?: AbortSignal) => {
     setAlertsLoading(true);
     setAlertsError(null);
+    setIgnoreError(null);
     try {
       const res = await api.get<{ alerts: SystemAlert[]; evaluated_at: string }>(
         "/api/admin/alerts",
@@ -134,6 +139,25 @@ export default function SecurityPage() {
     }
   }, []);
 
+  /**
+   * 隐藏当前管理员已确认的活动告警。服务端持久化忽略状态，前端同步移除
+   * 卡片，避免一次成功操作还要等待下一次刷新才能反映结果。
+   */
+  const ignoreAlert = useCallback(async (alert: SystemAlert) => {
+    setIgnoringFingerprint(alert.fingerprint);
+    setIgnoreError(null);
+    try {
+      await api.post(`/api/admin/alerts/${encodeURIComponent(alert.fingerprint)}/ignore`);
+      setAlerts(
+        (current) => current?.filter((item) => item.fingerprint !== alert.fingerprint) ?? current,
+      );
+    } catch (err) {
+      setIgnoreError(errText(err, "系统告警忽略失败"));
+    } finally {
+      setIgnoringFingerprint(null);
+    }
+  }, []);
+
   useEffect(() => {
     const controller = new AbortController();
     void loadAlerts(controller.signal);
@@ -144,7 +168,7 @@ export default function SecurityPage() {
     <div>
       <PageHeader
         title="安全配置"
-        sub="系统告警实时评估置顶展示；下方安全策略为后端内置默认值，全部强制启用"
+        sub="系统告警实时评估置顶展示；每位管理员可单独忽略活动告警，恢复后重新显示"
       />
 
       {/* 系统告警（PRD-06 §13.2）：触发中的告警逐条展示，健康时为绿色"当前无告警" */}
@@ -166,6 +190,10 @@ export default function SecurityPage() {
           <p className="form-alert form-alert-error" role="alert">
             {alertsError}
           </p>
+        ) : ignoreError ? (
+          <p className="form-alert form-alert-error" role="alert">
+            {ignoreError}
+          </p>
         ) : alerts === null ? (
           <p className="text-sm text-muted flex items-center gap-2">
             <Spinner size={14} /> 正在评估告警指标…
@@ -180,7 +208,7 @@ export default function SecurityPage() {
               const meta = LEVEL_META[alert.level] ?? { label: alert.level, tone: "neutral" };
               return (
                 <div
-                  key={`${alert.code}-${alert.metric}`}
+                  key={alert.fingerprint}
                   style={{
                     border: "1px solid var(--color-border)",
                     borderRadius: "var(--radius-md)",
@@ -189,15 +217,25 @@ export default function SecurityPage() {
                 >
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <strong className="text-sm">{alert.message}</strong>
-                    <span className={`badge badge-${meta.tone}`}>{meta.label}</span>
+                    <div className="flex items-center gap-2">
+                      <span className={`badge badge-${meta.tone}`}>{meta.label}</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        loading={ignoringFingerprint === alert.fingerprint}
+                        onClick={() => void ignoreAlert(alert)}
+                        title="忽略此告警（仅当前管理员）"
+                      >
+                        <EyeOff size={14} aria-hidden />
+                        忽略
+                      </Button>
+                    </div>
                   </div>
                   <p className="text-xs text-secondary">
                     {`指标 ${alert.metric} · 阈值 ${fmtAlertValue(alert.metric, alert.threshold)} · 当前值 ${fmtAlertValue(alert.metric, alert.current)}`}
                   </p>
                   {alert.since ? (
-                    <p className="text-xs text-muted mt-2">
-                      统计窗口起点：{fmtTime(alert.since)}
-                    </p>
+                    <p className="text-xs text-muted mt-2">统计窗口起点：{fmtTime(alert.since)}</p>
                   ) : null}
                 </div>
               );
@@ -206,7 +244,7 @@ export default function SecurityPage() {
         )}
         {evaluatedAt ? (
           <p className="text-xs text-muted mt-2">
-            评估时间：{fmtTime(evaluatedAt)}（实时评估，不落库；点击刷新重新评估）
+            评估时间：{fmtTime(evaluatedAt)}（实时评估；忽略仅对当前管理员生效，点击刷新重新评估）
           </p>
         ) : null}
       </Card>

@@ -2,8 +2,8 @@
  * 模型供应商配置（/admin/providers）——供应商 CRUD + 角色 + 连接测试（PRD-04 §3）。
  *
  * 关键决策（为什么）：
- * - API Key 只进不出：编辑态留空表示不更换（后端 ProviderUpdateIn 空串/None
- *   均忽略），页面任何位置不展示已有密钥（PRD-04 §3.3"明文不出现在快照"）。
+ * - API Key 只进不出：编辑态显示固定掩码，掩码留在表单仅表示服务端已有密钥，
+ *   永远不会作为替换值提交；后端发现/测试端点负责复用服务端密钥。
  * - base_url 安全校验（NF9）由后端执行：INVALID_BASE_URL 的中文错误落到
  *   字段旁而不是 toast——表单错误出现在字段旁是 PRD 表单交互口径。
  * - 角色独占（同角色至多一个）由后端事务保证；前端在"替换已有持有者"时
@@ -12,8 +12,9 @@
  *   不需整表刷新——行内即时反馈延迟/错误是 PRD-04 §3.3 验收点。
  */
 
-import { Eye, EyeOff, Import } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Check, ChevronDown, Eye, EyeOff, Import } from "lucide-react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import "./ProvidersPage.css";
 import { ApiRequestError, api } from "../../api/client";
 import type {
   Paginated,
@@ -58,6 +59,122 @@ interface ProviderForm {
   role: string;
   timeout_seconds: string;
   enabled: boolean;
+  model_inputs: ModelInput[];
+}
+
+/** Fixed mask shown for an existing credential; it is never submitted as a replacement. */
+const MASKED_API_KEY = "********";
+
+/** A fixed mask is display state, never a credential eligible for transient calls. */
+function hasUsableApiKey(value: string): boolean {
+  return Boolean(value) && value !== MASKED_API_KEY;
+}
+
+const MODEL_INPUT_OPTIONS = [
+  { value: "text", label: "文本" },
+  { value: "audio", label: "音频" },
+  { value: "video", label: "视频" },
+  { value: "image", label: "图片" },
+] as const;
+
+type ModelInput = (typeof MODEL_INPUT_OPTIONS)[number]["value"];
+
+function modelInputsFromExtra(extra: Record<string, unknown>): ModelInput[] {
+  const storedInputs = extra.model_inputs;
+  if (!Array.isArray(storedInputs)) return [];
+
+  // Preserve a predictable label order and discard legacy/unknown values so a
+  // malformed provider record cannot create a selection the editor cannot clear.
+  return MODEL_INPUT_OPTIONS.filter((option) => storedInputs.includes(option.value)).map(
+    (option) => option.value,
+  );
+}
+
+interface ModelInputMultiSelectProps {
+  value: readonly ModelInput[];
+  onChange: (value: ModelInput[]) => void;
+}
+
+/** Compact multi-select for provider capabilities; choices stay explicit instead of inferring them from a model name. */
+function ModelInputMultiSelect({ value, onChange }: ModelInputMultiSelectProps) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const listboxId = useId();
+  const selectedLabel = MODEL_INPUT_OPTIONS.filter((option) => value.includes(option.value))
+    .map((option) => option.label)
+    .join("、");
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus({ preventScroll: true });
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  const toggle = (nextValue: ModelInput) => {
+    onChange(
+      value.includes(nextValue)
+        ? value.filter((currentValue) => currentValue !== nextValue)
+        : [...value, nextValue],
+    );
+  };
+
+  return (
+    <div className="provider-input-types" ref={rootRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="provider-input-types-trigger"
+        role="combobox"
+        aria-label="模型输入"
+        aria-haspopup="listbox"
+        aria-controls={listboxId}
+        aria-expanded={open}
+        onClick={() => setOpen((currentOpen) => !currentOpen)}
+      >
+        <span className="provider-input-types-value">{selectedLabel || "请选择模型输入"}</span>
+        <ChevronDown size={16} aria-hidden="true" />
+      </button>
+      {open ? (
+        <div
+          id={listboxId}
+          className="provider-input-types-listbox"
+          role="listbox"
+          aria-multiselectable
+        >
+          {MODEL_INPUT_OPTIONS.map((option) => {
+            const selected = value.includes(option.value);
+            return (
+              <button
+                key={option.value}
+                type="button"
+                className="provider-input-types-option"
+                role="option"
+                aria-selected={selected}
+                onClick={() => toggle(option.value)}
+              >
+                <span>{option.label}</span>
+                {selected ? <Check size={16} aria-hidden="true" /> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 const EMPTY_FORM: ProviderForm = {
@@ -69,6 +186,7 @@ const EMPTY_FORM: ProviderForm = {
   role: "none",
   timeout_seconds: "30",
   enabled: true,
+  model_inputs: [],
 };
 
 function toForm(p: ProviderConfig): ProviderForm {
@@ -77,10 +195,11 @@ function toForm(p: ProviderConfig): ProviderForm {
     protocol: p.protocol,
     base_url: p.base_url,
     model: p.model,
-    api_key: "",
+    api_key: p.api_key_set ? p.api_key_masked || MASKED_API_KEY : "",
     role: p.role,
     timeout_seconds: String(p.timeout_seconds),
     enabled: p.enabled,
+    model_inputs: modelInputsFromExtra(p.extra),
   };
 }
 
@@ -129,7 +248,6 @@ export default function ProvidersPage() {
 
   // 连接测试独立持有 loading，避免请求让同一行的其他操作看似也在执行。
   const [testingId, setTestingId] = useState<string | null>(null);
-  const [togglingId, setTogglingId] = useState<string | null>(null);
   // 删除目标单独保存，确认取消或失败时仍保留原列表行，避免误删造成视觉丢失。
   const [deleteTarget, setDeleteTarget] = useState<ProviderConfig | null>(null);
   // Role assignment remains exclusive. Saving from the drawer explains a replacement
@@ -187,6 +305,13 @@ export default function ProvidersPage() {
     if (key === "model" || key === "role") setFormTestResult(null);
   };
 
+  const providerExtra = () => ({
+    // Provider updates replace `extra_json`; retain protocol-specific settings while
+    // recording this UI's capability selection under one stable, namespaced key.
+    ...(editor !== null && editor !== "new" ? editor.extra : {}),
+    model_inputs: form.model_inputs,
+  });
+
   const setConnectionField = <K extends "protocol" | "base_url" | "api_key">(
     key: K,
     value: ProviderForm[K],
@@ -204,18 +329,24 @@ export default function ProvidersPage() {
     savedEditor !== null &&
     (form.protocol !== savedEditor.protocol ||
       form.base_url.trim() !== savedEditor.base_url ||
-      Boolean(form.api_key));
-  const hasUnsavedTestChange =
-    savedEditor !== null &&
-    (hasUnsavedConnectionChange ||
-      form.model.trim() !== savedEditor.model ||
-      form.role !== savedEditor.role);
-  const usesTransientFormConnection = editor === "new" || hasUnsavedTestChange;
+      (Boolean(form.api_key) && form.api_key !== MASKED_API_KEY));
+  // A newly selected model still needs a live probe, but the masked key must
+  // stay server-side; it therefore uses the saved-key transient test route.
+  const hasUnsavedModelChange =
+    savedEditor !== null && form.model.trim() !== savedEditor.model;
+  // Selecting a model must not force the browser to resend a saved key. Only
+  // endpoint or credential changes use the transient server route.
+  const usesTransientFormConnection = editor === "new" || hasUnsavedConnectionChange;
   const canDiscoverModels =
     Boolean(form.protocol && form.base_url.trim()) &&
-    (usesTransientFormConnection ? Boolean(form.api_key) : savedEditor !== null);
+    (usesTransientFormConnection ? hasUsableApiKey(form.api_key) : savedEditor !== null);
   const canTestForm = usesTransientFormConnection
-    ? Boolean(form.protocol && form.base_url.trim() && form.api_key && form.model.trim())
+    ? Boolean(
+        form.protocol &&
+          form.base_url.trim() &&
+          hasUsableApiKey(form.api_key) &&
+          form.model.trim(),
+      )
     : savedEditor !== null;
   // New or modified credentials must be supplied in the current form. A saved,
   // unchanged provider can still use its encrypted server-side credential.
@@ -270,7 +401,7 @@ export default function ProvidersPage() {
       return null;
     }
     if (editor === "new" && !form.api_key) {
-      setFormError("请填写 API Key（仅录入时提交，永不回显）");
+      setFormError("请填写 API Key（仅录入时提交；编辑态显示固定掩码）");
       return null;
     }
     if (!Number.isFinite(timeout) || timeout <= 0 || timeout > 300) {
@@ -295,8 +426,11 @@ export default function ProvidersPage() {
           model: form.model.trim(),
           api_key: form.api_key,
           role: form.role,
-          enabled: form.enabled,
+          // A configured runtime role must be runnable immediately; operators can
+          // still suspend it later using the explicit table-level toggle.
+          enabled: form.role === "none" ? form.enabled : true,
           timeout_seconds: timeout,
+          extra: providerExtra(),
         });
         toast.success("供应商已创建");
       } else if (editor) {
@@ -306,10 +440,13 @@ export default function ProvidersPage() {
           protocol: form.protocol,
           base_url: form.base_url.trim(),
           model: form.model.trim(),
-          ...(form.api_key ? { api_key: form.api_key } : {}),
+          ...(form.api_key && form.api_key !== MASKED_API_KEY
+            ? { api_key: form.api_key }
+            : {}),
           role: form.role,
-          enabled: form.enabled,
+          enabled: form.role === "none" ? form.enabled : true,
           timeout_seconds: timeout,
+          extra: providerExtra(),
         });
         toast.success("供应商已更新");
       }
@@ -340,22 +477,6 @@ export default function ProvidersPage() {
       return;
     }
     void save();
-  };
-
-  /** 启用开关：PUT enabled 单字段（后端部分更新语义） */
-  const toggleEnabled = async (p: ProviderConfig) => {
-    setTogglingId(p.id);
-    try {
-      const updated = await api.put<ProviderConfig>(`/api/admin/providers/${p.id}`, {
-        enabled: !p.enabled,
-      });
-      setItems((prev) => prev.map((item) => (item.id === p.id ? updated : item)));
-      toast.success(updated.enabled ? `已启用「${p.name}」` : `已停用「${p.name}」`);
-    } catch (err) {
-      toast.error(errText(err));
-    } finally {
-      setTogglingId(null);
-    }
   };
 
   /** 连接测试：响应即最新 last_test，行内更新（PRD-04 §3.3 记录延迟/状态/错误） */
@@ -407,13 +528,19 @@ export default function ProvidersPage() {
             },
             { timeoutMs: 9_000 },
           )
-        : await api.post<ProviderTestResult>(
-            `/api/admin/providers/${savedEditor!.id}/test`,
-            undefined,
-            { timeoutMs: 9_000 },
-          );
+        : hasUnsavedModelChange
+          ? await api.post<ProviderTestResult>(
+              `/api/admin/providers/${savedEditor!.id}/test-connection`,
+              { model: form.model.trim() },
+              { timeoutMs: 9_000 },
+            )
+          : await api.post<ProviderTestResult>(
+              `/api/admin/providers/${savedEditor!.id}/test`,
+              undefined,
+              { timeoutMs: 9_000 },
+            );
       setFormTestResult(result);
-      if (!usesTransientFormConnection && savedEditor) {
+      if (!usesTransientFormConnection && !hasUnsavedModelChange && savedEditor) {
         setItems((prev) =>
           prev.map((item) => (item.id === savedEditor.id ? { ...item, last_test: result } : item)),
         );
@@ -467,18 +594,23 @@ export default function ProvidersPage() {
     },
     { key: "role", title: "角色", width: "100px", render: (p) => <RoleBadge role={p.role} /> },
     {
-      key: "enabled",
-      title: "启用",
-      width: "70px",
-      render: (p) => (
-        <input
-          type="checkbox"
-          aria-label={`启用 ${p.name}`}
-          checked={p.enabled}
-          disabled={togglingId === p.id}
-          onChange={() => void toggleEnabled(p)}
-        />
-      ),
+      key: "model_inputs",
+      title: "模型输入",
+      width: "150px",
+      render: (p) => {
+        const inputs = modelInputsFromExtra(p.extra);
+        return inputs.length ? (
+          <div className="provider-input-types-cell">
+            {inputs.map((input) => (
+              <Tag key={input}>
+                {MODEL_INPUT_OPTIONS.find((option) => option.value === input)?.label ?? input}
+              </Tag>
+            ))}
+          </div>
+        ) : (
+          <span className="text-muted text-sm">未声明</span>
+        );
+      },
     },
     {
       key: "last_test",
@@ -522,7 +654,7 @@ export default function ProvidersPage() {
     <div>
       <PageHeader
         title="模型供应商"
-        sub="接入主/回退/嵌入/重排模型；API Key 加密存储、永不回显；同角色全局至多一个供应商"
+        sub="接入主/回退/嵌入/重排模型；API Key 加密存储，编辑时显示固定掩码；同角色全局至多一个供应商"
         actions={<Button onClick={() => openEditor("new")}>新建供应商</Button>}
       />
 
@@ -552,6 +684,18 @@ export default function ProvidersPage() {
         open={editor !== null}
         title={editor === "new" ? "新建供应商" : `编辑供应商：${form.name}`}
         onClose={closeEditor}
+        bodyClassName="provider-drawer-body"
+        footerClassName="provider-drawer-footer"
+        footer={
+          <>
+            <Button variant="ghost" onClick={closeEditor}>
+              取消
+            </Button>
+            <Button loading={saving} onClick={requestSave}>
+              {editor === "new" ? "创建供应商" : "保存修改"}
+            </Button>
+          </>
+        }
       >
         {formError ? (
           <p className="form-alert form-alert-error" role="alert">
@@ -581,7 +725,7 @@ export default function ProvidersPage() {
             placeholder="https://api.example.com/v1"
           />
         </Field>
-        {/* Saved credentials stay server-side; visibility only applies to a newly entered replacement value. */}
+        {/* Saved credentials stay server-side; the fixed mask is cleared only when an administrator edits this field. */}
         <Field
           label={editor === "new" ? "API Key" : "API Key（已保存）"}
           required={editor === "new"}
@@ -591,6 +735,12 @@ export default function ProvidersPage() {
               type={apiKeyVisible ? "text" : "password"}
               aria-label={editor === "new" ? "API Key" : "替换 API Key"}
               value={form.api_key}
+              onFocus={() => {
+                if (form.api_key === MASKED_API_KEY) {
+                  setForm((current) => ({ ...current, api_key: "" }));
+                  setApiKeyVisible(false);
+                }
+              }}
               onChange={(e) => setConnectionField("api_key", e.target.value)}
               placeholder={editor === "new" ? "输入 API Key" : "输入以更换"}
               autoComplete="new-password"
@@ -600,7 +750,7 @@ export default function ProvidersPage() {
               className="provider-api-key-visibility-button"
               aria-label={apiKeyVisible ? "隐藏 API Key" : "显示 API Key"}
               title={apiKeyVisible ? "隐藏 API Key" : "显示 API Key"}
-              disabled={!form.api_key}
+              disabled={!form.api_key || form.api_key === MASKED_API_KEY}
               onClick={() => setApiKeyVisible((visible) => !visible)}
             >
               {apiKeyVisible ? (
@@ -659,7 +809,21 @@ export default function ProvidersPage() {
             ) : null}
           </div>
         </Field>
-        <div className="grid grid-cols-2">
+        <Field label="模型输入">
+          <ModelInputMultiSelect
+            value={form.model_inputs}
+            onChange={(modelInputs) => set("model_inputs", modelInputs)}
+          />
+        </Field>
+        <Field label="角色">
+          <Select
+            aria-label="角色"
+            value={form.role}
+            onChange={(e) => set("role", e.target.value)}
+            options={PROVIDER_ROLE_OPTIONS}
+          />
+        </Field>
+        <div className="provider-timeout-test-row">
           <Field label="超时（秒）">
             <Input
               value={form.timeout_seconds}
@@ -667,51 +831,34 @@ export default function ProvidersPage() {
               inputMode="decimal"
             />
           </Field>
-          <Field label="角色">
-            <Select
-              aria-label="角色"
-              value={form.role}
-              onChange={(e) => set("role", e.target.value)}
-              options={PROVIDER_ROLE_OPTIONS}
-            />
-          </Field>
-        </div>
-        <label className="flex items-center gap-2 mb-4">
-          <input
-            type="checkbox"
-            checked={form.enabled}
-            onChange={(e) => set("enabled", e.target.checked)}
-          />
-          启用该供应商
-        </label>
-        <div className="provider-form-test" role="group" aria-label="连接测试" aria-live="polite">
-          <div className="provider-form-test-button-row">
-            <Button
-              type="button"
-              className="provider-form-test-button"
-              variant="secondary"
-              loading={testingForm}
-              aria-busy={testingForm}
-              disabled={!canTestForm}
-              title={formTestStatus ?? "测试当前连接"}
-              onClick={() => void runFormTest()}
+          <Field label="连接测试">
+            <div
+              className="provider-form-test"
+              role="group"
+              aria-label="连接测试"
+              aria-live="polite"
             >
-              {/* Keep the label width stable while Button overlays its loading spinner. */}
-              <span className="provider-form-test-button-label">测试连接</span>
-            </Button>
-            <div className="provider-form-test-result">
-              {formTestResult ? <LastTestCell test={formTestResult} /> : null}
+              <div className="provider-form-test-button-row">
+                <Button
+                  type="button"
+                  className="provider-form-test-button"
+                  variant="secondary"
+                  loading={testingForm}
+                  aria-busy={testingForm}
+                  disabled={!canTestForm}
+                  title={formTestStatus ?? "测试当前连接"}
+                  onClick={() => void runFormTest()}
+                >
+                  {/* Keep the label width stable while Button overlays its loading spinner. */}
+                  <span className="provider-form-test-button-label">测试连接</span>
+                </Button>
+                <div className="provider-form-test-result">
+                  {formTestResult ? <LastTestCell test={formTestResult} /> : null}
+                </div>
+              </div>
+              {formTestStatus ? <p className="field-hint">{formTestStatus}</p> : null}
             </div>
-          </div>
-          {formTestStatus ? <p className="field-hint">{formTestStatus}</p> : null}
-        </div>
-        <div className="flex gap-2">
-          <Button loading={saving} onClick={requestSave}>
-            {editor === "new" ? "创建供应商" : "保存修改"}
-          </Button>
-          <Button variant="ghost" onClick={closeEditor}>
-            取消
-          </Button>
+          </Field>
         </div>
       </Drawer>
 

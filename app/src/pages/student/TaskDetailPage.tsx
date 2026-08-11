@@ -15,7 +15,7 @@
  * - mastery_updated 埋点由后端 apply-mastery 端点上报，前端不重复发。
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import type {
   ApplyMasteryResponse,
@@ -46,7 +46,6 @@ import {
 } from "../../components";
 import { useScenario } from "../../app/ScenarioContext";
 import {
-  capNameOf,
   dataTypeLabel,
   errMsg,
   formatDateTime,
@@ -81,7 +80,11 @@ function extractQuestions(detail: TaskDetail): PracticeQuestion[] {
       };
     });
   }
-  return (detail.rubric ?? []).map((item) => ({
+  // During a rolling backend upgrade, an older API can still expose the
+  // historical object-shaped rubric. Treat it as no fallback questions until
+  // the server's student-safe array DTO is available instead of blanking the page.
+  const rubric = Array.isArray(detail.rubric) ? detail.rubric : [];
+  return rubric.map((item) => ({
     key: item.key,
     prompt: `请作答：${item.key}`,
   }));
@@ -99,6 +102,30 @@ function extractSamples(detail: TaskDetail): unknown[] {
   return Array.isArray(raw) ? raw : [];
 }
 
+/**
+ * 将详情中的持久化提交还原为提交接口形状，避免刷新后丢失反馈和确认入口。
+ * 只有服务端已完成评分的尝试会进入该载荷，评分答案不会随 rubric 预先下发。
+ */
+function feedbackFromLatestAttempt(detail: TaskDetail): SubmitTaskResponse | null {
+  const attempt = detail.latest_attempt;
+  if (!attempt) return null;
+  return {
+    attempt_id: attempt.id,
+    score: attempt.score ?? 0,
+    feedback: attempt.feedback,
+    mastery_preview: attempt.mastery_preview,
+    status: detail.status,
+  };
+}
+
+/** 持久化答案允许数字等输入类型，表单统一还原成字符串以保持受控输入稳定。 */
+function answersFromLatestAttempt(detail: TaskDetail): Record<string, string> {
+  const answers = detail.latest_attempt?.answers ?? {};
+  return Object.fromEntries(
+    Object.entries(answers).map(([key, value]) => [key, value == null ? "" : String(value)]),
+  );
+}
+
 /** 学习材料类型中文名（resources_json.type 各来源取值不一，兜底原样展示） */
 const RESOURCE_TYPE_LABELS: Record<string, string> = {
   teaching_unit: "教学单元",
@@ -112,13 +139,40 @@ function resourceTypeLabel(type: string): string {
   return RESOURCE_TYPE_LABELS[type] ?? type;
 }
 
+/**
+ * Keep task-detail return links inside the SPA. Navigation state is supplied by
+ * another page, so reject protocol-relative/external values before handing it
+ * to React Router and retain the task list as the fallback destination.
+ */
+function safeTaskReturnPath(value: unknown): string {
+  if (
+    typeof value !== "string" ||
+    !value.startsWith("/") ||
+    value.startsWith("//") ||
+    value.includes("\\") ||
+    value.includes("\0")
+  ) {
+    return "/tasks";
+  }
+  return value;
+}
+
+/** Card keeps its existing visual header while this page exposes a real section hierarchy. */
+function TaskSectionTitle({ children }: { children: string }) {
+  return <h2 className="task-detail-section-title">{children}</h2>;
+}
+
 /* ---------------------------------------------------------------- 页面 */
 
 export default function TaskDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
   const toast = useToast();
   const { scenarios } = useScenario();
   const capNames = useCapNames();
+  const returnTo = safeTaskReturnPath(
+    (location.state as { returnTo?: unknown } | null)?.returnTo,
+  );
 
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -134,20 +188,30 @@ export default function TaskDetailPage() {
   const [applying, setApplying] = useState(false);
   const [starting, setStarting] = useState(false);
 
-  const load = useCallback(async (signal?: AbortSignal) => {
-    if (!id) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await api.get<TaskDetail>(`/api/tasks/${id}`, undefined, { signal });
-      if (signal?.aborted) return;
-      setDetail(res);
-    } catch (err) {
-      if (!signal?.aborted) setError(errMsg(err));
-    } finally {
-      if (!signal?.aborted) setLoading(false);
-    }
-  }, [id]);
+  const load = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!id) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await api.get<TaskDetail>(`/api/tasks/${id}`, undefined, { signal });
+        if (signal?.aborted) return;
+        // Hydrate the persisted attempt in the same state turn as the detail
+        // response. A follow-up effect briefly rendered empty controlled inputs
+        // and could overwrite an in-page edit after unrelated detail changes.
+        const restored = feedbackFromLatestAttempt(res);
+        setDetail(res);
+        setAnswers(restored ? answersFromLatestAttempt(res) : {});
+        setFeedback(restored);
+        setApplied(res.latest_attempt?.mastery_applied ?? false);
+      } catch (err) {
+        if (!signal?.aborted) setError(errMsg(err));
+      } finally {
+        if (!signal?.aborted) setLoading(false);
+      }
+    },
+    [id],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -159,12 +223,12 @@ export default function TaskDetailPage() {
   useEffect(() => {
     const controller = new AbortController();
     api
-      .get<Paginated<MasteryRecord>>("/api/profile/mastery", undefined, { signal: controller.signal })
+      .get<Paginated<MasteryRecord>>("/api/profile/mastery", undefined, {
+        signal: controller.signal,
+      })
       .then((res) => {
         if (controller.signal.aborted) return;
-        setMasteryMap(
-          new Map(res.items.map((r) => [`${r.cap_id}|${r.scenario_id}`, r.score])),
-        );
+        setMasteryMap(new Map(res.items.map((r) => [`${r.cap_id}|${r.scenario_id}`, r.score])));
       })
       .catch(() => {});
     return () => controller.abort();
@@ -244,7 +308,7 @@ export default function TaskDetailPage() {
     setStarting(true);
     try {
       const res = await api.post<TaskSummary>(`/api/tasks/${id}/start`);
-      setDetail((prev) => (prev ? { ...prev, status: res.status } : prev));
+      setDetail((prev) => (prev ? { ...prev, status: res.status, progress: res.progress } : prev));
       toast.success("任务已开始，完成练习后提交答案");
     } catch (err) {
       toast.error(errMsg(err));
@@ -261,7 +325,41 @@ export default function TaskDetailPage() {
       const res = await api.post<SubmitTaskResponse>(`/api/tasks/${id}/submit`, { answers });
       setFeedback(res);
       setApplied(false);
-      setDetail((prev) => (prev ? { ...prev, status: res.status } : prev));
+      setDetail((prev) => {
+        if (!prev) return prev;
+        const createdAt = new Date().toISOString();
+        const attemptNumber =
+          Math.max(0, ...prev.attempts.map((attempt) => attempt.attempt_number)) + 1;
+        // Keep the local DTO aligned with the reload response so the feedback title,
+        // confirmation button, and attempt table do not wait for a full page reload.
+        const latestAttempt = {
+          id: res.attempt_id,
+          attempt_number: attemptNumber,
+          score: res.score,
+          mastery_applied: false,
+          created_at: createdAt,
+          answers: { ...answers },
+          feedback: res.feedback,
+          mastery_preview: res.mastery_preview,
+        };
+        return {
+          ...prev,
+          status: res.status,
+          progress: res.status === "submitted" ? 0.9 : prev.progress,
+          latest_score: res.score,
+          latest_attempt: latestAttempt,
+          attempts: [
+            {
+              id: latestAttempt.id,
+              attempt_number: latestAttempt.attempt_number,
+              score: latestAttempt.score,
+              mastery_applied: latestAttempt.mastery_applied,
+              created_at: latestAttempt.created_at,
+            },
+            ...prev.attempts,
+          ],
+        };
+      });
       toast.success(`已提交，得分 ${Math.round(res.score * 100)} 分`);
     } catch (err) {
       toast.error(errMsg(err));
@@ -273,14 +371,52 @@ export default function TaskDetailPage() {
   /** 学生确认后把掌握度预览落库（按 attempt 幂等，重复点击不重复加分） */
   const applyMastery = async () => {
     if (!id || !feedback) return;
+    const countsTowardMastery = detail?.counts_toward_mastery ?? false;
     setApplying(true);
     try {
       const res = await api.post<ApplyMasteryResponse>(`/api/tasks/${id}/apply-mastery`, {
         attempt_id: feedback.attempt_id,
       });
-      toast.success(res.already_applied ? "掌握度此前已更新过" : "掌握度已更新");
+      toast.success(
+        res.already_applied
+          ? "掌握度此前已更新过"
+          : countsTowardMastery
+            ? "掌握度已更新"
+            : "任务已确认",
+      );
       setApplied(true);
-      await load(); // 刷新状态（completed）与提交历史
+      setMasteryMap((prev) => {
+        const next = new Map(prev);
+        for (const change of res.applied) {
+          if (change.new_score != null) {
+            next.set(`${change.cap_id}|${change.scenario_id}`, change.new_score);
+          }
+        }
+        return next;
+      });
+      setDetail((prev) => {
+        if (!prev) return prev;
+        // The confirmation response is authoritative. Updating only its attempt
+        // keeps the completed state usable even if a later background refresh fails.
+        const latestAttempt = prev.latest_attempt;
+        const confirmedLatestAttempt =
+          latestAttempt?.id === feedback.attempt_id
+            ? {
+                ...latestAttempt,
+                mastery_applied: true,
+                mastery_preview: [],
+              }
+            : latestAttempt;
+        return {
+          ...prev,
+          status: res.status,
+          progress: res.status === "completed" ? 1 : prev.progress,
+          latest_attempt: confirmedLatestAttempt,
+          attempts: prev.attempts.map((attempt) =>
+            attempt.id === feedback.attempt_id ? { ...attempt, mastery_applied: true } : attempt,
+          ),
+        };
+      });
     } catch (err) {
       toast.error(errMsg(err));
     } finally {
@@ -302,6 +438,28 @@ export default function TaskDetailPage() {
   const canPractice = detail.status === "in_progress" || detail.status === "submitted";
   const scoreTone = (score: number): "success" | "warning" | "danger" =>
     score >= 0.8 ? "success" : score >= 0.4 ? "warning" : "danger";
+  const taskProgressTone: "primary" | "success" | "warning" =
+    detail.status === "completed" ? "success" : detail.status === "paused" ? "warning" : "primary";
+  const practiceEmptyState =
+    detail.status === "draft"
+      ? { title: "任务尚未发布", hint: "该教师任务仍在准备中，发布后会出现在可学习任务中。" }
+      : detail.status === "not_started" || detail.status === "paused"
+        ? {
+            title: "任务尚未开始",
+            hint:
+              detail.status === "paused"
+                ? "点击右上角「继续任务」后即可继续作答。"
+                : "点击右上角「开始任务」后即可作答。",
+          }
+        : detail.status === "archived"
+          ? { title: "任务已归档", hint: "归档任务不可继续作答，但已提交的反馈仍可在下方查看。" }
+          : null;
+  const practiceStatusNote =
+    detail.status === "submitted"
+      ? "本次作答已提交。你可以核对反馈后确认完成，也可以修改答案后再次提交。"
+      : detail.status === "completed"
+        ? "任务已完成，已保留最近一次作答与反馈供回顾。"
+        : null;
 
   return (
     <div>
@@ -309,29 +467,54 @@ export default function TaskDetailPage() {
         title={detail.title}
         sub={detail.goal ?? undefined}
         actions={
-          detail.status === "not_started" || detail.status === "paused" ? (
-            <Button loading={starting} onClick={startTask}>
-              {detail.status === "paused" ? "继续任务" : "开始任务"}
-            </Button>
-          ) : undefined
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Keep the originating task-list filters available without requiring a long-page scroll. */}
+            <Link to={returnTo} className="btn btn-ghost btn-sm">
+              返回任务列表
+            </Link>
+            {detail.status === "not_started" || detail.status === "paused" ? (
+              <Button loading={starting} onClick={startTask}>
+                {detail.status === "paused" ? "继续任务" : "开始任务"}
+              </Button>
+            ) : null}
+          </div>
         }
       />
 
       {/* 任务概览（PRD-01 §6.2：名称/目标/场景/关联岗位与证书/版本） */}
-      <Card title="任务概览" className="mb-4">
+      <Card title={<TaskSectionTitle>任务概览</TaskSectionTitle>} className="mb-4">
         <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="task-detail-meta flex items-center gap-2 flex-wrap">
             <StatusBadge status={detail.status} />
+            <span className="text-xs text-muted">来源</span>
             <Tag>{taskSourceLabel(detail.source)}</Tag>
             {detail.source === "teacher" ? (
-              <span className="badge badge-warning">教师</span>
+              <span className="badge badge-warning" aria-label="由教师发布的任务">
+                教师任务
+              </span>
             ) : null}
             <Tag>{dataTypeLabel(detail.data_type)}</Tag>
             <Tag>{scenarioNameOf(detail.scenario_id)}</Tag>
+            <Tag>{detail.counts_toward_mastery ? "计入掌握度" : "不计入掌握度"}</Tag>
             <span className="text-xs text-muted">版本 v{detail.version}</span>
-            {detail.due_at ? (
-              <span className="text-xs text-secondary">截止：{formatDateTime(detail.due_at)}</span>
-            ) : null}
+            <span className="text-xs text-secondary">
+              截止：{detail.due_at ? formatDateTime(detail.due_at) : "未设置"}
+            </span>
+          </div>
+          <div
+            className="task-detail-progress flex flex-col gap-2"
+            role="group"
+            aria-label="任务学习进度"
+          >
+            <div className="task-detail-progress-heading flex items-center justify-between gap-2">
+              <span className="text-sm text-secondary">学习进度</span>
+              <strong className="text-sm">{Math.round(detail.progress * 100)}%</strong>
+            </div>
+            <ProgressBar value={detail.progress} tone={taskProgressTone} />
+            <div className="flex items-center gap-3 flex-wrap text-xs text-muted">
+              <span>创建于 {formatDateTime(detail.created_at)}</span>
+              <span>最近更新 {formatDateTime(detail.updated_at)}</span>
+            </div>
           </div>
           {detail.caps.length > 0 ? (
             <div className="flex flex-col gap-2">
@@ -362,34 +545,47 @@ export default function TaskDetailPage() {
               ))}
             </div>
           ) : null}
+          {detail.linked.graph_resources.length > 0 ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* These tags are graph reference aids, not substitutes for task resources. */}
+              <span className="text-sm text-secondary">图谱参考资源</span>
+              {detail.linked.graph_resources.map((resource) => (
+                <Tag key={resource.id}>{resource.name}</Tag>
+              ))}
+            </div>
+          ) : null}
         </div>
       </Card>
 
       {/* 学习材料（RAG 引用走 CitationCard，其余按类型分行展示） */}
-      {detail.resources.length > 0 ? (
-        <Card title="学习材料" className="mb-4">
-          <div className="flex flex-col gap-2">
-            {detail.resources.map((resource, index) =>
-              resource.citation ? (
-                <CitationCard
-                  key={index}
-                  citation={resource.citation as Citation}
-                  index={index + 1}
-                />
+      <Card title={<TaskSectionTitle>学习材料</TaskSectionTitle>} className="mb-4">
+        {detail.resources.length > 0 ? (
+          <ul className="flex flex-col gap-2" role="list">
+            {detail.resources.map((resource, index) => {
+              const resourceKey = resource.ref_id ?? `${resource.type}-${resource.title}-${index}`;
+              return resource.citation ? (
+                <li key={resourceKey}>
+                  <CitationCard citation={resource.citation as Citation} index={index + 1} />
+                </li>
               ) : (
-                <div key={index} className="flex items-center gap-2">
+                <li key={resourceKey} className="task-detail-resource flex items-start gap-2">
                   <span className="badge badge-info">{resourceTypeLabel(resource.type)}</span>
-                  <span className="text-sm">{resource.title}</span>
-                </div>
-              ),
-            )}
-          </div>
-        </Card>
-      ) : null}
+                  <span className="task-detail-resource-title text-sm">{resource.title}</span>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <EmptyState
+            title="暂无可用学习材料"
+            hint="该任务暂未关联已发布的教学资料；下方图谱参考资源可帮助你了解相关知识。"
+          />
+        )}
+      </Card>
 
       {/* 操作步骤（含注意事项/常见错误，v3.0 §7.5.2） */}
       {detail.steps.length > 0 ? (
-        <Card title="操作步骤" className="mb-4">
+        <Card title={<TaskSectionTitle>操作步骤</TaskSectionTitle>} className="mb-4">
           <ol className="flex flex-col gap-4">
             {detail.steps.map((step, index) => (
               <li key={index}>
@@ -417,11 +613,16 @@ export default function TaskDetailPage() {
       ) : null}
 
       {/* 练习区：样本对照 + 作答 + 自检清单 + 提交 */}
-      <Card title="练习区" className="mb-4">
-        {detail.status === "not_started" || detail.status === "paused" ? (
-          <EmptyState title="任务尚未开始" hint="点击右上角「开始任务」后即可作答" />
+      <Card title={<TaskSectionTitle>练习区</TaskSectionTitle>} className="mb-4">
+        {practiceEmptyState ? (
+          <EmptyState title={practiceEmptyState.title} hint={practiceEmptyState.hint} />
         ) : (
           <div className="flex flex-col gap-4">
+            {practiceStatusNote ? (
+              <p className="task-detail-status-note" role="status">
+                {practiceStatusNote}
+              </p>
+            ) : null}
             {samples.length > 0 ? (
               <div>
                 <h3 className="mb-2" style={{ fontSize: "var(--font-size-base)" }}>
@@ -443,31 +644,43 @@ export default function TaskDetailPage() {
                 该任务没有预设练习题，完成学习后可直接提交，系统将按完成情况评分。
               </p>
             ) : (
-              questions.map((question) => (
-                <div key={question.key}>
-                  <label className="field-label">{question.prompt}</label>
-                  {question.hint ? (
-                    <p className="field-hint mb-2">{question.hint}</p>
-                  ) : null}
-                  {question.prompt.length > 40 ? (
-                    <Textarea
-                      value={answers[question.key] ?? ""}
-                      disabled={!canPractice}
-                      onChange={(e) =>
-                        setAnswers((prev) => ({ ...prev, [question.key]: e.target.value }))
-                      }
-                    />
-                  ) : (
-                    <Input
-                      value={answers[question.key] ?? ""}
-                      disabled={!canPractice}
-                      onChange={(e) =>
-                        setAnswers((prev) => ({ ...prev, [question.key]: e.target.value }))
-                      }
-                    />
-                  )}
-                </div>
-              ))
+              questions.map((question, index) => {
+                const inputId = `task-answer-${detail.id}-${index}`;
+                const hintId = `${inputId}-hint`;
+                return (
+                  <div key={`${question.key}-${index}`}>
+                    <label className="field-label" htmlFor={inputId}>
+                      {question.prompt}
+                    </label>
+                    {question.hint ? (
+                      <p id={hintId} className="field-hint mb-2">
+                        {question.hint}
+                      </p>
+                    ) : null}
+                    {question.prompt.length > 40 ? (
+                      <Textarea
+                        id={inputId}
+                        aria-describedby={question.hint ? hintId : undefined}
+                        value={answers[question.key] ?? ""}
+                        disabled={!canPractice}
+                        onChange={(e) =>
+                          setAnswers((prev) => ({ ...prev, [question.key]: e.target.value }))
+                        }
+                      />
+                    ) : (
+                      <Input
+                        id={inputId}
+                        aria-describedby={question.hint ? hintId : undefined}
+                        value={answers[question.key] ?? ""}
+                        disabled={!canPractice}
+                        onChange={(e) =>
+                          setAnswers((prev) => ({ ...prev, [question.key]: e.target.value }))
+                        }
+                      />
+                    )}
+                  </div>
+                );
+              })
             )}
             {checklist.length > 0 ? (
               <div>
@@ -475,11 +688,15 @@ export default function TaskDetailPage() {
                   自检清单
                 </h3>
                 <div className="flex flex-col gap-2">
-                  {checklist.map((item) => (
-                    <label key={item} className="flex items-center gap-2 text-sm">
+                  {checklist.map((item, index) => (
+                    <label
+                      key={`${item}-${index}`}
+                      className="task-detail-checklist-item flex items-center gap-2 text-sm"
+                    >
                       <input
                         type="checkbox"
                         checked={checks[item] ?? false}
+                        disabled={!canPractice}
                         onChange={(e) =>
                           setChecks((prev) => ({ ...prev, [item]: e.target.checked }))
                         }
@@ -491,11 +708,7 @@ export default function TaskDetailPage() {
               </div>
             ) : null}
             <div>
-              <Button
-                loading={submitting}
-                disabled={!canPractice}
-                onClick={submitAnswers}
-              >
+              <Button loading={submitting} disabled={!canPractice} onClick={submitAnswers}>
                 {detail.status === "submitted" ? "重新提交" : "提交答案"}
               </Button>
             </div>
@@ -505,7 +718,14 @@ export default function TaskDetailPage() {
 
       {/* 反馈区：得分 + 逐项反馈 + 掌握度预览（提交后出现） */}
       {feedback ? (
-        <Card title="任务反馈" className="mb-4">
+        <Card
+          title={
+            <TaskSectionTitle>
+              {detail.latest_attempt?.id === feedback.attempt_id ? "最近提交反馈" : "本次提交反馈"}
+            </TaskSectionTitle>
+          }
+          className="mb-4"
+        >
           <div className="flex flex-col gap-4">
             <div>
               <div className="flex items-center justify-between mb-2">
@@ -531,10 +751,16 @@ export default function TaskDetailPage() {
                 <Button
                   variant="secondary"
                   loading={applying}
-                  disabled={applied}
+                  disabled={applied || detail.status !== "submitted"}
                   onClick={applyMastery}
                 >
-                  {applied ? "掌握度已更新" : "确认更新掌握度"}
+                  {applied
+                    ? detail.counts_toward_mastery
+                      ? "掌握度已更新"
+                      : "任务已确认"
+                    : feedback.mastery_preview.length > 0
+                      ? "确认更新掌握度"
+                      : "确认完成任务"}
                 </Button>
               </div>
             </div>
@@ -544,7 +770,7 @@ export default function TaskDetailPage() {
 
       {/* 提交历史 */}
       {detail.attempts.length > 0 ? (
-        <Card title="提交记录" className="mb-4">
+        <Card title={<TaskSectionTitle>提交记录</TaskSectionTitle>} className="mb-4">
           <DataTable
             ariaLabel="任务提交记录"
             columns={attemptColumns}
@@ -555,7 +781,7 @@ export default function TaskDetailPage() {
       ) : null}
 
       {/* 下一步推荐：回图谱看前置、回预设继续路径（PRD-01 §6.2 反馈区） */}
-      <Card title="下一步推荐">
+      <Card title={<TaskSectionTitle>下一步推荐</TaskSectionTitle>}>
         <div className="flex items-center gap-2 flex-wrap">
           {detail.caps[0] ? (
             <Link to={`/graph?node=${detail.caps[0].cap_id}`} className="btn btn-secondary btn-sm">
@@ -565,7 +791,7 @@ export default function TaskDetailPage() {
           <Link to="/presets" className="btn btn-secondary btn-sm">
             继续预设学习
           </Link>
-          <Link to="/tasks" className="btn btn-ghost btn-sm">
+          <Link to={returnTo} className="btn btn-ghost btn-sm">
             返回任务列表
           </Link>
         </div>

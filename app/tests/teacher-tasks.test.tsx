@@ -135,13 +135,166 @@ beforeEach(() => {
 });
 
 describe("TaskPublishPage（PRD-02 §5）", () => {
+  it("opens the task handed off by Teacher Agent", async () => {
+    const agentTask = {
+      id: "t-agent",
+      published_count: 0,
+      title: "Agent 生成任务",
+      goal: "根据对话生成的学习目标",
+      data_type: "text",
+      scenario_id: null,
+      cap_ids: [],
+      steps: [],
+      rubric: [],
+      resources: [],
+    };
+    mockedGet.mockImplementation((path) => {
+      if (path === "/api/teacher/tasks/t-agent") return Promise.resolve(agentTask);
+      if (path === "/api/teacher/tasks") return Promise.resolve({ items: [agentTask], total: 1 });
+      if (path === "/api/teacher/classes") return Promise.resolve({ items: [], total: 0 });
+      if (path === "/api/graph/nodes") return Promise.resolve({ items: [], total: 0 });
+      return Promise.reject(new Error(`未 mock 的 GET ${String(path)}`));
+    });
+
+    render(
+      <ToastProvider>
+        <MemoryRouter
+          initialEntries={[
+            { pathname: "/teacher/tasks", state: { taskId: "t-agent" } },
+          ]}
+        >
+          <TaskPublishPage />
+        </MemoryRouter>
+      </ToastProvider>,
+    );
+
+    expect(await screen.findByDisplayValue("Agent 生成任务")).toBeInTheDocument();
+  });
+
+  it("normalizes an Agent-shaped persisted draft, keeps its class selected, and publishes only on demand", async () => {
+    const agentTask = {
+      id: "t-agent-contract",
+      published_count: 0,
+      title: "Agent field contract draft",
+      goal: "Turn the class insight into a review task.",
+      data_type: "image",
+      scenario_id: null,
+      cap_ids: ["CAP-1"],
+      // This is the durable Agent payload shape saved before the publisher normalizes it.
+      steps: [{ title: "Review each annotation", description: "Compare it with the reference." }],
+      rubric: [
+        {
+          criterion: "Required labels",
+          description: "Use the agreed vocabulary consistently.",
+          points: 10,
+        },
+      ],
+      resources: [{ type: "rag_document", title: "Annotation guide", ref_id: "doc-1" }],
+      class_id: "c1",
+    };
+    mockedGet.mockImplementation((path, query) => {
+      if (path === "/api/teacher/tasks") return Promise.resolve({ items: [], total: 0 });
+      if (path === "/api/teacher/tasks/t-agent-contract") return Promise.resolve(agentTask);
+      if (path === "/api/teacher/classes") {
+        return Promise.resolve({
+          items: [
+            {
+              id: "c1",
+              name: "数据标注2301班",
+              invite_code: "CODE",
+              student_count: 5,
+              recent_task_title: null,
+              created_at: "2026-01-01T00:00:00Z",
+            },
+          ],
+          total: 1,
+        });
+      }
+      if (path === "/api/graph/nodes") {
+        if (query?.type === "SCN") return Promise.resolve({ items: [], total: 0 });
+        return Promise.resolve({
+          items: [{ id: "CAP-1", label: "语音切分", type: "CAP" }],
+          total: 1,
+        });
+      }
+      return Promise.reject(new Error(`未 mock 的 GET ${String(path)}`));
+    });
+    mockedPatch.mockResolvedValue({
+      id: "t-agent-contract",
+      published_count: 0,
+      version: 1,
+      version_bumped: false,
+    });
+    mockedPost.mockImplementation((path) => {
+      if (path === "/api/teacher/tasks/t-agent-contract/publish") {
+        return Promise.resolve({ published: 5, class_id: "c1" });
+      }
+      return Promise.reject(new Error(`未 mock 的 POST ${String(path)}`));
+    });
+
+    render(
+      <ToastProvider>
+        <MemoryRouter initialEntries={["/teacher/tasks?taskId=t-agent-contract"]}>
+          <TaskPublishPage />
+        </MemoryRouter>
+      </ToastProvider>,
+    );
+
+    expect(await screen.findByDisplayValue("Agent field contract draft")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(mockedGet).toHaveBeenCalledWith(
+        "/api/teacher/tasks/t-agent-contract",
+        undefined,
+        expect.objectContaining({ signal: expect.anything() }),
+      ),
+    );
+    expect(await screen.findByRole("combobox", { name: "选择班级" })).toHaveTextContent(
+      "数据标注2301班",
+    );
+    // Selecting the Agent's class restores publishing context; it never acts as an implicit publish.
+    expect(mockedPost.mock.calls.some(([path]) => String(path).endsWith("/publish"))).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+    await waitFor(() =>
+      expect(mockedPatch).toHaveBeenCalledWith(
+        "/api/teacher/tasks/t-agent-contract",
+        expect.objectContaining({
+          steps: [
+            expect.objectContaining({
+              title: "Review each annotation",
+              notes: "Compare it with the reference.",
+            }),
+          ],
+          rubric: [
+            expect.objectContaining({
+              key: "Required labels",
+              expected: "Use the agreed vocabulary consistently.",
+              weight: 10,
+            }),
+          ],
+        }),
+      ),
+    );
+    expect(mockedPost.mock.calls.some(([path]) => String(path).endsWith("/publish"))).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "发布" }));
+    await waitFor(() =>
+      expect(mockedPost).toHaveBeenCalledWith("/api/teacher/tasks/t-agent-contract/publish", {
+        class_id: "c1",
+        due_at: null,
+        counts_toward_mastery: true,
+      }),
+    );
+  });
+
   it("uses the teacher published-resource catalog instead of the RAG management API", async () => {
     renderPage();
     expect(document.querySelector(".teacher-task-publish-page")).toBeInTheDocument();
     expect(document.querySelector(".teacher-task-publish-layout")).toBeInTheDocument();
     expect(document.querySelector(".teacher-task-editor-layout")).toBeInTheDocument();
+    expect(document.querySelector(".teacher-task-review-layout")).toBeInTheDocument();
     expect(document.querySelector(".teacher-task-preview")).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole("tab", { name: "从已发布资料选择" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "已发布资料" }));
 
     expect(await screen.findByText("已发布标注规范")).toBeInTheDocument();
     expect(mockedGet).toHaveBeenCalledWith(
@@ -154,6 +307,20 @@ describe("TaskPublishPage（PRD-02 §5）", () => {
       expect.anything(),
       expect.anything(),
     );
+  });
+
+  it("keeps the right review cards in one width and scroll surface", async () => {
+    renderPage();
+    const review = document.querySelector(".teacher-task-review-layout");
+
+    // Selection, preview, and publishing remain siblings so one bounded review surface controls
+    // their vertical movement instead of giving the preview a competing nested scrollbar.
+    expect(review).toBeInTheDocument();
+    expect(review?.querySelector(":scope > .teacher-task-selection")).toBeInTheDocument();
+    expect(review?.querySelector(":scope > .teacher-task-preview")).toBeInTheDocument();
+    expect(review?.querySelector(":scope > .teacher-task-publish-settings")).toBeInTheDocument();
+    expect(review?.querySelectorAll(":scope > .card")).toHaveLength(2);
+    expect(review?.querySelector(".teacher-task-preview > .card")).toBeInTheDocument();
   });
 
   it("客户端校验：缺少能力节点与来源资料时不发请求并给出字段错误", async () => {

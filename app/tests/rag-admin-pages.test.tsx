@@ -185,7 +185,7 @@ describe("DocumentsPage（PRD-03 §4）", () => {
     // 行标题链接到详情页
     expect(screen.getByRole("link", { name: "已索引资料" })).toHaveAttribute(
       "href",
-      "/rag-admin/documents/doc-indexed",
+      "/rag-admin/documents/doc-indexed?returnTo=%2Frag-admin",
     );
   });
 
@@ -296,7 +296,7 @@ describe("UploadPage（PRD-03 §5）", () => {
     expect(form.get("source_type")).toBe("standard");
     expect(form.get("source_name")).toBe("工业和信息化部");
     expect(form.get("license_status")).toBe("authorized");
-    expect(form.get("visibility")).toBe("teacher");
+    expect(form.get("visibility")).toBe("student");
     expect(form.getAll("data_types")).toEqual(["text"]);
     expect(form.getAll("scenario_ids")).toEqual(["SCN-CUSTOMER-SERVICE-001"]);
     expect(form.get("auto_submit")).toBe("false");
@@ -306,6 +306,41 @@ describe("UploadPage（PRD-03 §5）", () => {
       "href",
       "/rag-admin/jobs",
     );
+  });
+
+  it("选择多个文件后批量导入并自动发布", async () => {
+    mockedPostForm.mockResolvedValue({
+      files: { total: 2, imported: 2, failed: 0, queued: 2 },
+      auto_publish: true,
+    });
+    renderPage(<UploadPage />);
+    fireEvent.change(screen.getByLabelText("选择多个文件"), {
+      target: {
+        files: [
+          new File(["# one"], "one.md", { type: "text/markdown" }),
+          new File(["two"], "two.txt", { type: "text/plain" }),
+        ],
+      },
+    });
+    fireEvent.click(screen.getByRole("combobox", { name: "资料类型" }));
+    fireEvent.click(screen.getByRole("option", { name: "规范" }));
+    fireEvent.change(screen.getByPlaceholderText("例如：工业和信息化部 / 张老师"), {
+      target: { value: "工业和信息化部" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("例如：1.0"), { target: { value: "2.3" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "文本" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "授权状态" }));
+    fireEvent.click(screen.getByRole("option", { name: "已授权" }));
+    fireEvent.click(screen.getByRole("button", { name: "导入所选资料并自动发布" }));
+    await waitFor(() =>
+      expect(mockedPostForm).toHaveBeenCalledTimes(1),
+    );
+    const [path, form] = mockedPostForm.mock.calls[0] as unknown as [string, FormData];
+    expect(path).toBe("/api/rag/documents/batch-import");
+    expect(form.getAll("files").map((value) => (value as File).name)).toEqual(["one.md", "two.txt"]);
+    expect(form.get("visibility")).toBe("student");
+    expect(form.get("auto_publish")).toBe("true");
+    expect(await screen.findByText(/批量结果：共 2 个，导入 2 个/)).toBeInTheDocument();
   });
 });
 
@@ -430,16 +465,46 @@ describe("JobsPage（PRD-03 §7）", () => {
   });
 
   it("概览计数 + 失败任务可理解错误 + 重试", async () => {
-    renderPage(<JobsPage />);
+    renderPage(<JobsPage />, "/rag-admin/jobs?status=failed");
     // 概览四卡
     expect(await screen.findByText("待处理")).toBeInTheDocument();
     expect(screen.getByText("处理中")).toBeInTheDocument();
     // 失败行：资料名映射、可理解错误（§7 验收）
     expect(await screen.findByText("客服规范")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "客服规范" })).toHaveAttribute(
+      "href",
+      "/rag-admin/documents/doc1?returnTo=%2Frag-admin%2Fjobs%3Fstatus%3Dfailed",
+    );
     expect(screen.getByText(/PARSE_EMPTY_TEXT：未解析出文本/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     await waitFor(() => expect(mockedPost).toHaveBeenCalledWith("/api/rag/jobs/job-1/retry"));
     expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
+  });
+
+  it("首轮列表请求未完成时，手动刷新仍能重新加载", async () => {
+    let listRequests = 0;
+    mockedGet.mockImplementation((path: string, query?: Record<string, unknown>) => {
+      if (path === "/api/rag/jobs") {
+        if (query?.limit === 1) return Promise.resolve({ items: [], total: 0 });
+        listRequests += 1;
+        if (listRequests === 1) {
+          // Keep the first lifecycle request pending to reproduce a lost/aborted fetch.
+          return new Promise(() => undefined);
+        }
+        return Promise.resolve({ items: [FAILED_JOB], total: 1 });
+      }
+      if (path === "/api/rag/documents")
+        return Promise.resolve({ items: [makeDoc({ id: "doc1", title: "客服规范" })], total: 1 });
+      return Promise.reject(new Error(`未打桩的 GET ${path}`));
+    });
+
+    renderPage(<JobsPage />);
+    await waitFor(() => expect(listRequests).toBe(1));
+    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+
+    expect(await screen.findByText("客服规范")).toBeInTheDocument();
+    expect(listRequests).toBe(2);
+    expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
   });
 });
 
@@ -544,6 +609,24 @@ describe("SearchTestPage（PRD-03 §10）", () => {
     // 生成回答（与学生端同路径）
     expect(await screen.findByText("这是答案草稿")).toBeInTheDocument();
     expect(screen.getByText("引用来源")).toBeInTheDocument();
+  });
+
+  it("生成回答复用召回测试选中的资料集", async () => {
+    renderPage(<SearchTestPage />);
+    fireEvent.change(screen.getByPlaceholderText("例如：语音标注中情感标签的判定规则是什么？"), {
+      target: { value: "只查客服规范" },
+    });
+    fireEvent.click(screen.getByRole("combobox", { name: "召回资料集" }));
+    fireEvent.click(await screen.findByRole("option", { name: "客服规范" }));
+    fireEvent.click(screen.getByRole("button", { name: "运行召回测试" }));
+
+    expect(await screen.findByText("这是答案草稿")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(mockedPost).toHaveBeenCalledWith(
+        "/api/rag/query",
+        expect.objectContaining({ document_ids: ["d1"] }),
+      );
+    });
   });
 
   it("保存为评测用例：必须命中文档按召回预填", async () => {

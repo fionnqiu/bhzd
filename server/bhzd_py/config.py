@@ -22,9 +22,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # server/bhzd_py/config.py → parents[2] 为仓库根
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-# This value is intentionally public for local demos.  Production validation
-# rejects it so a copied example file can never silently open teacher signup.
-DEVELOPMENT_TEACHER_INVITE_CODE = "bhzd-teacher-2026"
 # A copied local sender must not become a production identity merely because an
 # SMTP host was supplied.  Development can use it for offline outbox flows.
 DEVELOPMENT_MAIL_FROM = "标航智导 <noreply@bhzd.local>"
@@ -100,11 +97,6 @@ class AppConfig(BaseSettings):
     smtp_pass: str = ""
     mail_from: str = DEVELOPMENT_MAIL_FROM
 
-    # ---- 注册 ----
-    # 教师自注册邀请码（学生注册不需要）。默认值仅用于开发/演示，
-    # 生产环境必须通过 BHZD_TEACHER_INVITE_CODE 覆盖为私有值，否则任何人都能注册教师。
-    teacher_invite_code: str = DEVELOPMENT_TEACHER_INVITE_CODE
-
     # ---- 行为开关 ----
     demo_mode: bool = False
     session_ttl_hours: int = 72
@@ -112,10 +104,20 @@ class AppConfig(BaseSettings):
     # silently delete an operator's existing teaching or audit data on upgrade.
     retention_enabled: bool = False
     retention_batch_size: int = Field(default=500, ge=1, le=5_000)
-    # Private memory is on by default for the active chat only; it is not a
-    # cross-session profile or a public knowledge-base indexing switch.
+    # L0 private memory is on by default for the active chat only.  Durable
+    # cross-session extraction stays separately controllable below and is never
+    # a public knowledge-base indexing switch.
     conversation_memory_enabled: bool = True
     conversation_memory_top_k: int = Field(default=8, ge=1, le=20)
+    # Durable memory is separately switchable from current-conversation recall:
+    # an operator can retain the established L0 behavior while disabling new
+    # cross-session extraction during a privacy review or incident response.
+    private_memory_enabled: bool = True
+    private_memory_top_k: int = Field(default=6, ge=1, le=12)
+    private_memory_candidate_limit: int = Field(default=60, ge=10, le=200)
+    private_memory_context_char_limit: int = Field(default=2400, ge=256, le=6000)
+    private_memory_atom_char_limit: int = Field(default=280, ge=80, le=800)
+    private_memory_atoms_per_message: int = Field(default=2, ge=1, le=4)
 
     # NODE_ENV 不带 BHZD_ 前缀，是旧栈沿用名，单独映射
     node_env: str = Field(default="development", validation_alias="NODE_ENV")
@@ -191,13 +193,6 @@ class AppConfig(BaseSettings):
                 load_encryption_key(self.config_encryption_key)
             except ValueError:
                 errors.append("BHZD_CONFIG_ENCRYPTION_KEY must encode 32 bytes")
-
-        invite = self.teacher_invite_code.strip()
-        if (
-            len(invite) < 16
-            or invite == DEVELOPMENT_TEACHER_INVITE_CODE
-        ):
-            errors.append("BHZD_TEACHER_INVITE_CODE must be a private value of at least 16 characters")
 
         if not self.smtp_host.strip():
             errors.append("BHZD_SMTP_HOST is required")

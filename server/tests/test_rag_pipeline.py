@@ -173,6 +173,14 @@ def test_parse_markdown_splits_on_headings():
     assert doc.blocks[0].page is None  # markdown 无页码，引用展示章节标题
 
 
+def test_parse_markdown_omits_governed_front_matter():
+    """Package metadata must not become a student-visible retrieval chunk."""
+    md = "---\nid: MAT-ONE\nvisibility: student\n---\n# 正文标题\n只应索引正文。\n"
+    doc = parse_document(md.encode("utf-8"), "md")
+    assert doc.blocks[0].section_title == "正文标题"
+    assert doc.blocks[0].text == "只应索引正文。"
+
+
 def test_parse_pdf_preserves_page_numbers():
     pdf = make_pdf_bytes(["Annotation guideline page one", "Second page of rules"])
     doc = parse_document(pdf, "pdf")

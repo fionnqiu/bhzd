@@ -1,6 +1,6 @@
 """学生端 RAG 问答路由（蓝图 §6.4，PRD-05 §4.3）。
 
-权限：require_verified_user（邮箱未验证禁止 RAG 问答，PRD-06 §3.2）+ csrf_protect。
+权限：require_student_portal_user + csrf_protect；邮箱是否验证不再作为能力门槛。
 学生强制 published_only=True——未发布资料永不进入学生召回（PRD-06 §4.4，AC4）；
 教师/管理员可显式传 published_only=false 做预览（PRD-06 §15 #7）。
 """
@@ -19,8 +19,8 @@ from ..deps import (
     CurrentUser,
     csrf_protect,
     get_db,
+    get_current_user,
     require_student_portal_user,
-    require_verified_user,
 )
 from ..rag.recall_logs import record_recall_logs
 from ..rag.retriever import answer_question
@@ -39,6 +39,9 @@ class RagQueryBody(BaseModel):
     scenario_id: str | None = None
     data_type: str | None = None
     published_only: bool = True
+    # Optional management-preview scope; student callers remain constrained by
+    # the published-only guard while the selected document set narrows recall.
+    document_ids: list[str] | None = None
 
 
 def emit_telemetry(event_name: str, props: dict) -> None:
@@ -54,7 +57,7 @@ def emit_telemetry(event_name: str, props: dict) -> None:
 @router.post("/api/rag/query")
 def rag_query(
     body: RagQueryBody,
-    current: CurrentUser = Depends(require_verified_user),
+    current: CurrentUser = Depends(get_current_user),
     _csrf: CurrentUser = Depends(csrf_protect),
     db: sqlite3.Connection = Depends(get_db),
 ) -> dict:
@@ -84,6 +87,7 @@ def rag_query(
         scenario_id=body.scenario_id,
         data_type=body.data_type,
         published_only=published_only,
+        document_ids=body.document_ids,
     )
     # 召回记录（渠道 student_query）：引用即本次实际呈现给用户的命中，
     # 拒答时引用为空自然不落记录；写库失败不影响问答（helper 内部已兜底）

@@ -315,15 +315,14 @@
   min-height: 240px;
 }
 
-/* The execution record is a compact, evidence-first spine rather than a
-   separate status card. Its border is structural: every row is a durable plan,
-   tool, confirmation, or answer event that can be reopened after completion. */
+/* The execution record borrows an AI-agent activity language, but every value
+   remains a verified lifecycle summary. The compact header folds the detailed
+   plan and operation log until the reader explicitly requests it. */
 .agent-execution-record {
   display: grid;
   min-width: 0;
-  gap: 2px;
-  border-left: 1px solid var(--color-border);
-  padding-left: 6px;
+  gap: 6px;
+  max-width: 43rem;
   color: var(--color-text-muted);
 }
 
@@ -334,15 +333,15 @@
 }
 
 .agent-execution-record-completed {
-  border-left-color: var(--color-border);
+  --agent-execution-accent: var(--color-success);
 }
 
 .agent-execution-record-waiting {
-  border-left-color: var(--color-warning);
+  --agent-execution-accent: var(--color-warning);
 }
 
 .agent-execution-record-failed {
-  border-left-color: var(--color-danger);
+  --agent-execution-accent: var(--color-danger);
 }
 
 .agent-current-action {
@@ -350,15 +349,17 @@
   width: 100%;
   min-width: 0;
   align-items: center;
-  gap: 6px;
-  border: 0;
-  border-bottom: 1px solid var(--color-border);
-  border-radius: 0;
-  background: transparent;
-  padding: 2px 0 3px;
+  gap: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: 8px 10px;
   color: var(--color-text-secondary);
   font: inherit;
   text-align: left;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    background var(--motion-fast) var(--ease-standard);
 }
 
 .agent-current-action[type="button"] {
@@ -366,7 +367,8 @@
 }
 
 .agent-current-action[type="button"]:hover {
-  border-bottom-color: var(--color-text-muted);
+  border-color: color-mix(in srgb, var(--agent-execution-accent, var(--color-primary)) 34%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary-soft) 34%, var(--color-surface));
 }
 
 .agent-current-action-copy {
@@ -386,13 +388,27 @@
 .agent-current-action-icon {
   width: 16px;
   height: 16px;
+  color: var(--agent-execution-accent, var(--color-primary));
+}
+
+.agent-current-action-icon .agent-orb {
+  width: 16px;
+  height: 16px;
+}
+
+.agent-current-action-icon .agent-orb-glyph {
+  width: 16px;
+  height: 16px;
+  padding: 2px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-primary-soft) 84%, transparent);
 }
 
 /* Keep the expanded trace visually subordinate to the answer bubble. */
 .agent-activity-row-icon svg,
 .agent-execution-plan-heading svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 .agent-current-action-running .agent-current-action-icon svg,
@@ -404,8 +420,8 @@
   display: block;
   overflow: hidden;
   color: var(--color-text-secondary);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -415,7 +431,6 @@
 .agent-current-action-stage {
   display: block;
   color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
   font-size: 11px;
   line-height: 1.2;
 }
@@ -436,8 +451,11 @@
 }
 
 .agent-activity-status {
+  display: inline-flex;
   flex: 0 0 auto;
-  padding: 0 4px;
+  align-items: center;
+  padding: 2px 6px;
+  border: 1px solid transparent;
   border-radius: var(--radius-full);
   background: var(--color-surface-muted);
   color: var(--color-text-secondary);
@@ -451,7 +469,9 @@
 }
 
 .agent-activity-status-completed {
-  color: var(--color-text-muted);
+  border-color: color-mix(in srgb, var(--color-success) 25%, transparent);
+  background: var(--color-success-soft);
+  color: var(--color-success);
 }
 
 .agent-activity-status-waiting {
@@ -478,10 +498,10 @@
 
 .agent-activity-expanded {
   display: grid;
-  gap: 4px;
-  margin: 0 0 0 7px;
+  gap: 8px;
+  margin: 0 0 0 10px;
   border-left: 1px solid var(--color-border);
-  padding: 4px 0 2px 8px;
+  padding: 2px 0 2px 12px;
 }
 
 .agent-activity-history {
@@ -495,7 +515,7 @@
   justify-content: space-between;
   color: var(--color-text-muted);
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .agent-execution-plan {
@@ -533,10 +553,23 @@
 
 .agent-activity-row {
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
-  gap: 4px;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 8px;
   min-width: 0;
-  padding: 2px 0 2px 2px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+}
+
+/* Retrieval rows use the search-result rhythm from the reference while the
+   label remains truthful: this is governed RAG retrieval, not public web use. */
+.agent-activity-row-retrieval {
+  border-color: color-mix(in srgb, var(--color-primary) 16%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary-soft) 32%, var(--color-surface));
+}
+
+.agent-activity-row-operation {
+  border-bottom-color: var(--color-border);
 }
 
 @keyframes cockpit-activity-arrive {
@@ -656,6 +689,33 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-bottom-left-radius: var(--radius-sm);
+}
+
+.bubble-assistant {
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.assistant-reply-body {
+  min-width: 0;
+}
+
+.assistant-avatar {
+  display: inline-grid;
+  flex: 0 0 28px;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-top: 1px;
+  border: 1px solid var(--teal);
+  border-radius: 50%;
+  background: var(--color-primary-soft);
+  color: var(--teal);
+}
+
+.assistant-avatar svg {
+  width: 15px;
+  height: 15px;
 }
 
 /* Assistant replies are parsed as Markdown, so their block elements need
@@ -884,6 +944,13 @@
 .confirm-gate {
   border: 2px solid var(--color-warning);
   animation: cockpit-confirm-arrive var(--motion-standard) var(--ease-out) both;
+}
+
+/* Task previews are an ordinary learning action, not an alert. Keep the
+   existing confirmation geometry while giving the explicit sync CTA primary
+   emphasis at the end of the generated task content. */
+.confirm-gate-task-sync {
+  border-color: var(--color-primary);
 }
 
 @keyframes cockpit-confirm-arrive {
@@ -1162,17 +1229,6 @@
   /* 窄屏保留可访问名称，只收起次要文字来保护可输入区域。 */
   .composer-upload-label {
     display: none;
-  }
-
-  /* A narrow transcript keeps state readable by moving the status below the
-     activity copy instead of squeezing it into an overlapping third column. */
-  .agent-activity-row {
-    grid-template-columns: 16px minmax(0, 1fr);
-  }
-
-  .agent-activity-row .agent-activity-status {
-    grid-column: 2;
-    justify-self: start;
   }
 
   .agent-current-action {
@@ -1850,6 +1906,89 @@
   color: #235f9f;
 }
 
+.cockpit-workbench .bubble-user-body {
+  display: grid;
+  min-width: 0;
+  max-width: 100%;
+  justify-items: end;
+  gap: 8px;
+}
+
+/* Sent attachments use one predictable reading width regardless of how many
+   files share a turn. `min()` keeps that cap from overflowing narrow viewports
+   or high browser zoom while preserving the message's right alignment. */
+.cockpit-workbench .message-attachment-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  width: min(100%, 200px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cockpit-workbench .message-attachment {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 56px;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.cockpit-workbench .message-attachment-thumb {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #eef2f5;
+  color: var(--ink-soft);
+}
+
+.cockpit-workbench .message-attachment-thumb-image {
+  background: #f4f6f8;
+}
+
+.cockpit-workbench .message-attachment-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cockpit-workbench .message-attachment-details {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.cockpit-workbench .message-attachment-details strong,
+.cockpit-workbench .message-attachment-details span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cockpit-workbench .message-attachment-details strong {
+  color: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cockpit-workbench .message-attachment-details span {
+  color: var(--ink-faint);
+  font-size: 11px;
+}
+
 .cockpit-workbench .message-label {
   display: block;
   margin-bottom: 5px;
@@ -1861,54 +2000,59 @@
 }
 
 .cockpit-workbench .agent-execution-record {
-  max-width: 100%;
+  max-width: min(100%, 43rem);
   border: 0;
   border-radius: 0;
   background: transparent;
 }
 
 .cockpit-workbench .agent-current-action {
-  min-height: 24px;
-  padding: 4px 0 4px 12px;
-  border: 0;
-  border-left: 2px solid #cde5e0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--ink-faint);
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink-soft);
   font-size: 12px;
 }
 
 .cockpit-workbench .agent-current-action:hover {
-  background: transparent;
-  color: var(--ink-soft);
+  border-color: #a9d5cd;
+  background: #f5fbf9;
+  color: var(--ink);
 }
 
 .cockpit-workbench .agent-current-action-icon {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--teal);
+  width: 16px;
+  height: 16px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--teal);
 }
 
-.cockpit-workbench .agent-current-action-icon svg,
+.cockpit-workbench .agent-current-action-icon .agent-orb-glyph {
+  background: #e8f6f2;
+}
+
+.cockpit-workbench .agent-current-action-copy {
+  overflow: hidden;
+}
+
+.cockpit-workbench .agent-current-action-title {
+  color: var(--ink);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 .cockpit-workbench .agent-current-action-stage,
 .cockpit-workbench .agent-activity-status,
 .cockpit-workbench .agent-activity-summary-count,
 .cockpit-workbench .agent-current-action-chevron {
-  display: none;
-}
-
-.cockpit-workbench .agent-current-action-copy {
-  overflow: visible;
-}
-
-.cockpit-workbench .agent-current-action-title {
-  overflow: visible;
-  white-space: normal;
+  color: var(--ink-faint);
 }
 
 .cockpit-workbench .agent-activity-expanded {
-  margin: 8px 0 0 14px;
+  margin: 8px 0 0 10px;
   padding: 0 0 0 12px;
   border-left: 1px solid var(--line);
 }
@@ -1945,6 +2089,13 @@
 .cockpit-workbench .agent-tool-group-toggle {
   color: var(--ink-soft);
   font-size: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-current-action-running .agent-current-action-icon svg,
+  .agent-activity-row-running .agent-activity-row-icon svg {
+    animation: none;
+  }
 }
 
 .cockpit-workbench .cockpit-runtime-context {
@@ -1987,6 +2138,209 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+/* Attachment cards remain inside the draft surface. The four-column desktop
+   grid caps each card below one quarter of the usable input width, including
+   grid gaps, while narrower screens prioritize readable file titles. */
+.cockpit-workbench .composer-media-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  max-height: 216px;
+  margin: 0 0 10px;
+  overflow-y: auto;
+}
+
+.cockpit-workbench .composer-media-preview {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 64px;
+}
+
+.cockpit-workbench .composer-media-open {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 24px 5px 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafb;
+  color: var(--ink);
+  text-align: left;
+}
+
+.cockpit-workbench .composer-media-open:hover {
+  border-color: #9dbde2;
+  background: #f3f8fe;
+}
+
+.cockpit-workbench .composer-media-thumb {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #eef2f5;
+  color: var(--ink-soft);
+}
+
+.cockpit-workbench .composer-media-thumb-image {
+  background: #f4f6f8;
+}
+
+.cockpit-workbench .composer-media-thumb img,
+.cockpit-workbench .composer-media-thumb video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cockpit-workbench .composer-media-details {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.cockpit-workbench .composer-media-details strong,
+.cockpit-workbench .composer-media-details span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cockpit-workbench .composer-media-details strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cockpit-workbench .composer-media-details span {
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.cockpit-workbench .composer-media-uploading {
+  align-items: center;
+  gap: 8px;
+  padding: 5px 24px 5px 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafb;
+}
+
+.cockpit-workbench .composer-media-uploading .spinner {
+  border-color: #b8c5d3;
+  border-top-color: var(--accent);
+}
+
+.cockpit-workbench .composer-media-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ink-soft);
+  box-shadow: 0 2px 6px rgba(26, 39, 52, 0.14);
+}
+
+.cockpit-workbench .composer-media-remove:hover {
+  border-color: #ffccc7;
+  background: #fff2f0;
+  color: #cf1322;
+}
+
+.cockpit-workbench .composer-file-preview {
+  position: relative;
+  display: grid;
+  min-height: min(64vh, 620px);
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f7f9fb;
+}
+
+.cockpit-workbench .composer-file-preview > img,
+.cockpit-workbench .composer-file-preview > video,
+.cockpit-workbench .composer-file-preview > iframe {
+  display: block;
+  width: 100%;
+  height: min(64vh, 620px);
+  border: 0;
+}
+
+.cockpit-workbench .composer-file-preview > img {
+  height: auto;
+  max-height: min(64vh, 620px);
+  object-fit: contain;
+}
+
+.cockpit-workbench .composer-file-preview > audio {
+  width: min(460px, calc(100% - 32px));
+}
+
+.cockpit-workbench .composer-document-preview {
+  width: 100%;
+  height: min(64vh, 620px);
+  overflow: auto;
+  padding: 18px;
+}
+
+.cockpit-workbench .composer-document-preview pre {
+  margin: 0;
+  color: var(--ink);
+  font: 13px/1.6 var(--font-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.cockpit-workbench .composer-document-preview p {
+  margin: 16px 0 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.cockpit-workbench .composer-file-preview-loading {
+  position: absolute;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.cockpit-workbench .composer-file-preview-unavailable {
+  max-width: 360px;
+  margin: 24px;
+  color: var(--ink-soft);
+  line-height: 1.65;
+  text-align: center;
+}
+
+.cockpit-workbench .composer-hero.composer-has-media {
+  height: auto;
+  min-height: 256px;
+}
+
+.cockpit-workbench .composer:not(.composer-hero).composer-has-media {
+  min-height: 190px;
 }
 
 .cockpit-workbench .composer-hero .composer-input-shell {
@@ -2170,6 +2524,16 @@
     padding: 14px 12px 0;
   }
 
+  .cockpit-workbench .composer-hero.composer-has-media {
+    height: auto;
+    min-height: 236px;
+  }
+
+  .cockpit-workbench .composer-media-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: 204px;
+  }
+
   .cockpit-workbench .composer-input-shell,
   .cockpit-workbench .composer-hero .composer-input-shell {
     min-height: 0;
@@ -2183,6 +2547,15 @@
   .cockpit-workbench .bubble,
   .cockpit-workbench .bubble-user {
     max-width: 100%;
+  }
+
+  .cockpit-workbench .bubble-user-body {
+    width: 100%;
+  }
+
+  .cockpit-workbench .message-attachment-strip {
+    grid-template-columns: minmax(0, 1fr);
+    width: min(100%, 200px);
   }
 }
 
@@ -2276,5 +2649,452 @@ html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] .composer
 @media (max-width: 560px) {
   .cockpit.cockpit-workbench {
     min-height: 0;
+  }
+}
+
+/* ---------------------------------------------------------------- AIcss */
+/* These narrow overrides borrow the free AIcss primitives: a restrained agent
+   identity, shimmer-only processing state, streaming caret, and compact task
+   list. They deliberately render only durable run states, never model thought. */
+.cockpit-workbench .bubble-assistant {
+  align-items: flex-start;
+  gap: 10px;
+  max-width: min(100%, 46rem);
+}
+
+.cockpit-workbench .assistant-reply-body {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.cockpit-workbench .assistant-avatar {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  flex-basis: 30px;
+  margin-top: 2px;
+  border-color: var(--line);
+  border-radius: 8px;
+  background: #edf7f5;
+  box-shadow: 0 1px 2px rgba(18, 79, 72, 0.1);
+  color: #19776d;
+}
+
+.cockpit-workbench .assistant-avatar::after {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--surface);
+  border-radius: 50%;
+  background: #e1a13c;
+  content: "";
+}
+
+.cockpit-workbench .message-label {
+  margin-bottom: 4px;
+  color: var(--ink-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.cockpit-workbench .bubble-markdown {
+  color: var(--ink-soft);
+}
+
+.cockpit-workbench .bubble-cursor {
+  width: 7px;
+  height: 1.05em;
+  margin-left: 3px;
+  background: var(--ink);
+  animation: none;
+}
+
+/* The shared AIcss-inspired reasoning shell aligns with assistant content but
+   remains a safe lifecycle label rather than a hidden-thought transcript. */
+.cockpit-workbench .agent-thinking-reasoning {
+  margin: -4px 0 2px 40px;
+}
+
+.cockpit-workbench .agent-task-list {
+  max-width: min(100%, 43rem);
+}
+
+.cockpit-workbench .bubble-markdown table {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.cockpit-workbench .bubble-markdown th,
+.cockpit-workbench .bubble-markdown td {
+  border-color: var(--line);
+  padding: 7px 10px;
+}
+
+.cockpit-workbench .bubble-markdown th {
+  background: var(--surface-soft);
+  color: var(--ink-soft);
+}
+
+@media (max-width: 560px) {
+  .cockpit-workbench .assistant-avatar {
+    width: 28px;
+    height: 28px;
+    flex-basis: 28px;
+  }
+
+  .cockpit-workbench .agent-thinking-reasoning {
+    margin-left: 38px;
+  }
+}
+
+/* Present the reviewed execution summary as one reading surface like the
+   reference panel. The record remains a lifecycle projection: this visual
+   treatment must never turn private model reasoning into transcript content. */
+.cockpit-workbench .agent-execution-record {
+  --agent-record-indent: 40px;
+  width: min(calc(100% - var(--agent-record-indent)), 46rem);
+  max-width: min(calc(100% - var(--agent-record-indent)), 46rem);
+  margin: 0 0 0 var(--agent-record-indent);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7f8fa;
+  color: var(--ink-soft);
+}
+
+.cockpit-workbench .agent-execution-record .agent-current-action {
+  min-height: 52px;
+  align-items: center;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+}
+
+.cockpit-workbench .agent-execution-record .agent-current-action:hover {
+  border-color: transparent;
+  background: #eef3f8;
+}
+
+.cockpit-workbench .agent-execution-record .agent-current-action-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border-radius: 50%;
+  background: #e3efff;
+  color: #3286ed;
+}
+
+.cockpit-workbench .agent-execution-record .agent-current-action-icon .agent-orb,
+.cockpit-workbench .agent-execution-record .agent-current-action-icon .agent-orb-glyph {
+  width: 22px;
+  height: 22px;
+  flex-basis: 22px;
+  border-radius: 50%;
+}
+
+.cockpit-workbench .agent-execution-record .agent-current-action-icon .agent-orb-glyph {
+  gap: 2px;
+  padding: 5px;
+  background: #5d9ff4;
+  color: #fff;
+}
+
+.cockpit-workbench .agent-execution-record .agent-current-action-icon .agent-orb-dot {
+  opacity: 0.88;
+}
+
+.cockpit-workbench .agent-execution-record .agent-current-action-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.cockpit-workbench .agent-execution-record .agent-current-action-stage {
+  color: var(--ink-faint);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.cockpit-workbench .agent-execution-record .agent-current-action-title {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.cockpit-workbench .agent-execution-record .agent-current-action .agent-activity-status {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-faint);
+  font-size: 12px;
+}
+
+.cockpit-workbench .agent-execution-record .agent-current-action-chevron {
+  color: var(--ink-faint);
+}
+
+/* The body shares the header surface instead of nesting a second card. The
+   inset keeps safe activity text aligned with the header copy on wide screens. */
+.cockpit-workbench .agent-execution-record .agent-activity-expanded {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  border: 0;
+  padding: 0 16px 16px 58px;
+  background: transparent;
+}
+
+.cockpit-workbench .agent-execution-record .agent-task-list,
+.cockpit-workbench .agent-execution-record .agent-activity-history {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.cockpit-workbench .agent-execution-record .agent-task-list-head {
+  padding: 0 0 8px;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+}
+
+.cockpit-workbench .agent-execution-record .agent-task-list-items {
+  gap: 8px;
+  padding: 8px 0 0;
+}
+
+.cockpit-workbench .agent-execution-record .agent-activity-history {
+  padding: 0;
+}
+
+.cockpit-workbench .agent-execution-record .agent-activity-history-heading {
+  margin-bottom: 4px;
+  color: var(--ink-faint);
+}
+
+.cockpit-workbench .agent-execution-record .agent-activity-row,
+.cockpit-workbench .agent-execution-record .agent-tool-group {
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: 0;
+  background: transparent;
+}
+
+.cockpit-workbench .agent-execution-record .agent-activity-row {
+  padding: 7px 0;
+}
+
+.cockpit-workbench .agent-execution-record .agent-activity-row-primary {
+  gap: 6px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.cockpit-workbench .agent-execution-record .agent-activity-detail,
+.cockpit-workbench .agent-execution-record .agent-activity-meta {
+  color: var(--ink-faint);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.cockpit-workbench .agent-execution-record .agent-tool-group-toggle {
+  padding: 7px 0;
+  color: var(--ink-soft);
+}
+
+@media (max-width: 560px) {
+  .cockpit-workbench .agent-execution-record {
+    --agent-record-indent: 38px;
+  }
+
+  .cockpit-workbench .agent-execution-record .agent-current-action {
+    min-height: 48px;
+    padding: 9px 11px;
+  }
+
+  .cockpit-workbench .agent-execution-record .agent-activity-expanded {
+    padding: 0 12px 12px;
+  }
+
+  .cockpit-workbench .agent-execution-record .agent-current-action-title {
+    white-space: normal;
+  }
+}
+
+/* Keep the summary row invariant while its details open below it. A single
+   compact line lets both states share the same 33px geometry without clipping
+   the status or relying on a second, taller mobile rule. */
+.cockpit-workbench .agent-execution-record .agent-activity-expanded[hidden] {
+  /* The generic expanded layout uses display:grid; restore the native hidden
+     contract so a folded record does not reserve an empty detail strip. */
+  display: none;
+}
+
+.cockpit-workbench .agent-execution-record .agent-current-action[aria-expanded] {
+  box-sizing: border-box;
+  width: 100%;
+  height: 33px;
+  min-height: 33px;
+  gap: 4px;
+  overflow: hidden;
+  padding: 2px 8px;
+}
+
+.cockpit-workbench
+  .agent-execution-record
+  .agent-current-action[aria-expanded]
+  .agent-current-action-icon {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+}
+
+.cockpit-workbench
+  .agent-execution-record
+  .agent-current-action[aria-expanded]
+  .agent-current-action-icon
+  .agent-orb,
+.cockpit-workbench
+  .agent-execution-record
+  .agent-current-action[aria-expanded]
+  .agent-current-action-icon
+  .agent-orb-glyph {
+  width: 16px;
+  height: 16px;
+  flex-basis: 16px;
+}
+
+.cockpit-workbench
+  .agent-execution-record
+  .agent-current-action[aria-expanded]
+  .agent-current-action-icon
+  .agent-orb-glyph {
+  padding: 3px;
+}
+
+.cockpit-workbench
+  .agent-execution-record
+  .agent-current-action[aria-expanded]
+  .agent-current-action-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: baseline;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.cockpit-workbench
+  .agent-execution-record
+  .agent-current-action[aria-expanded]
+  .agent-current-action-stage {
+  flex: 0 0 auto;
+  font-size: 9px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.cockpit-workbench
+  .agent-execution-record
+  .agent-current-action[aria-expanded]
+  .agent-current-action-title {
+  min-width: 0;
+  flex: 1 1 auto;
+  font-size: 12px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.cockpit-workbench
+  .agent-execution-record
+  .agent-current-action[aria-expanded]
+  .agent-activity-status,
+.cockpit-workbench
+  .agent-execution-record
+  .agent-current-action[aria-expanded]
+  .agent-activity-summary-count {
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.cockpit-workbench
+  .agent-execution-record
+  .agent-current-action[aria-expanded]
+  .agent-current-action-chevron {
+  width: 12px;
+  height: 12px;
+}
+
+/* Expanded controls use the same compact rhythm as the fixed summary row, so
+   opening a record adds only its content and does not introduce oversized rows. */
+.cockpit-workbench .agent-execution-record .agent-activity-expanded {
+  gap: 8px;
+  padding: 0 12px 10px 46px;
+}
+
+.cockpit-workbench .agent-execution-record .agent-task-list-head {
+  padding-bottom: 6px;
+}
+
+.cockpit-workbench .agent-execution-record .agent-task-list-items {
+  gap: 6px;
+  padding-top: 6px;
+}
+
+.cockpit-workbench .agent-execution-record .agent-activity-history-heading {
+  margin-bottom: 2px;
+  font-size: 10px;
+}
+
+.cockpit-workbench .agent-execution-record .agent-activity-row {
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 6px;
+  padding: 5px 0;
+}
+
+.cockpit-workbench .agent-execution-record .agent-activity-row-icon svg,
+.cockpit-workbench .agent-execution-record .agent-execution-plan-heading svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cockpit-workbench .agent-execution-record .agent-activity-row-primary {
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.cockpit-workbench .agent-execution-record .agent-activity-detail,
+.cockpit-workbench .agent-execution-record .agent-activity-meta {
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.cockpit-workbench .agent-execution-record .agent-tool-group-toggle {
+  gap: 3px;
+  padding: 5px 0;
+  font-size: 12px;
+}
+
+.cockpit-workbench .agent-execution-record .agent-tool-group-toggle svg {
+  width: 13px;
+  height: 13px;
+}
+
+@media (max-width: 560px) {
+  .cockpit-workbench .agent-execution-record .agent-activity-expanded {
+    padding: 0 8px 8px 34px;
   }
 }

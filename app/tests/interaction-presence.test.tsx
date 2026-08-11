@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import Drawer from "../src/components/Drawer";
@@ -190,5 +191,15 @@ describe("shared interaction presence", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "History" }));
     expect(onChange).toHaveBeenCalledWith("history");
+  });
+
+  it("keeps tabs in one horizontal row and every command button on one line", () => {
+    // Source-level assertions protect the shared CSS contract even though
+    // jsdom cannot calculate overflow or line wrapping from a real viewport.
+    const css = readFileSync("src/index.css", "utf8");
+
+    expect(css).toMatch(/button\s*\{[^}]*white-space:\s*nowrap;/s);
+    expect(css).toMatch(/\.tabs\s*\{[^}]*flex-wrap:\s*nowrap;[^}]*overflow-x:\s*auto;/s);
+    expect(css).toMatch(/\.tab\s*\{[^}]*flex:\s*0\s+0\s+auto;[^}]*white-space:\s*nowrap;/s);
   });
 });

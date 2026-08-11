@@ -24,6 +24,7 @@ export default function Tabs({ tabs, active, onChange }: TabsProps) {
           className={["tab", tab.key === active ? "active" : ""]
             .filter(Boolean)
             .join(" ")}
+          title={tab.label}
           onClick={() => onChange(tab.key)}
         >
           {tab.label}

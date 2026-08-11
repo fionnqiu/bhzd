@@ -32,11 +32,15 @@ export function useDiagnosticUpload(scenarioId: string) {
       // 客户端预检（服务端仍会再校验；这里是为了即刻反馈）
       const lower = file.name.toLowerCase();
       if (!ALLOWED_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
-        setError("仅支持 JSON / TextGrid / VOC XML 标注文件");
+        const message = "仅支持 JSON / TextGrid / VOC XML 标注文件";
+        setError(message);
+        toast.error(message);
         return;
       }
       if (file.size > MAX_UPLOAD_BYTES) {
-        setError("文件超过 20MB 上限，请拆分或压缩后再上传");
+        const message = "文件超过 20MB 上限，请拆分或压缩后再上传";
+        setError(message);
+        toast.error(message);
         return;
       }
       setUploading(true);
@@ -52,16 +56,15 @@ export function useDiagnosticUpload(scenarioId: string) {
         // 埋点 diagnostic_uploaded 由后端路由写入（避免前后端重复计数）
         setReport(result);
       } catch (err) {
-        setError(
-          err instanceof ApiRequestError
-            ? err.message
-            : "上传失败，请检查网络后重试",
-        );
+        const message =
+          err instanceof ApiRequestError ? err.message : "上传失败，请检查网络后重试";
+        setError(message);
+        toast.error(message);
       } finally {
         setUploading(false);
       }
     },
-    [],
+    [toast],
   );
 
   /** 保存诊断摘要（确认弹窗通过后调用； mastery_preview 已在报告里展示过） */

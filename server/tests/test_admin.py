@@ -518,6 +518,7 @@ def test_provider_crud_and_key_never_echoed(admin_client):
     assert resp.status_code == 201, resp.text
     created = resp.json()
     assert created["api_key_set"] is True
+    assert created["api_key_masked"] == "********"
     assert "api_key" not in created
     assert created["role"] == "none"
 
@@ -526,6 +527,7 @@ def test_provider_crud_and_key_never_echoed(admin_client):
     body = resp.json()
     assert body["total"] == 1
     assert "api_key" not in body["items"][0]
+    assert body["items"][0]["api_key_masked"] == "********"
     # 整个响应体的序列化里也不得出现密钥明文
     assert "sk-test-key-123" not in resp.text
 
@@ -535,6 +537,7 @@ def test_provider_crud_and_key_never_echoed(admin_client):
     assert resp.status_code == 200
     assert resp.json()["name"] == "新名字"
     assert resp.json()["timeout_seconds"] == 15
+    assert resp.json()["api_key_masked"] == "********"
 
     # 管理端流式探测已被移除，旧接口不得继续触发供应商调用。
     assert admin_client.post(f"/api/admin/providers/{created['id']}/stream-test").status_code == 404
@@ -602,6 +605,74 @@ def test_provider_test_endpoint_records_last_test(admin_client, monkeypatch):
     listed = admin_client.get("/api/admin/providers").json()["items"][0]
     assert listed["last_test"]["ok"] is True
     assert listed["last_test"]["role"] == "primary"
+
+
+def test_provider_test_endpoint_reuses_server_stored_key(admin_client, monkeypatch):
+    """Connection tests decrypt the saved credential server-side, never from form input."""
+    captured: dict[str, str] = {}
+
+    async def fake_test(row):
+        captured["api_key"] = providers.decrypt_key(row)
+        return {
+            "ok": True,
+            "role": row["role"],
+            "latency_ms": 5,
+            "model": row["model"],
+            "error": None,
+            "tested_at": "2026-08-08T00:00:00+00:00",
+        }
+
+    monkeypatch.setattr(providers, "test_provider", fake_test)
+    secret = "sk-server-stored-test-key"
+    created = _create_provider(admin_client, api_key=secret).json()
+    response = admin_client.post(f"/api/admin/providers/{created['id']}/test")
+
+    assert response.status_code == 200, response.text
+    assert captured == {"api_key": secret}
+    assert secret not in response.text
+
+
+def test_saved_provider_model_probe_reuses_key_without_persisting_selection(admin_client, monkeypatch):
+    """Editing a model probes the selected value, not the stale database row."""
+    captured: dict[str, object] = {}
+
+    async def fake_transient(protocol, base_url, api_key, model, role="none", extra=None):
+        captured.update(
+            {
+                "protocol": protocol,
+                "base_url": base_url,
+                "api_key": api_key,
+                "model": model,
+                "role": role,
+                "extra": extra,
+            }
+        )
+        return {
+            "ok": True,
+            "role": role,
+            "latency_ms": 7,
+            "model": model,
+            "error": None,
+            "tested_at": "2026-08-10T00:00:00+00:00",
+        }
+
+    monkeypatch.setattr(providers, "test_transient_provider", fake_transient)
+    secret = "sk-saved-model-probe"
+    created = _create_provider(admin_client, api_key=secret, model="old-model", role="primary").json()
+
+    response = admin_client.post(
+        f"/api/admin/providers/{created['id']}/test-connection",
+        json={"model": "new-model"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert captured["api_key"] == secret
+    assert captured["model"] == "new-model"
+    assert captured["role"] == "primary"
+    assert secret not in response.text
+    listed = admin_client.get("/api/admin/providers").json()["items"][0]
+    assert listed["model"] == "old-model"
+    assert listed["last_test"] is None
 
 
 def test_provider_test_allows_enabled_unassigned_role_and_rejects_disabled(admin_client, monkeypatch):
