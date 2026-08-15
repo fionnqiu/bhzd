@@ -8,7 +8,6 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { AuthProvider } from "../src/auth/AuthContext";
-import { ScenarioProvider } from "../src/app/ScenarioContext";
 import { routes } from "../src/app/router";
 import { ToastProvider } from "../src/components";
 import type { User } from "../src/api/types";
@@ -69,9 +68,7 @@ describe("Agent 内置标注诊断", () => {
     render(
       <ToastProvider>
         <AuthProvider>
-          <ScenarioProvider>
-            <RouterProvider router={router} />
-          </ScenarioProvider>
+          <RouterProvider router={router} />
         </AuthProvider>
       </ToastProvider>,
     );
@@ -88,9 +85,7 @@ describe("Agent 内置标注诊断", () => {
     render(
       <ToastProvider>
         <AuthProvider>
-          <ScenarioProvider>
-            <RouterProvider router={router} />
-          </ScenarioProvider>
+          <RouterProvider router={router} />
         </AuthProvider>
       </ToastProvider>,
     );

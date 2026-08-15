@@ -35,3 +35,14 @@ For every Codex task, append one entry to `E:\ObsidianWorkSpace\logs\codex\Work 
 
 ---
 ```
+
+## Backend Verification and Automatic Restart
+
+When backend code, configuration, dependencies, migrations, or backend tests are changed:
+
+- Run focused tests for the affected behavior, then run the backend suite from `server` with `uv run pytest -q`. Add compile, type, or lint checks when the changed surface requires them.
+- Do not restart a backend whose required self-checks fail. Fix only in-scope failures, rerun the checks, and preserve unrelated worktree changes.
+- After all required checks pass, identify the listener on `127.0.0.1:8787` with `Get-NetTCPConnection`, then map its PID to `Win32_Process` command line, parent chain, and working directory. Restart only a process confirmed to be this BHZD checkout; never stop a shared or unidentified service.
+- Start the latest backend from the project `server` directory. Record the old and new PID, command line, and restart time in the task logs.
+- After restarting, verify `GET /api/health` and the API routes affected by the change. If the new listener, health check, or key API check fails, report the failure and retain diagnostic logs; do not claim the service is ready.
+- Frontend-only or documentation-only changes do not trigger a backend restart unless the task brief explicitly includes one.

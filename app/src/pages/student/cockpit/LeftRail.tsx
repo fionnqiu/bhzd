@@ -41,7 +41,6 @@ export function WorkbenchNewSession({
     >
       <MessageSquarePlus size={16} aria-hidden="true" />
       <span className="workbench-new-session-label">新建会话</span>
-      {/* Ctrl K is a visual design hint only; the shell does not claim a global shortcut. */}
       <kbd
         id="newSessionKeyboardHint"
         className="workbench-new-session-hint"

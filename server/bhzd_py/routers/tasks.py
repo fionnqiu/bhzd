@@ -20,19 +20,50 @@ import json
 import re
 import sqlite3
 import uuid
+import asyncio
+import datetime as dt
+import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
+from ..config import get_config
+from ..db import connect as db_connect
 from ..db import utc_now_iso
 from ..deps import CurrentUser, csrf_protect, get_current_user, get_db, require_student_portal_user
 from ..errors import ApiError
 from ..mastery import service as mastery_service
 
+logger = logging.getLogger(__name__)
+
+# Keep references to detached grading workers until they finish.  Without this
+# set an event loop is allowed to garbage-collect a task before it writes its
+# terminal status, leaving a submission stuck at ``grading``.
+_BACKGROUND_TASKS: set[asyncio.Task] = set()
+
+def _task_portal_boundary(
+    request: Request,
+    current: CurrentUser = Depends(get_current_user),
+) -> CurrentUser:
+    """Keep learner routes student-scoped while allowing the internal grader hook.
+
+    The router-level dependency is intentional: it prevents a teacher session
+    from reaching student task state even when the SPA guard is bypassed. The
+    one exception is the internal grading trigger, which is explicitly limited
+    to administrator roles and still performs its own status validation.
+    """
+
+    if request.url.path == "/api/internal/grade-submission":
+        if current.user["role"] in {"system_admin", "content_admin"}:
+            return current
+        raise ApiError(403, "FORBIDDEN", "无权执行内部评阅")
+    return require_student_portal_user(current)
+
+
 # Student-owned task state must enforce the same boundary as the student shell,
 # rather than relying only on the client-side route guard.
-router = APIRouter(dependencies=[Depends(require_student_portal_user)])
+router = APIRouter(dependencies=[Depends(_task_portal_boundary)])
 
 # 状态机合法迁移表（动作 → (源状态集, 目标状态)）
 _TRANSITIONS: dict[str, tuple[set[str], str]] = {
@@ -273,7 +304,6 @@ def _task_summary(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
         "title": row["title"],
         "goal": row["goal"],
         "data_type": row["data_type"],
-        "scenario_id": row["scenario_id"],
         "cap_ids": _task_json(row, "cap_ids_json", []),
         "source": row["source"],
         "status": row["status"],
@@ -283,7 +313,170 @@ def _task_summary(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
         "due_at": row["due_at"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
+        "content_status": row["content_status"] if "content_status" in row.keys() else "none",
     }
+
+
+def _task_content_status(row: sqlite3.Row) -> str:
+    """Read the additive content state while remaining compatible with old rows."""
+
+    return str(row["content_status"] or "none") if "content_status" in row.keys() else "none"
+
+
+def _knowledge_point_dto(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "content": row["content"],
+        "sort_order": row["sort_order"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def _exercise_dto(
+    row: sqlite3.Row,
+    submission: sqlite3.Row | None = None,
+) -> dict[str, Any]:
+    """Return an exercise without its private reference answer."""
+
+    options = _json_value(row["options_json"], None)
+    result: dict[str, Any] = {
+        "id": row["id"],
+        "question": row["question"],
+        "type": row["type"],
+        "options": options if isinstance(options, list) else None,
+        "sort_order": row["sort_order"],
+        "created_at": row["created_at"],
+    }
+    if submission is not None:
+        result["submission"] = {
+            "id": submission["id"],
+            "answer": submission["answer"],
+            "grade_status": submission["grade_status"],
+            "score": submission["score"],
+            "feedback": submission["feedback"],
+            "graded_at": submission["graded_at"],
+            "created_at": submission["created_at"],
+        }
+    else:
+        result["submission"] = None
+    return result
+
+
+def _student_content(
+    conn: sqlite3.Connection,
+    task_id: str,
+    student_id: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    points = conn.execute(
+        "SELECT * FROM task_knowledge_points WHERE task_id = ? ORDER BY sort_order, id",
+        (task_id,),
+    ).fetchall()
+    exercises = conn.execute(
+        "SELECT * FROM task_exercises WHERE task_id = ? ORDER BY sort_order, id",
+        (task_id,),
+    ).fetchall()
+    visible_exercises: list[dict[str, Any]] = []
+    for exercise in exercises:
+        submission = conn.execute(
+            "SELECT * FROM task_exercise_submissions "
+            "WHERE exercise_id = ? AND student_id = ? "
+            # ``created_at`` has second-level SQLite precision and UUIDs are
+            # random, so rowid is the only stable tie-breaker for two rapid
+            # submissions from the same student.
+            "ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            (exercise["id"], student_id),
+        ).fetchone()
+        visible_exercises.append(_exercise_dto(exercise, submission))
+    return [_knowledge_point_dto(point) for point in points], visible_exercises
+
+
+def _parse_grade_response(value: Any) -> tuple[int, str]:
+    """Normalize provider output into a bounded score and safe feedback text."""
+
+    text = str(value or "").strip()
+    payload: Any = None
+    try:
+        payload = json.loads(text)
+    except (TypeError, json.JSONDecodeError):
+        match = re.search(r"(?:score|得分)\s*[:：]\s*(\d{1,3})", text, re.IGNORECASE)
+        score = int(match.group(1)) if match else 0
+        return max(0, min(100, score)), text[:2000]
+    if isinstance(payload, dict):
+        score_value = payload.get("score", payload.get("得分", 0))
+        feedback = payload.get("feedback", payload.get("评语", payload.get("comment", "")))
+    else:
+        score_value, feedback = 0, text
+    try:
+        score = int(float(score_value))
+    except (TypeError, ValueError):
+        score = 0
+    return max(0, min(100, score)), str(feedback or "")[:2000]
+
+
+async def _grade_submission_async(submission_id: str) -> None:
+    """Grade one submission off-request and always persist a terminal state."""
+
+    conn = db_connect(get_config().resolved_database_path)
+    try:
+        submission = conn.execute(
+            "SELECT s.*, e.question, e.reference_answer FROM task_exercise_submissions s "
+            "JOIN task_exercises e ON e.id = s.exercise_id WHERE s.id = ?",
+            (submission_id,),
+        ).fetchone()
+        if submission is None:
+            return
+        conn.execute(
+            "UPDATE task_exercise_submissions SET grade_status = 'grading' WHERE id = ?",
+            (submission_id,),
+        )
+        conn.commit()
+        from ..agent import providers
+
+        response = await providers.complete(
+            [
+                {
+                    "role": "system",
+                    "content": "请只返回 JSON：{\"score\":0-100,\"feedback\":\"简短中文评语\"}。",
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"题目：{submission['question']}\n参考答案：{submission['reference_answer'] or ''}\n"
+                        f"学生答案：{submission['answer']}"
+                    ),
+                },
+            ],
+            role="grader",
+        )
+        if not response or not response.get("text"):
+            raise RuntimeError("grader_unavailable")
+        score, feedback = _parse_grade_response(response["text"])
+        conn.execute(
+            "UPDATE task_exercise_submissions SET grade_status = 'done', score = ?, "
+            "feedback = ?, graded_at = ? WHERE id = ?",
+            (score, feedback, dt.datetime.now(dt.timezone.utc).isoformat(), submission_id),
+        )
+        conn.commit()
+    except Exception:
+        logger.warning("task exercise grading failed", exc_info=True)
+        try:
+            conn.execute(
+                "UPDATE task_exercise_submissions SET grade_status = 'failed' WHERE id = ?",
+                (submission_id,),
+            )
+            conn.commit()
+        except Exception:
+            logger.warning("task exercise failure status could not be persisted", exc_info=True)
+    finally:
+        conn.close()
+
+
+def _schedule_background(coro) -> None:
+    task = asyncio.create_task(coro)
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
 
 
 def _mastery_preview_for_score(
@@ -303,12 +496,11 @@ def _mastery_preview_for_score(
         return []
 
     delta = mastery_service.exercise_delta(float(score))
-    scenario_id = task_row["scenario_id"] or ""
     return mastery_service.preview_from_deltas(
         conn,
         user_id,
         [
-            {"cap_id": str(cap_id), "scenario_id": scenario_id, "delta": delta}
+            {"cap_id": str(cap_id), "delta": delta}
             for cap_id in cap_ids
         ],
     )
@@ -459,7 +651,6 @@ class TaskCreateBody(BaseModel):
     title: str
     goal: str | None = None
     data_type: str | None = None
-    scenario_id: str | None = None
     cap_ids: list[str] = []
     steps: list[dict] = []
     resources: list[dict] = []
@@ -484,6 +675,39 @@ class ApplyMasteryBody(BaseModel):
 class BatchBody(BaseModel):
     ids: list[str]
     action: str  # 目前仅支持 'archive'（PRD-01 §6.1 批量操作）
+
+
+class KnowledgePointBody(BaseModel):
+    title: str
+    content: str
+    sort_order: int = 0
+
+
+class ExerciseBody(BaseModel):
+    question: str
+    type: str = "open_ended"
+    options: list[str] | None = None
+    reference_answer: str | None = None
+    sort_order: int = 0
+
+
+class ExerciseSubmitBody(BaseModel):
+    answer: str
+
+
+class StartLearningBody(BaseModel):
+    cap_node_id: str
+    # Creation always queues content.  This legacy flag remains only to make
+    # an explicit retry of a previously failed generation distinguishable.
+    generate_content: bool = False
+    # Task-detail retries need to target the task the learner is viewing.  The
+    # graph entry point omits this field and keeps the original capability-based
+    # create-or-reuse behavior.
+    task_id: str | None = None
+
+
+class InternalGradeBody(BaseModel):
+    submission_id: str
 
 
 # ---------------------------------------------------------------- 端点
@@ -531,10 +755,10 @@ def create_task(
     conn.execute(
         """
         INSERT INTO learning_tasks
-          (id, user_id, title, goal, data_type, scenario_id, cap_ids_json, source,
+          (id, user_id, title, goal, data_type, cap_ids_json, source,
            status, steps_json, resources_json, counts_toward_mastery, created_by,
            created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'not_started', ?, ?, 1, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'not_started', ?, ?, 1, ?, ?, ?)
         """,
         (
             task_id,
@@ -542,11 +766,12 @@ def create_task(
             body.title.strip(),
             body.goal,
             body.data_type,
-            body.scenario_id,
             json.dumps(body.cap_ids, ensure_ascii=False),
             source,
             json.dumps(body.steps, ensure_ascii=False),
-            json.dumps(body.resources, ensure_ascii=False),
+            # New tasks keep the legacy resources column empty.  Historical
+            # rows are still exposed by task_detail for backward compatibility.
+            "[]",
             current.user["id"],
             now,
             now,
@@ -554,6 +779,11 @@ def create_task(
     )
     conn.commit()
     _track(conn, current.user["id"], "task_created", {"task_id": task_id, "source": source})
+    # All direct learner-created tasks, including preset/diagnostic handoffs,
+    # enter the same asynchronous content-generation lifecycle immediately.
+    from ..tools.task_tools import queue_task_content
+
+    queue_task_content(conn, task_id)
     row = _get_own_task(conn, task_id, current.user["id"])
     return _task_summary(conn, row)
 
@@ -564,8 +794,15 @@ def task_detail(
     current: CurrentUser = Depends(get_current_user),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
-    """学生任务详情：学习材料、无答案键的评分项和可恢复的最近提交。"""
+    """学生任务详情：学习内容、无答案键的评分项和可恢复的最近提交。"""
     row = _get_own_task(conn, task_id, current.user["id"])
+    # Historical rows may predate automatic content generation.  Queue them
+    # on first detail read so no learner has to press a manual generate button.
+    if _task_content_status(row) == "none":
+        from ..tools.task_tools import queue_task_content
+
+        queue_task_content(conn, task_id)
+        row = _get_own_task(conn, task_id, current.user["id"])
     cap_ids = _task_json(row, "cap_ids_json", [])
     names = _cap_names()
     caps = [{"cap_id": cid, "cap_name": names.get(cid, cid)} for cid in cap_ids]
@@ -594,6 +831,7 @@ def task_detail(
         (task_id,),
     ).fetchall()
     latest_attempt = _latest_attempt(conn, task_id)
+    knowledge_points, exercises = _student_content(conn, task_id, current.user["id"])
     return {
         **_task_summary(conn, row),
         "steps": _task_json(row, "steps_json", []),
@@ -610,7 +848,209 @@ def task_detail(
         "parent_task_id": row["parent_task_id"],
         "attempts": [dict(a) for a in attempts],
         "latest_attempt": _attempt_detail(conn, row, current.user["id"], latest_attempt),
+        "content_status": _task_content_status(row),
+        "content_generated_at": row["content_generated_at"]
+        if "content_generated_at" in row.keys()
+        else None,
+        "knowledge_points": knowledge_points,
+        "exercises": exercises,
     }
+
+
+@router.get("/api/tasks/{task_id}/knowledge-points")
+def list_knowledge_points(
+    task_id: str,
+    current: CurrentUser = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    row = _get_own_task(conn, task_id, current.user["id"])
+    items = conn.execute(
+        "SELECT * FROM task_knowledge_points WHERE task_id = ? ORDER BY sort_order, id",
+        (row["id"],),
+    ).fetchall()
+    return {"items": [_knowledge_point_dto(item) for item in items], "total": len(items)}
+
+
+@router.post("/api/tasks/{task_id}/knowledge-points", status_code=201)
+def create_knowledge_point(
+    task_id: str,
+    body: KnowledgePointBody,
+    current: CurrentUser = Depends(csrf_protect),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    row = _get_own_task(conn, task_id, current.user["id"])
+    if not body.title.strip() or not body.content.strip():
+        raise ApiError(400, "VALIDATION_ERROR", "知识点标题和内容不能为空")
+    point_id = uuid.uuid4().hex
+    now = utc_now_iso()
+    conn.execute(
+        "INSERT INTO task_knowledge_points "
+        "(id, task_id, title, content, sort_order, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (point_id, row["id"], body.title.strip(), body.content.strip(), body.sort_order, now, now),
+    )
+    conn.execute(
+        "UPDATE learning_tasks SET content_status = 'done', content_generated_at = COALESCE(content_generated_at, ?) "
+        "WHERE id = ?",
+        (now, task_id),
+    )
+    conn.commit()
+    return _knowledge_point_dto(
+        conn.execute("SELECT * FROM task_knowledge_points WHERE id = ?", (point_id,)).fetchone()
+    )
+
+
+@router.get("/api/tasks/{task_id}/exercises")
+def list_exercises(
+    task_id: str,
+    current: CurrentUser = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    row = _get_own_task(conn, task_id, current.user["id"])
+    _, items = _student_content(conn, row["id"], current.user["id"])
+    return {"items": items, "total": len(items)}
+
+
+@router.post("/api/tasks/{task_id}/exercises", status_code=201)
+def create_exercise(
+    task_id: str,
+    body: ExerciseBody,
+    current: CurrentUser = Depends(csrf_protect),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    row = _get_own_task(conn, task_id, current.user["id"])
+    if not body.question.strip():
+        raise ApiError(400, "VALIDATION_ERROR", "练习题不能为空")
+    if body.type not in {"open_ended", "multiple_choice"}:
+        raise ApiError(400, "VALIDATION_ERROR", "练习题类型不受支持")
+    if body.type == "multiple_choice" and not body.options:
+        raise ApiError(400, "VALIDATION_ERROR", "选择题必须提供选项")
+    exercise_id = uuid.uuid4().hex
+    now = utc_now_iso()
+    conn.execute(
+        "INSERT INTO task_exercises "
+        "(id, task_id, question, type, options_json, reference_answer, sort_order, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            exercise_id,
+            row["id"],
+            body.question.strip(),
+            body.type,
+            json.dumps(body.options, ensure_ascii=False) if body.options is not None else None,
+            body.reference_answer,
+            body.sort_order,
+            now,
+        ),
+    )
+    conn.execute(
+        "UPDATE learning_tasks SET content_status = 'done', content_generated_at = COALESCE(content_generated_at, ?) "
+        "WHERE id = ?",
+        (now, task_id),
+    )
+    conn.commit()
+    exercise = conn.execute("SELECT * FROM task_exercises WHERE id = ?", (exercise_id,)).fetchone()
+    return _exercise_dto(exercise)
+
+
+@router.post("/api/tasks/{task_id}/exercises/{exercise_id}/submit", status_code=202)
+async def submit_exercise(
+    task_id: str,
+    exercise_id: str,
+    body: ExerciseSubmitBody,
+    current: CurrentUser = Depends(csrf_protect),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    _get_own_task(conn, task_id, current.user["id"])
+    exercise = conn.execute(
+        "SELECT * FROM task_exercises WHERE id = ? AND task_id = ?",
+        (exercise_id, task_id),
+    ).fetchone()
+    if exercise is None:
+        raise ApiError(404, "EXERCISE_NOT_FOUND", "练习题不存在")
+    if not body.answer.strip():
+        raise ApiError(400, "VALIDATION_ERROR", "答案不能为空")
+    submission_id = uuid.uuid4().hex
+    conn.execute(
+        "INSERT INTO task_exercise_submissions "
+        "(id, exercise_id, student_id, answer, grade_status) VALUES (?, ?, ?, ?, 'pending')",
+        (submission_id, exercise_id, current.user["id"], body.answer.strip()),
+    )
+    conn.commit()
+    _schedule_background(_grade_submission_async(submission_id))
+    return {"submission_id": submission_id, "grade_status": "pending"}
+
+
+@router.post("/api/tasks/start-learning")
+async def start_learning(
+    body: StartLearningBody,
+    current: CurrentUser = Depends(csrf_protect),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Create/reuse a graph task and schedule content generation off-request."""
+
+    if body.task_id:
+        task = _get_own_task(conn, body.task_id, current.user["id"])
+        task_caps = _task_json(task, "cap_ids_json", []) or []
+        if body.cap_node_id not in task_caps:
+            raise ApiError(422, "TASK_CAP_MISMATCH", "任务不包含指定的能力节点")
+    else:
+        rows = conn.execute(
+            "SELECT * FROM learning_tasks WHERE user_id = ? AND status != 'archived' "
+            "ORDER BY updated_at DESC",
+            (current.user["id"],),
+        ).fetchall()
+        task = next(
+            (
+                row
+                for row in rows
+                if body.cap_node_id in (_task_json(row, "cap_ids_json", []) or [])
+            ),
+            None,
+        )
+    if task is None:
+        task_id = uuid.uuid4().hex
+        now = utc_now_iso()
+        conn.execute(
+            "INSERT INTO learning_tasks "
+            "(id, user_id, title, goal, cap_ids_json, source, status, steps_json, resources_json, "
+            "counts_toward_mastery, created_by, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, 'agent', 'not_started', ?, '[]', 1, ?, ?, ?)",
+            (
+                task_id,
+                current.user["id"],
+                f"学习能力 {body.cap_node_id}",
+                f"掌握能力 {body.cap_node_id}",
+                json.dumps([body.cap_node_id], ensure_ascii=False),
+                json.dumps([], ensure_ascii=False),
+                current.user["id"],
+                now,
+                now,
+            ),
+        )
+        conn.commit()
+        task = _get_own_task(conn, task_id, current.user["id"])
+    task_id = task["id"]
+    # A newly created/reused task must begin generation without a second user
+    # click.  Queue through the durable worker so the request portal cannot
+    # cancel generation and the worker keeps this request's database path.
+    content_status = _task_content_status(task)
+    if content_status == "none" or (body.generate_content and content_status == "failed"):
+        from ..tools.task_tools import queue_task_content
+
+        queue_task_content(conn, task_id, force=content_status == "failed")
+        task = _get_own_task(conn, task_id, current.user["id"])
+    return {"task_id": task_id, "content_status": _task_content_status(task)}
+
+
+@router.post("/api/internal/grade-submission")
+async def grade_submission_internal(
+    body: InternalGradeBody,
+    current: CurrentUser = Depends(get_current_user),
+) -> dict[str, str]:
+    if current.user["role"] not in {"system_admin", "content_admin"}:
+        raise ApiError(403, "FORBIDDEN", "无权执行内部评阅")
+    _schedule_background(_grade_submission_async(body.submission_id))
+    return {"submission_id": body.submission_id, "grade_status": "pending"}
 
 
 @router.patch("/api/tasks/{task_id}")
@@ -760,12 +1200,11 @@ def apply_mastery(
     cap_ids = _task_json(row, "cap_ids_json", [])
     if row["counts_toward_mastery"] and cap_ids and attempt["score"] is not None:
         delta = mastery_service.exercise_delta(float(attempt["score"]))
-        scenario_id = row["scenario_id"] or ""
         applied = mastery_service.apply_updates(
             conn,
             current.user["id"],
             [
-                {"cap_id": cid, "scenario_id": scenario_id, "delta": delta}
+                {"cap_id": cid, "delta": delta}
                 for cid in cap_ids
             ],
             source="exercise",

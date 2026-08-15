@@ -73,7 +73,6 @@ def create_document_preview(ctx: ToolContext) -> dict[str, Any]:
             "source_type": args.get("source_type") or "other",
             "source_name": args.get("source_name") or "",
             "data_types": args.get("data_types") or [],
-            "scenario_ids": args.get("scenario_ids") or [],
             "visibility": args.get("visibility") or "teacher",
         },
     }
@@ -95,9 +94,9 @@ def create_document_apply(ctx: ToolContext) -> dict[str, Any]:
             """
             INSERT INTO rag_documents
               (id, title, file_type, source_type, source_name, version,
-               license_status, data_types_json, scenario_ids_json, visibility,
+               license_status, data_types_json, visibility,
                status, created_by, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, 'draft', ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, 'draft', ?, ?, ?)
             """,
             (
                 doc_id,
@@ -107,7 +106,6 @@ def create_document_apply(ctx: ToolContext) -> dict[str, Any]:
                 args.get("source_name") or "Agent 创建",
                 args.get("version") or "v1",
                 json.dumps(args.get("data_types") or [], ensure_ascii=False),
-                json.dumps(args.get("scenario_ids") or [], ensure_ascii=False),
                 args.get("visibility") or "teacher",
                 ctx.user_row["id"],
                 now,

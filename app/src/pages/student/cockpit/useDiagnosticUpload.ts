@@ -17,14 +17,12 @@ import { MAX_UPLOAD_BYTES } from "./Composer";
 
 const ALLOWED_EXTENSIONS = [".json", ".textgrid", ".xml"];
 
-export function useDiagnosticUpload(scenarioId: string) {
+export function useDiagnosticUpload() {
   const toast = useToast();
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [report, setReport] = useState<DiagnosticUploadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const scenarioRef = useRef(scenarioId);
-  scenarioRef.current = scenarioId;
 
   const upload = useCallback(
     async (file: File) => {
@@ -47,8 +45,6 @@ export function useDiagnosticUpload(scenarioId: string) {
       try {
         const form = new FormData();
         form.append("file", file);
-        // 场景元数据缺失时由引擎按通用规则诊断（PRD-06 §7.3）
-        if (scenarioRef.current) form.append("scenario_id", scenarioRef.current);
         const result = await api.postForm<DiagnosticUploadResponse>(
           "/api/diagnostics",
           form,
@@ -93,5 +89,13 @@ export function useDiagnosticUpload(scenarioId: string) {
     setError(null);
   }, []);
 
-  return { uploading, saving, report, error, upload, saveSummary, dismiss };
+  return {
+    uploading,
+    saving,
+    report,
+    error,
+    upload,
+    saveSummary,
+    dismiss,
+  };
 }

@@ -300,9 +300,7 @@ def test_llm_follow_up_receives_previous_chat_history(db, tmp_db_path, user_id, 
             else:
                 assert "assistant" in [m["role"] for m in messages]
                 assert messages[-1]["content"] == "\u8bed\u97f3"
-                yield {
-                    "delta": "\u597d\u7684\uff0c\u8bed\u97f3\u6807\u6ce8\u5f88\u5408\u9002\u3002"
-                }
+                yield {"delta": "\u597d\u7684\uff0c\u8bed\u97f3\u6807\u6ce8\u5f88\u5408\u9002\u3002"}
             yield {
                 "done": True,
                 "model": "model-a",

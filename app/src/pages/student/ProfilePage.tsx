@@ -6,7 +6,7 @@
  * /api/profile/favorites（收藏资料，008 迁移起为真实数据）。
  *
  * 关键决策（为什么）：
- * - 能力地图按 通用/场景 分组、薄弱优先排序：学生第一眼应看到"最该补的"
+ * - 能力地图统一按薄弱优先排序：学生第一眼应看到"最该补的"
  *   （与预设页薄弱优先同口径）；点击能力行开抽屉看近 30 天掌握度趋势
  *   （GET mastery/trend），趋势是学生判断"学习方法是否有效"的直接证据。
  * - 收藏资料按 item_type 分流跳转（文档/引用→问答、教学单元→预设、节点→图谱），
@@ -80,7 +80,6 @@ interface ProfileSettings {
 interface MasteryTrendPoint {
   date: string;
   cap_id: string;
-  scenario_id: string;
   old_score: number;
   new_score: number;
   source: string;
@@ -209,25 +208,14 @@ export default function ProfilePage() {
     return () => controller.abort();
   }, [trendCap]);
 
-  /**
-   * 能力地图分组：通用（scenario_id=''）一组 + 各场景一组；
-   * 组内按分数升序（薄弱优先，与预设页推荐口径一致）。
-   */
+  /** 能力地图统一排序：按分数升序，让薄弱能力优先进入视线。 */
   const masteryGroups = useMemo(() => {
-    const groups = new Map<string, MasteryRecord[]>();
-    for (const record of mastery ?? []) {
-      const key = record.scenario_id === "" ? "通用" : record.scenario_name;
-      const list = groups.get(key) ?? [];
-      list.push(record);
-      groups.set(key, list);
-    }
-    // 通用组排在最前（它是掌握度主视图，PRD-06 §8.4 口径）
-    return [...groups.entries()]
-      .sort(([a], [b]) => (a === "通用" ? -1 : b === "通用" ? 1 : a.localeCompare(b)))
-      .map(([name, records]) => ({
-        name,
-        records: [...records].sort((a, b) => a.score - b.score),
-      }));
+    return [
+      {
+        name: "能力掌握度",
+        records: [...(mastery ?? [])].sort((a, b) => a.score - b.score),
+      },
+    ];
   }, [mastery]);
 
   /** 加入班级：邀请码 → join-class（幂等；无效码后端 404 中文提示） */
@@ -395,7 +383,7 @@ export default function ProfilePage() {
                   </h3>
                   <div className="flex flex-col gap-3">
                     {group.records.map((record) => (
-                      <div key={`${record.cap_id}|${record.scenario_id}`}>
+                      <div key={record.cap_id}>
                         <div className="flex items-center justify-between gap-2 mb-2">
                           {/* 能力名改为按钮：点击开趋势抽屉（图谱入口移到抽屉内） */}
                           <button

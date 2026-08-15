@@ -36,7 +36,6 @@ class RagQueryBody(BaseModel):
     """POST /api/rag/query 请求体（蓝图 §6.4）。"""
 
     question: str
-    scenario_id: str | None = None
     data_type: str | None = None
     published_only: bool = True
     # Optional management-preview scope; student callers remain constrained by
@@ -76,7 +75,6 @@ def rag_query(
         "rag_query_submitted",
         {
             "user_id": current.user["id"],
-            "scenario_id": body.scenario_id,
             "data_type": body.data_type,
         },
     )
@@ -84,7 +82,6 @@ def rag_query(
         db,
         get_config(),
         question,
-        scenario_id=body.scenario_id,
         data_type=body.data_type,
         published_only=published_only,
         document_ids=body.document_ids,

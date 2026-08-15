@@ -33,9 +33,9 @@ def _optional_user(request: Request, conn: sqlite3.Connection) -> CurrentUser | 
 
 
 def _mastery_map(conn: sqlite3.Connection, user_id: str) -> dict[str, float]:
-    """通用（scenario=''）掌握度映射；图谱总览按通用视图着色（§8.4 口径）。"""
+    """Return the user's unified mastery scores for graph coloring."""
     rows = conn.execute(
-        "SELECT cap_id, score FROM mastery WHERE user_id = ? AND scenario_id = ''",
+        "SELECT cap_id, score FROM mastery WHERE user_id = ?",
         (user_id,),
     ).fetchall()
     return {row["cap_id"]: float(row["score"]) for row in rows}
@@ -118,13 +118,10 @@ def search_nodes(
     q: str | None = None,
     type: str | None = None,
     data_type: str | None = None,
-    scenario_id: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
 ) -> dict:
-    """节点搜索（关键词/类型/数据类型/场景），走 graphx.search_nodes。"""
-    items = reason.search_nodes(
-        q, node_type=type, data_type=data_type, scenario_id=scenario_id, limit=limit
-    )
+    """Search graph nodes by keyword, node type, or data type."""
+    items = reason.search_nodes(q, node_type=type, data_type=data_type, limit=limit)
     return {"items": items, "total": len(items)}
 
 
@@ -134,7 +131,7 @@ def node_detail(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
-    """节点详情（前置/知识/资源/任务/证书/场景）+ 学生本人的该能力掌握记录。"""
+    """Return node relations plus the student's mastery record when applicable."""
     detail = reason.node_detail(node_id)
     if detail is None:
         raise ApiError(404, "NODE_NOT_FOUND", "图谱节点不存在")
@@ -144,13 +141,12 @@ def node_detail(
     current = _optional_user(request, conn)
     if current and node_id.startswith("CAP"):
         rows = conn.execute(
-            "SELECT scenario_id, score, source, updated_at FROM mastery "
-            "WHERE user_id = ? AND cap_id = ? ORDER BY scenario_id",
+            "SELECT score, source, updated_at FROM mastery "
+            "WHERE user_id = ? AND cap_id = ?",
             (current.user["id"], node_id),
         ).fetchall()
         detail["mastery"] = [
             {
-                "scenario_id": row["scenario_id"],
                 "score": float(row["score"]),
                 "source": row["source"],
                 "updated_at": row["updated_at"],

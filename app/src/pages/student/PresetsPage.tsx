@@ -9,10 +9,8 @@
  * - 分组在前端做：API 返回平铺列表（无分组字段），按 PRD-01 §4.2 的
  *   新手/岗位胜任/证书备考/薄弱补强四区在前端归类；薄弱区依赖
  *   weak_count 个性化字段（presets.py 按薄弱数倒序返回）。
- * - 「学习目标」筛选在前端做：后端 goal 参数是对 goal 长句的子串匹配，
- *   PRD 的四个关键词（入门/专项/考证/岗位任务）并不出现在 goal 文本里，
- *   透传只会得到空列表，故按分组语义在前端过滤；数据类型/难度/具体场景
- *   仍走服务端查询参数（契约见蓝图 §6.3）。
+ * - 筛选只暴露数据类型；目标和难度仍服务于内部分组，避免把
+ *   内部教学分组规则变成额外的用户决策负担。
  *
  * 埋点说明：preset_clicked 由后端在 POST /api/presets/{id}/start 内上报，
  * 前端不重复发（避免扭曲 preset_start_rate 的分母，见 shared.tsx trackEvent）。
@@ -39,7 +37,6 @@ import {
   Tag,
   useToast,
 } from "../../components";
-import { useScenario } from "../../app/ScenarioContext";
 import {
   capNameOf,
   dataTypeLabel,
@@ -54,7 +51,7 @@ type PresetGroupKey = "newbie" | "job" | "cert" | "weak";
 /** 分组展示顺序与 PRD-01 §4.2 一致 */
 const GROUPS: { key: PresetGroupKey; title: string; sub: string }[] = [
   { key: "newbie", title: "新手路径", sub: "零基础与低难度入门" },
-  { key: "job", title: "岗位胜任路径", sub: "面向具体岗位场景的能力组合" },
+  { key: "job", title: "岗位胜任路径", sub: "面向岗位目标的能力组合" },
   { key: "cert", title: "证书备考路径", sub: "对标 1+X 等证书考点" },
   { key: "weak", title: "薄弱补强路径", sub: "根据你的掌握度个性化推荐" },
 ];
@@ -68,32 +65,6 @@ function groupOf(preset: Preset): PresetGroupKey {
   if (/证书|考证|1\+X/i.test(`${preset.title}${preset.goal}`)) return "cert";
   return preset.difficulty <= 2 ? "newbie" : "job";
 }
-
-const GOAL_OPTIONS = [
-  { value: "", label: "全部目标" },
-  { value: "newbie", label: "入门" },
-  { value: "special", label: "专项" },
-  { value: "cert", label: "考证" },
-  { value: "job", label: "岗位任务" },
-];
-
-/** 学习目标筛选（前端语义映射，原因见文件头注释） */
-function matchGoal(preset: Preset, goal: string): boolean {
-  if (!goal) return true;
-  if (goal === "special") {
-    // 专项 = 面向特定数据类型的专项能力路径（考证除外）
-    return groupOf(preset) !== "cert" && preset.data_type !== "general";
-  }
-  return groupOf(preset) === goal;
-}
-
-/** 场景筛选特殊值：通用（后端 scenario_id=null 的路径无法用语义参数表达，前端补判） */
-const GENERAL_SCENARIO = "general";
-
-const DIFFICULTY_OPTIONS = [
-  { value: "", label: "全部难度" },
-  ...[1, 2, 3, 4, 5].map((d) => ({ value: String(d), label: `难度 ${"★".repeat(d)}` })),
-];
 
 const DATA_TYPE_OPTIONS = [
   { value: "", label: "全部类型" },
@@ -113,10 +84,9 @@ interface StartState {
 export default function PresetsPage() {
   const navigate = useNavigate();
   const toast = useToast();
-  const { scenarios } = useScenario();
   const capNames = useCapNames();
 
-  const [filters, setFilters] = useState({ dataType: "", scenario: "", goal: "", difficulty: "" });
+  const [filters, setFilters] = useState({ dataType: "" });
   const [items, setItems] = useState<Preset[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -129,7 +99,7 @@ export default function PresetsPage() {
   const [starting, setStarting] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
-  // 列表拉取：数据类型/具体场景/难度走服务端参数（蓝图 §6.3 契约）
+  // 只把数据类型作为显式筛选，目标/难度继续服务于内部分组和详情。
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
@@ -137,11 +107,6 @@ export default function PresetsPage() {
     api
       .get<Paginated<Preset>>("/api/presets", {
         data_type: filters.dataType || undefined,
-        scenario_id:
-          filters.scenario && filters.scenario !== GENERAL_SCENARIO
-            ? filters.scenario
-            : undefined,
-        difficulty: filters.difficulty ? Number(filters.difficulty) : undefined,
       }, { signal: controller.signal })
       .then((res) => {
         if (!controller.signal.aborted) setItems(res.items);
@@ -153,17 +118,9 @@ export default function PresetsPage() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [filters.dataType, filters.scenario, filters.difficulty]);
+  }, [filters.dataType]);
 
-  /** 前端补滤：通用场景（scenario_id=null）+ 学习目标语义（见文件头注释） */
-  const visible = useMemo(
-    () =>
-      (items ?? []).filter((preset) => {
-        if (filters.scenario === GENERAL_SCENARIO && preset.scenario_id) return false;
-        return matchGoal(preset, filters.goal);
-      }),
-    [items, filters.scenario, filters.goal],
-  );
+  const visible = useMemo(() => items ?? [], [items]);
 
   const grouped = useMemo(
     () =>
@@ -174,11 +131,8 @@ export default function PresetsPage() {
     [visible],
   );
 
-  const scenarioNameOf = (scenarioId: string | null): string =>
-    scenarios.find((s) => s.id === (scenarioId ?? ""))?.name ?? "通用";
-
   const resetFilters = () =>
-    setFilters({ dataType: "", scenario: "", goal: "", difficulty: "" });
+    setFilters({ dataType: "" });
 
   /** 打开路径详情抽屉（点击1）；mastered 折叠态每次重置，保证"已掌握默认折叠" */
   const openPreset = async (presetId: string) => {
@@ -243,41 +197,17 @@ export default function PresetsPage() {
     <div>
       <PageHeader
         title="预设学习"
-        sub="围绕数据类型、行业场景与证书目标组织的学习路径，薄弱能力优先推荐"
+        sub="围绕数据类型与证书目标组织的学习路径，薄弱能力优先推荐"
       />
 
-      {/* 顶部筛选（PRD-01 §4.2）：四维过滤 */}
+      {/* 顶部筛选（PRD-01 §4.2）：只保留数据类型 */}
       <Card className="mb-4">
-        <div className="grid grid-cols-4">
+        <div className="grid grid-cols-1">
           <Select
             aria-label="数据类型筛选"
             value={filters.dataType}
             options={DATA_TYPE_OPTIONS}
             onChange={(e) => setFilters((f) => ({ ...f, dataType: e.target.value }))}
-          />
-          <Select
-            aria-label="行业场景筛选"
-            value={filters.scenario}
-            options={[
-              { value: "", label: "全部场景" },
-              { value: GENERAL_SCENARIO, label: "通用" },
-              ...scenarios
-                .filter((s) => s.id !== "")
-                .map((s) => ({ value: s.id, label: s.name })),
-            ]}
-            onChange={(e) => setFilters((f) => ({ ...f, scenario: e.target.value }))}
-          />
-          <Select
-            aria-label="学习目标筛选"
-            value={filters.goal}
-            options={GOAL_OPTIONS}
-            onChange={(e) => setFilters((f) => ({ ...f, goal: e.target.value }))}
-          />
-          <Select
-            aria-label="难度筛选"
-            value={filters.difficulty}
-            options={DIFFICULTY_OPTIONS}
-            onChange={(e) => setFilters((f) => ({ ...f, difficulty: e.target.value }))}
           />
         </div>
       </Card>
@@ -328,11 +258,7 @@ export default function PresetsPage() {
                   <p className="text-sm text-secondary mb-3">{preset.description}</p>
                   <div className="flex items-center gap-2 flex-wrap">
                     <Tag>{dataTypeLabel(preset.data_type)}</Tag>
-                    <Tag>{scenarioNameOf(preset.scenario_id)}</Tag>
-                    <span className="text-xs" aria-label={`难度 ${preset.difficulty}`}>
-                      {"★".repeat(preset.difficulty)}
-                      {"☆".repeat(Math.max(0, 5 - preset.difficulty))}
-                    </span>
+                    {/* Difficulty stays in groupOf above, but is deliberately not a list-card cue. */}
                     <span className="text-xs text-muted">约 {preset.est_minutes} 分钟</span>
                   </div>
                 </div>
@@ -357,10 +283,7 @@ export default function PresetsPage() {
             <p className="text-sm text-secondary">{detail.description}</p>
             <div className="flex items-center gap-2 flex-wrap">
               <Tag>{dataTypeLabel(detail.data_type)}</Tag>
-              <Tag>{scenarioNameOf(detail.scenario_id)}</Tag>
-              <span className="text-xs">
-                难度 {"★".repeat(detail.difficulty)}
-              </span>
+              {/* Difficulty remains an internal grouping signal, not a learner-facing detail. */}
               <span className="text-xs text-muted">预计 {detail.est_minutes} 分钟</span>
             </div>
             <div>
@@ -443,7 +366,6 @@ export default function PresetsPage() {
               <strong>{preview.title}</strong>
               <div className="flex items-center gap-2 flex-wrap mt-2">
                 <Tag>{dataTypeLabel(preview.data_type)}</Tag>
-                <Tag>{scenarioNameOf(preview.scenario_id ?? null)}</Tag>
               </div>
             </div>
             {preview.goal ? <p className="text-sm text-secondary">目标：{preview.goal}</p> : null}

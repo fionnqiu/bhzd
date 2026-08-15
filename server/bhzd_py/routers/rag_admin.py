@@ -23,7 +23,7 @@ import zipfile
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, Request, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .. import deps as _deps
 from ..audit import audit
@@ -178,7 +178,7 @@ def _is_transient_sqlite_error(exc: sqlite3.OperationalError) -> bool:
 def _run_upload_pipeline(
     document_id: str,
     database_path: str,
-    auto_submit: bool,
+    auto_submit: bool | None,
     actor_id: str,
     client_meta: dict[str, str | None],
 ) -> None:
@@ -217,30 +217,61 @@ def _run_upload_pipeline(
                 time.sleep(delay)
 
         # Loop completion means the queue work has either run or been claimed
-        # by another worker.  Auto-submit remains conditional on durable index
-        # completion, exactly as it was before asynchronous processing.
+        # by another worker.  ``None`` means a new request omitted the legacy
+        # switch: auto-publish only the new student-visible flow.  Keeping an
+        # explicitly requested teacher document indexed preserves old API
+        # integrations that still use the review compatibility endpoints.
         assert background_conn is not None
         doc = background_conn.execute(
-            "SELECT id, title, file_type, status FROM rag_documents WHERE id = ?", (document_id,)
+            "SELECT id, title, file_type, status, visibility FROM rag_documents WHERE id = ?", (document_id,)
         ).fetchone()
-        if auto_submit and doc is not None and doc["status"] == "indexed":
-            # Auto-submit remains conditional on a successful pipeline, matching
-            # the previous synchronous behavior without delaying the upload response.
-            background_conn.execute(
-                "UPDATE rag_documents SET status='review_pending', updated_at=? WHERE id=?",
-                (utc_now_iso(), document_id),
-            )
-            _add_review_record(background_conn, document_id, actor_id, "submit", "上传时自动送审")
-            background_conn.commit()
-            audit(
-                background_conn,
-                actor_id,
-                "rag.auto_submit_document",
-                target_type="rag_document",
-                target_id=document_id,
-                after={"status": "review_pending"},
-                **client_meta,
-            )
+        should_auto_publish = (
+            auto_submit is True
+            or (auto_submit is None and doc is not None and doc["visibility"] == "student")
+        )
+        if should_auto_publish and doc is not None and doc["status"] == "indexed":
+            full_doc = background_conn.execute(
+                "SELECT * FROM rag_documents WHERE id = ?", (document_id,)
+            ).fetchone()
+            if full_doc is None:
+                return
+            try:
+                # Automatic publication reuses the same license, source,
+                # chunk, and sensitive-content guards as the compatibility
+                # publish endpoint, but permits the post-index ``indexed``
+                # state because no human review step is active anymore.
+                _publish_document_with_guards(
+                    background_conn,
+                    full_doc,
+                    actor_id,
+                    "student",
+                    "上传后自动发布",
+                    allow_indexed=True,
+                    record_review=False,
+                )
+            except ApiError as exc:
+                # Unsafe or incomplete material remains indexed and is visible
+                # to administrators for remediation; it is never silently
+                # exposed to student retrieval.
+                audit(
+                    background_conn,
+                    actor_id,
+                    "rag.auto_publish_document_blocked",
+                    target_type="rag_document",
+                    target_id=document_id,
+                    after={"code": exc.code, "message": exc.message},
+                    **client_meta,
+                )
+            else:
+                audit(
+                    background_conn,
+                    actor_id,
+                    "rag.auto_publish_document",
+                    target_type="rag_document",
+                    target_id=document_id,
+                    after={"status": "published", "visibility": "student"},
+                    **client_meta,
+                )
     except Exception:
         # The pipeline persists per-stage failures itself; this catches only
         # unexpected worker faults that would otherwise be invisible after 202.
@@ -298,7 +329,6 @@ def _doc_dto(row: sqlite3.Row, chunk_count: int | None = None) -> dict:
         "version": row["version"],
         "license_status": row["license_status"],
         "data_types": _json_list(row["data_types_json"]),
-        "scenario_ids": _json_list(row["scenario_ids_json"]),
         "cap_ids": _json_list(row["cap_ids_json"]),
         "visibility": row["visibility"],
         "status": row["status"],
@@ -404,7 +434,6 @@ def _default_stage_params(settings) -> dict[str, dict]:
             "chunk_size": settings.chunk_size,
             "chunk_overlap": settings.chunk_overlap,
             "title_inherit": settings.title_inherit,
-            "table_strategy": settings.table_strategy,
         },
         "index": {},
     }
@@ -519,59 +548,19 @@ def _run_auto_publish_import_pipeline(
     database_path: str,
     actor_id: str,
     client_meta: dict[str, str | None],
-    auto_publish: bool,
+    auto_publish: bool | None,
     audit_action: str,
     publish_comment: str,
 ) -> None:
-    """Process an import batch and publish only after the canonical checks pass.
+    """Process an import batch through the same automatic publication worker.
 
-    The worker uses the normal upload pipeline first.  Publication is a second,
-    independently audited operation so a parse/index failure cannot be hidden
-    behind a successful import response.
+    ``_run_upload_pipeline`` now owns the post-index publication transition so
+    single-file and batch imports cannot drift into different review semantics.
+    The extra parameters remain part of this helper's compatibility shape for
+    callers that still identify the historical audit action.
     """
     for document_id in document_ids:
         _run_upload_pipeline(document_id, database_path, auto_publish, actor_id, client_meta)
-        if not auto_publish:
-            continue
-        publish_conn = connect(database_path)
-        try:
-            document = publish_conn.execute(
-                "SELECT * FROM rag_documents WHERE id = ?", (document_id,)
-            ).fetchone()
-            if document is None:
-                continue
-            try:
-                _publish_document_with_guards(
-                    publish_conn,
-                    document,
-                    actor_id,
-                    "student",
-                    publish_comment,
-                )
-            except ApiError as exc:
-                # A blocked item remains review_pending for a human reviewer;
-                # audit the exact guard result without exposing document text.
-                audit(
-                    publish_conn,
-                    actor_id,
-                    f"{audit_action}_blocked",
-                    target_type="rag_document",
-                    target_id=document_id,
-                    after={"code": exc.code, "message": exc.message},
-                    **client_meta,
-                )
-            else:
-                audit(
-                    publish_conn,
-                    actor_id,
-                    audit_action,
-                    target_type="rag_document",
-                    target_id=document_id,
-                    after={"status": "published", "visibility": "student"},
-                    **client_meta,
-                )
-        finally:
-            publish_conn.close()
 
 
 def _validate_upload_metadata(
@@ -613,7 +602,6 @@ def _store_uploaded_document(
     license_status: str,
     visibility: str,
     data_types: list[str],
-    scenario_ids: list[str],
     cap_ids: list[str],
     actor_id: str,
 ) -> tuple[sqlite3.Row, list[sqlite3.Row]]:
@@ -650,10 +638,10 @@ def _store_uploaded_document(
     conn.execute(
         """
         INSERT INTO rag_documents (id, title, file_type, source_type, source_name, source_url,
-          source_ledger_id, version, license_status, data_types_json, scenario_ids_json,
+          source_ledger_id, version, license_status, data_types_json,
           cap_ids_json, visibility, status, storage_path, file_hash, process_version,
           created_by, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, 1, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, 1, ?, ?, ?)
         """,
         (
             doc_id,
@@ -666,7 +654,6 @@ def _store_uploaded_document(
             version.strip(),
             license_status,
             json.dumps(data_types, ensure_ascii=False),
-            json.dumps(scenario_ids, ensure_ascii=False),
             json.dumps(cap_ids, ensure_ascii=False),
             visibility,
             str(storage_path),
@@ -695,14 +682,13 @@ def list_documents(
     index_status: str | None = None,
     review_status: str | None = None,
     data_type: str | None = None,
-    scenario_id: str | None = None,
     q: str | None = None,
     limit: int = Query(default=20, ge=1, le=200),
     offset: int = Query(default=0, ge=0, le=10_000),
     current: CurrentUser = Depends(rag_staff),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
-    """资料列表：状态/索引状态/审核状态/数据类型/场景/标题关键字筛选 + 分页。
+    """资料列表：状态/索引状态/审核状态/数据类型/标题关键字筛选 + 分页。
 
     索引状态与审核状态是 PRD-03 §4.1 筛选区的业务视角，映射到底层单一 status：
     - index_status=indexed → 已索引及之后的状态；pending → 之前的状态；
@@ -728,11 +714,6 @@ def list_documents(
             "EXISTS (SELECT 1 FROM json_each(d.data_types_json) je WHERE je.value = ?)"
         )
         params.append(data_type)
-    if scenario_id:
-        clauses.append(
-            "EXISTS (SELECT 1 FROM json_each(d.scenario_ids_json) je WHERE je.value = ?)"
-        )
-        params.append(scenario_id)
     if q:
         clauses.append("d.title LIKE ?")
         params.append(f"%{q.strip()}%")
@@ -766,11 +747,14 @@ def upload_document(
     source_ledger_id: str | None = Form(None),
     version: str = Form(...),
     license_status: str = Form(...),
-    visibility: str = Form(...),
+    # Student visibility is the new-flow default; accepting the old form field
+    # keeps bookmarked/API integrations valid while the UI no longer exposes it.
+    visibility: str = Form("student"),
     data_types: list[str] = Form(default=[]),
-    scenario_ids: list[str] = Form(default=[]),
     cap_ids: list[str] = Form(default=[]),
-    auto_submit: bool = Form(False),
+    # ``None`` distinguishes omitted new-flow requests (auto-publish) from an
+    # explicit legacy ``false`` request that intentionally stays indexed.
+    auto_submit: bool | None = Form(None),
     current: CurrentUser = Depends(rag_staff_mutation),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
@@ -797,7 +781,6 @@ def upload_document(
         license_status=license_status,
         visibility=visibility,
         data_types=data_types,
-        scenario_ids=scenario_ids,
         cap_ids=cap_ids,
         actor_id=current.user["id"],
     )
@@ -843,9 +826,10 @@ def batch_import_documents(
     license_status: str = Form(...),
     visibility: str = Form("student"),
     data_types: list[str] = Form(default=[]),
-    scenario_ids: list[str] = Form(default=[]),
     cap_ids: list[str] = Form(default=[]),
-    auto_publish: bool = Form(True),
+    # Omitted requests are the new automatic-publication flow.  Explicit
+    # ``false`` remains accepted for old integrations that only want indexing.
+    auto_publish: bool | None = Form(None),
     current: CurrentUser = Depends(rag_staff_mutation),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
@@ -869,6 +853,13 @@ def batch_import_documents(
             f"一次最多导入 {_SELECTED_FILE_IMPORT_LIMIT} 个文件，请分批导入",
         )
 
+    # Keep the raw optional value for the worker; ``None`` means the new
+    # student-default mode while explicit false is the legacy indexed-only
+    # escape hatch.  The response still exposes a stable boolean summary.
+    should_auto_publish = True if auto_publish is None else auto_publish
+    auto_publish_student_flow = auto_publish is True or (
+        auto_publish is None and visibility == "student"
+    )
     imported: list[dict] = []
     failed: list[dict] = []
     document_ids: list[str] = []
@@ -889,7 +880,6 @@ def batch_import_documents(
                 license_status=license_status,
                 visibility=visibility,
                 data_types=data_types,
-                scenario_ids=scenario_ids,
                 cap_ids=cap_ids,
                 actor_id=current.user["id"],
             )
@@ -912,8 +902,8 @@ def batch_import_documents(
         after={
             "imported": len(imported),
             "failed": len(failed),
-            "auto_publish": auto_publish,
-            "visibility": "student" if auto_publish else visibility,
+            "auto_publish": should_auto_publish,
+            "visibility": "student" if auto_publish_student_flow else visibility,
         },
         **_client_meta(request),
     )
@@ -935,7 +925,7 @@ def batch_import_documents(
             "failed": len(failed),
             "queued": len(document_ids),
         },
-        "auto_publish": auto_publish,
+        "auto_publish": should_auto_publish,
         "samples": {
             "imported": _local_import_summary(imported),
             "failed": _local_import_summary(failed),
@@ -944,9 +934,13 @@ def batch_import_documents(
 
 
 class LocalRagdataImportBody(BaseModel):
-    """Explicit opt-in: regular governed imports remain non-publishing by default."""
+    """Compatibility body for the server-package importer.
 
-    auto_publish: bool = False
+    New callers omit the body and receive the same automatic publication as a
+    browser upload; an explicit ``false`` preserves the old indexing-only mode.
+    """
+
+    auto_publish: bool | None = None
     reindex_existing: bool = False
 
 
@@ -963,15 +957,42 @@ def import_local_ragdata(
     This is intentionally an operator action rather than a generic server-path
     upload: all reads are constrained to ``docs/ragData`` and the normal
     parser/chunker/indexer remains the authoritative processing record.  The
-    caller must explicitly opt into automatic publication after those checks.
+    importer follows the same automatic publication default as browser uploads;
+    explicit ``auto_publish=false`` is retained only for old integrations.
     """
-    auto_publish = bool(body and body.auto_publish)
-    reindex_existing = bool(body and body.reindex_existing)
+    # Preserve ``None`` for the worker so it can distinguish the new default
+    # from an explicit legacy false/true request when metadata is teacher-only.
+    auto_publish = body.auto_publish if body is not None else None
+    # Student-only no-body imports are the built-in flow: source metadata is
+    # kept on the document itself and no new ledger row is created. Explicit
+    # request bodies, and older teacher/admin packages, remain a compatibility
+    # escape hatch for seeded data that still depends on source_ledgers.
     source_files = _safe_local_ragdata_files(_LOCAL_RAGDATA_SOURCES, "SRC-*.md")
     material_files = _safe_local_ragdata_files(_LOCAL_RAGDATA_MATERIALS, "*.md")
     if not material_files:
         raise ApiError(422, "LOCAL_RAGDATA_EMPTY", "本地 RAG 资料包没有可导入的正文")
 
+    builtin_student_import = False
+    if body is None:
+        try:
+            visibility_values = [
+                _parse_local_front_matter(path.read_text(encoding="utf-8"))[0].get("visibility", "")
+                for path in material_files
+            ]
+            builtin_student_import = bool(visibility_values) and all(
+                value == "student" for value in visibility_values
+            )
+        except (OSError, UnicodeDecodeError, ValueError):
+            # Preserve the historical path when a package cannot be inspected
+            # up front; the per-file validation below will report its details.
+            builtin_student_import = False
+    legacy_ledger_mode = not builtin_student_import
+    reindex_existing = bool(body and body.reindex_existing)
+    # Expose the effective batch mode in the response/audit while retaining
+    # the optional value passed to the worker for legacy teacher packages.
+    auto_publish_enabled = auto_publish is True or (
+        auto_publish is None and builtin_student_import
+    )
     source_created: list[dict] = []
     source_skipped: list[dict] = []
     source_failed: list[dict] = []
@@ -998,9 +1019,13 @@ def import_local_ragdata(
                 continue
             seen_source_codes.add(source_code)
 
-            existing = conn.execute(
-                "SELECT id, name FROM source_ledgers WHERE source_code = ?", (source_code,)
-            ).fetchone()
+            existing = (
+                conn.execute(
+                    "SELECT id, name FROM source_ledgers WHERE source_code = ?", (source_code,)
+                ).fetchone()
+                if legacy_ledger_mode
+                else None
+            )
             if existing is not None:
                 ledger_context[source_code] = {
                     "id": existing["id"],
@@ -1026,37 +1051,46 @@ def import_local_ragdata(
                 )
                 if part
             )
-            ledger_id = uuid.uuid4().hex
-            now = utc_now_iso()
-            conn.execute(
-                """
-                INSERT INTO source_ledgers (id, source_code, name, publisher, source_type, version,
-                  authorization_status, valid_from, valid_to, related_document_ids_json,
-                  review_status, notes, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 'draft', ?, ?, ?)
-                """,
-                (
-                    ledger_id,
-                    source_code,
-                    source_name,
-                    metadata.get("issued_by") or None,
-                    source_type,
-                    metadata.get("version") or None,
-                    authorization_status,
-                    _local_import_date(metadata.get("valid_from")),
-                    _local_import_date(original_valid_to),
-                    notes or None,
-                    now,
-                    now,
-                ),
-            )
-            conn.commit()
-            ledger_context[source_code] = {
-                "id": ledger_id,
-                "name": source_name,
-                "url": metadata.get("url") or None,
-            }
-            source_created.append({"source_code": source_code})
+            if legacy_ledger_mode:
+                ledger_id = uuid.uuid4().hex
+                now = utc_now_iso()
+                conn.execute(
+                    """
+                    INSERT INTO source_ledgers (id, source_code, name, publisher, source_type, version,
+                      authorization_status, valid_from, valid_to, related_document_ids_json,
+                      review_status, notes, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 'draft', ?, ?, ?)
+                    """,
+                    (
+                        ledger_id,
+                        source_code,
+                        source_name,
+                        metadata.get("issued_by") or None,
+                        source_type,
+                        metadata.get("version") or None,
+                        authorization_status,
+                        _local_import_date(metadata.get("valid_from")),
+                        _local_import_date(original_valid_to),
+                        notes or None,
+                        now,
+                        now,
+                    ),
+                )
+                conn.commit()
+                ledger_context[source_code] = {
+                    "id": ledger_id,
+                    "name": source_name,
+                    "url": metadata.get("url") or None,
+                }
+                source_created.append({"source_code": source_code})
+            else:
+                # Built-in imports keep the same human-readable source metadata
+                # without reviving the retired ledger workflow.
+                ledger_context[source_code] = {
+                    "id": None,
+                    "name": source_name,
+                    "url": metadata.get("url") or None,
+                }
         except (OSError, UnicodeDecodeError, ValueError, sqlite3.Error) as exc:
             source_failed.append({"file": source_file.name, "reason": str(exc)})
 
@@ -1088,7 +1122,7 @@ def import_local_ragdata(
 
             source_code = _local_import_source_code(metadata["source"], material_file.name)
             source_context = ledger_context.get(source_code)
-            if source_context is None:
+            if source_context is None and legacy_ledger_mode:
                 row = conn.execute(
                     "SELECT id, name FROM source_ledgers WHERE source_code = ?", (source_code,)
                 ).fetchone()
@@ -1096,12 +1130,18 @@ def import_local_ragdata(
                     {"id": row["id"], "name": row["name"], "url": None} if row is not None else None
                 )
             if source_context is None:
-                raise ValueError(f"找不到来源台账：{source_code}")
+                raise ValueError(f"找不到来源元数据：{source_code}")
 
             file_hash = hashlib.sha256(raw).hexdigest()
             existing = conn.execute(
                 "SELECT id, status, visibility, process_version FROM rag_documents WHERE file_hash = ?", (file_hash,)
             ).fetchone()
+            # An omitted switch opts into automatic publication only when the
+            # package itself declares student visibility; explicit true keeps
+            # the historical force-student behavior for operator integrations.
+            wants_auto_publish = auto_publish is True or (
+                auto_publish is None and visibility == "student"
+            )
             if existing is not None:
                 if reindex_existing and existing["status"] != "archived":
                     # A parser or chunking fix must travel through the normal
@@ -1110,7 +1150,7 @@ def import_local_ragdata(
                     next_version = existing["process_version"] + 1
                     conn.execute(
                         "UPDATE rag_documents SET visibility=?, process_version=?, updated_at=? WHERE id=?",
-                        ("student" if auto_publish else visibility, next_version, utc_now_iso(), existing["id"]),
+                        ("student" if wants_auto_publish else visibility, next_version, utc_now_iso(), existing["id"]),
                     )
                     pipeline.enqueue(
                         conn,
@@ -1122,7 +1162,7 @@ def import_local_ragdata(
                     conn.commit()
                     queued_document_ids.append(existing["id"])
                     skipped.append({"file": material_file.name, "reason": "正文哈希已导入，已排入重建索引"})
-                elif auto_publish and existing["status"] not in ("published", "archived"):
+                elif wants_auto_publish and existing["status"] not in ("published", "archived"):
                     # A prior import may have completed indexing before the
                     # operator opted into publication.  Update only visibility
                     # and re-enter the durable review/publish worker; the
@@ -1151,10 +1191,10 @@ def import_local_ragdata(
             conn.execute(
                 """
                 INSERT INTO rag_documents (id, title, file_type, source_type, source_name, source_url,
-                  source_ledger_id, version, license_status, data_types_json, scenario_ids_json,
+                  source_ledger_id, version, license_status, data_types_json,
                   cap_ids_json, visibility, status, storage_path, file_hash, process_version,
                   created_by, created_at, updated_at)
-                VALUES (?, ?, 'md', ?, ?, ?, ?, ?, ?, ?, '[]', '[]', ?, 'draft', ?, ?, 1, ?, ?, ?)
+                VALUES (?, ?, 'md', ?, ?, ?, ?, ?, ?, ?, '[]', ?, 'draft', ?, ?, 1, ?, ?, ?)
                 """,
                 (
                     doc_id,
@@ -1205,7 +1245,7 @@ def import_local_ragdata(
             "document_imported": len(imported),
             "document_skipped": len(skipped),
             "document_failed": len(failed),
-            "auto_publish": auto_publish,
+            "auto_publish": auto_publish_enabled,
             "reindex_existing": reindex_existing,
         },
         **_client_meta(request),
@@ -1235,7 +1275,7 @@ def import_local_ragdata(
             "failed": len(failed),
             "queued": len(queued_document_ids),
         },
-        "auto_publish": auto_publish,
+        "auto_publish": auto_publish_enabled,
         "reindex_existing": reindex_existing,
         "samples": {
             "source_failed": _local_import_summary(source_failed),
@@ -1300,7 +1340,6 @@ class DocumentPatchBody(BaseModel):
     license_status: str | None = None
     visibility: str | None = None
     data_types: list[str] | None = None
-    scenario_ids: list[str] | None = None
     cap_ids: list[str] | None = None
     expires_at: str | None = None
     chunk_size: int | None = None
@@ -1348,8 +1387,6 @@ def patch_document(
         if any(dt not in _DATA_TYPES for dt in body.data_types):
             raise ApiError(422, "VALIDATION_ERROR", "数据类型不合法")
         updates["data_types_json"] = json.dumps(body.data_types, ensure_ascii=False)
-    if body.scenario_ids is not None:
-        updates["scenario_ids_json"] = json.dumps(body.scenario_ids, ensure_ascii=False)
     if body.cap_ids is not None:
         updates["cap_ids_json"] = json.dumps(body.cap_ids, ensure_ascii=False)
     if body.expires_at is not None:
@@ -1488,7 +1525,7 @@ def _batch_reindex(conn: sqlite3.Connection, doc: sqlite3.Row) -> tuple[bool, st
     """单项重建索引：按当前设置排期 chunk+index 并同步执行（幂等，与重处理端点同语义）。
 
     排 chunk+index 而非仅 index：索引阶段的产物来自同版本最近一次切片任务，
-    设置（chunk_size/表格策略等）变化后只重跑 index 会沿用旧切片；同参数时
+    设置（chunk_size/chunk_overlap 等）变化后只重跑 index 会沿用旧切片；同参数时
     幂等 key 命中既有任务自然成为 no-op，不会无谓重算。
     """
     if doc["status"] == "archived":
@@ -1672,7 +1709,7 @@ def list_review_queue(
     """待审核资料列表；归属 RAG 管理域以避免教师 URL 暗示可访问审核能力。"""
     rows = conn.execute(
         """
-        SELECT d.id, d.title, d.source_type, d.scenario_ids_json, d.data_types_json,
+        SELECT d.id, d.title, d.source_type, d.data_types_json,
                d.updated_at AS submitted_at, u.name AS uploader_name
         FROM rag_documents d
         LEFT JOIN users u ON u.id = d.created_by
@@ -1686,7 +1723,6 @@ def list_review_queue(
             "title": row["title"],
             "uploader_name": row["uploader_name"],
             "source_type": row["source_type"],
-            "scenario_ids": json.loads(row["scenario_ids_json"] or "[]"),
             "data_types": json.loads(row["data_types_json"] or "[]"),
             "submitted_at": row["submitted_at"],
         }
@@ -1739,6 +1775,9 @@ def _publish_document_with_guards(
     reviewer_id: str,
     scope: str,
     comment: str | None = None,
+    *,
+    allow_indexed: bool = False,
+    record_review: bool = True,
 ) -> None:
     """Apply the canonical publication guards and durable state transition.
 
@@ -1748,7 +1787,10 @@ def _publish_document_with_guards(
     """
     if scope not in ("student", "teacher"):
         raise ApiError(422, "VALIDATION_ERROR", "发布范围仅支持 student / teacher")
-    if doc["status"] != "review_pending":
+    # Compatibility publish calls still require review_pending; only the new
+    # post-index worker may pass an indexed/chunked row directly through guards.
+    allowed_states = ("review_pending", "indexed", "chunked") if allow_indexed else ("review_pending",)
+    if doc["status"] not in allowed_states:
         raise ApiError(409, REVIEW_REQUIRED, "资料需要审核后才能发布（当前不在待审核状态）")
     if doc["license_status"] in ("forbidden", "pending"):
         message = (
@@ -1778,13 +1820,17 @@ def _publish_document_with_guards(
         " WHERE id=?",
         (scope, now, now, doc["id"]),
     )
-    _add_review_record(
-        conn,
-        doc["id"],
-        reviewer_id,
-        "approve" if scope == "student" else "approve_teacher_only",
-        comment or f"发布范围：{scope}",
-    )
+    # Automatic student publication is a processing result, not a human
+    # review decision.  Compatibility endpoints keep their historical review
+    # records, while the new upload worker opts out explicitly.
+    if record_review:
+        _add_review_record(
+            conn,
+            doc["id"],
+            reviewer_id,
+            "approve" if scope == "student" else "approve_teacher_only",
+            comment or f"发布范围：{scope}",
+        )
     conn.commit()
 
 
@@ -2215,7 +2261,6 @@ def retry_job_endpoint(
 # ---------------------------------------------------------------- 召回测试台
 
 class SearchTestFilters(BaseModel):
-    scenario_id: str | None = None
     data_type: str | None = None
     published_only: bool = True
     document_ids: list[str] | None = None
@@ -2226,7 +2271,9 @@ class SearchTestBody(BaseModel):
 
     query: str
     filters: SearchTestFilters = SearchTestFilters()
-    top_k: int | None = None
+    # Keep direct API callers within the same bounded range as the console UI
+    # and persisted evaluation snapshots, preventing an oversized debug result.
+    top_k: int | None = Field(default=None, ge=1, le=20)
     save: bool = False
     expected_answer: str | None = None
     must_hit_document_ids: list[str] = []
@@ -2261,7 +2308,6 @@ def search_test(
     if not query:
         raise ApiError(422, "VALIDATION_ERROR", "查询不能为空")
     filters = RagFilters(
-        scenario_id=body.filters.scenario_id,
         data_type=body.filters.data_type,
         published_only=body.filters.published_only,
         document_ids=body.filters.document_ids,
@@ -2372,9 +2418,26 @@ def _eval_case_dto(row: sqlite3.Row) -> dict:
         "expected_answer": row["expected_answer"],
         "must_hit_document_ids": _json_list(row["must_hit_document_ids_json"]),
         "must_hit_chunk_ids": _json_list(row["must_hit_chunk_ids_json"]),
-        "filters": json.loads(row["filters_json"] or "{}"),
+        "filters": _scenario_free_filters(json.loads(row["filters_json"] or "{}")),
         "created_by": row["created_by"],
         "created_at": row["created_at"],
+    }
+
+
+def _scenario_free_filters(value: object) -> dict:
+    """Keep evaluation filter snapshots compatible without reviving the removed dimension.
+
+    Existing cases may still contain the retired top-level keys.  Removing only
+    those keys at every read/write boundary preserves supported filters while
+    preventing stale scenario data from re-entering the API or future runs.
+    """
+
+    if not isinstance(value, dict):
+        return {}
+    return {
+        key: item
+        for key, item in value.items()
+        if key not in {"scenario_id", "scenario_ids"}
     }
 
 
@@ -2436,7 +2499,7 @@ def create_eval_case(
             body.expected_answer,
             json.dumps(document_ids, ensure_ascii=False),
             json.dumps(body.must_hit_chunk_ids, ensure_ascii=False),
-            json.dumps(body.filters, ensure_ascii=False),
+                json.dumps(_scenario_free_filters(body.filters), ensure_ascii=False),
             current.user["id"],
             utc_now_iso(),
         ),
@@ -2484,7 +2547,7 @@ def patch_eval_case(
         if body.must_hit_chunk_ids is None
         else list(dict.fromkeys(body.must_hit_chunk_ids))
     )
-    filters = (
+    filters = _scenario_free_filters(
         json.loads(row["filters_json"] or "{}") if body.filters is None else body.filters
     )
     expected_answer = row["expected_answer"] if "expected_answer" not in body.model_fields_set else body.expected_answer
@@ -2626,23 +2689,35 @@ def run_eval(
     faith_values: list[float] = []
     latencies: list[int] = []
     for case in cases:
-        raw_filters = json.loads(case["filters_json"] or "{}")
+        raw_filters = _scenario_free_filters(json.loads(case["filters_json"] or "{}"))
+        # A saved test-console case may pin TopK.  Reusing it is essential for
+        # a meaningful tuning comparison; malformed legacy snapshots instead
+        # fall back to the current default just like an omitted form value.
+        saved_top_k = raw_filters.get("top_k")
+        top_k = (
+            saved_top_k
+            if isinstance(saved_top_k, int)
+            and not isinstance(saved_top_k, bool)
+            and 1 <= saved_top_k <= 20
+            else None
+        )
         filters = RagFilters(
-            scenario_id=raw_filters.get("scenario_id"),
             data_type=raw_filters.get("data_type"),
             published_only=raw_filters.get("published_only", True),
             document_ids=raw_filters.get("document_ids"),
         )
         started = time.perf_counter()
-        result = retrieve(conn, config, case["question"], filters)
+        result = retrieve(conn, config, case["question"], filters, top_k=top_k)
         answer = answer_question(
             conn,
             config,
             case["question"],
-            scenario_id=filters.scenario_id,
             data_type=filters.data_type,
             published_only=filters.published_only,
             document_ids=filters.document_ids,
+            # Keep answer/citation metrics on the exact same retrieval shape
+            # as Recall@K, otherwise a saved TopK comparison is misleading.
+            top_k=top_k,
         )
         latency_ms = int((time.perf_counter() - started) * 1000)
         latencies.append(latency_ms)

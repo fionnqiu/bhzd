@@ -597,26 +597,6 @@ img {
   min-width: 0;
 }
 
-.shell[data-shell-variant="student-workbench"] .student-workbench-scenario {
-  width: 180px;
-  flex: 0 1 180px;
-}
-
-.shell[data-shell-variant="student-workbench"] .student-workbench-scenario .select-trigger {
-  min-height: 32px;
-  padding: 4px var(--space-2);
-  border-color: transparent;
-  background: transparent;
-}
-
-.shell[data-shell-variant="student-workbench"] .student-workbench-scenario .select-trigger:hover,
-.shell[data-shell-variant="student-workbench"]
-  .student-workbench-scenario
-  .select-trigger[aria-expanded="true"] {
-  background: var(--color-surface-muted);
-  border-color: var(--color-border);
-}
-
 .shell[data-shell-variant="student-workbench"] .topbar-actions {
   flex-shrink: 0;
 }
@@ -732,7 +712,7 @@ img {
   width: 100%;
 }
 
-/* 图标按钮：表格行操作、抽屉关闭等密集场景 */
+/* 图标按钮：表格行操作、抽屉关闭等密集布局 */
 .icon-btn {
   display: inline-flex;
   align-items: center;
@@ -2306,11 +2286,6 @@ html[data-theme="dark"]
     display: none;
   }
 
-  .shell[data-shell-variant="student-workbench"] .student-workbench-scenario {
-    width: min(180px, 30vw);
-    flex-basis: min(180px, 30vw);
-  }
-
   .shell[data-shell-variant="student-workbench"] .topbar-actions {
     gap: var(--space-1);
   }
@@ -2706,12 +2681,6 @@ html[data-theme="dark"]
   font-size: 12px;
 }
 
-.shell[data-shell-variant="student-workbench"] .student-workbench-scenario .select-trigger {
-  min-height: 32px;
-  border-radius: 6px;
-  color: var(--ink-soft);
-}
-
 .shell[data-shell-variant="student-workbench"] .topbar-custom-actions {
   display: inline-flex;
   align-items: center;
@@ -2847,10 +2816,6 @@ html[data-theme="dark"]
     gap: 6px;
   }
 
-  .shell[data-shell-variant="student-workbench"] .student-workbench-scenario {
-    width: min(180px, 34vw);
-    flex-basis: min(180px, 34vw);
-  }
 }
 
 /* Keep the approved light workbench stable by default. A future account-level
@@ -3733,11 +3698,6 @@ html[data-theme="dark"] .shell[data-shell-variant="operations-workbench"] .sideb
   flex: 0 0 auto;
   color: var(--ink-faint);
   font-size: 12px;
-}
-
-.shell[data-shell-variant="student-workbench"] .student-workbench-scenario {
-  min-width: 0;
-  flex: 1 1 auto;
 }
 
 .shell[data-shell-variant="student-workbench"] .sidebar-context-actions .icon-btn {

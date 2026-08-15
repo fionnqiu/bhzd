@@ -61,7 +61,6 @@ def _summary_payload(report: dict[str, Any]) -> dict[str, Any]:
         or len(report.get("errors") or []),
         "file_format": report.get("file_format"),
         "data_type": report.get("data_type"),
-        "scenario_id": report.get("scenario_id"),
         "severity_counts": report.get("severity_counts") or {},
         "weak_cap_ids": report.get("weak_cap_ids") or [],
         "mastery_preview": report.get("mastery_preview") or [],
@@ -95,16 +94,15 @@ def save_summary_apply(ctx: ToolContext) -> dict[str, Any]:
     ctx.db.execute(
         """
         INSERT INTO diagnostic_summaries
-          (id, user_id, file_format, data_type, scenario_id, error_count,
+            (id, user_id, file_format, data_type, error_count,
            severity_counts_json, report_json, weak_cap_ids_json, plan_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             summary_id,
             ctx.user_row["id"],
             summary.get("file_format") or "unknown",
             summary.get("data_type"),
-            summary.get("scenario_id"),
             int(summary.get("error_count") or 0),
             json.dumps(summary.get("severity_counts") or {}, ensure_ascii=False),
             json.dumps(report, ensure_ascii=False, default=str),

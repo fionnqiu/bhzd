@@ -8,8 +8,7 @@ rag.answer 工具直接编码调用），改动必须与蓝图同步。
   未过期 + 关联台账未过期/未禁用；未发布资料永不进入学生召回（AC4）。
 - 混合召回：settings.hybrid_search 开启时 score = 0.7*余弦 + 0.3*关键词
   （关键词 = CJK 字 bigram 重合率，纯 Python，离线可跑）。
-- 场景冲突：资料声明了场景且不包含当前场景 → 分数 *0.5 并在 notice 提示，
-  而不是直接排除（PRD-06 §14.2"降权或提示场景不匹配"）。
+- 结果只按证据相关性排序；已移除的上下文维度不再参与筛选、降权或提示。
 - 多版本：同标题资料只保留最新已发布版本，引用中展示版本号。
 - 低于阈值：best score < settings.score_threshold → below_threshold=True，
   由 answer_question 拒答，绝不编造（AC6）。
@@ -34,10 +33,9 @@ from .vectorstore import search as vector_search
 # 拒答话术（PRD-06 §4.4"无召回结果/低于阈值"）
 REFUSAL_MESSAGE = "知识库暂无可靠依据，无法给出专业结论"
 GENERIC_ADVICE = "。建议先从预设学习路径入门对应模块，或把问题描述得更具体后再试"
-SCENARIO_CONFLICT_NOTICE = "存在其他场景的规则，已优先当前场景"
 
-# 证据压缩上限（字符）：喂给 LLM 合成器的证据总量，防止 prompt 膨胀
-_EVIDENCE_BUDGET = 800
+# 证据压缩上限（近似 token）：喂给 LLM 合成器的证据总量，防止 prompt 膨胀
+_EVIDENCE_BUDGET = 200
 # 模板答案截取上限（PRD 未给数值，取一屏可读长度）
 _ANSWER_SNIPPET = 300
 
@@ -45,6 +43,14 @@ _DEFAULT_SYSTEM_PROMPT = (
     "你是标航智导的知识问答助手。只允许依据给定证据回答；证据不足就明确说不知道，"
     "禁止编造规范条文。回答使用中文，条理清晰，必要时分步骤。"
 )
+
+
+def estimate_tokens(text: str) -> int:
+    """Estimate mixed Chinese/ASCII token density for bounded prompts."""
+
+    cjk = sum(1 for char in text if "一" <= char <= "鿿")
+    rest = len(text) - cjk
+    return cjk + max(0, rest // 4)
 
 
 # ---------------------------------------------------------------- 设置加载
@@ -56,9 +62,16 @@ class RagSettings:
     chunk_size: int = 500
     chunk_overlap: int = 80
     title_inherit: bool = True
-    table_strategy: str = "keep"  # keep=表格原子不拆 / flatten=表格展平成句
+    # Keep the retired database value readable for already queued chunk jobs.
+    # It is intentionally excluded from the admin DTO and no longer emitted in
+    # new pipeline parameters, so removing the UI cannot break old work.
+    table_strategy: str = "keep"
     top_k: int = 5
     score_threshold: float = 0.35
+    # RAG answer sampling is kept alongside recall controls so deployments can
+    # tune deterministic educational output without exposing provider internals.
+    temperature: float = 0.3
+    top_p: float = 0.9
     hybrid_search: bool = True
     rerank_enabled: bool = False
     citation_format: str = "【{title} {section} {page} v{version}】"
@@ -66,6 +79,7 @@ class RagSettings:
     max_citations: int = 5
     prompt_template: str = ""
     prompt_template_version: str = "v1"
+    query_rewrite_enabled: bool = False
 
 
 def load_settings(db: sqlite3.Connection) -> RagSettings:
@@ -73,13 +87,16 @@ def load_settings(db: sqlite3.Connection) -> RagSettings:
     row = db.execute("SELECT * FROM rag_settings WHERE id = 1").fetchone()
     if row is None:
         return RagSettings()
+    columns = set(row.keys())
     return RagSettings(
         chunk_size=row["chunk_size"],
         chunk_overlap=row["chunk_overlap"],
         title_inherit=bool(row["title_inherit"]),
-        table_strategy=row["table_strategy"],
+        table_strategy=(str(row["table_strategy"]) if "table_strategy" in columns else "keep"),
         top_k=row["top_k"],
         score_threshold=row["score_threshold"],
+        temperature=float(row["temperature"]) if "temperature" in columns else 0.3,
+        top_p=float(row["top_p"]) if "top_p" in columns else 0.9,
         hybrid_search=bool(row["hybrid_search"]),
         rerank_enabled=bool(row["rerank_enabled"]),
         citation_format=row["citation_format"],
@@ -87,6 +104,9 @@ def load_settings(db: sqlite3.Connection) -> RagSettings:
         max_citations=row["max_citations"],
         prompt_template=row["prompt_template"],
         prompt_template_version=row["prompt_template_version"],
+        query_rewrite_enabled=bool(row["query_rewrite_enabled"])
+        if "query_rewrite_enabled" in row.keys()
+        else False,
     )
 
 
@@ -94,7 +114,6 @@ def load_settings(db: sqlite3.Connection) -> RagSettings:
 
 @dataclass
 class RagFilters:
-    scenario_id: str | None = None
     data_type: str | None = None
     published_only: bool = True
     document_ids: list[str] | None = None
@@ -157,6 +176,37 @@ def _keyword_ratio(query: str, content: str) -> float:
     if not query_grams:
         return 0.0
     return len(query_grams & _cjk_bigrams(content)) / len(query_grams)
+
+
+async def _rewrite_query(query: str, data_type: str | None = None) -> str:
+    """Expand a short learner query while keeping retrieval fail-open.
+
+    Query rewriting is optional and provider-backed.  Returning the original
+    query for every malformed, oversized, or unavailable response preserves the
+    established offline retrieval contract instead of turning an enhancement
+    into a hard dependency.
+    """
+
+    normalized_query = query.strip()
+    if not normalized_query or len(normalized_query) >= 15:
+        return query
+    prompt = (
+        "请将以下简短的数据标注学习问题扩写为更完整的检索查询，"
+        "保留原意，补充相关专业术语和上下文，输出一行，不要解释：\n\n"
+        f"原始查询：{normalized_query}\n数据类型：{data_type or '通用'}\n\n扩写查询："
+    )
+    try:
+        from ..agent.providers import complete
+
+        result = await complete(
+            [{"role": "user", "content": prompt}],
+            role="primary",
+        )
+        text = result.get("text") if isinstance(result, dict) else None
+        rewritten = str(text).strip() if text is not None else ""
+        return rewritten if rewritten and len(rewritten) < 200 else query
+    except Exception:
+        return query
 
 
 # ---------------------------------------------------------------- 重排（可选，容忍缺失）
@@ -263,7 +313,18 @@ def retrieve(
     settings = load_settings(db)
     k = top_k if top_k and top_k > 0 else settings.top_k
 
-    query_blobs, query_model = embed_chunks(db, [query])  # provider 优先、本地兜底
+    # The public retriever remains synchronous.  The small bridge isolates the
+    # optional provider call and lets legacy callers keep their stable contract.
+    effective_query = query
+    if settings.query_rewrite_enabled and len(query.strip()) < 15:
+        try:
+            rewritten = run_coro_sync(_rewrite_query(query, filters.data_type))
+            if isinstance(rewritten, str) and rewritten.strip():
+                effective_query = rewritten.strip()
+        except Exception:
+            effective_query = query
+
+    query_blobs, query_model = embed_chunks(db, [effective_query])  # provider 优先、本地兜底
     candidates = vector_search(
         db,
         query_blobs[0],
@@ -271,8 +332,6 @@ def retrieve(
         published_only=filters.published_only,
         data_type=filters.data_type,
         document_ids=filters.document_ids,
-        scenario_id=filters.scenario_id,
-        exclude_scenario_mismatch=False,  # 跨场景走降权而非排除（见模块 docstring）
     )
 
     # 多版本去重：同标题只保留最新已发布版本所属文档（published_at 优先）
@@ -284,16 +343,12 @@ def retrieve(
     allowed_docs = {doc_id for doc_id, _ in best_doc_by_title.values()}
 
     scored: list[RagHit] = []
-    conflict_seen = False
     for cand in candidates:
         if cand.document_id not in allowed_docs:
             continue  # 旧版本资料不参与召回
         score = cand.cosine
         if settings.hybrid_search:
-            score = 0.7 * cand.cosine + 0.3 * _keyword_ratio(query, cand.content)
-        if filters.scenario_id and cand.scenario_ids and filters.scenario_id not in cand.scenario_ids:
-            score *= 0.5  # 场景冲突降权（PRD-06 §4.4）
-            conflict_seen = True
+            score = 0.7 * cand.cosine + 0.3 * _keyword_ratio(effective_query, cand.content)
         scored.append(
             RagHit(
                 chunk_id=cand.chunk_id,
@@ -314,7 +369,7 @@ def retrieve(
     rerank_model: str | None = None
     if settings.rerank_enabled and scored:
         pool = scored[:_RERANK_POOL_SIZE]
-        rerank_scores, rerank_model = _try_rerank(db, query, pool)
+        rerank_scores, rerank_model = _try_rerank(db, effective_query, pool)
         if rerank_scores is not None:
             for hit, rscore in zip(pool, rerank_scores):
                 hit.rerank_score = round(rscore, 4)
@@ -325,14 +380,12 @@ def retrieve(
 
     below_threshold = not scored or scored[0].score < settings.score_threshold
     hits = scored[:k]
-    # 只要最终呈现里含被降权的跨场景资料就提示（PRD-06 §4.4"提示存在其他场景规则"）
-    notice = SCENARIO_CONFLICT_NOTICE if conflict_seen and hits else None
     latency_ms = int((time.perf_counter() - started) * 1000)
     return RetrievalResult(
         hits=hits,
         latency_ms=latency_ms,
         below_threshold=below_threshold,
-        notice=notice,
+        notice=None,
         rerank_model=rerank_model,
     )
 
@@ -340,16 +393,24 @@ def retrieve(
 # ---------------------------------------------------------------- answer_question
 
 def _compress_evidence(hits: list[RagHit], budget: int = _EVIDENCE_BUDGET) -> str:
-    """证据压缩：按分数顺序拼接命中内容，总量截断到 budget 字符。"""
+    """Compress evidence to an approximate token budget."""
     parts: list[str] = []
     total = 0
     for hit in hits:
         piece = f"【来源：《{hit.title}》{hit.section_title or ''} v{hit.version}】\n{hit.content}"
-        remain = budget - total
+        remain = budget - estimate_tokens("\n\n".join(parts))
         if remain <= 0:
             break
-        parts.append(piece[:remain])
-        total += len(piece[:remain])
+        # A token-to-character multiplier of four is safe for ASCII and the
+        # subsequent loop rechecks exact mixed-script density for CJK text.
+        take = min(len(piece), max(1, remain * 4))
+        fragment = piece[:take]
+        while fragment and estimate_tokens("\n\n".join(parts + [fragment])) > budget:
+            fragment = fragment[:-max(1, len(fragment) // 20)]
+        if not fragment:
+            break
+        parts.append(fragment)
+        total += estimate_tokens(fragment)
     return "\n\n".join(parts)
 
 
@@ -415,10 +476,10 @@ def answer_question(
     config: AppConfig,
     question: str,
     *,
-    scenario_id: str | None = None,
     data_type: str | None = None,
     published_only: bool = True,
     document_ids: list[str] | None = None,
+    top_k: int | None = None,
     composer=None,
 ) -> RagAnswer:
     """召回 + 证据压缩 + LLM/模板合成 + 引用组装；无可靠依据时拒答不编造（AC6）。
@@ -432,11 +493,11 @@ def answer_question(
         config,
         question,
         RagFilters(
-            scenario_id=scenario_id,
             data_type=data_type,
             published_only=published_only,
             document_ids=document_ids,
         ),
+        top_k=top_k,
     )
 
     if not result.hits or result.below_threshold:

@@ -8,9 +8,8 @@
  * - 已发布任务（published_count>0）的原件不能被学生副本"静默漂移"：后端
  *   PATCH 会自动生成 version+1 新记录（version_bumped），页面用横幅提前
  *   告知，并在保存后切换到新版本继续编辑。
- * - 能力节点≥1 + 来源资料≥1 是 PRD-02 §5.4 硬约束，前端先做客户端校验
- *   （错误落在字段旁），后端 400（CAPS_REQUIRED/RESOURCES_REQUIRED）兜底
- *   时原样透出中文 message。
+ * - 能力节点≥1 是发布所需的最小结构；来源资料属于可选补充，空列表会
+ *   以 [] 落库，统一由 RAG 问答页承载知识获取。
  * - 预览面板始终常驻渲染（PRD §5.4"发布前必须展示预览"）：表单任何编辑
  *   实时反映到右侧任务卡，而不是发布前才弹一次预览。
  * - "AI 生成任务卡"（PRD-02 §5.3）：POST /api/teacher/tasks/generate 返回
@@ -22,24 +21,20 @@
  *   的 due_change 分支），因此与内容编辑（会升版本）拆成两个独立入口。
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Sparkles, Trash2, X } from "lucide-react";
-import { useLocation } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowLeft, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import type {
-  Citation,
   ClassInfo,
   GraphNode,
   Paginated,
-  Preset,
   PublishTaskResponse,
-  TeacherResource,
   TeacherTask,
 } from "../../api/types";
 import {
   Button,
   Card,
-  CitationCard,
   ErrorState,
   Field,
   Input,
@@ -47,7 +42,6 @@ import {
   SearchInput,
   Select,
   Spinner,
-  Tabs,
   Tag,
   Textarea,
   useToast,
@@ -73,14 +67,6 @@ interface RubricRow {
   weight: string;
 }
 
-interface ResourceRow {
-  type: string; // rag_document / teaching_unit / link
-  title: string;
-  refId?: string;
-  url?: string;
-  citation?: Citation;
-}
-
 interface FormState {
   /** 已落库任务 id；null = 尚未保存的新任务 */
   taskId: string | null;
@@ -89,11 +75,9 @@ interface FormState {
   title: string;
   goal: string;
   dataType: string;
-  scenarioId: string;
   caps: CapPick[];
   steps: StepRow[];
   rubric: RubricRow[];
-  resources: ResourceRow[];
   classId: string;
   dueAt: string;
   counts: boolean;
@@ -106,11 +90,9 @@ function emptyForm(): FormState {
     title: "",
     goal: "",
     dataType: "",
-    scenarioId: "",
     caps: [],
     steps: [],
     rubric: [],
-    resources: [],
     classId: "",
     dueAt: "",
     counts: true, // PRD-06 §10.1：计入掌握度由教师发布时选择，默认计入
@@ -169,17 +151,9 @@ function formFromTask(task: TeacherTask, capNames: Record<string, string>): Form
     title: task.title,
     goal: task.goal ?? "",
     dataType: task.data_type ?? "",
-    scenarioId: task.scenario_id ?? "",
     caps: task.cap_ids.map((cid) => ({ id: cid, name: capNames[cid] ?? cid })),
     steps: task.steps.map(stepRowFromTask),
     rubric: (task.rubric ?? []).map(rubricRowFromTask),
-    resources: task.resources.map((r) => ({
-      type: r.type,
-      title: r.title,
-      refId: r.ref_id,
-      url: typeof r.url === "string" ? r.url : undefined,
-      citation: r.citation as Citation | undefined,
-    })),
     // Agent drafts are already scoped to an owned class.  Preselecting it
     // removes a redundant step, but the teacher must still review and click
     // the separate publish action before any student record is created.
@@ -202,35 +176,17 @@ function taskIdFromSearch(search: string): string | null {
   return taskId && taskId.trim() ? taskId : null;
 }
 
-type SourceTab = "manual" | "rag" | "preset" | "history";
-
-const SOURCE_TABS = [
-  { key: "manual", label: "手动输入" },
-  { key: "rag", label: "已发布资料" },
-  { key: "preset", label: "预设模板" },
-  { key: "history", label: "历史任务" },
-];
-
-const RESOURCE_TYPE_LABELS: Record<string, string> = {
-  rag_document: "RAG 资料",
-  teaching_unit: "教学单元",
-  link: "外部链接",
-};
-
 /* ------------------------------------------------ AI 生成草稿的页面本地类型
  * （api/types.ts 由并行代理维护，本页按 teacher.py generate_teacher_task 的
- * 返回结构自留一份；generate 响应里 resources[i] 与 citations[i] 同源同序——
- * 都来自 hits[:5]，所以按下标配对把结构化引用装回资源行） */
+ * 返回结构自留一份。后端可能继续返回 resources/citations 供旧客户端使用，
+ * 但当前任务编辑契约不再把它们映射为可编辑关联，避免重新引入资源入口。 */
 interface GenerateTaskDraft {
   title: string;
   goal: string;
   data_type: string | null;
-  scenario_id: string | null;
   cap_ids: string[];
   caps: { cap_id: string; cap_name: string }[];
   steps: { title: string; description?: string }[];
-  resources: { type: string; ref_id?: string; title: string; citation?: string }[];
-  citations: Citation[];
   rubric: { criterion: string; description: string; points: number }[];
   difficulty: number;
   est_minutes: number;
@@ -238,7 +194,7 @@ interface GenerateTaskDraft {
   sources_note: string;
   /** true=LLM 润色过标题/步骤；false=纯模板组装（PRD-06 §11.1 离线兜底） */
   llm_used: boolean;
-  /** 召回侧提示（如场景冲突降权），可能为 null */
+  /** 召回侧提示，可能为 null。 */
   notice: string | null;
 }
 
@@ -253,12 +209,13 @@ interface AiBannerState {
 
 export default function TaskPublishPage() {
   const location = useLocation();
+  const { taskId: routeTaskId } = useParams<{ taskId?: string }>();
   const toast = useToast();
+  const routeHandoffId =
+    routeTaskId ?? taskIdFromSearch(location.search) ?? taskIdFromNavigationState(location.state);
   // Query state survives reload and copied links; router state remains a
   // compatibility fallback for handoffs created before this repair.
-  const agentTaskIdRef = useRef<string | null>(
-    taskIdFromSearch(location.search) ?? taskIdFromNavigationState(location.state),
-  );
+  const agentTaskIdRef = useRef<string | null>(routeHandoffId);
   const [agentTaskHandoffError, setAgentTaskHandoffError] = useState<string | null>(null);
   const [agentTaskHandoffRetry, setAgentTaskHandoffRetry] = useState(0);
 
@@ -266,9 +223,8 @@ export default function TaskPublishPage() {
   const [tasks, setTasks] = useState<TeacherTask[] | null>(null);
   const [tasksError, setTasksError] = useState<string | null>(null);
 
-  // ---- 基础数据：班级（发布设置）、场景（SCN 节点）、CAP 名称映射 ----
+  // ---- 基础数据：班级（发布设置）与 CAP 名称映射 ----
   const [classes, setClasses] = useState<ClassInfo[]>([]);
-  const [scenarios, setScenarios] = useState<GraphNode[]>([]);
   const [capNames, setCapNames] = useState<Record<string, string>>({});
 
   // ---- 编辑器 ----
@@ -284,16 +240,18 @@ export default function TaskPublishPage() {
   const [dueEdit, setDueEdit] = useState("");
   const [dueSaving, setDueSaving] = useState(false);
 
-  // ---- 任务来源四个页签的局部状态 ----
-  const [sourceTab, setSourceTab] = useState<SourceTab>("manual");
+  // The list owns navigation, while this page remains usable at the legacy /teacher/tasks URL;
+  // derive the heading from the route without changing the editor's existing form contract.
+  const isNewRoute = location.pathname.endsWith("/new");
+  const pageTitle = isNewRoute
+    ? "新建教学任务"
+    : routeTaskId || routeHandoffId
+      ? "编辑教学任务"
+      : "教学任务发布";
+
+  // Manual description is the single editable source; AI generation consumes it
+  // and fills the normal task fields without creating resource associations.
   const [manualText, setManualText] = useState("");
-  // 注意（为什么 value 不是受控同步）：SearchInput 的防抖在 inner!==value 时才
-  // 触发 onSearch（见组件实现），若父级在 onChange 里同步 value，两者恒等、
-  // 防抖永不触发。因此这两个状态只保存"已提交的搜索词"，输入过程由组件自管。
-  const [ragQuery, setRagQuery] = useState("");
-  const [ragResults, setRagResults] = useState<TeacherResource[] | null>(null);
-  const [ragSearching, setRagSearching] = useState(false);
-  const [presets, setPresets] = useState<Preset[] | null>(null);
   const [capQuery, setCapQuery] = useState("");
   const [capResults, setCapResults] = useState<GraphNode[]>([]);
 
@@ -324,16 +282,6 @@ export default function TaskPublishPage() {
       .catch(() => {
         if (!controller.signal.aborted) toast.error("班级列表加载失败，发布设置暂不可用");
       });
-    void api
-      .get<Paginated<GraphNode>>(
-        "/api/graph/nodes",
-        { type: "SCN", limit: 100 },
-        { signal: controller.signal },
-      )
-      .then((res) => {
-        if (!controller.signal.aborted) setScenarios(res.items);
-      })
-      .catch(() => undefined); // 场景下拉留空即可
     void api
       .get<Paginated<GraphNode>>(
         "/api/graph/nodes",
@@ -379,55 +327,6 @@ export default function TaskPublishPage() {
     return () => controller.abort();
   }, [agentTaskHandoffRetry, capNames, loadTasks]);
 
-  /* ------------------------------------------------ 来源页签的数据加载 */
-
-  const searchRagDocs = useCallback(
-    async (q: string, signal?: AbortSignal) => {
-      setRagSearching(true);
-      try {
-        // Teachers only need an attachable published-material catalog, not the RAG management API.
-        const res = await api.get<Paginated<TeacherResource>>(
-          "/api/teacher/resources",
-          {
-            q: q || undefined,
-            limit: 10,
-            offset: 0,
-          },
-          { signal },
-        );
-        if (signal?.aborted) return;
-        setRagResults(res.items);
-      } catch (err) {
-        if (!signal?.aborted) toast.error(errMsg(err, "资料搜索失败"));
-      } finally {
-        if (!signal?.aborted) setRagSearching(false);
-      }
-    },
-    [toast],
-  );
-
-  // 切到 RAG 页签时先拉一批默认结果，避免面对空白不知所措
-  useEffect(() => {
-    if (sourceTab !== "rag" || ragResults !== null) return;
-    const controller = new AbortController();
-    void searchRagDocs("", controller.signal);
-    return () => controller.abort();
-  }, [sourceTab, ragResults, searchRagDocs]);
-
-  useEffect(() => {
-    if (sourceTab !== "preset" || presets !== null) return;
-    const controller = new AbortController();
-    void api
-      .get<Paginated<Preset>>("/api/presets", undefined, { signal: controller.signal })
-      .then((res) => {
-        if (!controller.signal.aborted) setPresets(res.items);
-      })
-      .catch((err) => {
-        if (!controller.signal.aborted) toast.error(errMsg(err, "预设模板加载失败"));
-      });
-    return () => controller.abort();
-  }, [sourceTab, presets, toast]);
-
   const searchCaps = useCallback(
     async (q: string, signal?: AbortSignal) => {
       try {
@@ -449,7 +348,7 @@ export default function TaskPublishPage() {
     [toast],
   );
 
-  /* ------------------------------------------------ 来源页签的动作 */
+  /* ------------------------------------------------ 手动输入与 AI 生成 */
 
   const fillFromManual = () => {
     if (!manualText.trim()) return;
@@ -459,7 +358,7 @@ export default function TaskPublishPage() {
       goal: manualText.trim(),
       title: form.title || manualText.trim().split("\n")[0].slice(0, 50),
     });
-    toast.info("已填入学习目标，请继续完善步骤与资源");
+    toast.info("已填入学习目标，请继续完善步骤与评分规则");
   };
 
   /** 切换/新建任务时清掉与上一张任务卡绑定的瞬态（AI 横幅、截止调整输入） */
@@ -470,8 +369,7 @@ export default function TaskPublishPage() {
 
   /**
    * AI 生成任务卡（PRD-02 §5.3）：草稿整体填入表单但保持全部可编辑。
-   * 请求带上当前表单已选的数据类型/场景作为显式提示——后端"显式参数优先
-   * 于意图识别"，教师先选好了就不让模型再猜一遍。
+   * 请求带上当前表单已选的数据类型作为显式提示，避免模型重复猜测。
    */
   const generateDraft = async () => {
     const description = manualText.trim();
@@ -480,18 +378,16 @@ export default function TaskPublishPage() {
     try {
       const draft = await api.post<GenerateTaskDraft>("/api/teacher/tasks/generate", {
         description,
-        scenario_id: form.scenarioId || undefined,
         data_type: form.dataType || undefined,
       });
       patchForm({
         title: draft.title,
         goal: draft.goal,
         dataType: draft.data_type ?? "",
-        scenarioId: draft.scenario_id ?? "",
         caps: draft.caps.map((c) => ({ id: c.cap_id, name: c.cap_name })),
         // 后端步骤字段是 description，表单行口径是 notes（注意事项），在此对齐
         steps: draft.steps.map((s) => ({
-          title: s.title ?? "",
+          title: s.title,
           notes: s.description ?? "",
           commonErrors: "",
         })),
@@ -500,14 +396,6 @@ export default function TaskPublishPage() {
           key: r.criterion,
           expected: r.description,
           weight: String(r.points),
-        })),
-        resources: draft.resources.map((r, i) => ({
-          type: r.type,
-          title: r.title,
-          refId: r.ref_id,
-          // citations[i] 与 resources[i] 同源同序（见类型注释），装回结构化
-          // 引用后预览区才能渲染 CitationCard；缺席时退化为普通资源卡
-          citation: draft.citations[i],
         })),
       });
       // 生成带回的能力名并入名称映射，预览/芯片都能显示中文名而非裸 id
@@ -548,93 +436,30 @@ export default function TaskPublishPage() {
     }
   };
 
-  const addRagResource = (doc: TeacherResource) => {
-    if (form.resources.some((r) => r.refId === doc.id)) {
-      toast.info("该资料已在资源列表中");
-      return;
-    }
-    const citation: Citation = {
-      document_id: doc.id,
-      title: doc.title,
-      section_title: null,
-      page_start: null,
-      page_end: null,
-      version: doc.version,
-      score: 1,
-    };
-    patchForm({
-      resources: [
-        ...form.resources,
-        { type: "rag_document", title: doc.title, refId: doc.id, citation },
-      ],
-    });
-  };
-
-  const applyPreset = (preset: Preset) => {
-    patchForm({
-      title: form.title || preset.title,
-      goal: preset.goal,
-      dataType: preset.data_type,
-      scenarioId: preset.scenario_id ?? "",
-      caps: preset.caps.map((c) => ({ id: c.cap_id, name: c.cap_name })),
-      // 预设的教学单元天然是"步骤 + 资源"的来源（PRD §5.2 模板预填）
-      steps: preset.units.map((u) => ({ title: u.title, notes: "", commonErrors: "" })),
-      resources: preset.units.map((u) => ({
-        type: "teaching_unit",
-        title: u.title,
-        refId: u.unit_id,
-      })),
-    });
-    toast.info(`已按模板「${preset.title}」填充，可按需调整`);
-  };
-
-  const copyFromHistory = (task: TeacherTask) => {
-    // Copying a historical task is an intentional replacement for any pending Agent handoff.
-    agentTaskIdRef.current = null;
-    setAgentTaskHandoffError(null);
-    const copied = formFromTask(task, capNames);
-    patchForm({
-      ...copied,
-      taskId: null, // 复制=新草稿，不覆盖原任务
-      publishedCount: 0,
-      title: `${task.title}（副本）`,
-    });
-    toast.info("已从历史任务复制内容");
-  };
-
   /* ------------------------------------------------ 校验与提交 */
 
-  /** PRD-02 §5.4 客户端校验；forPublish 时额外要求选择班级 */
+  /** Client-side structural validation; publishing additionally requires a class. */
   const validate = (forPublish: boolean): boolean => {
     const next: Record<string, string> = {};
     if (!form.title.trim()) next.title = "任务名称不能为空";
     if (form.caps.length === 0) next.caps = "任务必须至少关联一个能力节点";
-    if (form.resources.length === 0) next.resources = "任务必须至少关联一个来源资料";
     if (forPublish && !form.classId) next.classId = "发布前请选择班级";
     setErrors(next);
     return Object.keys(next).length === 0;
   };
 
   const buildBody = () => ({
-    title: form.title.trim(),
+    title: form.title,
     goal: form.goal.trim() || null,
     data_type: form.dataType || null,
-    scenario_id: form.scenarioId || null,
     cap_ids: form.caps.map((c) => c.id),
     steps: form.steps
       .filter((s) => s.title.trim())
       .map((s) => ({
-        title: s.title.trim(),
+        title: s.title,
         notes: s.notes.trim() || undefined,
         common_errors: s.commonErrors.trim() || undefined,
       })),
-    resources: form.resources.map((r) => ({
-      type: r.type,
-      title: r.title,
-      ref_id: r.refId,
-      url: r.url,
-      citation: r.citation,
-    })),
     rubric: form.rubric.length
       ? form.rubric
           .filter((r) => r.key.trim())
@@ -703,11 +528,6 @@ export default function TaskPublishPage() {
   const updateRubric = (i: number, patch: Partial<RubricRow>) =>
     patchForm({ rubric: form.rubric.map((r, idx) => (idx === i ? { ...r, ...patch } : r)) });
 
-  const scenarioName = useMemo(
-    () => scenarios.find((s) => s.id === form.scenarioId)?.label,
-    [scenarios, form.scenarioId],
-  );
-
   // The selection list stays beside the preview so teachers can compare an existing task before
   // changing the draft. Keeping it separate also prevents a third visual column on wide screens.
   const taskSelection = (
@@ -737,7 +557,9 @@ export default function TaskPublishPage() {
           <Spinner /> 加载中…
         </div>
       ) : tasks.length === 0 ? (
-        <p className="text-sm text-secondary">还没有教学任务，点击「新建任务」开始组装第一张任务卡。</p>
+        <p className="text-sm text-secondary">
+          还没有教学任务，点击「新建任务」开始组装第一张任务卡。
+        </p>
       ) : (
         <ul className="flex flex-col gap-2">
           {tasks.map((task) => (
@@ -845,7 +667,9 @@ export default function TaskPublishPage() {
               </Button>
             </div>
           </Field>
-          <p className="text-xs text-muted mt-2">修改截止时间将通知本班学生并记录审计（不生成新版本）</p>
+          <p className="text-xs text-muted mt-2">
+            修改截止时间将通知本班学生并记录审计（不生成新版本）
+          </p>
         </div>
       ) : null}
 
@@ -865,8 +689,14 @@ export default function TaskPublishPage() {
   return (
     <div className="teacher-workbench-page teacher-task-publish-page">
       <PageHeader
-        title="教学任务发布"
+        title={pageTitle}
         sub="把企业岗位任务转化为课堂任务，发布到班级后学生即可执行"
+        actions={
+          <Link className="btn btn-secondary" to="/teacher/tasks">
+            <ArrowLeft size={16} aria-hidden />
+            返回任务管理
+          </Link>
+        }
       />
 
       {agentTaskHandoffError ? (
@@ -898,142 +728,44 @@ export default function TaskPublishPage() {
               </div>
             ) : null}
 
-            {/* 任务来源（PRD §5.2 四种来源） */}
-            <Card title="任务来源">
-              <Tabs
-                tabs={SOURCE_TABS}
-                active={sourceTab}
-                onChange={(k) => setSourceTab(k as SourceTab)}
-              />
-
-              {sourceTab === "manual" ? (
-                <div className="mt-3 flex flex-col gap-3">
-                  <Textarea
-                    rows={4}
-                    value={manualText}
-                    placeholder="粘贴或描述企业岗位任务，例如：对客服通话录音完成情感极性标注，要求区分投诉与咨询场景……"
-                    onChange={(e) => setManualText(e.target.value)}
-                  />
-                  <div
-                    className="text-sm text-secondary"
-                    style={{
-                      padding: "var(--space-3)",
-                      background: "var(--color-info-soft)",
-                      borderRadius: "var(--radius-md)",
-                    }}
+            {/* 任务输入只保留手动描述与 AI 草稿生成；资源关联入口已移除，
+                历史 DTO 中的 resources 仍可被读取但不会进入编辑状态或保存负载。 */}
+            <Card title="任务输入">
+              <div className="flex flex-col gap-3">
+                <Textarea
+                  rows={4}
+                  value={manualText}
+                  placeholder="粘贴或描述企业岗位任务，例如：对客服通话录音完成情感极性标注，要求区分投诉与咨询内容……"
+                  onChange={(e) => setManualText(e.target.value)}
+                />
+                <div
+                  className="text-sm text-secondary"
+                  style={{
+                    padding: "var(--space-3)",
+                    background: "var(--color-info-soft)",
+                    borderRadius: "var(--radius-md)",
+                  }}
+                >
+                  AI 生成说明：基于任务描述定位能力节点，生成标题/目标/步骤/评分规则的完整草稿；
+                  草稿不落库，填入表单后可继续编辑，审核确认后再保存或发布。
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => void generateDraft()}
+                    loading={generating}
+                    disabled={!manualText.trim()}
                   >
-                    AI 生成说明：基于任务描述召回知识库规范并定位能力节点，生成
-                    标题/目标/步骤/评分规则/资源引用的完整草稿；草稿不落库，填入
-                    表单后可继续编辑，审核确认后再保存或发布。
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={() => void generateDraft()}
-                      loading={generating}
-                      disabled={!manualText.trim()}
-                    >
-                      <Sparkles size={14} /> AI 生成任务卡
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={fillFromManual}
-                      disabled={!manualText.trim()}
-                    >
-                      仅填入学习目标
-                    </Button>
-                  </div>
+                    <Sparkles size={14} /> AI 生成任务卡
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={fillFromManual}
+                    disabled={!manualText.trim()}
+                  >
+                    仅填入学习目标
+                  </Button>
                 </div>
-              ) : null}
-
-              {sourceTab === "rag" ? (
-                <div className="mt-3 flex flex-col gap-2">
-                  <SearchInput
-                    value={ragQuery}
-                    onChange={() => undefined /* 见上方状态注释：输入过程由组件自管 */}
-                    onSearch={(q, signal) => {
-                      setRagQuery(q);
-                      void searchRagDocs(q, signal);
-                    }}
-                    placeholder="搜索已发布资料…"
-                  />
-                  {ragSearching ? (
-                    <div className="loading-block">
-                      <Spinner /> 搜索中…
-                    </div>
-                  ) : (
-                    <ul className="flex flex-col gap-2">
-                      {(ragResults ?? []).map((doc) => (
-                        <li key={doc.id} className="flex items-center justify-between gap-2">
-                          <span>
-                            {doc.title}
-                            <span className="text-xs text-muted"> · v{doc.version}</span>
-                          </span>
-                          <Button size="sm" variant="secondary" onClick={() => addRagResource(doc)}>
-                            添加
-                          </Button>
-                        </li>
-                      ))}
-                      {ragResults !== null && ragResults.length === 0 ? (
-                        <li className="text-sm text-secondary">没有匹配的已发布资料</li>
-                      ) : null}
-                    </ul>
-                  )}
-                </div>
-              ) : null}
-
-              {sourceTab === "preset" ? (
-                <div className="mt-3">
-                  {presets === null ? (
-                    <div className="loading-block">
-                      <Spinner /> 加载中…
-                    </div>
-                  ) : (
-                    <ul className="flex flex-col gap-2">
-                      {presets.map((preset) => (
-                        <li key={preset.id} className="flex items-center justify-between gap-2">
-                          <span>
-                            {preset.title}
-                            <span className="text-xs text-muted">
-                              {" "}
-                              · {dataTypeLabel(preset.data_type)} · 难度 {preset.difficulty} · 约{" "}
-                              {preset.est_minutes} 分钟
-                            </span>
-                          </span>
-                          <Button size="sm" variant="secondary" onClick={() => applyPreset(preset)}>
-                            使用模板
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              ) : null}
-
-              {sourceTab === "history" ? (
-                <div className="mt-3">
-                  {(tasks ?? []).length === 0 ? (
-                    <p className="text-sm text-secondary">暂无历史任务可复制</p>
-                  ) : (
-                    <ul className="flex flex-col gap-2">
-                      {(tasks ?? []).map((task) => (
-                        <li key={task.id} className="flex items-center justify-between gap-2">
-                          <span>
-                            {task.title}
-                            <span className="text-xs text-muted"> · v{task.version}</span>
-                          </span>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => copyFromHistory(task)}
-                          >
-                            复制
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              ) : null}
+              </div>
             </Card>
 
             {/* AI 草稿横幅（PRD-02 §5.3：生成结果必须经教师审核才发布，
@@ -1098,14 +830,6 @@ export default function TaskPublishPage() {
                     placeholder="不限"
                     value={form.dataType}
                     onChange={(e) => patchForm({ dataType: e.target.value })}
-                  />
-                </Field>
-                <Field label="行业场景">
-                  <Select
-                    options={scenarios.map((s) => ({ value: s.id, label: s.label }))}
-                    placeholder="通用 / 不限"
-                    value={form.scenarioId}
-                    onChange={(e) => patchForm({ scenarioId: e.target.value })}
                   />
                 </Field>
               </div>
@@ -1267,42 +991,7 @@ export default function TaskPublishPage() {
                 </div>
               </Field>
 
-              {/* 学习资源（必填 ≥1）：RAG 资料 / 模板单元 / 手动链接 */}
-              <Field
-                label="学习资源"
-                required
-                error={errors.resources}
-                hint="RAG 资料会带引用信息展示给学生"
-              >
-                <ul className="flex flex-col gap-2 mb-2">
-                  {form.resources.map((res, i) => (
-                    <li key={i} className="flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-2">
-                        <Tag>{RESOURCE_TYPE_LABELS[res.type] ?? res.type}</Tag>
-                        <span>{res.title}</span>
-                        {res.url ? <span className="text-xs text-muted">{res.url}</span> : null}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label={`移除资源 ${res.title}`}
-                        onClick={() =>
-                          patchForm({ resources: form.resources.filter((_, idx) => idx !== i) })
-                        }
-                      >
-                        <Trash2 size={14} />
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-                <ManualResourceAdder
-                  onAdd={(title, url) =>
-                    patchForm({ resources: [...form.resources, { type: "link", title, url }] })
-                  }
-                />
-              </Field>
             </Card>
-
           </div>
         </div>
 
@@ -1316,11 +1005,10 @@ export default function TaskPublishPage() {
               <p className="text-xs text-muted mb-3">
                 发布前请确认预览内容，学生看到的就是这张任务卡
               </p>
-              <h3>{form.title.trim() || "未命名任务"}</h3>
+              <h3>{form.title || "未命名任务"}</h3>
               {form.goal.trim() ? <p className="text-sm text-secondary mt-2">{form.goal}</p> : null}
               <div className="flex flex-wrap gap-2 mt-3">
                 <Tag>{dataTypeLabel(form.dataType)}</Tag>
-                <Tag>{form.scenarioId ? (scenarioName ?? form.scenarioId) : "通用场景"}</Tag>
                 <Tag>{form.counts ? "计入掌握度" : "不计入掌握度"}</Tag>
               </div>
 
@@ -1346,7 +1034,7 @@ export default function TaskPublishPage() {
                   .filter((s) => s.title.trim())
                   .map((s, i) => (
                     <li key={i}>
-                      <div>{s.title}</div>
+                      <div>{s.title || "未命名步骤"}</div>
                       {s.notes.trim() ? (
                         <div className="text-xs text-secondary">注意：{s.notes}</div>
                       ) : null}
@@ -1373,29 +1061,6 @@ export default function TaskPublishPage() {
                 </>
               ) : null}
 
-              <h4 className="mt-4">学习资源（{form.resources.length}）</h4>
-              {form.resources.length === 0 ? (
-                <p className="text-sm text-danger">尚未添加来源资料（发布必需）</p>
-              ) : (
-                <div className="flex flex-col gap-2 mt-2">
-                  {form.resources.map((res, i) =>
-                    res.citation ? (
-                      <CitationCard key={i} citation={res.citation} index={i + 1} />
-                    ) : (
-                      <div key={i} className="citation-card">
-                        <div className="citation-card-title">
-                          [{i + 1}] {res.title}
-                        </div>
-                        <div className="citation-card-meta">
-                          {RESOURCE_TYPE_LABELS[res.type] ?? res.type}
-                          {res.url ? ` · ${res.url}` : ""}
-                        </div>
-                      </div>
-                    ),
-                  )}
-                </div>
-              )}
-
               <h4 className="mt-4">发布信息</h4>
               <p className="text-sm text-secondary mt-2">
                 班级：{classes.find((c) => c.id === form.classId)?.name ?? "未选择"}
@@ -1407,29 +1072,6 @@ export default function TaskPublishPage() {
           {publishSettings}
         </aside>
       </div>
-    </div>
-  );
-}
-
-/** 手动添加外部链接资源（标题 + URL 两行输入，内部管理自己的草稿态） */
-function ManualResourceAdder({ onAdd }: { onAdd: (title: string, url: string) => void }) {
-  const [title, setTitle] = useState("");
-  const [url, setUrl] = useState("");
-  return (
-    <div className="flex items-center gap-2 teacher-resource-adder">
-      <Input value={title} placeholder="资源标题" onChange={(e) => setTitle(e.target.value)} />
-      <Input value={url} placeholder="链接 URL（可选）" onChange={(e) => setUrl(e.target.value)} />
-      <Button
-        variant="secondary"
-        disabled={!title.trim()}
-        onClick={() => {
-          onAdd(title.trim(), url.trim());
-          setTitle("");
-          setUrl("");
-        }}
-      >
-        <Plus size={14} /> 添加资源
-      </Button>
     </div>
   );
 }

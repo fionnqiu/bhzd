@@ -12,7 +12,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { ArrowUp, FileImage, FileText, FileVideo, Music2, Plus, X } from "lucide-react";
-import { Modal, Select, Spinner, Textarea, type SelectOption } from "../../../components";
+import { Modal, Spinner, Textarea } from "../../../components";
 import type { RunAttachmentPreviewResponse, RunAttachmentResponse } from "../../../api/types";
 import type { MediaAttachment, PendingMediaAttachment } from "./useMediaUpload";
 
@@ -46,9 +46,6 @@ export interface ComposerProps {
   mediaAttachments?: MediaAttachment[];
   onRemoveMedia?: (token: string) => void;
   onLoadDocumentPreview?: (token: string) => Promise<RunAttachmentPreviewResponse>;
-  scenarioId: string;
-  scenarioOptions: readonly SelectOption[];
-  onScenarioChange: (scenarioId: string) => void;
   variant?: "default" | "hero";
 }
 
@@ -83,9 +80,6 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
     mediaAttachments = [],
     onRemoveMedia,
     onLoadDocumentPreview,
-    scenarioId,
-    scenarioOptions,
-    onScenarioChange,
     variant = "default",
   },
   ref,
@@ -278,7 +272,7 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
             onChange={(event) => onChange(event.target.value)}
             onKeyDown={handleKeyDown}
           />
-          <div className="composer-input-actions">
+          <div className="composer-input-actions" data-testid="composer-input-actions">
             <button
               type="button"
               className="composer-upload-btn composer-tool-button"
@@ -290,15 +284,6 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
             >
               <Plus size={16} aria-hidden="true" />
             </button>
-            <div className="composer-scenario-control">
-              <Select
-                className="composer-scenario-select"
-                aria-label="继续场景"
-                value={scenarioId}
-                options={scenarioOptions}
-                onChange={(event) => onScenarioChange(event.target.value)}
-              />
-            </div>
             <button
               type="button"
               className="composer-send-btn"

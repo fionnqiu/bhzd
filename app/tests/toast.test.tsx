@@ -1,5 +1,5 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 import { ToastProvider, useToast } from "../src/components";
 
 function ToastHarness() {
@@ -13,12 +13,8 @@ function ToastHarness() {
   );
 }
 
-afterEach(() => {
-  vi.useRealTimers();
-});
-
-describe("全局右上角弹幕提示", () => {
-  it("显示不同类型消息并支持手动关闭", () => {
+describe("全局通知兼容 API", () => {
+  it("保留页面调用器，同时不渲染会遮挡工作区的浮层", () => {
     render(
       <ToastProvider>
         <ToastHarness />
@@ -26,15 +22,13 @@ describe("全局右上角弹幕提示", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "失败" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("操作失败");
-    expect(screen.getByTestId("toast-viewport")).toHaveClass("toast-viewport");
-
-    fireEvent.click(screen.getByRole("button", { name: "关闭提示" }));
+    // ToastProvider is an API compatibility boundary. Persistent page states
+    // own user feedback, so calls must never reintroduce a transient overlay.
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("toast-viewport")).not.toBeInTheDocument();
   });
 
-  it("自动移除过期消息，并限制同时显示数量", () => {
-    vi.useFakeTimers();
+  it("repeated calls remain inert and do not create a hidden message queue", () => {
     render(
       <ToastProvider>
         <ToastHarness />
@@ -45,12 +39,7 @@ describe("全局右上角弹幕提示", () => {
     fireEvent.click(screen.getByRole("button", { name: "失败" }));
     fireEvent.click(screen.getByRole("button", { name: "提示" }));
     fireEvent.click(screen.getByRole("button", { name: "成功" }));
-    expect(document.querySelectorAll(".toast")).toHaveLength(3);
-
-    act(() => {
-      vi.advanceTimersByTime(3600);
-    });
-    expect(screen.queryByTestId("toast-viewport")).toBeInTheDocument();
+    expect(document.querySelectorAll(".toast")).toHaveLength(0);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

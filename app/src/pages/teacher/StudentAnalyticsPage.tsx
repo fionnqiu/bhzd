@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../../api/client";
-import type { ClassInfo, GraphNode, Paginated, StudentRow } from "../../api/types";
+import type { ClassInfo, Paginated, StudentRow } from "../../api/types";
 import {
   Card,
   DataTable,
@@ -27,8 +27,6 @@ import { dataTypeLabel, errMsg, fmtDateTime } from "./utils";
 interface StudentMasteryRow {
   cap_id: string;
   cap_name: string;
-  /** 空字符串表示通用掌握度。 */
-  scenario_id: string;
   score: number;
   updated_at: string;
 }
@@ -44,7 +42,6 @@ interface StudentTaskRow {
 
 interface MasteryEventRow {
   cap_id: string;
-  scenario_id: string;
   old_score: number;
   new_score: number;
   source: string;
@@ -55,7 +52,6 @@ interface DiagnosticSummaryRow {
   id: string;
   file_format: string | null;
   data_type: string | null;
-  scenario_id: string | null;
   error_count: number;
   severity_counts: Record<string, number>;
   created_at: string;
@@ -94,7 +90,6 @@ export default function StudentAnalyticsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailRetry, setDetailRetry] = useState(0);
-  const [scenarios, setScenarios] = useState<GraphNode[]>([]);
 
   // A class passed from the aggregate page wins over the local default, so a teacher starts in
   // the same teaching context even when this page is opened through a copied link.
@@ -123,16 +118,6 @@ export default function StudentAnalyticsPage() {
       .catch((err) => {
         if (!controller.signal.aborted) setClassError(errMsg(err, "班级列表加载失败"));
       });
-    void api
-      .get<Paginated<GraphNode>>(
-        "/api/graph/nodes",
-        { type: "SCN", limit: 100 },
-        { signal: controller.signal },
-      )
-      .then((res) => {
-        if (!controller.signal.aborted) setScenarios(res.items);
-      })
-      .catch(() => undefined);
     return () => controller.abort();
   }, []);
 
@@ -203,22 +188,8 @@ export default function StudentAnalyticsPage() {
     return () => controller.abort();
   }, [classId, detailRetry, studentId]);
 
-  const scenarioNameOf = useCallback(
-    (scenarioId: string) =>
-      scenarioId === ""
-        ? "通用"
-        : (scenarios.find((scenario) => scenario.id === scenarioId)?.label ?? scenarioId),
-    [scenarios],
-  );
-
   const masteryColumns: Column<StudentMasteryRow>[] = [
     { key: "cap_name", title: "能力节点", width: "14rem" },
-    {
-      key: "scenario_id",
-      title: "场景",
-      width: "8rem",
-      render: (row) => scenarioNameOf(row.scenario_id),
-    },
     {
       key: "score",
       title: "掌握度",
@@ -364,7 +335,7 @@ export default function StudentAnalyticsPage() {
                     ariaLabel="学生逐能力掌握度"
                     columns={masteryColumns}
                     rows={detail.mastery}
-                    rowKey={(row) => `${row.cap_id}|${row.scenario_id}`}
+                    rowKey={(row) => row.cap_id}
                   />
                 )}
               </section>

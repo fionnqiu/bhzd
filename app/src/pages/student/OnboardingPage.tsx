@@ -55,7 +55,6 @@ export interface AssessmentResponse {
 /** mastery.service.apply_updates 的逐能力应用结果 */
 export interface MasteryAppliedRow {
   cap_id: string;
-  scenario_id: string;
   delta: number;
   old_score: number | null;
   new_score: number | null;
@@ -365,7 +364,7 @@ export default function OnboardingPage() {
                   </p>
                   <ul className="flex flex-col gap-3">
                     {submitResult.mastery_applied.map((row) => (
-                      <li key={`${row.cap_id}|${row.scenario_id}`}>
+                      <li key={row.cap_id}>
                         <div className="flex items-center justify-between gap-3 mb-2">
                           <span className="text-sm">{capNameOf(capNames, row.cap_id)}</span>
                           <MasteryBadge score={row.new_score} />

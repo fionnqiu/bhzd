@@ -2,7 +2,7 @@
  * 能力图谱页（PRD-01 §5 + v3.0 §7.3.3 配色）。
  *
  * 关键决策（为什么）：
- * - 搜索/数据类型/场景筛选在前端作用于已加载的全图：筛选若每次回源会
+ * - 搜索/数据类型筛选在前端作用于已加载的全图：筛选若每次回源会
  *   反复触发 166 节点重布局，既慢又闪；overview 单请求后本地过滤可满足
  *   局部渲染 ≤500ms 的预算（PRD-01 §5.2）。局部模式走 /api/graph/subgraph
  *   限制节点规模，路径模式走 /api/graph/pre-path。
@@ -22,7 +22,6 @@ import type {
   GraphNodeDetail,
   GraphOverview,
   PrePathResponse,
-  TaskSummary,
 } from "../../api/types";
 import {
   Button,
@@ -39,7 +38,6 @@ import {
   Tag,
   useToast,
 } from "../../components";
-import { useScenario } from "../../app/ScenarioContext";
 import { dataTypeLabel, errMsg, nodeLabel } from "./shared";
 
 type ViewMode = "full" | "local" | "path";
@@ -48,7 +46,6 @@ type ViewMode = "full" | "local" | "path";
 const TYPE_STYLE: Record<string, { background: string; border: string; label: string }> = {
   KNG: { background: "#e0f2fe", border: "#0284c7", label: "知识" },
   TSK: { background: "#f1f5f9", border: "#64748b", label: "任务" },
-  SCN: { background: "#ede9fe", border: "#7c3aed", label: "场景" },
   RES: { background: "#f8fafc", border: "#94a3b8", label: "资源" },
   CERT: { background: "#fef3c7", border: "#d97706", label: "证书" },
 };
@@ -91,6 +88,21 @@ interface VisEdgeShape {
   color: string;
   width: number;
   arrows?: string;
+}
+
+/**
+ * Keep retained SCN/INSCN records lazy: server graph data stays intact while
+ * learner-facing graph views omit scenario nodes and membership edges.
+ */
+function hideLazyScenarioData(graph: GraphOverview): GraphOverview {
+  const nodes = graph.nodes.filter((node) => node.type !== "SCN");
+  const ids = new Set(nodes.map((node) => node.id));
+  return {
+    nodes,
+    edges: graph.edges.filter(
+      (edge) => edge.relation !== "INSCN" && ids.has(edge.source) && ids.has(edge.target),
+    ),
+  };
 }
 
 /** 组装 vis-network 数据；highlight 为路径模式需强调的节点集合 */
@@ -156,12 +168,10 @@ const DATA_TYPE_OPTIONS = [
 export default function GraphPage() {
   const navigate = useNavigate();
   const toast = useToast();
-  const { scenarios } = useScenario();
   const [searchParams] = useSearchParams();
 
   const [q, setQ] = useState("");
   const [dataType, setDataType] = useState("");
-  const [scenarioFilter, setScenarioFilter] = useState("");
   const [mode, setMode] = useState<ViewMode>("full");
 
   const [overview, setOverview] = useState<GraphOverview | null>(null);
@@ -264,10 +274,11 @@ export default function GraphPage() {
     };
   }, [canvasVisible]);
 
-  /** 全图 + 前端筛选（关键词/数据类型/场景；场景按 INSCN 边归属判定） */
+  /** Full graph search is limited to learner-relevant dimensions. */
   const filtered = useMemo(() => {
     if (!overview) return { nodes: [] as GraphNode[], edges: [] as GraphOverview["edges"] };
-    let nodes = overview.nodes;
+    let nodes = hideLazyScenarioData(overview).nodes;
+    const visibleGraph = hideLazyScenarioData(overview);
     const keyword = q.trim().toLowerCase();
     if (keyword) {
       nodes = nodes.filter((node) =>
@@ -277,21 +288,12 @@ export default function GraphPage() {
     if (dataType) {
       nodes = nodes.filter((node) => (node.data_types ?? []).includes(dataType));
     }
-    if (scenarioFilter) {
-      const inScenario = new Set(
-        overview.edges
-          .filter((e) => e.relation === "INSCN" && e.target === scenarioFilter)
-          .map((e) => e.source),
-      );
-      inScenario.add(scenarioFilter);
-      nodes = nodes.filter((node) => inScenario.has(node.id));
-    }
     const ids = new Set(nodes.map((n) => n.id));
     return {
       nodes,
-      edges: overview.edges.filter((e) => ids.has(e.source) && ids.has(e.target)),
+      edges: visibleGraph.edges.filter((e) => ids.has(e.source) && ids.has(e.target)),
     };
-  }, [overview, q, dataType, scenarioFilter]);
+  }, [overview, q, dataType]);
 
   // 局部模式：中心节点变化 → 拉子图（depth=2，控制节点规模保 500ms 预算）
   useEffect(() => {
@@ -351,8 +353,8 @@ export default function GraphPage() {
 
   /** 当前画布数据：全图=筛选结果；局部=子图；路径=全图+高亮 */
   const canvasData = useMemo(() => {
-    if (mode === "local") return subgraphData ?? { nodes: [], edges: [] };
-    if (mode === "path") return overview ?? { nodes: [], edges: [] };
+    if (mode === "local") return subgraphData ? hideLazyScenarioData(subgraphData) : { nodes: [], edges: [] };
+    if (mode === "path") return overview ? hideLazyScenarioData(overview) : { nodes: [], edges: [] };
     return filtered;
   }, [mode, filtered, subgraphData, overview]);
 
@@ -407,33 +409,19 @@ export default function GraphPage() {
     if (!detail) return;
     setCreating(true);
     try {
-      // The graph API returns only reviewed, student-consumable units.  Persist
-      // that projection with the task so opening the detail page never depends
-      // on re-resolving mutable graph links in the browser.
-      const resources = detail.learning_materials ?? [];
-      const task = await api.post<TaskSummary>("/api/tasks", {
-        title: `学习「${nodeLabel(detail)}」`,
-        goal: detail.description ?? `掌握「${nodeLabel(detail)}」`,
-        cap_ids: [detail.id],
-        steps: [
-          {
-            title: `学习「${nodeLabel(detail)}」核心要点`,
-            description: detail.description ?? "",
-          },
-        ],
-        resources,
-        source: "agent",
+      // Creation and content generation are separate server-side operations;
+      // the graph action only needs to return a task id quickly.
+      const task = await api.post<{ task_id: string }>("/api/tasks/start-learning", {
+        cap_node_id: detail.id,
+        generate_content: true,
       });
       toast.success("学习任务已创建");
-      navigate(`/tasks/${task.id}`);
+      navigate(`/tasks/${task.task_id}`);
     } catch (err) {
       toast.error(errMsg(err));
       setCreating(false);
     }
   };
-
-  const scenarioNameOf = (scenarioId: string): string =>
-    scenarios.find((s) => s.id === scenarioId)?.name ?? scenarioId;
 
   return (
     <div>
@@ -457,17 +445,6 @@ export default function GraphPage() {
               value={dataType}
               options={DATA_TYPE_OPTIONS}
               onChange={(e) => setDataType(e.target.value)}
-            />
-            <Select
-              aria-label="场景筛选"
-              value={scenarioFilter}
-              options={[
-                { value: "", label: "全部场景" },
-                ...scenarios
-                  .filter((s) => s.id !== "")
-                  .map((s) => ({ value: s.id, label: s.name })),
-              ]}
-              onChange={(e) => setScenarioFilter(e.target.value)}
             />
           </div>
           <div className="flex items-center justify-between flex-wrap gap-3">
@@ -648,12 +625,10 @@ export default function GraphPage() {
                   <div className="flex flex-col gap-2">
                     {detail.mastery.map((record) => (
                       <span
-                        key={record.scenario_id}
+                        key={`${record.score}-${record.updated_at}`}
                         className="flex items-center justify-between gap-2"
                       >
-                        <span className="text-sm text-secondary">
-                          {record.scenario_id === "" ? "通用" : scenarioNameOf(record.scenario_id)}
-                        </span>
+                        <span className="text-sm text-secondary">当前掌握度</span>
                         <MasteryBadge score={record.score} />
                       </span>
                     ))}
@@ -688,7 +663,6 @@ export default function GraphPage() {
                 ["关联资源", detail.resources],
                 ["典型任务", detail.tasks],
                 ["相关证书", detail.certificates],
-                ["应用场景", detail.scenarios],
               ] as const
             ).map(([title, nodes]) =>
               nodes.length > 0 ? (

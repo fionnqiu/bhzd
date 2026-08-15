@@ -1,5 +1,5 @@
 /**
- * 来源台账（/rag-admin/ledgers）——台账列表/新建/编辑/详情 + 风险提示（PRD-03 §9）。
+ * 已下线的来源台账组件；生产知识库入口已统一到 /admin/rag。
  *
  * 关键决策（为什么）：
  * - 风险提示直接消费后端 _ledger_dto 的 risk_* 计算（过期/未授权/缺少关联资料），
@@ -394,7 +394,7 @@ export default function LedgersPage() {
                   {detail.related_document_ids.map((docId) => (
                     <li key={docId} className="mb-2 text-sm">
                       <Link
-                        to={`/rag-admin/documents/${docId}?returnTo=${encodeURIComponent(returnTo)}`}
+                        to={`/admin/rag/documents/${docId}?returnTo=${encodeURIComponent(returnTo)}`}
                         state={{ returnTo }}
                       >
                         {docTitles[docId] ?? `${docId.slice(0, 8)}…`}

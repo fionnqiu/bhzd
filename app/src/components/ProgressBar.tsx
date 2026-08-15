@@ -1,7 +1,7 @@
 export interface ProgressBarProps {
   /** 0..1 或 0..100（自动归一：>1 视为百分数） */
   value: number;
-  /** 颜色语义：默认主色； mastery 场景建议按分数档位传色 */
+  /** 颜色语义：默认主色；掌握度可按分数档位传色。 */
   tone?: "primary" | "success" | "warning" | "danger";
 }
 

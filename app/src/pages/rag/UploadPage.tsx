@@ -1,16 +1,16 @@
 /**
- * 资料上传（/rag-admin/upload）——拖拽上传 + 元数据 + 处理配置（PRD-03 §5）。
+ * 系统管理 · 资料上传（/admin/rag/upload）——拖拽上传 + 元数据 + 处理配置（PRD-03 §5）。
  *
  * 关键规则（为什么）：
  * - 来源（source_name）与授权状态（license_status）未填时前端直接拦截提交
  *   （PRD-03 §5.3 验收："未填写来源和授权状态时不得上传"），其余必填项与
  *   后端 upload_document 的 422 校验一一对应，错误落到字段旁。
- * - 多值字段（data_types/scenario_ids/cap_ids）按 FastAPI `list[str] = Form`
+ * - 多值字段（data_types/cap_ids）按 FastAPI `list[str] = Form`
  *   契约用同名重复 append，不能 JSON 序列化成单值。
  * - 切片参数不在本页配置：后端上传固定读取系统 RAG 参数（rag_admin.py
  *   _default_stage_params），页面如实说明，不假装可配。
- * - 上传响应是 202 + 同步管线结果：展示最终状态与任务，并提示可去任务队列
- *   查看解析日志（PRD-03 §5.3"上传完成后可查看解析日志"）。
+ * - 上传响应是 202 + 同步管线结果：展示最终状态与任务；资料索引完成后
+ *   自动发布到学生召回范围，不再要求人工送审。
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -19,8 +19,6 @@ import { api } from "../../api/client";
 import type {
   DocumentPipelineResponse,
   GraphNode,
-  Paginated,
-  SourceLedger,
 } from "../../api/types";
 import {
   Button,
@@ -36,12 +34,9 @@ import {
 import {
   DATA_TYPE_OPTIONS,
   errText,
-  LEDGER_AUTH_LABELS,
   LICENSE_OPTIONS,
-  SCENARIO_OPTIONS,
   SOURCE_TYPE_OPTIONS,
   safeRagReturnPath,
-  VISIBILITY_OPTIONS,
 } from "./ragShared";
 
 /** 上传约束与后端一致（rag_admin.py MAX_UPLOAD_BYTES / parsers.py SUPPORTED_FILE_TYPES：
@@ -78,23 +73,16 @@ export default function UploadPage() {
   const [batchFiles, setBatchFiles] = useState<File[]>([]);
   const [batchFileError, setBatchFileError] = useState<string | null>(null);
 
-  // ---- 元数据（PRD-03 §5.2 必填项 + 台账/能力关联） ----
+  // ---- 元数据（PRD-03 §5.2 必填项 + 能力关联） ----
   const [title, setTitle] = useState("");
   const [sourceType, setSourceType] = useState("");
   const [sourceName, setSourceName] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
-  const [ledgerId, setLedgerId] = useState("");
   const [version, setVersion] = useState("");
   const [dataTypes, setDataTypes] = useState<string[]>([]);
-  const [scenarioIds, setScenarioIds] = useState<string[]>([]);
   const [caps, setCaps] = useState<SelectedCap[]>([]);
-  const [visibility, setVisibility] = useState("student");
   const [licenseStatus, setLicenseStatus] = useState("");
-  const [autoSubmit, setAutoSubmit] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-
-  // ---- 台账选项（来源链接或台账二选一关联） ----
-  const [ledgers, setLedgers] = useState<SourceLedger[]>([]);
 
   // ---- 能力节点搜索 ----
   const [capQuery, setCapQuery] = useState("");
@@ -106,20 +94,6 @@ export default function UploadPage() {
   const [result, setResult] = useState<DocumentPipelineResponse | null>(null);
   const [importingBatch, setImportingBatch] = useState(false);
   const [batchImportResult, setBatchImportResult] = useState<SelectedFilesImportResult | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    // 台账下拉：授权状态一并展示，避免误绑未批准来源（发布守卫会拦截）
-    api
-      .get<Paginated<SourceLedger>>("/api/source-ledgers", { limit: 100 }, { signal: controller.signal })
-      .then((res) => {
-        if (!controller.signal.aborted) setLedgers(res.items);
-      })
-      .catch(() => {
-        // 台账加载失败不阻断上传主流程（来源链接仍可手填）
-      });
-    return () => controller.abort();
-  }, []);
 
   /** 文件选取统一入口：类型/大小前端先拦，少一次必败的往返 */
   const pickFile = (f: File | null | undefined) => {
@@ -240,15 +214,15 @@ export default function UploadPage() {
       form.append("source_type", sourceType);
       form.append("source_name", sourceName.trim());
       if (sourceUrl.trim()) form.append("source_url", sourceUrl.trim());
-      if (ledgerId) form.append("source_ledger_id", ledgerId);
       form.append("version", version.trim());
       form.append("license_status", licenseStatus);
-      form.append("visibility", visibility);
+      // The new flow always publishes student-visible material after the
+      // pipeline succeeds; the old visibility form field remains optional on
+      // the API for compatibility but is intentionally absent here.
+      form.append("visibility", "student");
       // 多值字段：同名重复 append（FastAPI list[str] = Form 契约）
       dataTypes.forEach((v) => form.append("data_types", v));
-      scenarioIds.forEach((v) => form.append("scenario_ids", v));
       caps.forEach((c) => form.append("cap_ids", c.id));
-      form.append("auto_submit", autoSubmit ? "true" : "false");
       const res = await api.postForm<DocumentPipelineResponse>("/api/rag/documents", form);
       setResult(res);
       toast.success("上传成功，已进入处理流程");
@@ -269,15 +243,12 @@ export default function UploadPage() {
       form.append("source_type", sourceType);
       form.append("source_name", sourceName.trim());
       if (sourceUrl.trim()) form.append("source_url", sourceUrl.trim());
-      if (ledgerId) form.append("source_ledger_id", ledgerId);
       form.append("version", version.trim());
       form.append("license_status", licenseStatus);
       // Batch publication is deliberately student-scoped, matching the approved teaching default.
       form.append("visibility", "student");
       dataTypes.forEach((value) => form.append("data_types", value));
-      scenarioIds.forEach((value) => form.append("scenario_ids", value));
       caps.forEach((cap) => form.append("cap_ids", cap.id));
-      form.append("auto_publish", "true");
       const imported = await api.postForm<SelectedFilesImportResult>(
         "/api/rag/documents/batch-import",
         form,
@@ -300,8 +271,7 @@ export default function UploadPage() {
         <Card title="上传成功">
           <div className="flex flex-col gap-3">
             <p>
-              「{result.document.title}」已进入异步处理队列，可查看解析日志；学生端召回还需
-              <strong>送审并通过发布审核</strong>。
+              「{result.document.title}」已进入解析、切片、索引流程，完成后即可提供学生召回。
             </p>
             <p className="flex items-center gap-2">
               当前状态：<StatusBadge status={result.document.status} />
@@ -312,14 +282,11 @@ export default function UploadPage() {
             </p>
             <div className="flex gap-2 mt-2">
               <Link
-                to={`/rag-admin/documents/${result.document.id}?returnTo=${encodeURIComponent(returnTo)}`}
+                to={`/admin/rag/documents/${result.document.id}?returnTo=${encodeURIComponent(returnTo)}`}
                 state={{ returnTo }}
                 className="btn btn-primary"
               >
                 查看资料详情
-              </Link>
-              <Link to="/rag-admin/jobs" className="btn btn-secondary">
-                查看解析日志（任务队列）
               </Link>
               <Button variant="ghost" onClick={() => setResult(null)}>
                 继续上传
@@ -478,18 +445,6 @@ export default function UploadPage() {
           <Field label="来源链接（可选）">
             <Input value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} placeholder="https://…" />
           </Field>
-          <Field label="关联来源台账（可选）" hint="绑定台账的资料发布时校验台账授权与有效期">
-            <Select
-              aria-label="关联来源台账"
-              value={ledgerId}
-              onChange={(e) => setLedgerId(e.target.value)}
-              options={ledgers.map((l) => ({
-                value: l.id,
-                label: `${l.source_code} · ${l.name}（${LEDGER_AUTH_LABELS[l.authorization_status] ?? l.authorization_status}）`,
-              }))}
-              placeholder="不关联台账"
-            />
-          </Field>
         </div>
 
         <Field label="适用数据类型" required error={fieldErrors.dataTypes}>
@@ -502,21 +457,6 @@ export default function UploadPage() {
                   onChange={() => toggleIn(dataTypes, opt.value, setDataTypes)}
                 />
                 {opt.label}
-              </label>
-            ))}
-          </div>
-        </Field>
-
-        <Field label="适用行业场景" hint="不选择默认为通用场景">
-          <div className="flex gap-3" style={{ flexWrap: "wrap" }}>
-            {SCENARIO_OPTIONS.filter((s) => s.id !== "").map((s) => (
-              <label key={s.id} className="flex items-center gap-1">
-                <input
-                  type="checkbox"
-                  checked={scenarioIds.includes(s.id)}
-                  onChange={() => toggleIn(scenarioIds, s.id, setScenarioIds)}
-                />
-                {s.name}
               </label>
             ))}
           </div>
@@ -571,14 +511,6 @@ export default function UploadPage() {
         </Field>
 
         <div className="grid grid-cols-2">
-          <Field label="可见范围" required hint="发布后谁能召回该资料">
-            <Select
-              aria-label="可见范围"
-              value={visibility}
-              onChange={(e) => setVisibility(e.target.value)}
-              options={[...VISIBILITY_OPTIONS]}
-            />
-          </Field>
           <Field label="授权状态" required error={fieldErrors.licenseStatus} hint="确认资料可用于教学系统">
             <Select
               aria-label="授权状态"
@@ -601,27 +533,20 @@ export default function UploadPage() {
         ) : null}
       </Card>
 
-      {/* 处理配置（PRD-03 §5.1） */}
-      <Card title="处理配置" className="mb-4">
+      {/* Processing is deliberately automatic so a successful upload cannot
+          be stranded behind a manual review toggle or a hidden queue step. */}
+      <Card title="自动处理" className="mb-4">
         <p className="text-sm text-secondary mb-3">
           切片策略使用系统默认切片参数（chunk_size / overlap 由系统管理端 RAG 参数统一配置），
-          上传后按当前参数生成处理版本。
+          上传后自动完成解析、切片、索引并发布到学生召回范围。
         </p>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={autoSubmit}
-            onChange={(e) => setAutoSubmit(e.target.checked)}
-          />
-          处理完成后自动送审（仍需人工审核通过才能发布）
-        </label>
       </Card>
 
       <div className="flex gap-2">
         <Button size="lg" loading={submitting} onClick={() => void submit()}>
           {submitting ? "上传处理中（大文件可能需要数十秒）…" : "确认上传"}
         </Button>
-        <Link to="/rag-admin" className="btn btn-ghost btn-lg">
+        <Link to="/admin/rag" className="btn btn-ghost btn-lg">
           返回资料库
         </Link>
       </div>

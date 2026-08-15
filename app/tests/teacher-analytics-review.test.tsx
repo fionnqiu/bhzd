@@ -39,7 +39,6 @@ beforeEach(() => {
         heatmap: [{ cap_id: "CAP-1", cap_name: "语音切分", avg_score: 0.35, weak_count: 2, student_count: 2 }],
         trend: [],
         top_errors: [{ error_type: "boundary_overflow", count: 4, major: 1, minor: 3 }],
-        scenario_comparison: [],
         suggestions: ["安排专项纠错练习"],
         student_count: 2,
         sample_warning: true,

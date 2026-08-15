@@ -26,12 +26,13 @@ test.describe("学生端 PRD 主线", () => {
     await page.locator('input[type="password"]').fill(STUDENT.password);
     await page.getByRole("button", { name: /登录|登 录/ }).click();
     await expect(page).toHaveURL(/\/($|presets|graph|tasks)/, { timeout: 15000 });
-    // 欢迎态 8 快捷入口（PRD-01 §3.6：不少于 6 个）
-    for (const name of ["文本标注入门", "图像标注入门", "语音标注入门", "视频标注入门", "岗位任务训练", "上传结果诊断", "考证路径", "今日薄弱补强"]) {
+    // The simplified cockpit intentionally exposes four bounded entry actions;
+    // keeping this list aligned with the current product contract avoids reviving
+    // the retired scenario/task shortcuts in an end-to-end assertion.
+    for (const name of ["文本标注", "图像标注", "结果诊断", "薄弱补强"]) {
       await expect(page.getByText(name, { exact: false }).first()).toBeVisible();
     }
-    // 目标输入占位文案（v3.0 §7.1.3 契约占位）
-    await expect(page.locator('[placeholder*="说说你想学什么"]').first()).toBeVisible();
+    await expect(page.locator('[placeholder*="输入你的学习目标"]').first()).toBeVisible();
   });
 
   test("AC1 目标输入 → Agent 计划 → 确认门 → 任务创建", async ({ page }) => {
@@ -56,7 +57,14 @@ test.describe("学生端 PRD 主线", () => {
     await expect(page.getByText("NER 实体标注入门").first()).toBeVisible({ timeout: 15000 });
     await expect(page.getByText("车载唤醒词标注").first()).toBeVisible();
     // 打开一条路径详情
-    await page.getByText("车载唤醒词标注").first().click();
+    // The shell sidebar can contain a recent session with the same title;
+    // scope the click to the preset card inside main so the test exercises the
+    // drawer contract rather than navigating to an unrelated conversation.
+    await page
+      .locator('main [role="button"]')
+      .filter({ hasText: "车载唤醒词标注" })
+      .first()
+      .click();
     await expect(page.getByText(/开始学习|关联能力|预计/).first()).toBeVisible({ timeout: 10000 });
   });
 

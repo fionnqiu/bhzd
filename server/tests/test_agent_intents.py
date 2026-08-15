@@ -18,14 +18,14 @@ from bhzd_py.agent import intents
 def test_task_creation_requests_use_the_existing_clarification_flow(text: str):
     """Route explicit task requests before the generic question classifier.
 
-    These requests do not provide a data type or scenario, so their converted
-    intent must retain the normal clarification slots instead of invoking RAG.
+    These requests do not provide a data type, so their converted intent must
+    retain the normal clarification slot instead of invoking RAG.
     """
 
     intent = intents.detect(text)
 
     assert intent.kind == intents.KIND_TASK_CONVERT
-    assert intent.missing == ["data_type", "scenario"]
+    assert intent.missing == ["data_type"]
     assert intents.next_question(intent) == intents.QUESTION_DATA_TYPE
 
 

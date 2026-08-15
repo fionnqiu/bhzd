@@ -1,5 +1,5 @@
 /**
- * 召回测试台（/rag-admin/search-test）——召回对比 + 生成回答 + 诊断 + 存评测用例（PRD-03 §10）。
+ * 系统管理 · 召回测试（/admin/rag/search-test）——召回对比 + 生成回答 + 诊断 + 存评测用例（PRD-03 §10）。
  *
  * 关键决策（为什么）：
  * - 双列对比"原始召回 vs 重排后"是 §10 验收硬性要求；未启用重排时后端返回
@@ -12,9 +12,10 @@
  *   避免为存一条用例重跑一次检索；filters 快照随用例落库，保证评测复现条件。
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../../api/client";
 import type {
+  EvalCase,
   Paginated,
   RagAnswer,
   RagDocument,
@@ -26,10 +27,12 @@ import {
   Card,
   CitationCard,
   Field,
+  EmptyState,
   Input,
   Modal,
   PageHeader,
   Select,
+  Tabs,
   Tag,
   Textarea,
   useToast,
@@ -38,8 +41,7 @@ import {
   clamp,
   DATA_TYPE_OPTIONS,
   errText,
-  scenarioLabel,
-  SCENARIO_OPTIONS,
+  fmtTime,
 } from "./ragShared";
 import RagDocumentMultiSelect from "./RagDocumentMultiSelect";
 
@@ -73,15 +75,81 @@ function HitCard({ hit, showRerank }: { hit: SearchTestHit; showRerank: boolean 
   );
 }
 
+type SearchTestTab = "console" | "saved";
+
+interface SavedCasesPanelProps {
+  cases: EvalCase[];
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+  onLoad: (caseItem: EvalCase) => void;
+}
+
+/** Saved cases stay lightweight: loading one restores the console draft without rerunning it. */
+function SavedCasesPanel({ cases, loading, error, onRetry, onLoad }: SavedCasesPanelProps) {
+  return (
+    <Card
+      title={`已保存用例（${cases.length}）`}
+      actions={
+        <Button size="sm" variant="secondary" loading={loading} onClick={onRetry}>
+          刷新
+        </Button>
+      }
+    >
+      {error ? (
+        <div className="flex items-center gap-2" role="alert">
+          <span className="text-danger text-sm">{error}</span>
+          <Button size="sm" variant="secondary" onClick={onRetry}>
+            重试
+          </Button>
+        </div>
+      ) : loading && cases.length === 0 ? (
+        <p className="text-sm text-secondary">正在加载已保存用例…</p>
+      ) : cases.length === 0 ? (
+        <EmptyState title="暂无已保存用例" hint="在测试台运行一次召回后，可将问题保存为评测用例" />
+      ) : (
+        <ul>
+          {cases.map((caseItem) => (
+            <li
+              key={caseItem.id}
+              className="flex items-start justify-between gap-3"
+              style={{ borderBottom: "1px solid var(--color-border)", padding: "var(--space-3) 0" }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <strong className="text-sm">{caseItem.question}</strong>
+                <p className="text-xs text-muted mt-1">
+                  {caseItem.must_hit_document_ids.length > 0
+                    ? `必须命中 ${caseItem.must_hit_document_ids.length} 份资料`
+                    : "用于验证拒答"}
+                  {caseItem.expected_answer ? " · 含标准答案" : ""}
+                  {caseItem.created_at ? ` · ${fmtTime(caseItem.created_at)}` : ""}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                aria-label={`加载用例：${caseItem.question}`}
+                onClick={() => onLoad(caseItem)}
+              >
+                加载到测试台
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
 export default function SearchTestPage() {
   const toast = useToast();
+  const [activeTab, setActiveTab] = useState<SearchTestTab>("console");
 
   // ---- 查询表单 ----
   const [question, setQuestion] = useState("");
   const [documents, setDocuments] = useState<RagDocument[]>([]);
   const [docIds, setDocIds] = useState<string[]>([]);
   const [dataType, setDataType] = useState("");
-  const [scenarioId, setScenarioId] = useState("");
   const [topK, setTopK] = useState("");
   const [includeUnpublished, setIncludeUnpublished] = useState(false);
 
@@ -98,6 +166,11 @@ export default function SearchTestPage() {
   const [mustHitIds, setMustHitIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
+  // ---- 已保存用例 ----
+  const [cases, setCases] = useState<EvalCase[]>([]);
+  const [casesLoading, setCasesLoading] = useState(false);
+  const [casesError, setCasesError] = useState<string | null>(null);
+
   // 资料集选项（多选限定召回范围；空 = 全库）
   useEffect(() => {
     const controller = new AbortController();
@@ -112,8 +185,29 @@ export default function SearchTestPage() {
     return () => controller.abort();
   }, []);
 
+  /** Load persisted cases only when their tab is opened; the console remains usable if this auxiliary API is unavailable. */
+  const loadCases = useCallback(async (signal?: AbortSignal) => {
+    setCasesLoading(true);
+    setCasesError(null);
+    try {
+      const res = await api.get<Paginated<EvalCase>>("/api/rag/eval-cases", { limit: 100, offset: 0 }, { signal });
+      if (signal?.aborted) return;
+      setCases(res.items);
+    } catch (err) {
+      if (!signal?.aborted) setCasesError(errText(err, "已保存用例加载失败"));
+    } finally {
+      if (!signal?.aborted) setCasesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== "saved") return undefined;
+    const controller = new AbortController();
+    void loadCases(controller.signal);
+    return () => controller.abort();
+  }, [activeTab, loadCases]);
+
   const buildFilters = () => ({
-    scenario_id: scenarioId || null,
     data_type: dataType || null,
     published_only: !includeUnpublished,
     document_ids: docIds.length > 0 ? docIds : null,
@@ -126,7 +220,6 @@ export default function SearchTestPage() {
     try {
       const res = await api.post<RagAnswer>("/api/rag/query", {
         question: q,
-        scenario_id: scenarioId || null,
         data_type: dataType || null,
         published_only: !includeUnpublished,
         document_ids: docIds.length > 0 ? docIds : null,
@@ -183,12 +276,18 @@ export default function SearchTestPage() {
   const saveCase = async () => {
     setSaving(true);
     try {
+      // Keep the optional TopK in the persisted filter snapshot so loading a case restores
+      // the same retrieval shape instead of silently falling back to the system default.
+      const filters = {
+        ...buildFilters(),
+        ...(topK.trim() ? { top_k: Number(topK) } : {}),
+      };
       await api.post("/api/rag/eval-cases", {
         question: question.trim(),
         expected_answer: expectedAnswer.trim() || null,
         must_hit_document_ids: mustHitIds,
         must_hit_chunk_ids: [],
-        filters: buildFilters(),
+        filters,
       });
       toast.success("已保存为评测用例");
       setSaveOpen(false);
@@ -197,6 +296,30 @@ export default function SearchTestPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  /** Restore a saved case into the editable console without pretending it has been executed. */
+  const loadCase = (caseItem: EvalCase) => {
+    const filters = caseItem.filters ?? {};
+    const savedDocumentIds = Array.isArray(filters.document_ids)
+      ? filters.document_ids.filter((value): value is string => typeof value === "string")
+      : caseItem.must_hit_document_ids;
+    const savedTopK =
+      typeof filters.top_k === "number" || typeof filters.top_k === "string"
+        ? String(filters.top_k)
+        : "";
+    setQuestion(caseItem.question);
+    setExpectedAnswer(caseItem.expected_answer ?? "");
+    setMustHitIds(caseItem.must_hit_document_ids);
+    setDataType(typeof filters.data_type === "string" ? filters.data_type : "");
+    setDocIds(savedDocumentIds);
+    setIncludeUnpublished(filters.published_only === false);
+    setTopK(savedTopK);
+    setResult(null);
+    setAnswer(null);
+    setAnswerError(null);
+    setActiveTab("console");
+    toast.success("已加载用例，请运行召回测试");
   };
 
   const hitDocTitle = (docId: string) =>
@@ -211,8 +334,19 @@ export default function SearchTestPage() {
         sub="对比原始召回与重排结果、验证回答生成与拒答行为，可把测试问题沉淀为评测用例"
       />
 
-      {/* 查询输入（PRD-03 §10） */}
-      <Card title="查询输入" className="mb-4">
+      <Tabs
+        tabs={[
+          { key: "console", label: "测试台" },
+          { key: "saved", label: "已保存用例" },
+        ]}
+        active={activeTab}
+        onChange={(key) => setActiveTab(key as SearchTestTab)}
+      />
+
+      {activeTab === "console" ? (
+        <>
+          {/* 查询输入（PRD-03 §10） */}
+          <Card title="查询输入" className="mb-4">
         <Field label="问题" required>
           <Textarea
             value={question}
@@ -227,17 +361,6 @@ export default function SearchTestPage() {
               onChange={(e) => setDataType(e.target.value)}
               options={[...DATA_TYPE_OPTIONS]}
               placeholder="不限数据类型"
-            />
-          </Field>
-          <Field label="行业场景">
-            <Select
-              value={scenarioId}
-              onChange={(e) => setScenarioId(e.target.value)}
-              options={SCENARIO_OPTIONS.filter((s) => s.id !== "").map((s) => ({
-                value: s.id,
-                label: s.name,
-              }))}
-              placeholder="不限场景（通用）"
             />
           </Field>
           <Field label="TopK" hint="留空使用系统默认（RAG 参数 top_k）">
@@ -265,10 +388,10 @@ export default function SearchTestPage() {
         <Button size="lg" loading={running} onClick={() => void run()}>
           运行召回测试
         </Button>
-      </Card>
+          </Card>
 
-      {result ? (
-        <>
+          {result ? (
+            <>
           {/* 阈值/重排提示（PRD-06 §4.4：低于阈值学生端拒答） */}
           {result.below_threshold ? (
             <p className="form-alert form-alert-error" role="alert">
@@ -359,7 +482,6 @@ export default function SearchTestPage() {
               <p className="text-sm" style={{ gridColumn: "span 2" }}>
                 过滤条件：
                 {[
-                  `场景=${scenarioLabel(String(result.diagnostics.filters.scenario_id ?? ""))}`,
                   `数据类型=${result.diagnostics.filters.data_type ?? "不限"}`,
                   `仅已发布=${result.diagnostics.filters.published_only ? "是" : "否"}`,
                   `资料集=${Array.isArray(result.diagnostics.filters.document_ids) ? (result.diagnostics.filters.document_ids as string[]).length : "全库"}`,
@@ -373,8 +495,18 @@ export default function SearchTestPage() {
               保存为评测用例
             </Button>
           </div>
+            </>
+          ) : null}
         </>
-      ) : null}
+      ) : (
+        <SavedCasesPanel
+          cases={cases}
+          loading={casesLoading}
+          error={casesError}
+          onRetry={() => void loadCases()}
+          onLoad={loadCase}
+        />
+      )}
 
       {/* 存评测用例弹窗 */}
       <Modal

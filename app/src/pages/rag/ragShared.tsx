@@ -1,5 +1,5 @@
 /**
- * RAG 管理端共享工具（F4 私有，避免 9 个页面各自重复维护枚举映射）。
+ * 系统管理端 RAG 领域共享工具，集中维护跨页面枚举与安全返回路径。
  *
  * 为什么集中在这里：状态/类型 → 中文文案 + 徽章色的映射横跨资料库、详情、
  * 任务队列、台账、发布审核五个页面，分散翻译必然不一致（与 F0 的
@@ -8,7 +8,6 @@
 
 import type { RagDocument, RagJob } from "../../api/types";
 import { ApiRequestError } from "../../api/client";
-import { SCENARIOS } from "../../app/ScenarioContext";
 
 /* ---------------------------------------------------------------- 枚举 → 中文 */
 
@@ -60,14 +59,6 @@ export const VISIBILITY_OPTIONS = [
 export const VISIBILITY_LABELS: Record<string, string> = Object.fromEntries(
   VISIBILITY_OPTIONS.map((o) => [o.value, o.label]),
 );
-
-/** 行业场景选项（与图谱 SCN 节点一致；'' = 通用，见 ScenarioContext） */
-export const SCENARIO_OPTIONS = SCENARIOS;
-
-export function scenarioLabel(id: string): string {
-  if (!id) return "通用";
-  return SCENARIOS.find((s) => s.id === id)?.name ?? id;
-}
 
 /** 管线阶段（rag_jobs.stage） */
 export const STAGE_LABELS: Record<string, string> = {
@@ -135,12 +126,31 @@ export function errText(err: unknown, fallback = "操作失败，请稍后重试
   return fallback;
 }
 
-/** Keep detail-page return targets inside the RAG admin shell; never trust an external URL. */
+/**
+ * 将 returnTo 限制在系统管理的 RAG 路径范围内，防止开放重定向。
+ * 历史 /rag-admin 返回地址在这里归一化，避免新页面的返回按钮再次
+ * 绕经兼容路由或重新暴露已删除门户的路径语义。
+ */
 export function safeRagReturnPath(value: unknown): string {
   if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
-    return "/rag-admin";
+    return "/admin/rag";
   }
-  return value.startsWith("/rag-admin") ? value : "/rag-admin";
+  const parsed = new URL(value, "https://bhzd.invalid");
+  const { pathname, search } = parsed;
+  if (pathname === "/admin/rag" || pathname.startsWith("/admin/rag/")) {
+    return `${pathname}${search}`;
+  }
+  if (pathname === "/rag-admin") return `/admin/rag${search}`;
+  if (pathname === "/rag-admin/upload") return `/admin/rag/upload${search}`;
+  if (pathname === "/rag-admin/search-test" || pathname === "/rag-admin/eval-cases") {
+    return `/admin/rag/search-test${search}`;
+  }
+
+  const documentMatch = pathname.match(/^\/rag-admin\/documents\/([^/]+)(?:\/chunks)?$/);
+  if (documentMatch) {
+    return `/admin/rag/documents/${encodeURIComponent(documentMatch[1])}${search}`;
+  }
+  return "/admin/rag";
 }
 
 /** 截断长文本（表格/预览用） */

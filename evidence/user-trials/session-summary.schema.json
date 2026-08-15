@@ -49,7 +49,7 @@
     },
     "tasks": {
       "type": "array",
-      "minItems": 8,
+      "minItems": 7,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -67,7 +67,6 @@
               "image_task",
               "audio_task",
               "video_task",
-              "scenario_comparison",
               "enterprise_task_conversion",
               "structured_diagnosis",
               "pre_remediation_plan"
@@ -106,7 +105,6 @@
         { "contains": { "properties": { "task_type": { "const": "image_task" } }, "required": ["task_type"] } },
         { "contains": { "properties": { "task_type": { "const": "audio_task" } }, "required": ["task_type"] } },
         { "contains": { "properties": { "task_type": { "const": "video_task" } }, "required": ["task_type"] } },
-        { "contains": { "properties": { "task_type": { "const": "scenario_comparison" } }, "required": ["task_type"] } },
         { "contains": { "properties": { "task_type": { "const": "enterprise_task_conversion" } }, "required": ["task_type"] } },
         { "contains": { "properties": { "task_type": { "const": "structured_diagnosis" } }, "required": ["task_type"] } },
         { "contains": { "properties": { "task_type": { "const": "pre_remediation_plan" } }, "required": ["task_type"] } }

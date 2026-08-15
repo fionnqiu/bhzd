@@ -119,7 +119,7 @@ def _avg_mastery(conn: sqlite3.Connection, student_ids: list[str]) -> float | No
     if not student_ids:
         return None
     row = conn.execute(
-        f"SELECT AVG(score) AS v FROM mastery WHERE scenario_id = '' AND user_id IN ({_placeholders(student_ids)})",
+        f"SELECT AVG(score) AS v FROM mastery WHERE user_id IN ({_placeholders(student_ids)})",
         student_ids,
     ).fetchone()
     return float(row["v"]) if row["v"] is not None else None
@@ -145,7 +145,6 @@ def _teacher_task_dto(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
         "title": row["title"],
         "goal": row["goal"],
         "data_type": row["data_type"],
-        "scenario_id": row["scenario_id"],
         "cap_ids": _task_json(row, "cap_ids_json", []),
         "steps": _task_json(row, "steps_json", []),
         "resources": _task_json(row, "resources_json", []),
@@ -159,9 +158,101 @@ def _teacher_task_dto(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
         "version": row["version"],
         "parent_task_id": row["parent_task_id"],
         "published_count": published,
+        # Content generation is automatic for every authored task.  Keep the
+        # fields optional at the database boundary so a rolling deployment can
+        # still read a pre-018 row while the migration is being applied.
+        "content_status": row["content_status"] if "content_status" in row.keys() else "none",
+        "content_generated_at": (
+            row["content_generated_at"] if "content_generated_at" in row.keys() else None
+        ),
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
+
+
+def _teacher_knowledge_point_dto(row: sqlite3.Row) -> dict[str, Any]:
+    """Teacher-facing knowledge-point DTO; content is editable by the owner."""
+
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "content": row["content"],
+        "sort_order": row["sort_order"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def _teacher_exercise_dto(row: sqlite3.Row) -> dict[str, Any]:
+    """Teacher DTO includes the private reference answer needed for editing."""
+
+    try:
+        options = json.loads(row["options_json"]) if row["options_json"] else None
+    except (TypeError, json.JSONDecodeError):
+        options = None
+    return {
+        "id": row["id"],
+        "question": row["question"],
+        "type": row["type"],
+        "options": options if isinstance(options, list) else None,
+        "reference_answer": row["reference_answer"],
+        "sort_order": row["sort_order"],
+        "created_at": row["created_at"],
+    }
+
+
+def _assert_teacher_content_editable(
+    conn: sqlite3.Connection, task_id: str, teacher_id: str
+) -> sqlite3.Row:
+    """Return an owned draft and reject edits that would drift student copies."""
+
+    row = _get_own_teacher_task(conn, task_id, teacher_id)
+    child = conn.execute(
+        "SELECT 1 FROM learning_tasks WHERE parent_task_id = ? LIMIT 1", (task_id,)
+    ).fetchone()
+    if child is not None:
+        raise ApiError(
+            409,
+            "TASK_CONTENT_LOCKED",
+            "任务已发布给学生，请编辑新版本后再发布",
+        )
+    return row
+
+
+def _refresh_teacher_content_status(conn: sqlite3.Connection, task_id: str) -> None:
+    """Keep the additive content status honest after manual CRUD operations."""
+
+    count = conn.execute(
+        "SELECT (SELECT COUNT(*) FROM task_knowledge_points WHERE task_id = ?) + "
+        "(SELECT COUNT(*) FROM task_exercises WHERE task_id = ?)",
+        (task_id, task_id),
+    ).fetchone()[0]
+    now = utc_now_iso()
+    conn.execute(
+        "UPDATE learning_tasks SET content_status = ?, content_generated_at = "
+        "CASE WHEN ? > 0 THEN COALESCE(content_generated_at, ?) ELSE NULL END, updated_at = ? "
+        "WHERE id = ?",
+        ("done" if count else "none", count, now, now, task_id),
+    )
+
+
+def _queue_generated_content(
+    conn: sqlite3.Connection, task_ids: list[str], *, force: bool = False
+) -> list[str]:
+    """Queue automatic content workers only after the caller has committed.
+
+    Teacher creation, versioning, and publish fan-out use different transaction
+    shapes.  Centralizing the post-commit handoff prevents a worker from
+    opening a second connection while the source row is still uncommitted.
+    """
+
+    from ..tools.task_tools import queue_task_content
+
+    queued: list[str] = []
+    for task_id in dict.fromkeys(task_ids):
+        if queue_task_content(conn, task_id, force=force):
+            queued.append(task_id)
+    return queued
 
 
 def _get_own_teacher_task(conn: sqlite3.Connection, task_id: str, teacher_id: str) -> sqlite3.Row:
@@ -209,7 +300,7 @@ def dashboard(
     if all_students:
         rows = conn.execute(
             f"SELECT cap_id, AVG(score) AS avg_score, COUNT(*) AS n FROM mastery "
-            f"WHERE scenario_id = '' AND user_id IN ({_placeholders(all_students)}) "
+            f"WHERE user_id IN ({_placeholders(all_students)}) "
             f"GROUP BY cap_id HAVING avg_score < ? ORDER BY avg_score ASC LIMIT 5",
             (*all_students, WEAK_LINE),
         ).fetchall()
@@ -407,7 +498,7 @@ def class_students(
         ),
         mastery_stats AS (
           SELECT m.user_id,
-                 AVG(CASE WHEN m.scenario_id = '' THEN m.score END) AS avg_mastery
+                 AVG(m.score) AS avg_mastery
           FROM mastery m
           JOIN enrolled e ON e.student_id = m.user_id
           GROUP BY m.user_id
@@ -509,7 +600,6 @@ def _diagnostic_summary_items(conn: sqlite3.Connection, student_id: str) -> list
                 "id": r["id"],
                 "file_format": r["file_format"],
                 "data_type": r["data_type"],
-                "scenario_id": r["scenario_id"],
                 "error_count": r["error_count"],
                 "severity_counts": severity_counts,
                 "created_at": r["created_at"],
@@ -556,10 +646,8 @@ class TeacherTaskBody(BaseModel):
     title: str
     goal: str | None = None
     data_type: str | None = None
-    scenario_id: str | None = None
     cap_ids: list[str] = []
     steps: list[dict] = []
-    resources: list[dict] = []
     rubric: list[dict] | None = None
     practice: dict | None = None
 
@@ -568,24 +656,52 @@ class TeacherTaskPatchBody(BaseModel):
     title: str | None = None
     goal: str | None = None
     data_type: str | None = None
-    scenario_id: str | None = None
     cap_ids: list[str] | None = None
     steps: list[dict] | None = None
-    resources: list[dict] | None = None
     rubric: list[dict] | None = None
     practice: dict | None = None
     # 截止时间是"发布"的属性（存学生副本上），与内容字段分开处理
     due_at: str | None = None
 
 
-def _check_task_body(title: str, cap_ids: list[str], resources: list[dict]) -> None:
-    """PRD-02 §5.4：任务必须至少关联一个能力节点和一个来源资料。"""
+class TeacherKnowledgePointBody(BaseModel):
+    title: str
+    content: str
+    sort_order: int = 0
+
+
+class TeacherKnowledgePointPatchBody(BaseModel):
+    title: str | None = None
+    content: str | None = None
+    sort_order: int | None = None
+
+
+class TeacherExerciseBody(BaseModel):
+    question: str
+    type: str = "open_ended"
+    options: list[str] | None = None
+    reference_answer: str | None = None
+    sort_order: int = 0
+
+
+class TeacherExercisePatchBody(BaseModel):
+    question: str | None = None
+    type: str | None = None
+    options: list[str] | None = None
+    reference_answer: str | None = None
+    sort_order: int | None = None
+
+
+def _check_task_body(title: str, cap_ids: list[str]) -> None:
+    """Validate the teacher task core without forcing a resource attachment.
+
+    The legacy resources column remains readable, but new task content starts
+    empty so publication does not depend on a mutable RAG resource catalog.
+    """
     if not title.strip():
         raise ApiError(400, "VALIDATION_ERROR", "任务标题不能为空")
     if not cap_ids:
         raise ApiError(400, "CAPS_REQUIRED", "任务必须至少关联一个能力节点")
-    if not resources:
-        raise ApiError(400, "RESOURCES_REQUIRED", "任务必须至少关联一个来源资料")
     _validate_cap_ids(cap_ids)
 
 
@@ -659,16 +775,16 @@ def create_teacher_task(
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
     _require_teacher_role(current)
-    _check_task_body(body.title, body.cap_ids, body.resources)
+    _check_task_body(body.title, body.cap_ids)
     task_id = uuid.uuid4().hex
     now = utc_now_iso()
     conn.execute(
         """
         INSERT INTO learning_tasks
-          (id, user_id, title, goal, data_type, scenario_id, cap_ids_json, source,
+          (id, user_id, title, goal, data_type, cap_ids_json, source,
            status, steps_json, resources_json, rubric_json, practice_json,
            counts_toward_mastery, teacher_id, created_by, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'teacher', 'draft', ?, ?, ?, ?, 1, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, 'teacher', 'draft', ?, ?, ?, ?, 1, ?, ?, ?, ?)
         """,
         (
             task_id,
@@ -676,10 +792,11 @@ def create_teacher_task(
             body.title.strip(),
             body.goal,
             body.data_type,
-            body.scenario_id,
             json.dumps(body.cap_ids, ensure_ascii=False),
             json.dumps(body.steps, ensure_ascii=False),
-            json.dumps(body.resources, ensure_ascii=False),
+            # New task rows deliberately keep the historical resource column
+            # empty; old rows are still returned unchanged by the DTO.
+            "[]",
             json.dumps(body.rubric, ensure_ascii=False) if body.rubric is not None else None,
             json.dumps(body.practice, ensure_ascii=False) if body.practice is not None else None,
             current.user["id"],
@@ -689,6 +806,7 @@ def create_teacher_task(
         ),
     )
     conn.commit()
+    _queue_generated_content(conn, [task_id])
     audit(conn, current.user, "teacher_task.create", target_type="learning_task",
           target_id=task_id, after={"title": body.title.strip()})
     return _teacher_task_dto(conn, _get_own_teacher_task(conn, task_id, current.user["id"]))
@@ -701,6 +819,303 @@ def teacher_task_detail(
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
     return _teacher_task_dto(conn, _get_own_teacher_task(conn, task_id, current.user["id"]))
+
+
+# ---------------------------------------------------------------- 教学任务学习内容
+
+
+@router.get("/api/teacher/tasks/{task_id}/knowledge-points")
+def list_teacher_knowledge_points(
+    task_id: str,
+    current: CurrentUser = Depends(require_role(*TEACHER_ROLES)),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """List editable knowledge points for an owned teacher task."""
+
+    row = _get_own_teacher_task(conn, task_id, current.user["id"])
+    items = conn.execute(
+        "SELECT * FROM task_knowledge_points WHERE task_id = ? ORDER BY sort_order, id",
+        (row["id"],),
+    ).fetchall()
+    return {"items": [_teacher_knowledge_point_dto(item) for item in items], "total": len(items)}
+
+
+@router.post("/api/teacher/tasks/{task_id}/knowledge-points", status_code=201)
+def create_teacher_knowledge_point(
+    task_id: str,
+    body: TeacherKnowledgePointBody,
+    current: CurrentUser = Depends(csrf_protect),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Create one point while a task is still an unpublished draft."""
+
+    _require_teacher_role(current)
+    row = _assert_teacher_content_editable(conn, task_id, current.user["id"])
+    if not body.title.strip() or not body.content.strip():
+        raise ApiError(400, "VALIDATION_ERROR", "知识点标题和内容不能为空")
+    if body.sort_order < 0:
+        raise ApiError(400, "VALIDATION_ERROR", "排序值不能为负数")
+    point_id = uuid.uuid4().hex
+    now = utc_now_iso()
+    conn.execute(
+        "INSERT INTO task_knowledge_points "
+        "(id, task_id, title, content, sort_order, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (point_id, row["id"], body.title.strip(), body.content.strip(), body.sort_order, now, now),
+    )
+    _refresh_teacher_content_status(conn, task_id)
+    conn.commit()
+    audit(
+        conn,
+        current.user,
+        "teacher_task.knowledge_point.create",
+        target_type="task_knowledge_point",
+        target_id=point_id,
+        after={"task_id": task_id, "title": body.title.strip(), "sort_order": body.sort_order},
+    )
+    return _teacher_knowledge_point_dto(
+        conn.execute("SELECT * FROM task_knowledge_points WHERE id = ?", (point_id,)).fetchone()
+    )
+
+
+@router.patch("/api/teacher/tasks/{task_id}/knowledge-points/{point_id}")
+def patch_teacher_knowledge_point(
+    task_id: str,
+    point_id: str,
+    body: TeacherKnowledgePointPatchBody,
+    current: CurrentUser = Depends(csrf_protect),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Edit one point without exposing another teacher's task existence."""
+
+    _require_teacher_role(current)
+    row = _assert_teacher_content_editable(conn, task_id, current.user["id"])
+    point = conn.execute(
+        "SELECT * FROM task_knowledge_points WHERE id = ? AND task_id = ?",
+        (point_id, row["id"]),
+    ).fetchone()
+    if point is None:
+        raise ApiError(404, "KNOWLEDGE_POINT_NOT_FOUND", "知识点不存在")
+    title = body.title.strip() if body.title is not None else point["title"]
+    content = body.content.strip() if body.content is not None else point["content"]
+    sort_order = body.sort_order if body.sort_order is not None else point["sort_order"]
+    if not title or not content:
+        raise ApiError(400, "VALIDATION_ERROR", "知识点标题和内容不能为空")
+    if sort_order < 0:
+        raise ApiError(400, "VALIDATION_ERROR", "排序值不能为负数")
+    now = utc_now_iso()
+    conn.execute(
+        "UPDATE task_knowledge_points SET title = ?, content = ?, sort_order = ?, updated_at = ? "
+        "WHERE id = ?",
+        (title, content, sort_order, now, point_id),
+    )
+    _refresh_teacher_content_status(conn, task_id)
+    conn.commit()
+    audit(
+        conn,
+        current.user,
+        "teacher_task.knowledge_point.update",
+        target_type="task_knowledge_point",
+        target_id=point_id,
+        after={"task_id": task_id, "title": title, "sort_order": sort_order},
+    )
+    return _teacher_knowledge_point_dto(
+        conn.execute("SELECT * FROM task_knowledge_points WHERE id = ?", (point_id,)).fetchone()
+    )
+
+
+@router.delete("/api/teacher/tasks/{task_id}/knowledge-points/{point_id}")
+def delete_teacher_knowledge_point(
+    task_id: str,
+    point_id: str,
+    current: CurrentUser = Depends(csrf_protect),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, bool]:
+    """Delete one point from an unpublished owned task."""
+
+    _require_teacher_role(current)
+    row = _assert_teacher_content_editable(conn, task_id, current.user["id"])
+    point = conn.execute(
+        "SELECT id FROM task_knowledge_points WHERE id = ? AND task_id = ?",
+        (point_id, row["id"]),
+    ).fetchone()
+    if point is None:
+        raise ApiError(404, "KNOWLEDGE_POINT_NOT_FOUND", "知识点不存在")
+    conn.execute("DELETE FROM task_knowledge_points WHERE id = ?", (point_id,))
+    _refresh_teacher_content_status(conn, task_id)
+    conn.commit()
+    audit(
+        conn,
+        current.user,
+        "teacher_task.knowledge_point.delete",
+        target_type="task_knowledge_point",
+        target_id=point_id,
+        before={"task_id": task_id},
+    )
+    return {"deleted": True}
+
+
+@router.get("/api/teacher/tasks/{task_id}/exercises")
+def list_teacher_exercises(
+    task_id: str,
+    current: CurrentUser = Depends(require_role(*TEACHER_ROLES)),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """List exercises, including answers that are private to teachers."""
+
+    row = _get_own_teacher_task(conn, task_id, current.user["id"])
+    items = conn.execute(
+        "SELECT * FROM task_exercises WHERE task_id = ? ORDER BY sort_order, id",
+        (row["id"],),
+    ).fetchall()
+    return {"items": [_teacher_exercise_dto(item) for item in items], "total": len(items)}
+
+
+@router.post("/api/teacher/tasks/{task_id}/exercises", status_code=201)
+def create_teacher_exercise(
+    task_id: str,
+    body: TeacherExerciseBody,
+    current: CurrentUser = Depends(csrf_protect),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Create a teacher-authored exercise for an unpublished task."""
+
+    _require_teacher_role(current)
+    row = _assert_teacher_content_editable(conn, task_id, current.user["id"])
+    if not body.question.strip():
+        raise ApiError(400, "VALIDATION_ERROR", "练习题不能为空")
+    if body.type not in {"open_ended", "multiple_choice"}:
+        raise ApiError(400, "VALIDATION_ERROR", "练习题类型不受支持")
+    options = [item.strip() for item in (body.options or []) if item.strip()]
+    if body.type == "multiple_choice" and not options:
+        raise ApiError(400, "VALIDATION_ERROR", "选择题必须提供选项")
+    if body.sort_order < 0:
+        raise ApiError(400, "VALIDATION_ERROR", "排序值不能为负数")
+    exercise_id = uuid.uuid4().hex
+    now = utc_now_iso()
+    conn.execute(
+        "INSERT INTO task_exercises "
+        "(id, task_id, question, type, options_json, reference_answer, sort_order, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            exercise_id,
+            row["id"],
+            body.question.strip(),
+            body.type,
+            json.dumps(options, ensure_ascii=False) if options else None,
+            body.reference_answer.strip() if body.reference_answer else None,
+            body.sort_order,
+            now,
+        ),
+    )
+    _refresh_teacher_content_status(conn, task_id)
+    conn.commit()
+    audit(
+        conn,
+        current.user,
+        "teacher_task.exercise.create",
+        target_type="task_exercise",
+        target_id=exercise_id,
+        after={"task_id": task_id, "question": body.question.strip(), "type": body.type},
+    )
+    return _teacher_exercise_dto(
+        conn.execute("SELECT * FROM task_exercises WHERE id = ?", (exercise_id,)).fetchone()
+    )
+
+
+@router.patch("/api/teacher/tasks/{task_id}/exercises/{exercise_id}")
+def patch_teacher_exercise(
+    task_id: str,
+    exercise_id: str,
+    body: TeacherExercisePatchBody,
+    current: CurrentUser = Depends(csrf_protect),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Edit a teacher exercise while retaining its private answer boundary."""
+
+    _require_teacher_role(current)
+    row = _assert_teacher_content_editable(conn, task_id, current.user["id"])
+    exercise = conn.execute(
+        "SELECT * FROM task_exercises WHERE id = ? AND task_id = ?",
+        (exercise_id, row["id"]),
+    ).fetchone()
+    if exercise is None:
+        raise ApiError(404, "EXERCISE_NOT_FOUND", "练习题不存在")
+    question = body.question.strip() if body.question is not None else exercise["question"]
+    kind = body.type if body.type is not None else exercise["type"]
+    if not question or kind not in {"open_ended", "multiple_choice"}:
+        raise ApiError(400, "VALIDATION_ERROR", "练习题内容或类型无效")
+    if body.options is None:
+        try:
+            options = json.loads(exercise["options_json"]) if exercise["options_json"] else []
+        except (TypeError, json.JSONDecodeError):
+            options = []
+    else:
+        options = [item.strip() for item in body.options if item.strip()]
+    if kind == "multiple_choice" and not options:
+        raise ApiError(400, "VALIDATION_ERROR", "选择题必须提供选项")
+    sort_order = body.sort_order if body.sort_order is not None else exercise["sort_order"]
+    if sort_order < 0:
+        raise ApiError(400, "VALIDATION_ERROR", "排序值不能为负数")
+    reference_answer = (
+        body.reference_answer.strip() if body.reference_answer is not None else exercise["reference_answer"]
+    )
+    conn.execute(
+        "UPDATE task_exercises SET question = ?, type = ?, options_json = ?, reference_answer = ?, "
+        "sort_order = ? WHERE id = ?",
+        (
+            question,
+            kind,
+            json.dumps(options, ensure_ascii=False) if options else None,
+            reference_answer,
+            sort_order,
+            exercise_id,
+        ),
+    )
+    _refresh_teacher_content_status(conn, task_id)
+    conn.commit()
+    audit(
+        conn,
+        current.user,
+        "teacher_task.exercise.update",
+        target_type="task_exercise",
+        target_id=exercise_id,
+        after={"task_id": task_id, "question": question, "type": kind},
+    )
+    return _teacher_exercise_dto(
+        conn.execute("SELECT * FROM task_exercises WHERE id = ?", (exercise_id,)).fetchone()
+    )
+
+
+@router.delete("/api/teacher/tasks/{task_id}/exercises/{exercise_id}")
+def delete_teacher_exercise(
+    task_id: str,
+    exercise_id: str,
+    current: CurrentUser = Depends(csrf_protect),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, bool]:
+    """Delete a teacher exercise; student submissions cascade with the row."""
+
+    _require_teacher_role(current)
+    row = _assert_teacher_content_editable(conn, task_id, current.user["id"])
+    exercise = conn.execute(
+        "SELECT id FROM task_exercises WHERE id = ? AND task_id = ?",
+        (exercise_id, row["id"]),
+    ).fetchone()
+    if exercise is None:
+        raise ApiError(404, "EXERCISE_NOT_FOUND", "练习题不存在")
+    conn.execute("DELETE FROM task_exercises WHERE id = ?", (exercise_id,))
+    _refresh_teacher_content_status(conn, task_id)
+    conn.commit()
+    audit(
+        conn,
+        current.user,
+        "teacher_task.exercise.delete",
+        target_type="task_exercise",
+        target_id=exercise_id,
+        before={"task_id": task_id},
+    )
+    return {"deleted": True}
 
 
 @router.patch("/api/teacher/tasks/{task_id}")
@@ -750,8 +1165,7 @@ def patch_teacher_task(
 
     content_changed = any(
         getattr(body, field) is not None
-        for field in ("title", "goal", "data_type", "scenario_id",
-                      "cap_ids", "steps", "resources", "rubric", "practice")
+        for field in ("title", "goal", "data_type", "cap_ids", "steps", "rubric", "practice")
     )
     if has_children and not content_changed:
         # 仅截止变更（或空 PATCH）：学生副本已更新，无需版本升级，直接收尾
@@ -765,23 +1179,22 @@ def patch_teacher_task(
         return result
 
     cap_ids = body.cap_ids if body.cap_ids is not None else _task_json(row, "cap_ids_json", [])
-    resources = (
-        body.resources if body.resources is not None else _task_json(row, "resources_json", [])
-    )
+    # Resource links are no longer authored through this endpoint.  Historical
+    # rows remain readable, while edited/new content uses the empty projection.
     title = body.title if body.title is not None else row["title"]
-    # 合并后的内容仍要满足发布底线（能力≥1 + 资料≥1）
-    _check_task_body(title, cap_ids, resources)
+    # Content edits retain the capability floor; resource attachments are no
+    # longer part of the task contract and always project to an empty array.
+    _check_task_body(title, cap_ids)
     new_fields = {
         "title": title.strip(),
         "goal": body.goal if body.goal is not None else row["goal"],
         "data_type": body.data_type if body.data_type is not None else row["data_type"],
-        "scenario_id": body.scenario_id if body.scenario_id is not None else row["scenario_id"],
         "cap_ids_json": json.dumps(cap_ids, ensure_ascii=False),
         "steps_json": json.dumps(
             body.steps if body.steps is not None else _task_json(row, "steps_json", []),
             ensure_ascii=False,
         ),
-        "resources_json": json.dumps(resources, ensure_ascii=False),
+        "resources_json": "[]",
         "rubric_json": (
             json.dumps(body.rubric, ensure_ascii=False) if body.rubric is not None else row["rubric_json"]
         ),
@@ -796,11 +1209,11 @@ def patch_teacher_task(
         conn.execute(
             """
             INSERT INTO learning_tasks
-              (id, user_id, title, goal, data_type, scenario_id, cap_ids_json, source,
+              (id, user_id, title, goal, data_type, cap_ids_json, source,
                status, steps_json, resources_json, rubric_json, practice_json,
                counts_toward_mastery, teacher_id, version, parent_task_id,
                created_by, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'teacher', 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, 'teacher', 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 new_id,
@@ -808,7 +1221,6 @@ def patch_teacher_task(
                 new_fields["title"],
                 new_fields["goal"],
                 new_fields["data_type"],
-                new_fields["scenario_id"],
                 new_fields["cap_ids_json"],
                 new_fields["steps_json"],
                 new_fields["resources_json"],
@@ -824,6 +1236,7 @@ def patch_teacher_task(
             ),
         )
         conn.commit()
+        _queue_generated_content(conn, [new_id])
         audit(conn, current.user, "teacher_task.version_bump", target_type="learning_task",
               target_id=new_id, before={"version": row["version"]},
               after={"version": row["version"] + 1, "from": task_id})
@@ -838,11 +1251,19 @@ def patch_teacher_task(
     if body.due_at is not None:
         new_fields["due_at"] = body.due_at
     assignments = ", ".join(f"{col} = ?" for col in new_fields)
+    if content_changed:
+        # Editing an unpublished task invalidates its previous generated lesson;
+        # the next worker must derive content from the new title/capabilities.
+        new_fields["content_status"] = "none"
+        new_fields["content_generated_at"] = None
+        assignments = ", ".join(f"{col} = ?" for col in new_fields)
     conn.execute(
         f"UPDATE learning_tasks SET {assignments}, updated_at = ? WHERE id = ?",
         (*new_fields.values(), utc_now_iso(), task_id),
     )
     conn.commit()
+    if content_changed:
+        _queue_generated_content(conn, [task_id], force=True)
     result = _teacher_task_dto(conn, _get_own_teacher_task(conn, task_id, current.user["id"]))
     result["version_bumped"] = False
     return result
@@ -874,27 +1295,28 @@ def publish_teacher_task_rows(
     _get_owned_class(conn, class_id, teacher_id)
     student_ids = _class_student_ids(conn, [class_id])
     now = utc_now_iso()
+    content_task_ids: list[str] = []
     for student_id in student_ids:
+        student_task_id = uuid.uuid4().hex
         conn.execute(
             """
             INSERT INTO learning_tasks
-              (id, user_id, title, goal, data_type, scenario_id, cap_ids_json, source,
+              (id, user_id, title, goal, data_type, cap_ids_json, source,
                status, steps_json, resources_json, rubric_json, practice_json,
                counts_toward_mastery, teacher_id, class_id, due_at, version,
                parent_task_id, created_by, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'teacher', 'not_started', ?, ?, ?, ?, ?, ?, ?, ?, 1,
+            VALUES (?, ?, ?, ?, ?, ?, 'teacher', 'not_started', ?, ?, ?, ?, ?, ?, ?, ?, 1,
                     ?, ?, ?, ?)
             """,
             (
-                uuid.uuid4().hex,
+                student_task_id,
                 student_id,
                 row["title"],
                 row["goal"],
                 row["data_type"],
-                row["scenario_id"],
                 row["cap_ids_json"],
                 row["steps_json"],
-                row["resources_json"],
+                "[]",
                 row["rubric_json"],
                 row["practice_json"],
                 1 if counts_toward_mastery else 0,
@@ -907,6 +1329,7 @@ def publish_teacher_task_rows(
                 now,
             ),
         )
+        content_task_ids.append(student_task_id)
     # Notifications share the transaction with task copies, so students never
     # see a publish notice for a task row that was rolled back.
     due_note = f"，截止时间 {due_at}" if due_at else ""
@@ -919,7 +1342,14 @@ def publish_teacher_task_rows(
         ref_type="task",
         ref_id=task_id,
     )
-    return {"published": len(student_ids), "class_id": class_id}
+    return {
+        "published": len(student_ids),
+        "class_id": class_id,
+        # Internal callers schedule these only after their surrounding
+        # transaction commits; the HTTP response strips this implementation
+        # detail before returning to the browser.
+        "_content_task_ids": content_task_ids,
+    }
 
 
 @router.post("/api/teacher/tasks/{task_id}/publish", status_code=201)
@@ -931,7 +1361,10 @@ def publish_teacher_task(
 ) -> dict:
     """发布到班级：为每个在班学生复制一行任务（同事务），返回发布份数。"""
     _require_teacher_role(current)
-    with transaction(conn):
+    # Publishing reads the owned class and students before inserting copies;
+    # reserve SQLite's writer slot first so a concurrent content worker cannot
+    # invalidate the WAL snapshot between those reads and the fan-out write.
+    with transaction(conn, immediate=True):
         published = publish_teacher_task_rows(
             conn,
             task_id=task_id,
@@ -940,6 +1373,7 @@ def publish_teacher_task(
             due_at=body.due_at,
             counts_toward_mastery=body.counts_toward_mastery,
         )
+    _queue_generated_content(conn, published.pop("_content_task_ids", []))
     audit(conn, current.user, "teacher_task.publish", target_type="learning_task",
           target_id=task_id,
           after={"class_id": body.class_id, "published": published["published"],
@@ -955,7 +1389,6 @@ _CJK_RUN_RE = re.compile(r"[一-鿿]+")
 
 class GenerateTaskBody(BaseModel):
     description: str
-    scenario_id: str | None = None
     data_type: str | None = None
 
 
@@ -990,7 +1423,6 @@ def _locate_caps(
     conn: sqlite3.Connection,
     description: str,
     data_type: str | None,
-    scenario_id: str | None,
     hits: list,
 ) -> list[str]:
     """能力节点定位（≤3）：召回资料声明的 cap 优先（自带证据链），图谱关键词
@@ -1009,9 +1441,7 @@ def _locate_caps(
     try:
         from ..graphx import reason
 
-        candidates = reason.search_nodes(
-            node_type="CAP", data_type=data_type, scenario_id=scenario_id, limit=50
-        )
+        candidates = reason.search_nodes(node_type="CAP", data_type=data_type, limit=50)
     except Exception:
         candidates = []
     for node in sorted(candidates, key=lambda n: _cap_match_score(description, n), reverse=True):
@@ -1020,7 +1450,8 @@ def _locate_caps(
         if _cap_match_score(description, node) > 0 and node["id"] not in cap_ids:
             cap_ids.append(node["id"])
     if not cap_ids and candidates:
-        # 既无资料命中也无关键词重合：取该数据类型/场景下的首个节点兜底，
+        # With no document hit or keyword overlap, choose the first matching
+        # data-type node as a deterministic fallback,
         # 保证草稿满足"至少关联一个能力节点"的发布底线（PRD-02 §5.4），教师可改
         cap_ids.append(candidates[0]["id"])
     return cap_ids[:3]
@@ -1045,12 +1476,11 @@ def generate_teacher_task(
     if body.data_type is not None and body.data_type not in _DATA_TYPES:
         raise ApiError(400, "VALIDATION_ERROR", "数据类型仅支持 text / image / audio / video")
 
-    # 1) 意图识别：数据类型/场景（请求里的显式参数优先于识别结果）
+    # 1) Intent recognition supplies the data type used by the generated task.
     from ..agent import intents
 
     intent = intents.detect(description)
     data_type = body.data_type or intent.data_type
-    scenario_id = body.scenario_id or intent.scenario_id
 
     # 2) RAG 召回规范/案例：仅已发布资料——任务卡最终面向学生，引用必须是
     #    学生可回流的出处（与 PRD-06 §4.4 学生召回边界同口径）
@@ -1060,13 +1490,13 @@ def generate_teacher_task(
         conn,
         get_config(),
         description,
-        retriever.RagFilters(scenario_id=scenario_id, data_type=data_type, published_only=True),
+        retriever.RagFilters(data_type=data_type, published_only=True),
     )
     # 低于阈值 = 知识库没有可靠依据：不给引用（不编造出处），草稿其余部分照常组装
     hits = [] if retrieval.below_threshold else retrieval.hits
 
     # 3) 图谱定位能力节点（≤3，带中文名）
-    cap_ids = _locate_caps(conn, description, data_type, scenario_id, hits)
+    cap_ids = _locate_caps(conn, description, data_type, hits)
     names = _cap_names()
 
     # 4) 模板组装草稿（确定性，离线可用）
@@ -1077,15 +1507,6 @@ def generate_teacher_task(
         {"title": "示范学习", "description": "对照示范样本逐条理解规范的应用方式，记录易错点"},
         {"title": "实操标注", "description": f"按规范独立完成「{title}」的标注实操"},
         {"title": "自检互检", "description": "按评分规则逐项自检并修正，提交前对照规范复核一遍"},
-    ]
-    resources = [
-        {
-            "type": "rag_document",
-            "ref_id": hit.document_id,
-            "title": hit.title,
-            "citation": f"【{hit.title} {hit.section_title or ''} v{hit.version}】",
-        }
-        for hit in hits[:5]
     ]
     rubric = [
         {"criterion": "规范符合性", "description": "标注结果符合引用规范条款", "points": 40},
@@ -1136,7 +1557,6 @@ def generate_teacher_task(
             {
                 "source": "teacher_generate",
                 "data_type": data_type,
-                "scenario_id": scenario_id,
                 "cap_count": len(cap_ids),
                 "llm_used": llm_used,
             },
@@ -1157,18 +1577,16 @@ def generate_teacher_task(
         for hit in hits[:5]
     ]
     if hits:
-        sources_note = f"已引用 {len(resources)} 份已发布知识库资料，发布前请核对引用条款是否适用"
+        sources_note = f"生成过程参考了 {len(hits[:5])} 份已发布知识库资料；任务不会绑定资料，发布前请核对条款"
     else:
         sources_note = "知识库暂无可靠命中的已发布资料，草稿按图谱能力生成；发布前请补充至少一份来源资料"
     return {
         "title": title,
         "goal": f"完成「{title}」对应的标注任务，掌握相关规范要点并达到质检要求",
         "data_type": data_type,
-        "scenario_id": scenario_id,
         "cap_ids": cap_ids,
         "caps": [{"cap_id": cid, "cap_name": names.get(cid, cid)} for cid in cap_ids],
         "steps": steps,
-        "resources": resources,
         "citations": citations,
         "rubric": rubric,
         "difficulty": difficulty,
@@ -1186,13 +1604,12 @@ def generate_teacher_task(
 def analytics(
     class_id: str | None = None,
     data_type: str | None = None,
-    scenario_id: str | None = None,
     source: str | None = None,
     range: str = "30d",
     current: CurrentUser = Depends(require_role(*TEACHER_ROLES)),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
-    """学情分析：热力图/趋势/高频错误/场景对比/干预建议（全部来自真实数据）。"""
+    """Student analytics: heatmap, trend, frequent errors, and interventions."""
     teacher_id = current.user["id"]
     if class_id:
         _get_owned_class(conn, class_id, teacher_id)
@@ -1214,11 +1631,6 @@ def analytics(
     if student_ids:
         clauses = [f"user_id IN ({_placeholders(student_ids)})"]
         params: list[Any] = list(student_ids)
-        if scenario_id:
-            clauses.append("scenario_id = ?")
-            params.append(scenario_id)
-        else:
-            clauses.append("scenario_id = ''")  # 默认看通用视图（§8.4）
         rows = conn.execute(
             f"SELECT cap_id, AVG(score) AS avg_score, "
             f"SUM(CASE WHEN score < ? THEN 1 ELSE 0 END) AS weak_count, COUNT(*) AS n "
@@ -1264,9 +1676,6 @@ def analytics(
         if data_type:
             task_filters += " AND t.data_type = ?"
             task_params.append(data_type)
-        if scenario_id:
-            task_filters += " AND t.scenario_id = ?"
-            task_params.append(scenario_id)
         sub_rows = conn.execute(
             f"SELECT substr(a.created_at, 1, 10) AS day, COUNT(*) AS n "
             f"FROM task_attempts a JOIN learning_tasks t ON t.id = a.task_id "
@@ -1297,9 +1706,6 @@ def analytics(
     if student_ids:
         diag_clauses = [f"user_id IN ({_placeholders(student_ids)})"]
         diag_params: list[Any] = list(student_ids)
-        if scenario_id:
-            diag_clauses.append("scenario_id = ?")
-            diag_params.append(scenario_id)
         if data_type:
             diag_clauses.append("data_type = ?")
             diag_params.append(data_type)
@@ -1324,38 +1730,6 @@ def analytics(
                 slot["count"] += 1
                 slot["major" if err.get("severity") == "major" else "minor"] += 1
         top_errors = sorted(counter.values(), key=lambda x: (-x["count"], x["error_type"]))[:5]
-
-    # ---- 场景掌握度对比 ----
-    scenario_comparison: list[dict] = []
-    if student_ids:
-        rows = conn.execute(
-            f"SELECT scenario_id, AVG(score) AS avg_score, COUNT(*) AS n FROM mastery "
-            f"WHERE user_id IN ({_placeholders(student_ids)}) GROUP BY scenario_id "
-            f"ORDER BY avg_score ASC",
-            student_ids,
-        ).fetchall()
-        scn_names: dict[str, str] = {}
-        try:
-            from ..graphx import reason
-
-            scn_names = {
-                n["id"]: n.get("name") or n["id"]
-                for n in reason.get_graph()["nodes"]
-                if n.get("type") == "SCN"
-            }
-        except Exception:
-            pass
-        scenario_comparison = [
-            {
-                "scenario_id": r["scenario_id"],
-                "scenario_name": (
-                    "通用" if r["scenario_id"] == "" else scn_names.get(r["scenario_id"], r["scenario_id"])
-                ),
-                "avg_score": float(r["avg_score"]),
-                "student_count": r["n"],
-            }
-            for r in rows
-        ]
 
     # ---- 干预建议：规则化生成，只引用上面算出的真实数字（PRD-02 §6.3）----
     suggestions: list[str] = []
@@ -1390,7 +1764,6 @@ def analytics(
         "heatmap": heatmap,
         "trend": trend,
         "top_errors": top_errors,
-        "scenario_comparison": scenario_comparison,
         "suggestions": suggestions,
         "student_count": len(student_ids),
         "sample_warning": len(student_ids) < MIN_SAMPLE,
@@ -1415,14 +1788,13 @@ def student_analytics_detail(
     names = _cap_names()
 
     mastery_rows = conn.execute(
-        "SELECT * FROM mastery WHERE user_id = ? ORDER BY cap_id, scenario_id",
+        "SELECT * FROM mastery WHERE user_id = ? ORDER BY cap_id",
         (student_id,),
     ).fetchall()
     mastery = [
         {
             "cap_id": r["cap_id"],
             "cap_name": names.get(r["cap_id"], r["cap_id"]),
-            "scenario_id": r["scenario_id"],  # '' = 通用掌握度（蓝图 §5 口径）
             "score": float(r["score"]),
             "updated_at": r["updated_at"],
         }
@@ -1461,7 +1833,6 @@ def student_analytics_detail(
     mastery_events = [
         {
             "cap_id": r["cap_id"],
-            "scenario_id": r["scenario_id"],
             "old_score": float(r["old_score"]),
             "new_score": float(r["new_score"]),
             "source": r["source"],

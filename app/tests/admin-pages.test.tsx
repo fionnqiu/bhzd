@@ -14,6 +14,7 @@ import ProvidersPage from "../src/pages/admin/ProvidersPage";
 import RagSettingsPage from "../src/pages/admin/RagSettingsPage";
 import UsersPage from "../src/pages/admin/UsersPage";
 import AuditLogsPage from "../src/pages/admin/AuditLogsPage";
+import SecurityPage from "../src/pages/admin/SecurityPage";
 
 vi.mock("../src/api/client", () => {
   class MockApiRequestError extends Error {
@@ -30,6 +31,7 @@ vi.mock("../src/api/client", () => {
     ApiRequestError: MockApiRequestError,
     api: {
       get: vi.fn(),
+      getBlob: vi.fn(),
       post: vi.fn(),
       put: vi.fn(),
       patch: vi.fn(),
@@ -44,6 +46,7 @@ vi.mock("../src/api/client", () => {
 });
 
 const mockedGet = vi.mocked(api.get);
+const mockedGetBlob = vi.mocked(api.getBlob);
 const mockedPost = vi.mocked(api.post);
 const mockedPut = vi.mocked(api.put);
 const mockedPatch = vi.mocked(api.patch);
@@ -59,6 +62,7 @@ function renderPage(ui: ReactElement) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockedGetBlob.mockResolvedValue(new Blob(["id,name\n"], { type: "text/csv" }));
 });
 
 /* ---------------------------------------------------------------- 供应商 */
@@ -66,10 +70,10 @@ beforeEach(() => {
 describe("ProvidersPage（PRD-04 §3）", () => {
   const P1 = {
     id: "p1",
-    name: "星辰主模型",
-    protocol: "xunfei_xingchen",
-    base_url: "https://xingchen.example.com/v1",
-    model: "xingchen-1",
+    name: "Responses 主模型",
+    protocol: "responses",
+    base_url: "https://api.openai.example.com/v1",
+    model: "o4-mini",
     role: "primary",
     enabled: true,
     timeout_seconds: 30,
@@ -108,9 +112,9 @@ describe("ProvidersPage（PRD-04 §3）", () => {
 
   it("列表渲染角色徽章与最近测试结果", async () => {
     renderPage(<ProvidersPage />);
-    expect(await screen.findByText("星辰主模型")).toBeInTheDocument();
+    expect(await screen.findByText("Responses 主模型")).toBeInTheDocument();
     expect(screen.getByText("主模型")).toBeInTheDocument();
-    expect(screen.getByText("讯飞星辰")).toBeInTheDocument();
+    expect(screen.getByText("Responses")).toBeInTheDocument();
     expect(screen.getByText(/连接.*TIMEOUT/)).toBeInTheDocument();
     expect(screen.getByText("未测试")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "模型输入" })).toBeInTheDocument();
@@ -128,13 +132,23 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     expect(screen.queryByRole("button", { name: "流式验证" })).not.toBeInTheDocument();
   });
 
+  it("Responses 在新建协议选项和已保存配置标签中都显示为受支持协议", async () => {
+    renderPage(<ProvidersPage />);
+    expect(await screen.findByText("Responses 主模型")).toBeInTheDocument();
+    expect(screen.getByText("Responses")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "新建供应商" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "协议类型" }));
+    expect(screen.getByRole("option", { name: "Responses" })).toBeInTheDocument();
+  });
+
   it("创建时 base_url 安全校验错误落到字段旁（NF9）", async () => {
     mockedPost.mockRejectedValue(
       new ApiRequestError(400, "INVALID_BASE_URL", "base_url 不允许使用本机或内网地址"),
     );
     renderPage(<ProvidersPage />);
     fireEvent.click(await screen.findByRole("button", { name: "新建供应商" }));
-    fireEvent.change(screen.getByPlaceholderText("例如：讯飞星火主模型"), {
+    fireEvent.change(screen.getByPlaceholderText("例如：主模型"), {
       target: { value: "内网测试" },
     });
     fireEvent.change(screen.getByPlaceholderText("https://api.example.com/v1"), {
@@ -144,7 +158,7 @@ describe("ProvidersPage（PRD-04 §3）", () => {
       target: { value: "sk-secret" },
     });
     // Changing a connection credential intentionally invalidates a prior model choice.
-    fireEvent.change(screen.getByPlaceholderText("例如：spark-x1 / gpt-4o-mini"), {
+    fireEvent.change(screen.getByPlaceholderText("例如：o4-mini / gpt-4o-mini"), {
       target: { value: "m1" },
     });
     fireEvent.click(screen.getByRole("button", { name: "创建供应商" }));
@@ -167,12 +181,12 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     mockedPost.mockResolvedValue({
       ok: true,
       latency_ms: 120,
-      model: "xingchen-1",
+      model: "o4-mini",
       error: null,
       tested_at: "2026-07-02T00:00:00Z",
     });
     renderPage(<ProvidersPage />);
-    const row = (await screen.findByText("星辰主模型")).closest("tr")!;
+    const row = (await screen.findByText("Responses 主模型")).closest("tr")!;
     fireEvent.click(within(row).getByRole("button", { name: "连接测试" }));
     await waitFor(() =>
       expect(mockedPost).toHaveBeenCalledWith("/api/admin/providers/p1/test", undefined, {
@@ -202,7 +216,7 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     mockedPost.mockReturnValueOnce(pendingTest);
 
     renderPage(<ProvidersPage />);
-    const row = (await screen.findByText("星辰主模型")).closest("tr")!;
+    const row = (await screen.findByText("Responses 主模型")).closest("tr")!;
     fireEvent.click(within(row).getByRole("button", { name: "连接测试" }));
 
     await waitFor(() =>
@@ -220,7 +234,7 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     resolveTest!({
       ok: true,
       latency_ms: 120,
-      model: "xingchen-1",
+      model: "o4-mini",
       error: null,
       tested_at: "2026-07-02T00:00:00Z",
     });
@@ -229,34 +243,34 @@ describe("ProvidersPage（PRD-04 §3）", () => {
 
   it("删除前需要确认，取消不会发请求", async () => {
     renderPage(<ProvidersPage />);
-    const row = (await screen.findByText("星辰主模型")).closest("tr")!;
+    const row = (await screen.findByText("Responses 主模型")).closest("tr")!;
     fireEvent.click(within(row).getByRole("button", { name: "删除" }));
     expect(await screen.findByText(/此操作不可恢复/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     expect(mockedDelete).not.toHaveBeenCalled();
-    expect(screen.getByText("星辰主模型")).toBeInTheDocument();
+    expect(screen.getByText("Responses 主模型")).toBeInTheDocument();
   });
 
   it("确认删除成功后移除供应商行", async () => {
     mockedDelete.mockResolvedValueOnce({ message: "供应商配置已删除" });
     renderPage(<ProvidersPage />);
-    const row = (await screen.findByText("星辰主模型")).closest("tr")!;
+    const row = (await screen.findByText("Responses 主模型")).closest("tr")!;
     fireEvent.click(within(row).getByRole("button", { name: "删除" }));
     fireEvent.click(await screen.findByRole("button", { name: "确认删除" }));
     await waitFor(() => expect(mockedDelete).toHaveBeenCalledWith("/api/admin/providers/p1"));
     expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
-    expect(screen.queryByText("星辰主模型")).not.toBeInTheDocument();
+    expect(screen.queryByText("Responses 主模型")).not.toBeInTheDocument();
   });
 
   it("删除失败时保留供应商行并提示错误", async () => {
     mockedDelete.mockRejectedValueOnce(new ApiRequestError(500, "DELETE_FAILED", "删除失败"));
     renderPage(<ProvidersPage />);
-    const row = (await screen.findByText("星辰主模型")).closest("tr")!;
+    const row = (await screen.findByText("Responses 主模型")).closest("tr")!;
     fireEvent.click(within(row).getByRole("button", { name: "删除" }));
     fireEvent.click(await screen.findByRole("button", { name: "确认删除" }));
     await waitFor(() => expect(mockedDelete).toHaveBeenCalledWith("/api/admin/providers/p1"));
     expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
-    expect(screen.getByText("星辰主模型")).toBeInTheDocument();
+    expect(screen.getByText("Responses 主模型")).toBeInTheDocument();
   });
 
   it("只在编辑抽屉设置角色，并在替换已有持有者前确认后保存", async () => {
@@ -269,7 +283,7 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     fireEvent.click(screen.getByRole("option", { name: "主模型" }));
     fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
 
-    expect(await screen.findByText(/将替换当前主模型「星辰主模型」/)).toBeInTheDocument();
+    expect(await screen.findByText(/将替换当前主模型「Responses 主模型」/)).toBeInTheDocument();
     expect(mockedPut).not.toHaveBeenCalledWith("/api/admin/providers/p2", expect.anything());
     fireEvent.click(screen.getByRole("button", { name: "确认设置" }));
     await waitFor(() =>
@@ -299,7 +313,7 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     fireEvent.change(screen.getByPlaceholderText("输入 API Key"), {
       target: { value: "sk-discovery" },
     });
-    const modelInput = screen.getByPlaceholderText("例如：spark-x1 / gpt-4o-mini");
+    const modelInput = screen.getByPlaceholderText("例如：o4-mini / gpt-4o-mini");
     const discoverButton = screen.getByRole("button", { name: "获取模型" });
     expect(discoverButton).toHaveClass("icon-btn");
     expect(discoverButton).toHaveClass("provider-model-import-button");
@@ -325,6 +339,32 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     expect(modelSelect).toHaveTextContent("GPT-4.1 Mini");
   });
 
+  it("Responses 自动发现不可用时保留协议支持语义并允许手动填写模型", async () => {
+    mockedPost.mockResolvedValueOnce({ supported: false, models: [] });
+    renderPage(<ProvidersPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "新建供应商" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "协议类型" }));
+    fireEvent.click(screen.getByRole("option", { name: "Responses" }));
+    fireEvent.change(screen.getByPlaceholderText("https://api.example.com/v1"), {
+      target: { value: "https://api.openai.example.com/v1" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("输入 API Key"), {
+      target: { value: "sk-responses" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "获取模型" }));
+
+    expect(await screen.findByText("当前供应商不提供模型自动发现，请手动填写模型名")).toBeInTheDocument();
+    expect(screen.queryByText("该协议暂不支持获取模型，请手动填写模型名")).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("例如：o4-mini / gpt-4o-mini")).toBeEnabled();
+    await waitFor(() =>
+      expect(mockedPost).toHaveBeenCalledWith("/api/admin/providers/discover-models", {
+        protocol: "responses",
+        base_url: "https://api.openai.example.com/v1",
+        api_key: "sk-responses",
+      }),
+    );
+  });
+
   it("编辑时回显固定 API Key 掩码但不提交，并复用服务端密钥发现模型", async () => {
     mockedPost.mockResolvedValueOnce({ models: [{ id: "gpt-x", label: "GPT X" }] });
     renderPage(<ProvidersPage />);
@@ -335,7 +375,7 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     expect(apiKeyInput).toHaveValue("********");
     expect(screen.queryByDisplayValue("stored-key-must-not-render")).not.toBeInTheDocument();
 
-    const modelInput = screen.getByPlaceholderText("例如：spark-x1 / gpt-4o-mini");
+    const modelInput = screen.getByPlaceholderText("例如：o4-mini / gpt-4o-mini");
     const discoverButton = screen.getByRole("button", { name: "获取模型" });
     expect(discoverButton).toHaveClass("icon-btn");
     expect(discoverButton).toHaveClass("provider-model-import-button");
@@ -451,7 +491,7 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     });
     // A model list belongs to the prior endpoint and credential, so the stale selection must vanish.
     expect(screen.queryByRole("combobox", { name: "模型名" })).not.toBeInTheDocument();
-    expect(screen.getByPlaceholderText("例如：spark-x1 / gpt-4o-mini")).toHaveValue("");
+    expect(screen.getByPlaceholderText("例如：o4-mini / gpt-4o-mini")).toHaveValue("");
     expect(
       screen.getByText("选择协议并输入 Base URL 和 API Key 后即可获取模型"),
     ).toBeInTheDocument();
@@ -488,7 +528,7 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     fireEvent.change(screen.getByPlaceholderText("输入 API Key"), {
       target: { value: "sk-form-test" },
     });
-    fireEvent.change(screen.getByPlaceholderText("例如：spark-x1 / gpt-4o-mini"), {
+    fireEvent.change(screen.getByPlaceholderText("例如：o4-mini / gpt-4o-mini"), {
       target: { value: "manual-model" },
     });
     const testGroup = screen.getByRole("group", { name: "连接测试" });
@@ -524,7 +564,7 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     renderPage(<ProvidersPage />);
     const row = (await screen.findByText("备用模型")).closest("tr")!;
     fireEvent.click(within(row).getByRole("button", { name: "编辑" }));
-    const modelInput = screen.getByPlaceholderText("例如：spark-x1 / gpt-4o-mini");
+    const modelInput = screen.getByPlaceholderText("例如：o4-mini / gpt-4o-mini");
     fireEvent.change(modelInput, { target: { value: "new-model" } });
 
     const testGroup = screen.getByRole("group", { name: "连接测试" });
@@ -554,7 +594,7 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     fireEvent.click(screen.getByRole("button", { name: "获取模型" }));
 
     expect(await screen.findByText("供应商模型目录暂不可用")).toBeInTheDocument();
-    const modelInput = screen.getByPlaceholderText("例如：spark-x1 / gpt-4o-mini");
+    const modelInput = screen.getByPlaceholderText("例如：o4-mini / gpt-4o-mini");
     fireEvent.change(modelInput, { target: { value: "manual-model" } });
     expect(modelInput).toHaveValue("manual-model");
   });
@@ -568,19 +608,13 @@ describe("RagSettingsPage（PRD-04 §4）", () => {
     chunk_size: 500,
     chunk_overlap: 80,
     title_inherit: true,
-    table_strategy: "keep",
     top_k: 5,
     score_threshold: 0.35,
+    temperature: 0.3,
+    top_p: 0.9,
     hybrid_search: true,
     rerank_enabled: false,
-    citation_format: "【{title} {section} {page} v{version}】",
-    refusal_policy: "refuse",
-    max_citations: 5,
-    prompt_template: "你是助教……",
-    prompt_template_version: "v1",
-    require_manual_review: true,
-    student_visibility_default: "student",
-    expired_doc_policy: "remove",
+    query_rewrite_enabled: false,
     updated_at: "2026-07-01T00:00:00Z",
     updated_by: "admin-1",
   };
@@ -594,7 +628,7 @@ describe("RagSettingsPage（PRD-04 §4）", () => {
     renderPage(<RagSettingsPage />);
     const saveBtn = (await screen.findByRole("button", { name: "保存参数" })) as HTMLButtonElement;
     expect(saveBtn.disabled).toBe(true);
-    fireEvent.change(screen.getByRole("spinbutton", { name: "chunk_size（切片长度）" }), {
+    fireEvent.change(screen.getByRole("spinbutton", { name: "切片长度（默认 500 字符）" }), {
       target: { value: "800" },
     });
     const dirtyBtn = await screen.findByRole("button", { name: "保存参数（1 项变更）" });
@@ -611,13 +645,32 @@ describe("RagSettingsPage（PRD-04 §4）", () => {
     renderPage(<RagSettingsPage />);
     // 等设置加载完成（首渲染为加载态）
     const overlapInput = await screen.findByRole("spinbutton", {
-      name: "chunk_overlap（重叠长度）",
+      name: "切片重叠（默认 80 字符）",
     });
     fireEvent.change(overlapInput, { target: { value: "600" } });
-    expect(await screen.findByText("chunk_overlap 必须小于 chunk_size")).toBeInTheDocument();
+    expect(await screen.findByText("切片重叠必须小于切片长度")).toBeInTheDocument();
     const saveBtn = screen.getByRole("button", { name: /保存参数/ }) as HTMLButtonElement;
     expect(saveBtn.disabled).toBe(true);
     expect(mockedPatch).not.toHaveBeenCalled();
+  });
+
+  it("仅显示切片/召回参数，并提交采样参数变更", async () => {
+    renderPage(<RagSettingsPage />);
+    await screen.findByRole("checkbox", { name: "查询改写" });
+    expect(screen.queryByText("生成参数")).not.toBeInTheDocument();
+    expect(screen.queryByText("Prompt 模板")).not.toBeInTheDocument();
+    expect(screen.queryByText("发布参数")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("spinbutton", { name: "temperature" }), {
+      target: { value: "0.2" },
+    });
+    const saveBtn = await screen.findByRole("button", { name: "保存参数（1 项变更）" });
+    fireEvent.click(saveBtn);
+    await waitFor(() =>
+      expect(mockedPatch).toHaveBeenCalledWith("/api/admin/rag-settings", {
+        temperature: 0.2,
+      }),
+    );
   });
 });
 
@@ -665,6 +718,40 @@ describe("UsersPage（PRD-04 §5）", () => {
       expect(mockedPatch).toHaveBeenCalledWith("/api/admin/users/u2", { status: "disabled" }),
     );
     expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
+  });
+
+  it("选择当前页用户后批量禁用并发送受限 ID 集合", async () => {
+    renderPage(<UsersPage />);
+    await screen.findByText("学生甲");
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择 学生甲" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择 管理员乙" }));
+    fireEvent.click(screen.getByRole("button", { name: "批量禁用" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认批量禁用" }));
+    await waitFor(() =>
+      expect(mockedPatch).toHaveBeenCalledWith("/api/admin/users/bulk-status", {
+        user_ids: ["u1", "u2"],
+        status: "disabled",
+      }),
+    );
+  });
+
+  it("按当前角色和搜索条件导出 CSV", async () => {
+    const createObjectURL = vi.fn(() => "blob:users");
+    const revokeObjectURL = vi.fn();
+    Object.assign(URL, { createObjectURL, revokeObjectURL });
+    renderPage(<UsersPage />);
+    await screen.findByText("学生甲");
+    fireEvent.click(screen.getByRole("combobox", { name: "角色筛选" }));
+    fireEvent.click(screen.getByRole("option", { name: "学生" }));
+    fireEvent.click(screen.getByRole("button", { name: "导出 CSV" }));
+    await waitFor(() =>
+      expect(mockedGetBlob).toHaveBeenCalledWith(
+        "/api/admin/users/export.csv",
+        { role: "student", q: undefined },
+      ),
+    );
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:users");
   });
 
   it("重置密码：确认后临时密码仅展示一次", async () => {
@@ -724,6 +811,21 @@ describe("AuditLogsPage（PRD-04 §7）", () => {
     expect(screen.getAllByText(/审计日志不允许删除/).length).toBeGreaterThan(0);
   });
 
+  it("点击审计详情打开 Drawer 并展示 before/after JSON", async () => {
+    renderPage(<AuditLogsPage />);
+    await screen.findByText("provider.set_role");
+    fireEvent.click(screen.getByRole("button", { name: "查看审计详情：provider.set_role" }));
+    const drawer = await screen.findByRole("dialog", { name: "审计详情：provider.set_role" });
+    expect(within(drawer).getByText("变更前（before）")).toBeInTheDocument();
+    // Pretty-printed JSON contains line breaks, so assert each snapshot's textContent.
+    const snapshots = drawer.querySelectorAll("pre");
+    expect(snapshots).toHaveLength(2);
+    expect(snapshots[0]).toHaveTextContent('"role": "none"');
+    expect(snapshots[1]).toHaveTextContent('"role": "primary"');
+    fireEvent.click(within(drawer).getByRole("button", { name: "关闭" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "审计详情：provider.set_role" })).not.toBeInTheDocument());
+  });
+
   it("筛选条件映射为查询参数", async () => {
     renderPage(<AuditLogsPage />);
     await screen.findByText("provider.set_role");
@@ -751,5 +853,38 @@ describe("AuditLogsPage（PRD-04 §7）", () => {
         expect.objectContaining({ signal: expect.anything() }),
       ),
     );
+  });
+});
+
+/* ---------------------------------------------------------------- 安全配置 */
+
+describe("SecurityPage（P2-8 运行时指标）", () => {
+  it("展示登录、会话、API 成功率与 Provider 延迟", async () => {
+    mockedGet
+      .mockResolvedValueOnce({ alerts: [], evaluated_at: "2026-08-15T00:00:00Z" })
+      .mockResolvedValueOnce({
+        metrics: {
+          tool_call_success_rate: null,
+          rag_retrieval_hit_rate: null,
+          rag_refusal_rate: null,
+          task_creation_conversion: null,
+          preset_start_rate: null,
+          diagnostic_success_rate: null,
+          mastery_confirm_rate: null,
+          model_failure_rate_by_provider: null,
+          login_success_today: 7,
+          login_failure_today: 2,
+          active_sessions: 3,
+          api_success_rate_24h: 0.875,
+          provider_latency_avg_ms: 124.5,
+        },
+        note: "部分指标暂无样本",
+      });
+    renderPage(<SecurityPage />);
+    expect(await screen.findByText("成功 7 · 失败 2")).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
+    expect(screen.getByText("87.5%")).toBeInTheDocument();
+    expect(screen.getByText("124.50 ms")).toBeInTheDocument();
+    expect(screen.getByText("部分指标暂无样本")).toBeInTheDocument();
   });
 });

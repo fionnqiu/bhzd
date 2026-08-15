@@ -18,7 +18,7 @@ export interface DataTableProps<T> {
   rowKey?: (row: T) => string;
   /** 空数据提示（null 结果请在上游先渲染 ErrorState/EmptyState） */
   empty?: ReactNode;
-  /** 加载中：渲染 spinner 行而不清空已有数据（刷新场景不闪空） */
+  /** 加载中：渲染 spinner 行而不清空已有数据，避免刷新时闪空。 */
   loading?: boolean;
   /** Optional class name for the scroll viewport when a page needs a local surface treatment. */
   wrapperClassName?: string;

@@ -8,8 +8,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { routes } from "../src/app/router";
+import { legacyRagAdminTarget } from "../src/app/legacyRagRoutes";
 import { AuthProvider } from "../src/auth/AuthContext";
-import { ScenarioProvider } from "../src/app/ScenarioContext";
 import { ToastProvider } from "../src/components";
 import { PORTALS } from "../src/layouts/ShellLayout";
 import { ApiRequestError, api } from "../src/api/client";
@@ -63,9 +63,7 @@ function renderAt(path: string) {
   const view = render(
     <ToastProvider>
       <AuthProvider>
-        <ScenarioProvider>
-          <RouterProvider router={router} />
-        </ScenarioProvider>
+        <RouterProvider router={router} />
       </AuthProvider>
     </ToastProvider>,
   );
@@ -123,12 +121,14 @@ describe("路由守卫", () => {
     }
   });
 
-  it("only system_admin has the RAG portal, while administrators retain the student portal", () => {
+  it("独立 RAG 门户已移除，system_admin 从系统管理端进入 RAG 功能", () => {
     const studentPortal = PORTALS.find((portal) => portal.key === "student");
     const ragPortal = PORTALS.find((portal) => portal.key === "rag-admin");
+    const adminPortal = PORTALS.find((portal) => portal.key === "admin");
 
     expect(studentPortal?.roles).toEqual(["student", "content_admin", "system_admin"]);
-    expect(ragPortal?.roles).toEqual(["system_admin"]);
+    expect(ragPortal).toBeUndefined();
+    expect(adminPortal?.roles).toEqual(["system_admin"]);
   });
 
   it("教师端不再暴露教学 Agent 路由", () => {
@@ -136,6 +136,28 @@ describe("路由守卫", () => {
     const childPaths = teacherRoute?.children?.map((route) => route.path);
 
     expect(childPaths).not.toContain("agent");
+  });
+
+  it("RAG 旧地址映射到系统管理端且保留资料深链接", () => {
+    const legacyRoute = routes.find((route) => route.path === "/rag-admin/*");
+
+    // A single guarded wildcard replaces the deleted RagAdminLayout and all
+    // of its child routes, while the pure mapping keeps bookmark behavior explicit.
+    expect(legacyRoute).toBeDefined();
+    expect(legacyRoute?.children).toBeUndefined();
+    expect(legacyRagAdminTarget("/rag-admin")).toBe("/admin/rag");
+    expect(legacyRagAdminTarget("/rag-admin/upload")).toBe("/admin/rag/upload");
+    expect(legacyRagAdminTarget("/rag-admin/documents/doc-1")).toBe(
+      "/admin/rag/documents/doc-1",
+    );
+    expect(legacyRagAdminTarget("/rag-admin/documents/doc-1/chunks")).toBe(
+      "/admin/rag/documents/doc-1",
+    );
+    expect(legacyRagAdminTarget("/rag-admin/eval-cases")).toBe(
+      "/admin/rag/search-test",
+    );
+    expect(legacyRagAdminTarget("/rag-admin/jobs")).toBe("/admin/rag");
+    expect(legacyRagAdminTarget("/rag-admin/unknown")).toBe("/admin/rag");
   });
 
   it("学生访问旧 /rag-qa 书签时回到 Agent 工作台", async () => {

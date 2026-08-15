@@ -243,7 +243,9 @@ def _run_chunk_stage(db: sqlite3.Connection, _config: AppConfig, job: sqlite3.Ro
         chunk_size=int(job_params.get("chunk_size", settings.chunk_size)),
         chunk_overlap=int(job_params.get("chunk_overlap", settings.chunk_overlap)),
         title_inherit=bool(job_params.get("title_inherit", settings.title_inherit)),
-        # 表格策略随设置消费（PRD-03 §6）：任务参数优先，缺省用当前 rag_settings
+        # ``table_strategy`` is no longer writable through the admin contract,
+        # but retaining the database fallback keeps existing installations and
+        # queued jobs deterministic while the UI/API surface is simplified.
         table_strategy=str(job_params.get("table_strategy", settings.table_strategy)),
     )
     if not drafts:

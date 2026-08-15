@@ -16,7 +16,7 @@ export interface SearchInputProps {
 
 /**
  * 搜索输入框（防抖）。
- * 防抖而不是回车触发：资料库/用户列表等场景输入即筛选是 PRD 交互预期，
+ * 防抖而不是回车触发：资料库/用户列表等页面输入即筛选是 PRD 交互预期，
  * 同时避免每个按键都打一次请求。
  */
 export default function SearchInput({

@@ -492,12 +492,12 @@ def test_runs_requires_csrf_but_not_email_verification(client, tmp_db_path, monk
 def test_conversations_crud_and_soft_delete_audit(client, tmp_db_path):
     created = client.post(
         "/api/conversations",
-        json={"title": "测试会话", "scenario_id": "SCN-IN-VEHICLE-001"},
+        json={"title": "测试会话"},
         headers=csrf_headers(),
     )
     assert created.status_code == 201
     conversation = created.json()
-    assert conversation["scenario_id"] == "SCN-IN-VEHICLE-001"
+    assert "scenario_id" not in conversation
 
     listed = client.get("/api/conversations")
     assert listed.status_code == 200

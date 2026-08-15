@@ -12,7 +12,7 @@ import {
   type RunStreamInterruption,
 } from "../../../api/sse";
 import type { AgentRunProgress, Citation, Confirmation, PlanStep } from "../../../api/types";
-import type { ExecutionKind, ScenarioSuggestion, TraceEntry } from "./types";
+import type { ExecutionKind, TraceEntry } from "./types";
 
 const SENSITIVE_SUMMARY =
   /((?:authorization|proxy-authorization|cookie|set-cookie|api[_ -]?key|access[_ -]?token|token|secret|password|session[_ -]?id|diagnostic[_ -]?token)\s*[:=：]\s*)(?:bearer\s+)?[^\s,;；}]+/gi;
@@ -57,7 +57,7 @@ export interface RunStreamCallbacks {
   onRetrievalCompleted: (result: { hitCount: number; latencyMs: number }, seq: number) => void;
   onConfirmation: (confirmation: Confirmation, seq: number) => void;
   onCitations: (citations: Citation[]) => void;
-  onCompleted: (summary: string | null, suggestion: ScenarioSuggestion | null, seq: number) => void;
+  onCompleted: (summary: string | null, seq: number) => void;
   onFailed: (error: string, seq: number) => void;
   /** A successful reconnect clears the temporary transport warning in the UI. */
   onConnected?: (lastSeq: number) => void;
@@ -127,13 +127,7 @@ export function attachRunStream(
   stream.on("confirmation.required", (p, seq) => cb.onConfirmation(p.confirmation, seq));
   stream.on("citation.attached", (p) => cb.onCitations(p.citations));
   stream.on("run.completed", (p, seq) => {
-    // suggestion 字段在 types.ts 之外（后端后发字段），防御性读取
-    const raw = p as { suggestion?: ScenarioSuggestion };
-    cb.onCompleted(
-      p.summary ?? null,
-      raw.suggestion?.suggested_scenario_id ? raw.suggestion : null,
-      seq,
-    );
+    cb.onCompleted(p.summary ?? null, seq);
   });
   stream.on("run.failed", (p, seq) =>
     // 后端已给中文话术；绝不展示堆栈（PRD-01 §3.5）

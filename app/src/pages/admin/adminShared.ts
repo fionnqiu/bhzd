@@ -21,10 +21,9 @@ export const ROLE_LABELS: Record<string, string> = Object.fromEntries(
 
 /** 供应商协议（provider_configs.protocol；PRD-04 §3.1） */
 export const PROTOCOL_OPTIONS = [
-  { value: "xunfei_xingchen", label: "讯飞星辰" },
-  { value: "xunfei_spark", label: "讯飞星火" },
   { value: "chat_completions", label: "Chat Completions" },
   { value: "anthropic_messages", label: "Anthropic Messages" },
+  { value: "responses", label: "Responses" },
 ] as const;
 
 export const PROTOCOL_LABELS: Record<string, string> = Object.fromEntries(
@@ -37,6 +36,7 @@ export const PROVIDER_ROLE_OPTIONS = [
   { value: "fallback", label: "回退模型" },
   { value: "embedding", label: "嵌入模型" },
   { value: "rerank", label: "重排模型" },
+  { value: "grader", label: "评阅模型" },
   { value: "none", label: "无" },
 ] as const;
 

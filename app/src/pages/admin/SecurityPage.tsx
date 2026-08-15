@@ -14,6 +14,7 @@
 import { EyeOff } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../api/client";
+import type { MetricsResponse } from "../../api/types";
 import { Button, Card, PageHeader, Spinner, Tag } from "../../components";
 import { errText, fmtTime } from "./adminShared";
 
@@ -42,6 +43,14 @@ const LEVEL_META: Record<string, { label: string; tone: string }> = {
 function fmtAlertValue(metric: string, value: number): string {
   if (metric.includes("rate")) return `${(value * 100).toFixed(1)}%`;
   return String(value);
+}
+
+function fmtRate(value: number | null): string {
+  return value === null ? "暂无样本" : `${(value * 100).toFixed(1)}%`;
+}
+
+function fmtLatency(value: number | null): string {
+  return value === null ? "暂无样本" : `${value.toFixed(2)} ms`;
 }
 
 interface Policy {
@@ -117,6 +126,9 @@ export default function SecurityPage() {
   const [alertsLoading, setAlertsLoading] = useState(false);
   const [ignoringFingerprint, setIgnoringFingerprint] = useState<string | null>(null);
   const [ignoreError, setIgnoreError] = useState<string | null>(null);
+  const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
 
   /** 拉取实时告警评估；服务端按当前管理员过滤已忽略的活动告警。 */
   const loadAlerts = useCallback(async (signal?: AbortSignal) => {
@@ -136,6 +148,21 @@ export default function SecurityPage() {
       if (!signal?.aborted) setAlertsError(errText(err, "系统告警加载失败"));
     } finally {
       if (!signal?.aborted) setAlertsLoading(false);
+    }
+  }, []);
+
+  /** Runtime metrics are read-only snapshots; null rates mean no telemetry, not zero success. */
+  const loadMetrics = useCallback(async (signal?: AbortSignal) => {
+    setMetricsLoading(true);
+    setMetricsError(null);
+    try {
+      const res = await api.get<MetricsResponse>("/api/admin/metrics", undefined, { signal });
+      if (signal?.aborted) return;
+      setMetrics(res);
+    } catch (err) {
+      if (!signal?.aborted) setMetricsError(errText(err, "运行时指标加载失败"));
+    } finally {
+      if (!signal?.aborted) setMetricsLoading(false);
     }
   }, []);
 
@@ -163,6 +190,12 @@ export default function SecurityPage() {
     void loadAlerts(controller.signal);
     return () => controller.abort();
   }, [loadAlerts]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadMetrics(controller.signal);
+    return () => controller.abort();
+  }, [loadMetrics]);
 
   return (
     <div>
@@ -247,6 +280,55 @@ export default function SecurityPage() {
             评估时间：{fmtTime(evaluatedAt)}（实时评估；忽略仅对当前管理员生效，点击刷新重新评估）
           </p>
         ) : null}
+      </Card>
+
+      <Card
+        title="运行时指标"
+        className="mb-4"
+        actions={
+          <Button
+            size="sm"
+            variant="secondary"
+            loading={metricsLoading}
+            onClick={() => void loadMetrics()}
+          >
+            刷新
+          </Button>
+        }
+      >
+        {metricsError ? (
+          <p className="form-alert form-alert-error" role="alert">
+            {metricsError}
+          </p>
+        ) : metrics === null ? (
+          <p className="text-sm text-muted flex items-center gap-2">
+            <Spinner size={14} /> 正在加载运行时指标…
+          </p>
+        ) : (
+          <>
+            <div className="grid grid-cols-4">
+              <div>
+                <span className="text-xs text-muted">今日登录</span>
+                <strong className="block mt-1">
+                  成功 {metrics.metrics.login_success_today} · 失败 {metrics.metrics.login_failure_today}
+                </strong>
+              </div>
+              <div>
+                <span className="text-xs text-muted">当前活跃会话</span>
+                <strong className="block mt-1">{metrics.metrics.active_sessions}</strong>
+              </div>
+              <div>
+                <span className="text-xs text-muted">API 成功率（24h）</span>
+                <strong className="block mt-1">{fmtRate(metrics.metrics.api_success_rate_24h)}</strong>
+              </div>
+              <div>
+                <span className="text-xs text-muted">Provider 延迟（最近测试）</span>
+                <strong className="block mt-1">{fmtLatency(metrics.metrics.provider_latency_avg_ms)}</strong>
+              </div>
+            </div>
+            <p className="text-xs text-muted mt-3">{metrics.note}</p>
+          </>
+        )}
       </Card>
 
       <p className="form-alert form-alert-success mb-4">

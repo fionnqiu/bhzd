@@ -96,7 +96,7 @@ def test_demo_seed_contents(tmp_db_path, clean_admin_env):
 
 
 def test_presets_have_no_dangling_references():
-    """预设的 cap_ids/scenario_id/unit_ids 必须全部存在于真实图谱与单元库。"""
+    """预设的 cap_ids/unit_ids 必须全部存在于真实图谱与单元库。"""
     graph_path = REPO_ROOT / "data" / "graph" / "annotation-capability-graph.json"
     units_path = REPO_ROOT / "data" / "curriculum" / "teaching-units.json"
     node_ids = {n["id"] for n in json.loads(graph_path.read_text(encoding="utf-8"))["nodes"]}
@@ -106,7 +106,5 @@ def test_presets_have_no_dangling_references():
     for preset in presets:
         for cap_id in preset["cap_ids"]:
             assert cap_id in node_ids, f"{preset['id']} 悬空能力 {cap_id}"
-        if preset.get("scenario_id"):
-            assert preset["scenario_id"] in node_ids, f"{preset['id']} 悬空场景"
         for unit_id in preset["unit_ids"]:
             assert unit_id in unit_ids, f"{preset['id']} 悬空单元 {unit_id}"

@@ -186,8 +186,6 @@ def test_mastery_preview_math_two_majors_same_cap():
     assert by_cap["CAP-IMG-RECT-VALIDATE-001"]["delta"] == pytest.approx(-0.2)
     assert by_cap["CAP-IMG-OBJECT-CLASS-001"]["delta"] == pytest.approx(-0.2)
     assert by_cap["CAP-IMG-RECT-VALIDATE-001"]["old_score"] is None
-    # 无场景时 scenario_id 为 ''（通用掌握度）
-    assert by_cap["CAP-IMG-RECT-VALIDATE-001"]["scenario_id"] == ""
 
 
 def test_cite_fn_attaches_citations():
@@ -209,27 +207,6 @@ def test_cite_fn_attaches_citations():
     assert all("citation" not in e for e in plain["errors"])
 
 
-def test_scenario_label_set_rule():
-    """场景规则包有标签集时启用标签合法性校验（医疗场景 configured_labels）。"""
-    generic = json.dumps(
-        {
-            "media_duration": 10.0,
-            "annotations": [
-                {"start": 0.0, "end": 1.0, "label": "SYMPTOM"},
-                {"start": 1.0, "end": 2.0, "label": "NOT_A_LABEL"},
-            ],
-        }
-    )
-    report = engine.diagnose(
-        generic.encode("utf-8"),
-        "a.json",
-        data_type="text",
-        scenario_id="SCN-MEDICAL-001",
-    )
-    unknown = [e for e in report["errors"] if e["error_type"] == "unknown_label"]
-    assert len(unknown) == 1 and unknown[0]["user_value"] == "NOT_A_LABEL"
-
-
 # ---------------------------------------------------------------- API 测试
 
 
@@ -244,8 +221,8 @@ def test_upload_save_summary_flow(api):
     user = api.login_as("stu@test.local")
     # 先垫一条 0.5 的掌握度，让 −0.05 的诊断扣分有可视空间（否则从 0 扣到 0 看不出变化）
     api.conn.execute(
-        "INSERT INTO mastery (user_id, cap_id, scenario_id, score, source, updated_at) "
-        "VALUES (?, 'CAP-AUD-NOISE-OVERLAP-001', '', 0.5, 'exercise', '2026-07-01')",
+        "INSERT INTO mastery (user_id, cap_id, score, source, updated_at) "
+        "VALUES (?, 'CAP-AUD-NOISE-OVERLAP-001', 0.5, 'exercise', '2026-07-01')",
         (user["user_id"],),
     )
     api.conn.commit()

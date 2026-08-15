@@ -162,20 +162,13 @@ def _load_latest_clarification(
 
 def _context_values(
     run: sqlite3.Row, conversation: sqlite3.Row | None
-) -> tuple[str | None, str | None, str | None, str | None]:
-    """Return run and conversation selections without losing their priority.
-
-    Clarification state sits between the two sources, so collapsing them early
-    would incorrectly let an older conversation override a just-answered slot.
-    """
+) -> tuple[str | None, str | None]:
+    """Return only the remaining data-type selections used by task planning."""
 
     conversation_data_type = conversation["data_type"] if conversation else None
-    conversation_scenario = conversation["scenario_id"] if conversation else None
     return (
         run["data_type"],
-        run["scenario_id"],
         conversation_data_type,
-        conversation_scenario,
     )
 
 
@@ -337,12 +330,9 @@ def _resolve_initial_intent(
         if continuation is not None:
             detected, goal_text = continuation
             resumed = True
-    run_data_type, run_scenario_id, conversation_data_type, conversation_scenario_id = (
-        _context_values(run, conversation)
-    )
-    # Scenario scope remains explicit run > clarification > conversation >
-    # current input. A fresh recognized intent deliberately skips the
-    # clarification tier, preventing a new request from inheriting old slots.
+    run_data_type, conversation_data_type = _context_values(run, conversation)
+    # A fresh recognized intent deliberately skips the clarification tier,
+    # preventing a new request from inheriting old data-type slots.
     # For data type, a current explicit signal must remain visible; otherwise
     # an old conversation default would silently defeat a new choice.
     conversation_data_type_for_scope = (
@@ -353,13 +343,11 @@ def _resolve_initial_intent(
     resolved = intents.apply_context(
         detected,
         data_type=conversation_data_type_for_scope,
-        scenario_id=conversation_scenario_id,
         prefer_context=not resumed,
     )
     resolved = intents.apply_context(
         resolved,
         data_type=run_data_type,
-        scenario_id=run_scenario_id,
         prefer_context=True,
     )
     return resolved, goal_text
@@ -543,14 +531,13 @@ def _build_plan(
     """按意图生成确定性计划。步骤：{id,title,tool,args,status}。
 
     ``goal_text`` preserves the first-turn task wording when a later short
-    clarification answer supplies only a missing slot such as a scenario.
+    clarification answer supplies only a missing data-type slot.
     """
 
     question = goal_text or run["input_text"]
     # ``_resolve_initial_intent`` has already applied run > clarification >
     # conversation > current-input precedence.  Re-applying conversation here
     # would overwrite a just-answered clarification slot.
-    scenario_id = intent.scenario_id
     data_type = intent.data_type
 
     def step(idx: int, title: str, tool: str, args: dict) -> dict[str, Any]:
@@ -562,10 +549,9 @@ def _build_plan(
         return [
             step(1, "召回相关资料", "rag.search",
                  {"query": question,
-                  "filters": {"data_type": data_type, "scenario_id": scenario_id}}),
+                  "filters": {"data_type": data_type}}),
             step(2, "基于资料生成回答", "rag.answer",
-                 {"question": question, "scenario_id": scenario_id,
-                  "data_type": data_type}),
+                 {"question": question, "data_type": data_type}),
         ]
 
     if intent.kind == intents.KIND_AGENT_IDENTITY:
@@ -598,15 +584,13 @@ def _build_plan(
         "title": title,
         "goal": question,
         "data_type": data_type,
-        "scenario_id": scenario_id,
     }
     return [
-        step(1, "检索相关规范资料", "rag.search",
-             {"query": question,
-              "filters": {"data_type": data_type, "scenario_id": scenario_id}}),
-        step(2, "定位关联能力", "graph.reason",
-             {"action": "locate", "query": question, "data_type": data_type,
-              "scenario_id": scenario_id}),
+            step(1, "检索相关规范资料", "rag.search",
+                 {"query": question,
+                  "filters": {"data_type": data_type}}),
+            step(2, "定位关联能力", "graph.reason",
+                 {"action": "locate", "query": question, "data_type": data_type}),
         step(3, "生成任务卡预览", "task.preview", dict(task_args)),
         step(4, "创建学习任务", "task.create", {**task_args, "source": source}),
     ]
@@ -618,7 +602,7 @@ def _enrich_step_args(
 ) -> None:
     """把上游步骤结果注入当前步骤参数（计划数据流）。
 
-    - task.preview/task.create：补 RAG 命中的资源与图谱定位到的 cap_ids；
+    - task.preview/task.create：补图谱定位到的 cap_ids；资源不再成为任务前置条件；
     - graph.reason(pre_path)：补诊断报告里的首个薄弱能力作为 target_id。
     只填缺省值，不覆盖计划构建时已有的显式参数。
     """
@@ -631,21 +615,6 @@ def _enrich_step_args(
                     caps = (results.get(other["id"]) or {}).get("cap_ids")
                     if caps:
                         args["cap_ids"] = caps
-        if not args.get("resources"):
-            for other in steps:
-                if other["tool"] == "rag.search":
-                    hits = (results.get(other["id"]) or {}).get("hits") or []
-                    resources = []
-                    for hit in hits[:3]:
-                        if isinstance(hit, dict):
-                            resources.append({
-                                "type": "rag",
-                                "title": hit.get("title")
-                                or hit.get("document_title") or "召回资料",
-                                "ref_id": hit.get("document_id"),
-                            })
-                    if resources:
-                        args["resources"] = resources
     elif tool == "graph.reason" and args.get("action") == "pre_path":
         if not args.get("target_id"):
             for other in steps:
@@ -971,6 +940,7 @@ async def _compose_final_text(
     *,
     private_memory_context: str | None = None,
     on_delta: Callable[[str], Awaitable[None]] | None = None,
+    sampling: dict[str, float] | None = None,
 ) -> tuple[str, dict[str, Any] | None, str]:
     """LLM 可用→流式/整段合成；不可用→模板渲染工具结果（PRD-06 §11.1）。
 
@@ -983,9 +953,21 @@ async def _compose_final_text(
         if use_general_knowledge
         else composer.build_compose_messages(user_input, results)
     )
+    # Sampling controls belong to the RAG management surface.  Apply them
+    # only when this synthesis is grounded in a RAG tool result; general
+    # knowledge fallback and ordinary chat retain provider defaults.
+    effective_sampling = None if use_general_knowledge else sampling
     usage_capture = composer.UsageCapture()
     streamed: list[str] = []
-    async for delta in composer.stream_text(messages, usage_capture=usage_capture):
+    if effective_sampling:
+        stream = composer.stream_text(
+            messages,
+            usage_capture=usage_capture,
+            sampling=effective_sampling,
+        )
+    else:
+        stream = composer.stream_text(messages, usage_capture=usage_capture)
+    async for delta in stream:
         streamed.append(delta)
         if on_delta is not None:
             # The callback persists the chunk before this iterator requests the
@@ -994,7 +976,14 @@ async def _compose_final_text(
     if streamed:
         text = "".join(streamed)
         return text, usage_capture.value, composer.compact_summary(text)
-    text = await composer.compose_text(messages, usage_capture=usage_capture)
+    if effective_sampling:
+        text = await composer.compose_text(
+            messages,
+            usage_capture=usage_capture,
+            sampling=effective_sampling,
+        )
+    else:
+        text = await composer.compose_text(messages, usage_capture=usage_capture)
     if text:
         return text, usage_capture.value, composer.compact_summary(text)
     if use_general_knowledge:
@@ -1049,22 +1038,6 @@ def _collect_results(db: sqlite3.Connection, steps: list[dict[str, Any]]) -> dic
             except json.JSONDecodeError:
                 results[step["id"]] = {"error": "结果解析失败"}
     return results
-
-
-def _scenario_suggestion(
-    intent: intents.Intent, conversation: sqlite3.Row | None
-) -> dict[str, str] | None:
-    """场景切换建议（PRD-06 §7.3：识别到他场景关键词只建议，不自动切）。"""
-    if conversation is None or not intent.scenario_id:
-        return None
-    current = conversation["scenario_id"]
-    if current and current != intent.scenario_id:
-        return {
-            "type": "scenario_switch",
-            "suggested_scenario_id": intent.scenario_id,
-            "message": "检测到您的目标更接近另一个场景，可在会话设置中切换后继续。",
-        }
-    return None
 
 
 def _emit_citations_if_any(
@@ -1381,12 +1354,24 @@ async def _finalize(
                 exclude_run_id=run["id"],
             )
         )
+    sampling: dict[str, float] | None = None
+    if any(step.get("tool") in {"rag.answer", "rag.search"} for step in steps):
+        try:
+            # Load the persisted RAG knobs at synthesis time so an admin edit
+            # affects the next answer without copying settings into run data.
+            from ..rag.retriever import load_settings
+
+            settings = load_settings(db)
+            sampling = {"temperature": settings.temperature, "top_p": settings.top_p}
+        except Exception:
+            sampling = None
     text, usage, summary = await _compose_final_text(
         user_input,
         steps,
         results,
         private_memory_context=memory_context,
         on_delta=_forward_delta,
+        sampling=sampling,
     )
     if streamed:
         # Streamed chunks have already been persisted as message.delta events;
@@ -1405,10 +1390,7 @@ async def _finalize(
     )
     _emit_citations_if_any(db, run["id"], steps, results)
     _emit_usage_if_any(db, run["id"], usage)
-    suggestion = _scenario_suggestion(intent, conv)
     payload: dict[str, Any] = {"summary": summary}
-    if suggestion:
-        payload["suggestion"] = suggestion
     _finalize_run(
         db,
         run["id"],
@@ -1587,11 +1569,9 @@ async def execute_run(run_id: str, db_path: str) -> None:
             title="执行计划已生成",
             detail=f"已安排 {len(steps)} 个步骤",
         )
-        # run 行记录本轮生效的场景/数据类型（显式 > 识别）；会话行不在这里改，
-        # 场景切换只能由用户显式触发（PRD-06 §7.3）
-        _update_run(db, run_id,
-                    scenario_id=run["scenario_id"] or intent.scenario_id,
-                    data_type=run["data_type"] or intent.data_type)
+        # Persist only the data type used by this run; the retired context is
+        # intentionally absent from both the plan and run record.
+        _update_run(db, run_id, data_type=run["data_type"] or intent.data_type)
 
         finished = await _run_steps(db, get_config(), user, run, conv, steps, 0)
         if not finished:
@@ -1660,19 +1640,17 @@ async def continue_run(run_id: str, db_path: str) -> None:
             title="正在继续执行计划",
             detail="已根据确认结果恢复未完成步骤",
         )
-        run_data_type, run_scenario_id, conversation_data_type, conversation_scenario_id = (
+        run_data_type, conversation_data_type = (
             _context_values(run, conv)
         )
         intent = intents.apply_context(
             intents.detect(run["input_text"]),
             data_type=conversation_data_type,
-            scenario_id=conversation_scenario_id,
             prefer_context=True,
         )
         intent = intents.apply_context(
             intent,
             data_type=run_data_type,
-            scenario_id=run_scenario_id,
             prefer_context=True,
         )
         finished = await _run_steps(db, get_config(), user, run, conv, steps, start_index)

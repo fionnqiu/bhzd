@@ -1,12 +1,9 @@
 /**
- * 资料详情（/rag-admin/documents/:id）——元数据/切片/索引/版本/审核全景 + 状态操作（PRD-03 §6）。
+ * 系统管理 · 资料详情（/admin/rag/documents/:id）——元数据/切片/索引/版本 + 状态操作。
  *
  * 关键决策（为什么）：
- * - 发布走单独弹窗选可见范围：后端 publish 的 scope 直接决定学生端能否召回
- *   （PRD-06 §4.2），这是高危动作，必须显式选择而不是默认学生可见。
- * - 发布守卫错误（LICENSE_BLOCKED / CHUNK_EMPTY / SENSITIVE_INFO_BLOCKED 等）
- *   一律透传后端中文 message——守卫话术后端统一维护（rag/errors.py），前端
- *   不再复述规则，避免前后端口径漂移。
+ * - 新上传由后端在索引完成后自动进入学生召回范围；详情页只提供处理与归档操作。
+ * - 历史来源台账/审核字段仍由兼容 DTO 返回，但不再作为活动详情内容展示。
  * - 敏感信息标志来自最近一次解析任务 params.sensitive_flags（pipeline.py
  *   scan_sensitive_info：phone/id_card/email/block_publish），身份证命中
  *   会阻止发布，这里必须醒目前置，而不是等发布失败才发现。
@@ -30,7 +27,6 @@ import {
   DataTable,
   EmptyState,
   ErrorState,
-  Modal,
   PageHeader,
   Pagination,
   Spinner,
@@ -45,11 +41,8 @@ import {
   errText,
   fmtDuration,
   fmtTime,
-  LEDGER_AUTH_LABELS,
   LicenseBadge,
-  REVIEW_ACTION_LABELS,
   safeRagReturnPath,
-  scenarioLabel,
   SOURCE_TYPE_LABELS,
   STAGE_LABELS,
   VISIBILITY_LABELS,
@@ -57,7 +50,8 @@ import {
 
 /** 向量统计拉取上限：超出时如实标注"仅统计前 N 条" */
 const CHUNK_STATS_LIMIT = 200;
-const CHUNK_PREVIEW_COUNT = 5;
+/** Keep the detail page useful as a read-only replacement for the old chunk editor. */
+const CHUNK_PREVIEW_COUNT = 20;
 /** 召回记录默认分页大小（recall_logs 按时间倒序，详情页只看最近命中） */
 const DEFAULT_RECALL_LIMIT = 10;
 
@@ -103,8 +97,6 @@ export default function DocumentDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [busy, setBusy] = useState<string | null>(null);
-  const [publishOpen, setPublishOpen] = useState(false);
-  const [publishScope, setPublishScope] = useState<"student" | "teacher">("student");
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -199,21 +191,6 @@ export default function DocumentDetailPage() {
     }
   };
 
-  const doPublish = async () => {
-    setBusy("publish");
-    try {
-      await api.post(`/api/rag/documents/${id}/publish`, { scope: publishScope });
-      toast.success(publishScope === "student" ? "已发布，学生端可召回" : "已发布（仅教师可见）");
-      setPublishOpen(false);
-      await load();
-    } catch (err) {
-      // 发布守卫：LICENSE_BLOCKED / CHUNK_EMPTY / SENSITIVE_INFO_BLOCKED / REVIEW_REQUIRED
-      toast.error(errText(err));
-    } finally {
-      setBusy(null);
-    }
-  };
-
   const doDelete = async () => {
     try {
       await api.delete(`/api/rag/documents/${id}`);
@@ -241,8 +218,6 @@ export default function DocumentDetailPage() {
   const hasFlags = !!flags && ((flags.phone ?? 0) > 0 || (flags.id_card ?? 0) > 0 || (flags.email ?? 0) > 0);
   const embedded = chunks.filter((c) => c.embedding_model).length;
   const embedModels = [...new Set(chunks.map((c) => c.embedding_model).filter(Boolean))] as string[];
-  const canSubmitReview = doc.status === "indexed" || doc.status === "chunked";
-  const canPublish = doc.status === "review_pending";
   const canArchive = doc.status !== "archived";
   const canDelete = doc.status !== "published";
 
@@ -361,17 +336,6 @@ export default function DocumentDetailPage() {
           >
             重新索引
           </Button>
-          {canSubmitReview ? (
-            <Button
-              loading={busy === "submit"}
-              onClick={() => void runAction("submit", `/api/rag/documents/${id}/submit-review`, "已送审，等待发布审核")}
-            >
-              送审
-            </Button>
-          ) : null}
-          {canPublish ? (
-            <Button onClick={() => setPublishOpen(true)}>发布…</Button>
-          ) : null}
           {canArchive ? (
             <Button variant="secondary" onClick={() => setArchiveOpen(true)}>
               归档
@@ -384,7 +348,7 @@ export default function DocumentDetailPage() {
           ) : null}
         </div>
         <p className="text-xs text-muted mt-2">
-          送审/发布/归档/删除均会写入审核记录与审计日志；已发布资料只能归档，不能物理删除。
+          解析、切片、索引会自动完成；归档/删除仍会写入审计日志，已发布资料只能归档。
         </p>
       </Card>
 
@@ -410,24 +374,9 @@ export default function DocumentDetailPage() {
         {/* 基本信息 */}
         <Card title="基本信息">
           {infoRow("文件类型", doc.file_type.toUpperCase())}
-          {infoRow("资料类型", SOURCE_TYPE_LABELS[doc.source_type] ?? doc.source_type)}
-          {infoRow("来源", doc.source_name)}
-          {infoRow("来源链接", doc.source_url ? <a href={doc.source_url} target="_blank" rel="noreferrer">{doc.source_url}</a> : "—")}
-          {infoRow(
-            "来源台账",
-            detail.ledger
-              ? `${detail.ledger.source_code} · ${detail.ledger.name}（${LEDGER_AUTH_LABELS[detail.ledger.authorization_status] ?? detail.ledger.authorization_status}）`
-              : "未关联",
-          )}
-          {infoRow("授权状态", <LicenseBadge status={doc.license_status} />)}
+          {infoRow("版本", `v${doc.version}`)}
           {infoRow("可见范围", VISIBILITY_LABELS[doc.visibility] ?? doc.visibility)}
           {infoRow("数据类型", doc.data_types.map((t) => DATA_TYPE_LABELS[t] ?? t).join(" / ") || "—")}
-          {infoRow(
-            "行业场景",
-            doc.scenario_ids.length
-              ? doc.scenario_ids.map((s) => <Tag key={s}>{scenarioLabel(s)}</Tag>)
-              : "通用",
-          )}
           {infoRow("过期时间", fmtTime(doc.expires_at))}
           {infoRow("创建时间", fmtTime(doc.created_at))}
           {infoRow("更新时间", fmtTime(doc.updated_at))}
@@ -453,20 +402,25 @@ export default function DocumentDetailPage() {
         </Card>
       </div>
 
-      {/* 切片列表（前 N 条 + 编辑器入口） */}
-      <Card
-        title={`切片列表（共 ${chunkTotal} 条）`}
-        className="mt-4"
-        actions={
-          <Link
-            to={`/rag-admin/documents/${id}/chunks?returnTo=${encodeURIComponent(returnTo)}`}
-            state={{ returnTo }}
-            className="btn btn-secondary btn-sm"
-          >
-            打开切片编辑器
-          </Link>
-        }
-      >
+      {/* Keep source metadata useful for remediation without reviving the retired ledger workflow. */}
+      <Card title="来源信息" className="mt-4">
+        {infoRow("来源单位", doc.source_name || "—")}
+        {infoRow("来源类型", SOURCE_TYPE_LABELS[doc.source_type] ?? doc.source_type)}
+        {infoRow(
+          "来源链接",
+          doc.source_url ? (
+            <a href={doc.source_url} target="_blank" rel="noreferrer">
+              {doc.source_url}
+            </a>
+          ) : (
+            "—"
+          ),
+        )}
+        {infoRow("授权状态", <LicenseBadge status={doc.license_status} />)}
+      </Card>
+
+      {/* 只读预览保留资料处理结果，旧切片编辑器路由仍由兼容路由承接但不再是主流程入口。 */}
+      <Card title={`切片列表（只读预览，共 ${chunkTotal} 条）`} className="mt-4">
         {chunks.length === 0 ? (
           <EmptyState title="暂无切片" hint="资料尚未完成解析切片，可在操作区触发重新解析" />
         ) : (
@@ -474,21 +428,25 @@ export default function DocumentDetailPage() {
             {chunks.slice(0, CHUNK_PREVIEW_COUNT).map((chunk) => (
               <li key={chunk.id} className="mb-3">
                 <div className="flex items-center gap-2 mb-2">
-                  <Tag>#{chunk.chunk_index}</Tag>
+                  <Tag>切片 #{chunk.chunk_index}</Tag>
                   {chunk.section_title ? <strong className="text-sm">{chunk.section_title}</strong> : null}
                   <span className="text-xs text-muted">
-                    {chunk.page_start != null ? `第 ${chunk.page_start} 页 · ` : ""}
+                    {chunk.page_start != null
+                      ? `第 ${chunk.page_start}${chunk.page_end != null && chunk.page_end !== chunk.page_start ? `-${chunk.page_end}` : ""} 页 · `
+                      : ""}
                     {chunk.token_count} tokens
                   </span>
                 </div>
-                <p className="text-sm text-secondary">{clamp(chunk.content, 160)}</p>
+                <p className="text-sm text-secondary" style={{ whiteSpace: "pre-wrap" }} title={chunk.content}>
+                  {clamp(chunk.content, 320)}
+                </p>
               </li>
             ))}
           </ul>
         )}
         {chunkTotal > CHUNK_PREVIEW_COUNT ? (
           <p className="text-sm text-muted mt-2">
-            仅展示前 {CHUNK_PREVIEW_COUNT} 条，全部切片请在切片编辑器中查看。
+            仅展示前 {CHUNK_PREVIEW_COUNT} 条；完整切片数据仍保留在资料记录中。
           </p>
         ) : null}
       </Card>
@@ -558,67 +516,6 @@ export default function DocumentDetailPage() {
         />
       </Card>
 
-      {/* 审核记录 */}
-      <Card title="审核记录" className="mt-4">
-        {detail.review_records.length === 0 ? (
-          <p className="text-sm text-secondary">暂无审核记录</p>
-        ) : (
-          <ul>
-            {detail.review_records.map((r) => (
-              <li key={r.id} className="mb-2">
-                <span className="text-sm">
-                  <strong>{REVIEW_ACTION_LABELS[r.action] ?? r.action}</strong>
-                  <span className="text-muted">　{fmtTime(r.created_at)} · 操作人 {r.reviewer_id.slice(0, 8)}…</span>
-                </span>
-                {r.comment ? <p className="text-sm text-secondary">{r.comment}</p> : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
-
-      {/* 发布弹窗：显式选择可见范围（高危动作） */}
-      <Modal
-        open={publishOpen}
-        title="发布资料"
-        onClose={() => setPublishOpen(false)}
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setPublishOpen(false)}>
-              取消
-            </Button>
-            <Button loading={busy === "publish"} onClick={() => void doPublish()}>
-              确认发布
-            </Button>
-          </>
-        }
-      >
-        <p className="text-sm text-secondary mb-3">
-          发布前系统将校验：授权状态、来源台账、切片非空、敏感信息（PRD-06 §4.2）。
-        </p>
-        <div className="field">
-          <span className="field-label">发布范围</span>
-          <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              name="publish-scope"
-              checked={publishScope === "student"}
-              onChange={() => setPublishScope("student")}
-            />
-            学生端可见（进入学生召回）
-          </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              name="publish-scope"
-              checked={publishScope === "teacher"}
-              onChange={() => setPublishScope("teacher")}
-            />
-            仅教师可见（不进入学生召回）
-          </label>
-        </div>
-      </Modal>
-
       <ConfirmDialog
         open={archiveOpen}
         title="归档资料"
@@ -635,7 +532,7 @@ export default function DocumentDetailPage() {
         title="删除资料"
         danger
         confirmText="确认删除"
-        description={`将物理删除「${doc.title}」及其全部切片、任务与审核记录（操作保留审计日志）。此操作不可恢复。`}
+        description={`将物理删除「${doc.title}」及其全部切片、任务与历史操作记录（操作保留审计日志）。此操作不可恢复。`}
         onConfirm={doDelete}
         onCancel={() => setDeleteOpen(false)}
       />

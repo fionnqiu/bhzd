@@ -63,7 +63,6 @@ export interface MessageResponse {
 export interface Conversation {
   id: string;
   title: string | null;
-  scenario_id: string | null;
   data_type: string | null;
   created_at: string;
   updated_at: string;
@@ -132,7 +131,6 @@ export interface AgentRun {
   conversation_id: string;
   status: RunStatus;
   input_text: string;
-  scenario_id: string | null;
   data_type: string | null;
   error: string | null;
   created_at: string;
@@ -218,7 +216,6 @@ export interface RunDetail {
   confirmations: Confirmation[];
   /** Terminal SSE payload projected into recovery reads; optional for old servers. */
   summary?: string | null;
-  suggestion?: { suggested_scenario_id: string; message: string } | null;
   /**
    * SSE 中断后由服务端运行详情返回的最终助手消息。
    * 可选字段让旧服务端在渐进发布期间仍保持兼容。
@@ -319,21 +316,18 @@ export type MasteryStatus = "mastered" | "weak" | "beginner";
 /** 掌握度预览/应用项（mastery/service.py preview_from_deltas / apply_updates） */
 export interface MasteryChange {
   cap_id: string;
-  scenario_id: string;
   delta: number;
   old_score: number | null;
   new_score: number | null;
 }
 
-/** GET /api/profile/mastery 列表项（mastery/service.py get_mastery + profile.py 拼场景名） */
+/** GET /api/profile/mastery 列表项（mastery/service.py get_mastery + profile.py 能力名称） */
 export interface MasteryRecord {
   cap_id: string;
   cap_name: string;
-  scenario_id: string;
   score: number;
   source: string | null;
   updated_at: string;
-  scenario_name: string;
 }
 
 /* ================================================================ 预设 */
@@ -361,7 +355,6 @@ export interface Preset {
   title: string;
   description: string;
   data_type: string;
-  scenario_id: string | null;
   goal: string;
   difficulty: number;
   est_minutes: number;
@@ -380,7 +373,6 @@ export interface TaskPreview {
   title: string;
   goal?: string | null;
   data_type?: string | null;
-  scenario_id?: string | null;
   cap_ids?: string[];
   steps?: TaskStep[];
   resources?: TaskResource[];
@@ -414,7 +406,7 @@ export interface GraphNode {
   label: string;
   description?: string;
   data_types?: string[];
-  type: "CAP" | "CERT" | "KNG" | "RES" | "SCN" | "TSK" | string;
+  type: "CAP" | "CERT" | "KNG" | "RES" | "TSK" | string;
   status?: string;
   source_refs?: unknown[];
   mastery_status?: MasteryStatus;
@@ -452,13 +444,11 @@ export interface GraphNodeDetail extends GraphNode {
   resources: GraphNode[];
   tasks: GraphNode[];
   certificates: GraphNode[];
-  scenarios: GraphNode[];
   related: GraphNode[];
   /** 图谱路由已完成可见性校验，供“开始学习”直接写入任务材料。 */
   learning_materials?: GraphLearningMaterial[];
   /** 仅登录用户查询 CAP 节点时存在 */
   mastery?: {
-    scenario_id: string;
     score: number;
     source: string | null;
     updated_at: string;
@@ -479,6 +469,7 @@ export type TaskStatus =
   "draft" | "not_started" | "in_progress" | "submitted" | "completed" | "paused" | "archived";
 
 export type TaskSource = "agent" | "preset" | "teacher" | "diagnostic";
+export type TaskContentStatus = "none" | "generating" | "done" | "failed";
 
 export interface TaskStep {
   title: string;
@@ -531,7 +522,6 @@ export interface TaskSummary {
   title: string;
   goal: string | null;
   data_type: string | null;
-  scenario_id: string | null;
   cap_ids: string[];
   source: TaskSource;
   status: TaskStatus;
@@ -542,6 +532,36 @@ export interface TaskSummary {
   due_at: string | null;
   created_at: string;
   updated_at: string;
+  content_status: TaskContentStatus;
+}
+
+export interface TaskKnowledgePoint {
+  id: string;
+  title: string;
+  content: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskExerciseSubmission {
+  id: string;
+  answer: string;
+  grade_status: "pending" | "grading" | "done" | "failed";
+  score: number | null;
+  feedback: string | null;
+  graded_at: string | null;
+  created_at: string;
+}
+
+export interface TaskExercise {
+  id: string;
+  question: string;
+  type: "open_ended" | "multiple_choice" | string;
+  options: string[] | null;
+  sort_order: number;
+  created_at: string;
+  submission: TaskExerciseSubmission | null;
 }
 
 export interface TaskAttempt {
@@ -571,6 +591,9 @@ export interface TaskDetail extends TaskSummary {
   attempts: TaskAttempt[];
   /** 最近一次提交，用于刷新后恢复作答、反馈和待确认的掌握度预览。 */
   latest_attempt: TaskLatestAttempt | null;
+  content_generated_at: string | null;
+  knowledge_points: TaskKnowledgePoint[];
+  exercises: TaskExercise[];
 }
 
 export interface FeedbackItem {
@@ -654,7 +677,6 @@ export interface DiagnosticReport {
   notice: string | null;
   /** 由路由层补写的请求上下文（engine 不含） */
   data_type?: string | null;
-  scenario_id?: string | null;
 }
 
 /** POST /api/diagnostics 响应 = 报告 + 内存缓存令牌（30min 有效） */
@@ -673,7 +695,6 @@ export interface DiagnosticSummary {
   id: string;
   file_format: string;
   data_type: string | null;
-  scenario_id: string | null;
   error_count: number;
   severity_counts: SeverityCounts;
   weak_cap_ids: string[];
@@ -696,7 +717,6 @@ export interface ProfileOverview {
   growth: {
     cap_id: string;
     cap_name: string;
-    scenario_id: string;
     old_score: number;
     new_score: number;
     source: string;
@@ -789,7 +809,6 @@ export interface RagDocument {
   version: string;
   license_status: "authorized" | "internal" | "pending" | "forbidden";
   data_types: string[];
-  scenario_ids: string[];
   cap_ids: string[];
   visibility: "admin" | "teacher" | "student";
   status: RagDocumentStatus;
@@ -1043,7 +1062,6 @@ export interface TeacherTask {
   title: string;
   goal: string | null;
   data_type: string | null;
-  scenario_id: string | null;
   cap_ids: string[];
   steps: TaskStep[];
   resources: TaskResource[];
@@ -1056,6 +1074,9 @@ export interface TeacherTask {
   parent_task_id: string | null;
   /** 已发布的学生副本份数（发布状态由副本数推导） */
   published_count: number;
+  /** 任务创建后自动生成的 AI 学习内容状态。旧服务端缺省为 none。 */
+  content_status?: TaskContentStatus;
+  content_generated_at?: string | null;
   created_at: string;
   updated_at: string;
   /** 仅 PATCH 响应携带：有学生副本时编辑产生 version+1 新记录 */
@@ -1079,12 +1100,6 @@ export interface Analytics {
   }[];
   trend: { date: string; submissions: number; completions: number }[];
   top_errors: { error_type: string; count: number; major: number; minor: number }[];
-  scenario_comparison: {
-    scenario_id: string;
-    scenario_name: string;
-    avg_score: number;
-    student_count: number;
-  }[];
   suggestions: string[];
   student_count: number;
   /** 学生 <3 人时为 true（PRD-06 §10.2 样本过小提示） */
@@ -1097,17 +1112,15 @@ export interface ReviewQueueItem {
   title: string;
   uploader_name: string | null;
   source_type: string;
-  scenario_ids: string[];
   data_types: string[];
   submitted_at: string;
 }
 
 /* ================================================================ 系统管理 */
 
-export type ProviderProtocol =
-  "xunfei_xingchen" | "xunfei_spark" | "chat_completions" | "anthropic_messages";
+export type ProviderProtocol = "chat_completions" | "anthropic_messages" | "responses";
 
-export type ProviderRole = "primary" | "fallback" | "embedding" | "rerank" | "none";
+export type ProviderRole = "primary" | "fallback" | "embedding" | "rerank" | "grader" | "none";
 
 /** Provider DTO；服务端只回显固定掩码，编辑器不得把掩码当作替换密钥提交。 */
 export interface ProviderConfig {
@@ -1145,7 +1158,10 @@ export interface ProviderModelOption {
 
 /** POST provider discover-models 的临时结果；API Key 只用于本次服务端请求。 */
 export interface ProviderModelDiscoveryResult {
-  /** False means the protocol intentionally requires a hand-entered model name. */
+  /**
+   * False means the configured provider does not expose model discovery. The
+   * protocol itself remains valid and the administrator can enter a model name.
+   */
   supported: boolean;
   models: ProviderModelOption[];
 }
@@ -1156,19 +1172,13 @@ export interface RagSettings {
   chunk_size: number;
   chunk_overlap: number;
   title_inherit: boolean;
-  table_strategy: string;
   top_k: number;
   score_threshold: number;
+  temperature: number;
+  top_p: number;
   hybrid_search: boolean;
   rerank_enabled: boolean;
-  citation_format: string;
-  refusal_policy: "refuse" | "generic_advice";
-  max_citations: number;
-  prompt_template: string;
-  prompt_template_version: string;
-  require_manual_review: boolean;
-  student_visibility_default: "admin" | "teacher" | "student";
-  expired_doc_policy: "remove" | "keep";
+  query_rewrite_enabled: boolean;
   updated_at: string;
   updated_by: string | null;
 }
@@ -1224,6 +1234,12 @@ export interface Metrics {
       last_test_ok: boolean | null;
     }
   > | null;
+  /** Runtime health counters; zero is a real count, while rates stay null without telemetry. */
+  login_success_today: number;
+  login_failure_today: number;
+  active_sessions: number;
+  api_success_rate_24h: number | null;
+  provider_latency_avg_ms: number | null;
 }
 
 /** GET /api/admin/metrics */

@@ -9,17 +9,14 @@ raw submissions, score answers, or diagnostic reports.
 
 from __future__ import annotations
 
-import json
 import sqlite3
 from typing import Any
 
-from ..db import utc_now_iso
 from ..errors import ApiError
 
 WEAK_LINE = 0.6
 MAX_WEAK_CAPABILITIES = 5
 MAX_DRAFT_CAPABILITIES = 3
-MAX_DRAFT_RESOURCES = 3
 
 
 def _placeholders(values: list[str]) -> str:
@@ -103,7 +100,7 @@ def class_insights(
                    SUM(CASE WHEN score < ? THEN 1 ELSE 0 END) AS weak_student_count,
                    COUNT(*) AS record_count
             FROM mastery
-            WHERE scenario_id = '' AND user_id IN ({_placeholders(student_ids)})
+             WHERE user_id IN ({_placeholders(student_ids)})
             GROUP BY cap_id
             ORDER BY average_mastery ASC, cap_id ASC
             LIMIT ?
@@ -159,62 +156,6 @@ def class_insights(
     }
 
 
-def _eligible_student_resources(
-    db: sqlite3.Connection,
-    *,
-    cap_ids: list[str],
-    data_type: str | None = None,
-    scenario_id: str | None = None,
-) -> list[dict[str, str]]:
-    """Choose only published, authorized resources that students may receive."""
-
-    now = utc_now_iso()
-    rows = db.execute(
-        """
-        SELECT d.id, d.title, d.cap_ids_json, d.data_types_json, d.scenario_ids_json
-        FROM rag_documents d
-        LEFT JOIN source_ledgers sl ON sl.id = d.source_ledger_id
-        WHERE d.status = 'published'
-          AND d.visibility = 'student'
-          AND d.license_status = 'authorized'
-          AND (d.expires_at IS NULL OR d.expires_at > ?)
-          AND (
-            sl.id IS NULL
-            OR (
-              sl.authorization_status NOT IN ('forbidden', 'expired')
-              AND (sl.valid_to IS NULL OR sl.valid_to > ?)
-            )
-          )
-        ORDER BY d.published_at DESC, d.updated_at DESC, d.rowid DESC
-        LIMIT 30
-        """,
-        (now, now),
-    ).fetchall()
-
-    # SQLite JSON support is not guaranteed in the supported local runtime.
-    # The database result set is deliberately small, so parsing the declared
-    # capability array in Python keeps the eligibility rule portable.
-    docs: list[dict[str, str]] = []
-    for row in rows:
-        try:
-            document_caps = set(json.loads(row["cap_ids_json"] or "[]"))
-            document_types = set(json.loads(row["data_types_json"] or "[]"))
-            document_scenarios = set(json.loads(row["scenario_ids_json"] or "[]"))
-        except (json.JSONDecodeError, TypeError):
-            # Malformed source metadata cannot become a candidate for an Agent
-            # draft, because it would weaken the declared student-resource scope.
-            continue
-        if data_type and data_type not in document_types:
-            continue
-        if scenario_id and scenario_id not in document_scenarios:
-            continue
-        if not cap_ids or document_caps.intersection(cap_ids):
-            docs.append({"type": "rag_document", "ref_id": row["id"], "title": row["title"]})
-        if len(docs) >= MAX_DRAFT_RESOURCES:
-            break
-    return docs
-
-
 def _first_capability(
     insights: dict[str, Any], requested_cap_ids: list[str] | None
 ) -> list[str]:
@@ -237,7 +178,6 @@ def task_draft_preview(
     insights: dict[str, Any] | None = None,
     requested_cap_ids: list[str] | None = None,
     data_type: str | None = None,
-    scenario_id: str | None = None,
 ) -> dict[str, Any]:
     """Create an editable, non-persistent teacher-task draft from aggregates.
 
@@ -254,19 +194,6 @@ def task_draft_preview(
         return {
             "ready_to_save": False,
             "reason": "当前班级尚无可用于定向任务的能力掌握度数据，请先选择目标能力后再生成草稿。",
-            "insights": snapshot,
-        }
-
-    resources = _eligible_student_resources(
-        db,
-        cap_ids=cap_ids,
-        data_type=data_type,
-        scenario_id=scenario_id,
-    )
-    if not resources:
-        return {
-            "ready_to_save": False,
-            "reason": "当前没有可分配给学生的已发布授权资料，请先补充资料后再生成草稿。",
             "insights": snapshot,
         }
 
@@ -302,7 +229,6 @@ def task_draft_preview(
         # intent detection.  They preserve the teacher's goal without copying
         # free text into a tool payload that might contain pasted student data.
         "data_type": data_type,
-        "scenario_id": scenario_id,
         "cap_ids": cap_ids,
         "steps": [
             {
@@ -318,7 +244,6 @@ def task_draft_preview(
                 "description": "根据反馈复盘薄弱环节，记录下一次练习需要注意的规则。",
             },
         ],
-        "resources": resources,
         "rubric": [
             {"criterion": "规范符合性", "description": "结果符合关联资料中的规则", "points": 50},
             {"criterion": "完整性", "description": "关键字段、边界或标签无遗漏", "points": 30},
@@ -332,40 +257,3 @@ def task_draft_preview(
         "insights": snapshot,
         "notice": "任务尚未发布。确认后会为当前班级的在班学生创建任务并发送通知。",
     }
-
-
-def validate_student_resources(db: sqlite3.Connection, resources: list[dict[str, Any]]) -> None:
-    """Keep an edited Agent draft within the student-visible resource boundary."""
-
-    ref_ids = [
-        str(item.get("ref_id"))
-        for item in resources
-        if isinstance(item, dict) and item.get("type") == "rag_document" and item.get("ref_id")
-    ]
-    if len(ref_ids) != len(resources) or not ref_ids:
-        raise ApiError(400, "RESOURCES_REQUIRED", "任务资料必须是可分配给学生的已发布资料")
-    placeholders = _placeholders(ref_ids)
-    now = utc_now_iso()
-    eligible_rows = db.execute(
-        f"""
-        SELECT d.id
-        FROM rag_documents d
-        LEFT JOIN source_ledgers sl ON sl.id = d.source_ledger_id
-        WHERE d.id IN ({placeholders})
-          AND d.status = 'published'
-          AND d.visibility = 'student'
-          AND d.license_status = 'authorized'
-          AND (d.expires_at IS NULL OR d.expires_at > ?)
-          AND (
-            sl.id IS NULL
-            OR (
-              sl.authorization_status NOT IN ('forbidden', 'expired')
-              AND (sl.valid_to IS NULL OR sl.valid_to > ?)
-            )
-          )
-        """,
-        (*ref_ids, now, now),
-    ).fetchall()
-    eligible = {str(row["id"]) for row in eligible_rows}
-    if any(ref_id not in eligible for ref_id in ref_ids):
-        raise ApiError(400, "RESOURCE_NOT_AVAILABLE", "所选资料不可分配给学生")

@@ -6,7 +6,6 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { api, ApiRequestError } from "../src/api/client";
-import { ScenarioProvider } from "../src/app/ScenarioContext";
 import { ToastProvider } from "../src/components";
 import {
   StudentWorkbenchShellProvider,
@@ -74,12 +73,10 @@ function renderCockpit() {
   return render(
     <MemoryRouter>
       <ToastProvider>
-        <ScenarioProvider>
-          <StudentWorkbenchShellProvider>
-            <CockpitPage />
-            <WorkbenchSidebarTestHost />
-          </StudentWorkbenchShellProvider>
-        </ScenarioProvider>
+        <StudentWorkbenchShellProvider>
+          <CockpitPage />
+          <WorkbenchSidebarTestHost />
+        </StudentWorkbenchShellProvider>
       </ToastProvider>
     </MemoryRouter>,
   );
@@ -104,7 +101,7 @@ const REPORT = {
   severity_counts: { major: 1, minor: 2 },
   weak_cap_ids: ["CAP-IMG-001"],
   mastery_preview: [
-    { cap_id: "CAP-IMG-001", scenario_id: "", delta: -0.2, old_score: 0.6, new_score: 0.4 },
+    { cap_id: "CAP-IMG-001", delta: -0.2, old_score: 0.6, new_score: 0.4 },
   ],
   plan: {
     weak_caps: [{ cap_id: "CAP-IMG-001", cap_name: "框选边界控制" }],
@@ -114,7 +111,6 @@ const REPORT = {
   },
   notice: null,
   data_type: "image",
-  scenario_id: null,
   diagnostic_token: "tok-abc",
 };
 
@@ -161,7 +157,6 @@ describe("指挥舱 · SSE 恢复", () => {
             conversation_id: "c1",
             status,
             input_text: "测试 SSE 恢复",
-            scenario_id: null,
             data_type: null,
             error: null,
             created_at: "2026-08-03T00:00:00Z",
@@ -362,6 +357,19 @@ describe("指挥舱 · 内嵌输入操作", () => {
     expect(within(shell).getByRole("button", { name: "发送" })).toBeInTheDocument();
   });
 
+  it("将发送控件保留在输入壳层的底部操作栏中", async () => {
+    renderCockpit();
+
+    const shell = await screen.findByTestId("composer-input-shell");
+    const actions = within(shell).getByTestId("composer-input-actions");
+    const send = within(actions).getByRole("button", { name: "发送" });
+
+    // The positioned action bar is the shared desktop/mobile anchor; keeping
+    // send inside it prevents layout-only changes from moving it below the input.
+    expect(actions).toContainElement(send);
+    expect(actions).toContainElement(within(actions).getByRole("button", { name: "添加对话附件" }));
+  });
+
   it("点击内嵌上传按钮仍打开原有文件选择器", async () => {
     renderCockpit();
 
@@ -522,7 +530,6 @@ describe("指挥舱 · 会话管理", () => {
   const CONVERSATION = {
     id: "c9",
     title: "旧会话",
-    scenario_id: null,
     data_type: null,
     created_at: "2026-07-01T00:00:00Z",
     updated_at: "2026-07-02T00:00:00Z",
@@ -992,7 +999,6 @@ describe("cockpit reconciliation retry", () => {
         conversation_id: "c1",
         status: "completed",
         input_text: "test",
-        scenario_id: null,
         data_type: null,
         error: null,
         created_at: "2026-08-03T00:00:00Z",

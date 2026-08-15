@@ -29,7 +29,6 @@ import {
   Textarea,
   useToast,
 } from "../../components";
-import { useScenario } from "../../app/ScenarioContext";
 import {
   capNameOf,
   errMsg,
@@ -67,11 +66,9 @@ interface FavoriteItem {
 
 export default function RagQaPage() {
   const toast = useToast();
-  const { scenarioId: globalScenarioId, scenarios } = useScenario();
   const capNames = useCapNames();
 
   const [question, setQuestion] = useState("");
-  const [scenarioId, setScenarioId] = useState(globalScenarioId);
   const [dataType, setDataType] = useState("");
   const [asking, setAsking] = useState(false);
   const [answer, setAnswer] = useState<RagAnswer | null>(null);
@@ -101,7 +98,7 @@ export default function RagQaPage() {
     return () => controller.abort();
   }, []);
 
-  /** 提问：场景/类型默认取当前上下文；空问题前端先拦（后端也校验 422） */
+  /** 提问：数据类型为可选提示；空问题前端先拦（后端也校验 422）。 */
   const ask = async (raw?: string) => {
     const text = (raw ?? question).trim();
     if (!text) {
@@ -113,7 +110,6 @@ export default function RagQaPage() {
     try {
       const res = await api.post<RagAnswer>("/api/rag/query", {
         question: text,
-        scenario_id: scenarioId || undefined,
         data_type: dataType || undefined,
         published_only: true,
       });
@@ -201,7 +197,7 @@ export default function RagQaPage() {
         sub="基于已发布规范资料的可靠问答，回答均附引用来源"
       />
 
-      {/* 问答输入区（PRD-01 §8：问题/场景/类型/仅检索已发布） */}
+      {/* 问答输入区：问题、数据类型与固定的已发布资料范围。 */}
       <Card className="mb-4">
         <div className="flex flex-col gap-3">
           <Textarea
@@ -211,13 +207,6 @@ export default function RagQaPage() {
             onChange={(e) => setQuestion(e.target.value)}
           />
           <div className="flex items-center gap-3 flex-wrap">
-            <Select
-              aria-label="场景筛选"
-              style={{ width: 200 }}
-              value={scenarioId}
-              options={scenarios.map((s) => ({ value: s.id, label: s.name }))}
-              onChange={(e) => setScenarioId(e.target.value)}
-            />
             <Select
               aria-label="数据类型筛选"
               style={{ width: 160 }}

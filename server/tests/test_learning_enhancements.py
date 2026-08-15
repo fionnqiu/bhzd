@@ -390,7 +390,7 @@ def test_mastery_trend_series(api):
     from bhzd_py.mastery import service as mastery_service
 
     mastery_service.apply_updates(
-        api.conn, user["user_id"], [{"cap_id": cap_id, "scenario_id": "", "delta": 0.15}],
+        api.conn, user["user_id"], [{"cap_id": cap_id, "delta": 0.15}],
         source="exercise",
     )
 

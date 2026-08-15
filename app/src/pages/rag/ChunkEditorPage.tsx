@@ -1,5 +1,5 @@
 /**
- * 切片编辑器（/rag-admin/documents/:id/chunks）——原文预览 / 切片列表 / 编辑面板（PRD-03 §8）。
+ * 已合并的切片编辑组件：生产入口已改为资料详情的只读预览（/admin/rag/documents/:id）。
  *
  * 关键决策（为什么）：
  * - 保存内容立即重嵌入是后端行为（rag_admin.py _reembed_chunk），页面如实提示
@@ -271,7 +271,7 @@ export default function ChunkEditorPage() {
         sub="修改内容保存后立即重新嵌入；拆分/合并会重排切片序号"
         actions={
           <Link
-            to={`/rag-admin/documents/${id}?returnTo=${encodeURIComponent(returnTo)}`}
+            to={`/admin/rag/documents/${id}?returnTo=${encodeURIComponent(returnTo)}`}
             state={{ returnTo }}
             className="btn btn-ghost"
           >
@@ -289,7 +289,7 @@ export default function ChunkEditorPage() {
           hint="资料尚未完成解析切片，请先在资料详情页触发解析"
           action={
             <Link
-              to={`/rag-admin/documents/${id}?returnTo=${encodeURIComponent(returnTo)}`}
+              to={`/admin/rag/documents/${id}?returnTo=${encodeURIComponent(returnTo)}`}
               state={{ returnTo }}
               className="btn btn-primary"
             >

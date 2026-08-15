@@ -10,7 +10,6 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { useEffect, type ReactElement, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { ScenarioProvider } from "../src/app/ScenarioContext";
 import { ToastProvider } from "../src/components";
 import { ApiRequestError, api } from "../src/api/client";
 import OnboardingPage from "../src/pages/student/OnboardingPage";
@@ -72,15 +71,13 @@ const mockedPost = vi.mocked(api.post);
 const mockedPatch = vi.mocked(api.patch);
 const mockedDelete = vi.mocked(api.delete);
 
-/** 与生产 Provider 组合一致（Toast + 场景上下文）；initialEntry 为测试起始路由 */
+/** 与生产 Provider 组合一致（Toast）；initialEntry 为测试起始路由 */
 function renderPage(routes: ReactElement, initialEntry: string) {
   return render(
     <ToastProvider>
-      <ScenarioProvider>
-        <MemoryRouter initialEntries={[initialEntry]}>
-          <Routes>{routes}</Routes>
-        </MemoryRouter>
-      </ScenarioProvider>
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <Routes>{routes}</Routes>
+      </MemoryRouter>
     </ToastProvider>,
   );
 }
@@ -157,8 +154,8 @@ describe("OnboardingPage 入学引导", () => {
           total: 2,
           status: "completed",
           mastery_applied: [
-            { cap_id: "C1", scenario_id: "", delta: 0.4, old_score: 0, new_score: 0.4 },
-            { cap_id: "C2", scenario_id: "", delta: 0.4, old_score: 0, new_score: 0.4 },
+            { cap_id: "C1", delta: 0.4, old_score: 0, new_score: 0.4 },
+            { cap_id: "C2", delta: 0.4, old_score: 0, new_score: 0.4 },
           ],
         });
       return Promise.reject(new ApiRequestError(500, "NOT_MOCKED", `未 mock 的 POST ${path}`));
@@ -289,7 +286,6 @@ function renderLockedLayout() {
 const STUDENT_SESSION = {
   id: "c9",
   title: "跨页面学习会话",
-  scenario_id: "SCN-IN-VEHICLE-001",
   data_type: null,
   created_at: "2026-07-01T00:00:00Z",
   updated_at: "2026-07-02T00:00:00Z",
@@ -353,14 +349,10 @@ describe("学生工作台全局会话栏", () => {
     fireEvent.click(screen.getByText("跨页面学习会话"));
     expect(await screen.findByText("会话已恢复")).toBeInTheDocument();
     expect(mockedGet).toHaveBeenCalledWith("/api/conversations/c9");
-    // A restored transcript must surface its saved title and continuation
-    // context before the learner sends the next message.
+    // A restored transcript must surface its saved title before the learner
+    // sends the next message.
     const conversationInfo = await screen.findByRole("status", { name: "当前对话信息" });
     expect(conversationInfo).toHaveTextContent("跨页面学习会话");
-    expect(conversationInfo).not.toHaveTextContent("继续场景：");
-    expect(
-      within(screen.getByTestId("composer")).getByRole("combobox", { name: "继续场景" }),
-    ).toHaveTextContent("车载语音标注");
 
     // 诊断上传和报告已经收敛到 Agent；独立入口不再出现在学生导航。
     expect(screen.queryByRole("link", { name: "标注诊断" })).not.toBeInTheDocument();
@@ -495,7 +487,6 @@ const TASKS = [
     status: "in_progress",
     source: "agent",
     data_type: "text",
-    scenario_id: null,
     cap_ids: [],
     progress: 0.4,
     latest_score: null,
@@ -507,7 +498,6 @@ const TASKS = [
     status: "not_started",
     source: "teacher",
     data_type: "image",
-    scenario_id: null,
     cap_ids: [],
     progress: 0,
     latest_score: null,
@@ -695,11 +685,9 @@ function installProfileGet(shareDiagnostics: boolean) {
           {
             cap_id: "C1",
             cap_name: "能力甲",
-            scenario_id: "",
             score: 0.5,
             source: "exercise",
             updated_at: "2026-07-31T00:00:00Z",
-            scenario_name: "通用",
           },
         ],
         total: 1,
@@ -725,7 +713,6 @@ function installProfileGet(shareDiagnostics: boolean) {
           {
             date: "2026-07-20",
             cap_id: "C1",
-            scenario_id: "",
             old_score: 0.3,
             new_score: 0.4,
             source: "exercise",
@@ -734,7 +721,6 @@ function installProfileGet(shareDiagnostics: boolean) {
           {
             date: "2026-07-31",
             cap_id: "C1",
-            scenario_id: "",
             old_score: 0.4,
             new_score: 0.5,
             source: "exercise",

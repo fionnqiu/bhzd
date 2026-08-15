@@ -237,7 +237,7 @@ function NotificationBell({ navigationDisabled = false }: { navigationDisabled?:
 
 /**
  * Student shell: the notification stays globally reachable as a fixed action,
- * while the Composer owns the ScenarioContext control next to the message it affects.
+ * while the Composer owns the message composer controls next to the message.
  */
 function StudentLayoutContent() {
   const {

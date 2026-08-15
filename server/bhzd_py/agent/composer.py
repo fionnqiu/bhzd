@@ -224,7 +224,10 @@ def _providers():
 
 
 async def compose_text(
-    messages: list[dict], *, usage_capture: UsageCapture | None = None
+    messages: list[dict],
+    *,
+    usage_capture: UsageCapture | None = None,
+    sampling: dict[str, float] | None = None,
 ) -> str | None:
     """非流式合成：主模型失败回退备用模型（PRD-06 §11.1），均失败返回 None。
 
@@ -239,7 +242,25 @@ async def compose_text(
         return None
     for role in ("primary", "fallback"):
         try:
-            result = await providers.complete(messages, role=role)
+            # Pass RAG sampling only for the grounded synthesis path.  Keeping
+            # the keyword conditional preserves compatibility with lightweight
+            # provider doubles used by older integrations and tests.
+            if sampling:
+                result = await providers.complete(messages, role=role, sampling=sampling)
+            else:
+                result = await providers.complete(messages, role=role)
+        except TypeError as exc:
+            # Older provider adapters may not accept the optional keyword yet;
+            # retrying without it keeps mixed-version workers operational.
+            if sampling and "sampling" in str(exc):
+                try:
+                    result = await providers.complete(messages, role=role)
+                except Exception:
+                    logger.warning("LLM 合成兼容调用失败（role=%s）", role, exc_info=True)
+                    continue
+            else:
+                logger.warning("LLM 合成失败（role=%s），尝试下一档", role, exc_info=True)
+                continue
         except Exception:
             logger.warning("LLM 合成失败（role=%s），尝试下一档", role, exc_info=True)
             continue
@@ -253,7 +274,10 @@ async def compose_text(
 
 
 async def stream_text(
-    messages: list[dict], *, usage_capture: UsageCapture | None = None
+    messages: list[dict],
+    *,
+    usage_capture: UsageCapture | None = None,
+    sampling: dict[str, float] | None = None,
 ) -> AsyncIterator[str]:
     """流式合成：逐段产出文本增量；首档未输出时可切到备用模型。
 
@@ -270,14 +294,40 @@ async def stream_text(
         produced = False
         text_filter = _VisibleTextFilter()
         try:
-            async for event in providers.stream_deltas(messages, role=role):
-                if event.get("delta"):
-                    for visible in text_filter.feed(str(event["delta"])):
-                        produced = True
-                        yield visible
-                elif event.get("done") is not None or "done" in event:
-                    if usage_capture is not None:
-                        usage_capture.record(event)
+            try:
+                if sampling:
+                    events = providers.stream_deltas(messages, role=role, sampling=sampling)
+                else:
+                    events = providers.stream_deltas(messages, role=role)
+            except TypeError as exc:
+                # A legacy async-generator adapter raises at construction time
+                # when it does not know the optional keyword.
+                if not (sampling and "sampling" in str(exc)):
+                    raise
+                events = providers.stream_deltas(messages, role=role)
+            try:
+                async for event in events:
+                    if event.get("delta"):
+                        for visible in text_filter.feed(str(event["delta"])):
+                            produced = True
+                            yield visible
+                    elif event.get("done") is not None or "done" in event:
+                        if usage_capture is not None:
+                            usage_capture.record(event)
+            except TypeError as exc:
+                # A mixed-version adapter can reject the new keyword when the
+                # iterator starts; retry that provider once with its legacy API.
+                if not (sampling and "sampling" in str(exc)):
+                    raise
+                events = providers.stream_deltas(messages, role=role)
+                async for event in events:
+                    if event.get("delta"):
+                        for visible in text_filter.feed(str(event["delta"])):
+                            produced = True
+                            yield visible
+                    elif event.get("done") is not None or "done" in event:
+                        if usage_capture is not None:
+                            usage_capture.record(event)
             tail = text_filter.finish()
             if tail:
                 produced = True

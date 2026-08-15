@@ -2,7 +2,7 @@
 
 Pinned 公开签名（蓝图 §2.1 / 任务契约，签名不可改）：
 - get_graph() -> dict
-- search_nodes(query=None, *, node_type=None, data_type=None, scenario_id=None, limit=50)
+- search_nodes(query=None, *, node_type=None, data_type=None, limit=50)
 - node_detail(node_id) -> dict | None
 - subgraph(node_id, depth=2) -> dict
 - pre_path(target_id, *, skip_ids=None) -> list[str]
@@ -41,32 +41,24 @@ def search_nodes(
     *,
     node_type: str | None = None,
     data_type: str | None = None,
-    scenario_id: str | None = None,
     limit: int = 50,
 ) -> list[dict]:
-    """按关键词/类型/数据类型/场景过滤节点。
+    """按关键词、类型和数据类型过滤节点。
 
     - query：对 id/name/description 做大小写不敏感的子串匹配；
-    - data_type：命中节点的 data_types 列表（SCN/CERT 等无该字段的节点被排除）；
-    - scenario_id：命中通过 INSCN 边连到该场景的节点，以及场景节点本身
-      （INSCN 是"应用于场景"边，CAP/KNG/TSK → SCN）。
+    - data_type：命中节点的 data_types 列表（没有该字段的节点被排除）。
+
+    图谱中的 SCN/INSCN 原始节点与关系仍由 node_detail 返回，供只读图谱
+    浏览使用；它们不再参与业务场景筛选。
     """
     graph = get_graph()
     nodes = graph["nodes"]
-    scenario_hit: set[str] | None = None
-    if scenario_id:
-        scenario_hit = {scenario_id}
-        for edge in _edges_of(graph, "INSCN"):
-            if edge["target"] == scenario_id:
-                scenario_hit.add(edge["source"])
     q = query.strip().lower() if query else None
     results: list[dict[str, Any]] = []
     for node in nodes:
         if node_type and node.get("type") != node_type:
             continue
         if data_type and data_type not in (node.get("data_types") or []):
-            continue
-        if scenario_hit is not None and node["id"] not in scenario_hit:
             continue
         if q:
             haystack = " ".join(

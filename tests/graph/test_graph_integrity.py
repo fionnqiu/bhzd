@@ -409,26 +409,25 @@ def test_stable_kng_identities_and_additive_policy_overlays(graph):
         assert claim_type in source["supported_claim_types"]
 
 
-def test_task5_local_policy_sources_have_development_only_authority(graph):
+def test_task5_video_policy_source_has_development_only_authority(graph):
     sources = {
         source["source_id"]: source
         for source in load_json(SOURCE_REGISTRY_PATH)["sources"]
     }
     video = sources["SRC-POLICY-VIDEO-TASK5-001"]
-    scenarios = sources["SRC-POLICY-SCENARIOS-TASK5-001"]
-
-    for source in (video, scenarios):
-        assert source["source_kind"] == "project_policy"
-        assert source["authority_scope"] == "local_project_policy_only"
-        assert source["status"] == "verified"
-        assert source["publication_scope"] == "development_only"
-        assert source["human_release_allowed"] is False
-        assert source["license_or_authorization"]["publishable"] is True
-        assert source["usage_rights"]["citation_allowed"] is True
-        assert source["usage_rights"]["asset_redistribution_allowed"] is False
-        assert "AI-agent review scope only" in source["license_or_authorization"][
-            "review_note"
-        ]
+    # Scenario-specific policy sources were removed with the business feature;
+    # the retained graph data is validated as opaque SCN/INSCN records below.
+    assert video["source_kind"] == "project_policy"
+    assert video["authority_scope"] == "local_project_policy_only"
+    assert video["status"] == "verified"
+    assert video["publication_scope"] == "development_only"
+    assert video["human_release_allowed"] is False
+    assert video["license_or_authorization"]["publishable"] is True
+    assert video["usage_rights"]["citation_allowed"] is True
+    assert video["usage_rights"]["asset_redistribution_allowed"] is False
+    assert "AI-agent review scope only" in video["license_or_authorization"][
+        "review_note"
+    ]
 
     assert video["data_type"] == "video"
     assert set(video["supported_claim_types"]) >= {
@@ -437,16 +436,6 @@ def test_task5_local_policy_sources_have_development_only_authority(graph):
         "video_occlusion_reid_policy",
         "video_action_taxonomy_policy",
         "video_event_boundary_policy",
-    }
-    assert scenarios["supported_data_types"] == [
-        "text",
-        "image",
-        "audio",
-        "video",
-    ]
-    assert set(scenarios["supported_claim_types"]) >= {
-        "scenario_rule_overlay_policy",
-        "scenario_structured_example_policy",
     }
 
 

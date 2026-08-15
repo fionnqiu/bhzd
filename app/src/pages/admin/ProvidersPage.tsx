@@ -382,7 +382,9 @@ export default function ProvidersPage() {
         model: options.some((option) => option.value === prev.model) ? prev.model : "",
       }));
       if (result.supported === false) {
-        setModelDiscoveryError("该协议暂不支持获取模型，请手动填写模型名");
+        // Model discovery is optional provider capability; it must not imply
+        // that a protocol selected in this form is unsupported.
+        setModelDiscoveryError("当前供应商不提供模型自动发现，请手动填写模型名");
       } else if (options.length === 0) {
         setModelDiscoveryError("供应商未返回可选模型，请手动填写模型名");
       }
@@ -706,7 +708,7 @@ export default function ProvidersPage() {
           <Input
             value={form.name}
             onChange={(e) => set("name", e.target.value)}
-            placeholder="例如：讯飞星火主模型"
+            placeholder="例如：主模型"
           />
         </Field>
         <Field label="协议类型" required>
@@ -781,7 +783,7 @@ export default function ProvidersPage() {
                   aria-label="模型名"
                   value={form.model}
                   onChange={(e) => set("model", e.target.value)}
-                  placeholder="例如：spark-x1 / gpt-4o-mini"
+                  placeholder="例如：o4-mini / gpt-4o-mini"
                 />
               )}
               <IconButton

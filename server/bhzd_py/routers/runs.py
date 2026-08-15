@@ -151,7 +151,6 @@ def _conversation_dto(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "id": row["id"],
         "title": row["title"],
-        "scenario_id": row["scenario_id"],
         "data_type": row["data_type"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
@@ -507,7 +506,6 @@ def _project_conversation_activities(
 
 class ConversationCreate(BaseModel):
     title: str | None = None
-    scenario_id: str | None = None
     data_type: str | None = None
 
 
@@ -543,14 +541,13 @@ async def create_conversation(
     now = utc_now_iso()
     db.execute(
         """
-        INSERT INTO conversations (id, user_id, title, scenario_id, data_type, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO conversations (id, user_id, title, data_type, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
         (
             conversation_id,
             current.user["id"],
             body.title or "新会话",
-            body.scenario_id,
             body.data_type,
             now,
             now,
@@ -668,7 +665,6 @@ def get_message_attachment_thumbnail(
 class RunCreate(BaseModel):
     conversation_id: str | None = None
     input: str = Field(min_length=1, max_length=4000)
-    scenario_id: str | None = None
     data_type: str | None = None
     # `attachment` remains a compatibility envelope for historic clients and
     # diagnostic-token runs. New Agent messages use the bounded list below.
@@ -928,35 +924,32 @@ async def create_run(
 
     if body.conversation_id:
         conversation = _load_own_conversation(db, body.conversation_id, current.user["id"])
-        # 显式传场景/数据类型 = 用户主动切换（PRD-06 §7.3 允许的切换路径）
-        if body.scenario_id or body.data_type:
+        # Explicit data-type input is the only run-level context override.
+        if body.data_type:
             db.execute(
-                "UPDATE conversations SET scenario_id = COALESCE(?, scenario_id), "
-                "data_type = COALESCE(?, data_type), updated_at = ? WHERE id = ?",
-                (body.scenario_id, body.data_type, now, conversation["id"]),
+                "UPDATE conversations SET data_type = COALESCE(?, data_type), "
+                "updated_at = ? WHERE id = ?",
+                (body.data_type, now, conversation["id"]),
             )
             db.commit()
         conversation_id = conversation["id"]
-        scenario_id = body.scenario_id or conversation["scenario_id"]
         data_type = body.data_type or conversation["data_type"]
     else:
         conversation_id = uuid.uuid4().hex
         db.execute(
             """
-            INSERT INTO conversations (id, user_id, title, scenario_id, data_type, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO conversations (id, user_id, title, data_type, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 conversation_id,
                 current.user["id"],
                 body.input[:30],
-                body.scenario_id,
                 body.data_type,
                 now,
                 now,
             ),
         )
-        scenario_id = body.scenario_id
         data_type = body.data_type
 
     run_id = uuid.uuid4().hex
@@ -971,8 +964,8 @@ async def create_run(
         """
         INSERT INTO agent_runs
           (id, conversation_id, user_id, status, input_text, plan_json,
-           scenario_id, data_type, created_at)
-        VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?)
+           data_type, created_at)
+        VALUES (?, ?, ?, 'running', ?, ?, ?, ?)
         """,
         (
             run_id,
@@ -980,7 +973,6 @@ async def create_run(
             current.user["id"],
             body.input,
             seed_plan,
-            scenario_id,
             data_type,
             now,
         ),
@@ -1022,7 +1014,6 @@ async def create_run(
         "goal_submitted",
         {
             "conversation_id": conversation_id,
-            "has_scenario": bool(scenario_id),
             "has_data_type": bool(data_type),
         },
     )
@@ -1133,13 +1124,8 @@ async def get_run(
         raw_suggestion = (
             terminal_payload.get("suggestion") if isinstance(terminal_payload, dict) else None
         )
-        if (
-            isinstance(raw_suggestion, dict)
-            and isinstance(raw_suggestion.get("suggested_scenario_id"), str)
-            and isinstance(raw_suggestion.get("message"), str)
-        ):
+        if isinstance(raw_suggestion, dict) and isinstance(raw_suggestion.get("message"), str):
             suggestion = {
-                "suggested_scenario_id": raw_suggestion["suggested_scenario_id"],
                 "message": raw_suggestion["message"],
             }
 
@@ -1149,7 +1135,6 @@ async def get_run(
             "conversation_id": run["conversation_id"],
             "status": run["status"],
             "input_text": run["input_text"],
-            "scenario_id": run["scenario_id"],
             "data_type": run["data_type"],
             "error": run["error"],
             "created_at": run["created_at"],

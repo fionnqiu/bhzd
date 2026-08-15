@@ -1,6 +1,6 @@
 """AC14 比赛演示主线彩排（PRD-05 §9 推荐演示主线逐步验收）。
 
-主线：学生打开系统 → 点击"语音标注入门"预设 → 切换到"智能客服场景" →
+主线：学生打开系统 → 点击"语音标注入门"预设 → 输入语音标注学习目标 →
 Agent 生成学习计划 → RAG 召回客服语音标注规范 → 图谱显示相关能力路径 →
 生成学习任务卡 → 学生完成练习并上传 TextGrid 结果 → 系统诊断错误 →
 展示引用依据、薄弱能力和补强路径 → 保存诊断摘要并更新掌握度。
@@ -30,6 +30,8 @@ sys.path.insert(0, str(REPO / "server"))
 from fastapi.testclient import TestClient  # noqa: E402
 
 from bhzd_py.app import create_app  # noqa: E402
+from bhzd_py.agent import conversation_memory  # noqa: E402
+from bhzd_py.agent import orchestrator as agent_orchestrator  # noqa: E402
 from bhzd_py.config import reset_config_cache  # noqa: E402
 from bhzd_py.seed.loader import run_seed  # noqa: E402
 
@@ -89,10 +91,36 @@ def _password_envelope(client: TestClient, password: str) -> dict[str, str]:
     }
 
 
-def _run_demo() -> int:
-    print("== 演示环境准备（demo 种子）==")
-    run_seed(demo=True)
-    c = TestClient(create_app())
+def _wait_for_background_tasks(timeout: float = 5.0) -> None:
+    """Wait for all demo workers to release SQLite handles before temp cleanup.
+
+    The demo owns a temporary database, so cleanup must happen only after the
+    confirmation continuation and post-response memory extraction have finished
+    their ``finally: db.close()`` blocks.  This matters on Windows, where an
+    open SQLite handle locks the file.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        # Agent futures own their SQLite connection until execute_run or
+        # continue_run reaches its finally block; do not clean the temp tree
+        # merely because the run row has become terminal.
+        futures = list(agent_orchestrator._BG_FUTURES)
+        if not futures:
+            break
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("timed out waiting for Agent background tasks")
+        time.sleep(min(0.05, remaining))
+
+    # Assistant persistence schedules a second daemon worker for private
+    # memory extraction.  Its explicit barrier joins the worker after it closes
+    # its own connection, eliminating the Windows TemporaryDirectory race.
+    remaining = max(0.0, deadline - time.monotonic())
+    conversation_memory.wait_for_layered_captures(remaining)
+
+
+def _run_demo_steps(c: TestClient) -> int:
+    """Execute the accepted learner workflow against an already-open client."""
 
     print("== PRD-05 §9 演示主线 ==")
     # 1. 学生打开系统并登录
@@ -109,11 +137,8 @@ def _run_demo() -> int:
     audio_preset = next((p for p in presets if p["data_type"] == "audio"), None)
     step("2 预设学习含语音标注入口", audio_preset is not None, audio_preset["title"] if audio_preset else "")
 
-    # 3. 切换到智能客服场景（演示主线：携带场景发起目标）
-    scenario = "SCN-CUSTOMER-SERVICE-001"
-
     # 4. Agent 生成学习计划
-    r = c.post("/api/runs", json={"input": "我想学客服语音情感标注", "scenario_id": scenario, "data_type": "audio"}, headers=H)
+    r = c.post("/api/runs", json={"input": "我想学语音情感标注", "data_type": "audio"}, headers=H)
     run_id = r.json()["run_id"]
     deadline = time.time() + 30
     d = {}
@@ -126,7 +151,7 @@ def _run_demo() -> int:
     step("4 Agent 生成学习计划", bool(plan.get("steps")), f"steps={len(plan.get('steps') or [])}")
 
     # 5. RAG 召回客服语音标注规范
-    r = c.post("/api/rag/query", json={"question": "客服语音情感标注有哪些标签？副语言事件怎么标？", "scenario_id": scenario, "data_type": "audio"}, headers=H)
+    r = c.post("/api/rag/query", json={"question": "语音情感标注有哪些标签？副语言事件怎么标？", "data_type": "audio"}, headers=H)
     j = r.json()
     hit = any("客服" in ct["title"] for ct in j.get("citations", []))
     step("5 RAG 召回客服语音标注规范（带引用）", not j.get("refused") and hit, f"citations={[ct['title'] for ct in j.get('citations', [])][:3]}")
@@ -143,6 +168,14 @@ def _run_demo() -> int:
     if confs:
         rc = c.post(f"/api/confirmations/{confs[0]['id']}/confirm", headers=H)
         if rc.status_code == 200:
+            # Confirmation resumes the planner asynchronously; wait for its
+            # terminal state before reading task output or closing the client.
+            continuation_deadline = time.time() + 30
+            while time.time() < continuation_deadline:
+                resumed = c.get(f"/api/runs/{run_id}").json()
+                if resumed["run"]["status"] in ("completed", "failed", "cancelled"):
+                    break
+                time.sleep(0.1)
             tasks = c.get("/api/tasks").json().get("items", [])
             task_id = tasks[0]["id"] if tasks else None
     step("7 学习任务卡确认创建", task_id is not None, f"action={confs[0]['action_type'] if confs else None}")
@@ -171,7 +204,7 @@ item []:
             xmax = 5
             text = "非常开心"
 '''
-    r = c.post("/api/diagnostics", files={"file": ("demo.TextGrid", tg.encode(), "text/plain")}, data={"data_type": "audio", "scenario_id": scenario}, headers=H)
+    r = c.post("/api/diagnostics", files={"file": ("demo.TextGrid", tg.encode(), "text/plain")}, data={"data_type": "audio"}, headers=H)
     rep = r.json()
     step("8 上传 TextGrid 并诊断出错误", r.status_code == 200 and len(rep.get("errors", [])) >= 1, f"errors={len(rep.get('errors', []))}")
 
@@ -190,6 +223,19 @@ item []:
     failed = [s for s in steps if not s[1]]
     print(f"\n== AC14 演示主线：{len(steps) - len(failed)}/{len(steps)} 步通过 ==")
     return 1 if failed else 0
+
+
+def _run_demo() -> int:
+    """Seed isolated data, run the workflow, and release all runtime handles."""
+    print("== 演示环境准备（demo 种子）==")
+    run_seed(demo=True)
+    c = TestClient(create_app())
+    try:
+        return _run_demo_steps(c)
+    finally:
+        # Close the HTTP client and wait for agent futures before temp cleanup.
+        c.close()
+        _wait_for_background_tasks()
 
 
 def main() -> int:

@@ -23,7 +23,7 @@ export interface DrawerProps {
 
 /**
  * 右侧抽屉：图谱节点详情、工具结果"专注视图"（NF19 两级展示的第二级）
- * 等需要保留背景上下文的中等信息量场景。
+ * 等需要保留背景上下文的中等信息量内容。
  */
 export default function Drawer({
   open,

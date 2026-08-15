@@ -68,7 +68,7 @@ def _load_context(db: sqlite3.Connection, run_id: str) -> tuple[sqlite3.Row, sql
 
 def _request_envelope(
     run: sqlite3.Row,
-) -> tuple[bool | None, list[str], str | None, str | None, dict[str, str] | None]:
+) -> tuple[bool | None, list[str], str | None, dict[str, str] | None]:
     """Read the API-only request hints before the durable plan replaces them."""
 
     try:
@@ -77,14 +77,13 @@ def _request_envelope(
         payload = {}
     request = payload.get("teacher_request") if isinstance(payload, dict) else None
     if not isinstance(request, dict):
-        return None, [], None, None, None
+        return None, [], None, None
     requested = request.get("request_draft")
     request_draft = requested if isinstance(requested, bool) else None
     cap_ids = request.get("target_cap_ids")
     if not isinstance(cap_ids, list):
         cap_ids = []
     data_type = request.get("data_type")
-    scenario_id = request.get("scenario_id")
     attachment = request.get("attachment")
     normalized_attachment = (
         {"attachment_token": attachment["attachment_token"]}
@@ -95,7 +94,6 @@ def _request_envelope(
         request_draft,
         [str(value) for value in cap_ids if isinstance(value, str)][:3],
         data_type if isinstance(data_type, str) else None,
-        scenario_id if isinstance(scenario_id, str) else None,
         normalized_attachment,
     )
 
@@ -213,7 +211,6 @@ def _persist_plan(
     request_draft: bool,
     target_cap_ids: list[str],
     data_type: str | None,
-    scenario_id: str | None,
 ) -> None:
     """Keep enough opaque state for reload/confirmation without preserving raw goals."""
 
@@ -227,7 +224,6 @@ def _persist_plan(
                         "request_draft": request_draft,
                         "target_cap_ids": target_cap_ids,
                         "data_type": data_type,
-                        "scenario_id": scenario_id,
                     },
                 },
                 ensure_ascii=False,
@@ -477,7 +473,6 @@ async def _execute_preview_step(
     insights: dict[str, Any],
     target_cap_ids: list[str],
     data_type: str | None,
-    scenario_id: str | None,
 ) -> dict[str, Any]:
     """Build an editable draft from already-safe aggregates and eligible sources."""
 
@@ -508,7 +503,6 @@ async def _execute_preview_step(
         insights=insights,
         requested_cap_ids=target_cap_ids,
         data_type=data_type,
-        scenario_id=scenario_id,
     )
     db.execute(
         """
@@ -643,7 +637,7 @@ async def execute_run(run_id: str, db_path: str) -> None:
             events.RUN_STARTED,
             {"run_id": run_id, "conversation_id": run["conversation_id"]},
         )
-        requested_draft, target_cap_ids, data_type, scenario_id, attachment = _request_envelope(run)
+        requested_draft, target_cap_ids, data_type, attachment = _request_envelope(run)
         media_token = (
             attachment.get("attachment_token")
             if isinstance(attachment, dict)
@@ -675,7 +669,6 @@ async def execute_run(run_id: str, db_path: str) -> None:
             request_draft=wants_draft,
             target_cap_ids=target_cap_ids,
             data_type=data_type,
-            scenario_id=scenario_id,
         )
         events.emit_progress(
             db,
@@ -703,7 +696,6 @@ async def execute_run(run_id: str, db_path: str) -> None:
                 insights=insights,
                 target_cap_ids=target_cap_ids,
                 data_type=data_type,
-                scenario_id=scenario_id,
             )
             _update_plan_event(db, run_id, steps)
 
@@ -718,7 +710,6 @@ async def execute_run(run_id: str, db_path: str) -> None:
                 request_draft=wants_draft,
                 target_cap_ids=target_cap_ids,
                 data_type=data_type,
-                scenario_id=scenario_id,
             )
             _update_plan_event(db, run_id, steps)
             fallback = (

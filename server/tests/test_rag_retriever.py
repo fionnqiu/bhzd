@@ -1,7 +1,7 @@
 """RAG 召回与问答契约测试（蓝图 §16：AC4 未发布不可召回 / AC6 无依据拒答）。
 
 全部在 DB 层构造数据（直接插入已发布/未发布文档与切片嵌入），离线运行。
-覆盖：学生端硬过滤、阈值拒答、场景冲突降权与提示、多版本取最新、
+覆盖：学生端硬过滤、阈值拒答、多版本取最新、
 模板答案与 composer 注入、引用上限、拒答策略 generic_advice。
 """
 
@@ -16,9 +16,9 @@ import pytest
 from bhzd_py.config import get_config, reset_config_cache
 from bhzd_py.db import apply_migrations, connect, utc_now_iso
 from bhzd_py.rag.local_embed import EMBEDDING_MODEL, embed_text
+from bhzd_py.rag import retriever as retriever_module
 from bhzd_py.rag.retriever import (
     REFUSAL_MESSAGE,
-    SCENARIO_CONFLICT_NOTICE,
     RagFilters,
     answer_question,
     retrieve,
@@ -67,7 +67,6 @@ def insert_doc(
     status: str = "published",
     visibility: str = "student",
     license_status: str = "authorized",
-    scenario_ids: list[str] | None = None,
     cap_ids: list[str] | None = None,
     data_types: list[str] | None = None,
     version: str = "v1.0",
@@ -81,9 +80,9 @@ def insert_doc(
     conn.execute(
         """
         INSERT INTO rag_documents (id, title, file_type, source_type, source_name, version,
-          license_status, data_types_json, scenario_ids_json, cap_ids_json, visibility, status,
+          license_status, data_types_json, cap_ids_json, visibility, status,
           process_version, created_by, created_at, updated_at, published_at, expires_at)
-        VALUES (?, ?, 'md', 'standard', '测试来源', ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+        VALUES (?, ?, 'md', 'standard', '测试来源', ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
         """,
         (
             doc_id,
@@ -91,7 +90,6 @@ def insert_doc(
             version,
             license_status,
             json.dumps(data_types or [], ensure_ascii=False),
-            json.dumps(scenario_ids or [], ensure_ascii=False),
             json.dumps(cap_ids or [], ensure_ascii=False),
             visibility,
             status,
@@ -154,6 +152,77 @@ def _answer(db_path, question, **kwargs):
     result = answer_question(conn, get_config(), question, **kwargs)
     conn.close()
     return result
+
+
+def test_query_rewrite_is_opt_in_and_bridges_async_provider(db_path, uploader_id, monkeypatch):
+    """短查询开启开关后才调用 provider，并把改写文本送入同步召回入口。"""
+    doc_id = insert_doc(db_path, uploader_id, title="客服语音标注规范")
+    insert_chunk(db_path, doc_id, CS_CONTENT)
+    conn = connect(db_path)
+    conn.execute("UPDATE rag_settings SET query_rewrite_enabled = 1 WHERE id = 1")
+    conn.commit()
+    conn.close()
+
+    provider_prompts: list[str] = []
+
+    async def fake_complete(messages, *, role="primary"):
+        assert role == "primary"
+        provider_prompts.append(messages[0]["content"])
+        return {"text": "语音情感标注 标签判定 正负例标准"}
+
+    monkeypatch.setattr("bhzd_py.agent.providers.complete", fake_complete)
+    embedded_queries: list[str] = []
+
+    def fake_embed(db, texts):
+        embedded_queries.extend(texts)
+        return [embed_text(CS_CONTENT)], EMBEDDING_MODEL
+
+    monkeypatch.setattr(retriever_module, "embed_chunks", fake_embed)
+    result = _retrieve(db_path, "怎么标注")
+
+    assert result.hits and result.hits[0].document_id == doc_id
+    assert provider_prompts and "怎么标注" in provider_prompts[0]
+    assert embedded_queries == ["语音情感标注 标签判定 正负例标准"]
+
+
+def test_query_rewrite_failure_falls_back_to_original_query(db_path, uploader_id, monkeypatch):
+    """供应商不可用时改写增强不得阻断原有离线召回。"""
+    doc_id = insert_doc(db_path, uploader_id, title="客服语音标注规范")
+    insert_chunk(db_path, doc_id, CS_CONTENT)
+    conn = connect(db_path)
+    conn.execute("UPDATE rag_settings SET query_rewrite_enabled = 1 WHERE id = 1")
+    conn.commit()
+    conn.close()
+
+    async def broken_complete(_messages, *, role="primary"):
+        raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr("bhzd_py.agent.providers.complete", broken_complete)
+    embedded_queries: list[str] = []
+
+    def fake_embed(db, texts):
+        embedded_queries.extend(texts)
+        return [embed_text(CS_CONTENT)], EMBEDDING_MODEL
+
+    monkeypatch.setattr(retriever_module, "embed_chunks", fake_embed)
+    result = _retrieve(db_path, "怎么标注")
+
+    assert result.hits and result.hits[0].document_id == doc_id
+    assert embedded_queries == ["怎么标注"]
+
+
+def test_query_rewrite_disabled_skips_provider(db_path, uploader_id, monkeypatch):
+    """默认关闭时保持完全离线行为，连 provider 模块都不触发。"""
+    doc_id = insert_doc(db_path, uploader_id, title="客服语音标注规范")
+    insert_chunk(db_path, doc_id, CS_CONTENT)
+    monkeypatch.setattr(
+        retriever_module,
+        "_rewrite_query",
+        lambda *_args, **_kwargs: pytest.fail("query rewrite must stay disabled"),
+    )
+
+    result = _retrieve(db_path, "怎么标注")
+    assert result.hits and result.hits[0].document_id == doc_id
 
 
 WAKE_CONTENT = "车载唤醒词边界误差必须控制在正负五十毫秒以内，抽检超差样本占比超过百分之五整批返工。"
@@ -252,25 +321,6 @@ def test_retrieval_ignores_incompatible_embedding_models_and_dimensions(
     )
     result = _retrieve(db_path, "provider query")
     assert [hit.document_id for hit in result.hits] == [provider_doc]
-
-
-def test_scenario_conflict_downweight_and_notice(db_path, uploader_id):
-    """跨场景资料降权而非消失，并提示"已优先当前场景"（PRD-06 §14.2）。"""
-    inScenario = insert_doc(db_path, uploader_id, title="车载规范", scenario_ids=["SCN-CAR"])
-    insert_chunk(db_path, inScenario, WAKE_CONTENT)
-    otherScenario = insert_doc(db_path, uploader_id, title="客服规范", scenario_ids=["SCN-CS"])
-    # 让两条内容高度相似，只有 0.5 降权决定先后
-    insert_chunk(db_path, otherScenario, WAKE_CONTENT)
-
-    result = _retrieve(db_path, "唤醒词边界误差与返工", scenario_id="SCN-CAR")
-    assert len(result.hits) == 2
-    assert result.hits[0].document_id == inScenario  # 当前场景优先
-    assert result.hits[1].score <= result.hits[0].score
-    assert result.notice == SCENARIO_CONFLICT_NOTICE
-
-    # 不带场景过滤时无提示
-    plain = _retrieve(db_path, "唤醒词边界误差与返工")
-    assert plain.notice is None
 
 
 def test_multiple_versions_keep_latest_published(db_path, uploader_id):

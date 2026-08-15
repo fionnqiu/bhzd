@@ -1,5 +1,5 @@
 /**
- * 召回评测集（/rag-admin/eval-cases）——用例管理 + 运行评测 + 历史对比（PRD-03 §11）。
+ * 已合并的评测集组件：生产用例入口已并入 /admin/rag/search-test。
  *
  * 关键决策（为什么）：
  * - 评测指标卡严格按 PRD-03 §11 五项展示并附中文说明；无样本的指标后端给
@@ -45,7 +45,6 @@ import {
   DATA_TYPE_OPTIONS,
   errText,
   fmtTime,
-  SCENARIO_OPTIONS,
 } from "./ragShared";
 import RagDocumentMultiSelect from "./RagDocumentMultiSelect";
 
@@ -103,7 +102,6 @@ export default function EvalCasesPage() {
   const [question, setQuestion] = useState("");
   const [expected, setExpected] = useState("");
   const [mustDocs, setMustDocs] = useState<string[]>([]);
-  const [filterScenario, setFilterScenario] = useState("");
   const [filterDataType, setFilterDataType] = useState("");
   const [docOptions, setDocOptions] = useState<RagDocument[]>([]);
   const [creating, setCreating] = useState(false);
@@ -203,7 +201,6 @@ export default function EvalCasesPage() {
         must_hit_document_ids: mustDocs,
         must_hit_chunk_ids: [],
         filters: {
-          scenario_id: filterScenario || null,
           data_type: filterDataType || null,
           published_only: true,
         },
@@ -234,7 +231,6 @@ export default function EvalCasesPage() {
     setQuestion(caseItem.question);
     setExpected(caseItem.expected_answer ?? "");
     setMustDocs(caseItem.must_hit_document_ids);
-    setFilterScenario(String(caseItem.filters.scenario_id ?? ""));
     setFilterDataType(String(caseItem.filters.data_type ?? ""));
     setCreateOpen(true);
   };
@@ -244,7 +240,6 @@ export default function EvalCasesPage() {
     setQuestion("");
     setExpected("");
     setMustDocs([]);
-    setFilterScenario("");
     setFilterDataType("");
     setCreateOpen(true);
   };
@@ -551,18 +546,7 @@ export default function EvalCasesPage() {
             onChange={setMustDocs}
           />
         </Field>
-        <div className="grid grid-cols-2">
-          <Field label="限定场景（可选）">
-            <Select
-              value={filterScenario}
-              onChange={(e) => setFilterScenario(e.target.value)}
-              options={SCENARIO_OPTIONS.filter((s) => s.id !== "").map((s) => ({
-                value: s.id,
-                label: s.name,
-              }))}
-              placeholder="不限"
-            />
-          </Field>
+        <div>
           <Field label="限定数据类型（可选）">
             <Select
               value={filterDataType}

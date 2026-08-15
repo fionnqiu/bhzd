@@ -10,7 +10,7 @@
  * - 练习题渲染对 practice_json 做宽容解析（questions/samples/checklist 任一
  *   存在即渲染）；无练习题时按 rubric 键出题但**绝不展示 expected**——
  *   那是评分答案，提前展示会破坏练习有效性。
- * - 能力 chips 的掌握度取 /api/profile/mastery：任务场景记录优先，缺省回退
+ * - 能力 chips 的掌握度取 /api/profile/mastery 的统一能力记录
  *   通用记录（PRD-06 §8.4 冲突口径的展示侧实现）。
  * - mastery_updated 埋点由后端 apply-mastery 端点上报，前端不重复发。
  */
@@ -19,7 +19,6 @@ import { Link, useLocation, useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import type {
   ApplyMasteryResponse,
-  Citation,
   MasteryRecord,
   Paginated,
   SubmitTaskResponse,
@@ -29,7 +28,6 @@ import type {
 import {
   Button,
   Card,
-  CitationCard,
   DataTable,
   EmptyState,
   ErrorState,
@@ -44,7 +42,6 @@ import {
   useToast,
   type Column,
 } from "../../components";
-import { useScenario } from "../../app/ScenarioContext";
 import {
   dataTypeLabel,
   errMsg,
@@ -126,19 +123,6 @@ function answersFromLatestAttempt(detail: TaskDetail): Record<string, string> {
   );
 }
 
-/** 学习材料类型中文名（resources_json.type 各来源取值不一，兜底原样展示） */
-const RESOURCE_TYPE_LABELS: Record<string, string> = {
-  teaching_unit: "教学单元",
-  micro_course: "微课",
-  rag_citation: "RAG 引用",
-  document: "规范文档",
-  example: "示例案例",
-};
-
-function resourceTypeLabel(type: string): string {
-  return RESOURCE_TYPE_LABELS[type] ?? type;
-}
-
 /**
  * Keep task-detail return links inside the SPA. Navigation state is supplied by
  * another page, so reject protocol-relative/external values before handing it
@@ -157,6 +141,36 @@ function safeTaskReturnPath(value: unknown): string {
   return value;
 }
 
+/**
+ * Normalize responses from older task-detail deployments at the API boundary.
+ *
+ * The learning-content migration adds array fields to the DTO, but users can
+ * still have a page open against a backend that has not reloaded yet (or have
+ * a historical fixture without those keys). Supplying stable empty arrays here
+ * keeps the new content surface additive and prevents a legacy response from
+ * blanking the whole task page.
+ */
+function normalizeTaskDetail(value: TaskDetail): TaskDetail {
+  const raw = value as TaskDetail & { linked?: Partial<TaskDetail["linked"]> };
+  const linked = raw.linked ?? {};
+  return {
+    ...raw,
+    content_status: raw.content_status ?? "none",
+    cap_ids: Array.isArray(raw.cap_ids) ? raw.cap_ids : [],
+    caps: Array.isArray(raw.caps) ? raw.caps : [],
+    steps: Array.isArray(raw.steps) ? raw.steps : [],
+    resources: Array.isArray(raw.resources) ? raw.resources : [],
+    attempts: Array.isArray(raw.attempts) ? raw.attempts : [],
+    linked: {
+      certificates: Array.isArray(linked.certificates) ? linked.certificates : [],
+      knowledge: Array.isArray(linked.knowledge) ? linked.knowledge : [],
+      graph_resources: Array.isArray(linked.graph_resources) ? linked.graph_resources : [],
+    },
+    knowledge_points: Array.isArray(raw.knowledge_points) ? raw.knowledge_points : [],
+    exercises: Array.isArray(raw.exercises) ? raw.exercises : [],
+  };
+}
+
 /** Card keeps its existing visual header while this page exposes a real section hierarchy. */
 function TaskSectionTitle({ children }: { children: string }) {
   return <h2 className="task-detail-section-title">{children}</h2>;
@@ -168,16 +182,13 @@ export default function TaskDetailPage() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
   const toast = useToast();
-  const { scenarios } = useScenario();
   const capNames = useCapNames();
-  const returnTo = safeTaskReturnPath(
-    (location.state as { returnTo?: unknown } | null)?.returnTo,
-  );
+  const returnTo = safeTaskReturnPath((location.state as { returnTo?: unknown } | null)?.returnTo);
 
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // cap|scenario → score，用于能力 chips 的 MasteryBadge（口径见文件头注释）
+  // cap → score，用于能力 chips 的 MasteryBadge。
   const [masteryMap, setMasteryMap] = useState<Map<string, number>>(new Map());
 
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -187,6 +198,8 @@ export default function TaskDetailPage() {
   const [applied, setApplied] = useState(false);
   const [applying, setApplying] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [exerciseAnswers, setExerciseAnswers] = useState<Record<string, string>>({});
+  const [exerciseSubmitting, setExerciseSubmitting] = useState<string | null>(null);
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -199,9 +212,10 @@ export default function TaskDetailPage() {
         // Hydrate the persisted attempt in the same state turn as the detail
         // response. A follow-up effect briefly rendered empty controlled inputs
         // and could overwrite an in-page edit after unrelated detail changes.
-        const restored = feedbackFromLatestAttempt(res);
-        setDetail(res);
-        setAnswers(restored ? answersFromLatestAttempt(res) : {});
+        const normalized = normalizeTaskDetail(res);
+        const restored = feedbackFromLatestAttempt(normalized);
+        setDetail(normalized);
+        setAnswers(restored ? answersFromLatestAttempt(normalized) : {});
         setFeedback(restored);
         setApplied(res.latest_attempt?.mastery_applied ?? false);
       } catch (err) {
@@ -228,18 +242,60 @@ export default function TaskDetailPage() {
       })
       .then((res) => {
         if (controller.signal.aborted) return;
-        setMasteryMap(new Map(res.items.map((r) => [`${r.cap_id}|${r.scenario_id}`, r.score])));
+        setMasteryMap(new Map(res.items.map((r) => [r.cap_id, r.score])));
       })
       .catch(() => {});
     return () => controller.abort();
   }, []);
 
+  useEffect(() => {
+    if (!id || detail?.content_status !== "generating") return;
+    const timer = window.setInterval(() => {
+      void api
+        .get<TaskDetail>(`/api/tasks/${id}`)
+        .then((next) => setDetail(normalizeTaskDetail(next)))
+        .catch(() => {});
+    }, 2000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [detail?.content_status, id]);
+
   const questions = useMemo(() => (detail ? extractQuestions(detail) : []), [detail]);
   const checklist = useMemo(() => (detail ? extractChecklist(detail) : []), [detail]);
   const samples = useMemo(() => (detail ? extractSamples(detail) : []), [detail]);
 
-  const scenarioNameOf = (scenarioId: string | null): string =>
-    scenarios.find((s) => s.id === (scenarioId ?? ""))?.name ?? "通用";
+  const generateContent = async () => {
+    if (!detail) return;
+    try {
+      await api.post("/api/tasks/start-learning", {
+        cap_node_id: detail.cap_ids[0] ?? detail.id,
+        generate_content: true,
+        // An explicit ID prevents a duplicate capability task from receiving
+        // this detail page's generation request during retries.
+        task_id: detail.id,
+      });
+      const refreshed = await api.get<TaskDetail>(`/api/tasks/${detail.id}`);
+      setDetail(normalizeTaskDetail(refreshed));
+    } catch (err) {
+      toast.error(errMsg(err));
+    }
+  };
+
+  const submitGeneratedExercise = async (exerciseId: string) => {
+    const answer = exerciseAnswers[exerciseId]?.trim();
+    if (!answer) return;
+    setExerciseSubmitting(exerciseId);
+    try {
+      await api.post(`/api/tasks/${detail?.id}/exercises/${exerciseId}/submit`, { answer });
+      const refreshed = await api.get<TaskDetail>(`/api/tasks/${detail?.id}`);
+      setDetail(normalizeTaskDetail(refreshed));
+    } catch (err) {
+      toast.error(errMsg(err));
+    } finally {
+      setExerciseSubmitting(null);
+    }
+  };
 
   // Feedback and attempt rows stay single-line; the shared table viewport handles narrow screens.
   const feedbackColumns: Column<SubmitTaskResponse["feedback"][number]>[] = [
@@ -296,10 +352,9 @@ export default function TaskDetailPage() {
     },
   ];
 
-  /** 能力掌握度查询：任务场景记录优先，回退通用记录（PRD-06 §8.4） */
+  /** 能力掌握度查询使用统一能力记录。 */
   const capScore = (capId: string): number | null => {
-    const scenarioId = detail?.scenario_id ?? "";
-    return masteryMap.get(`${capId}|${scenarioId}`) ?? masteryMap.get(`${capId}|`) ?? null;
+    return masteryMap.get(capId) ?? null;
   };
 
   /** 开始/继续任务（not_started|paused → in_progress） */
@@ -389,7 +444,7 @@ export default function TaskDetailPage() {
         const next = new Map(prev);
         for (const change of res.applied) {
           if (change.new_score != null) {
-            next.set(`${change.cap_id}|${change.scenario_id}`, change.new_score);
+            next.set(change.cap_id, change.new_score);
           }
         }
         return next;
@@ -440,20 +495,6 @@ export default function TaskDetailPage() {
     score >= 0.8 ? "success" : score >= 0.4 ? "warning" : "danger";
   const taskProgressTone: "primary" | "success" | "warning" =
     detail.status === "completed" ? "success" : detail.status === "paused" ? "warning" : "primary";
-  const practiceEmptyState =
-    detail.status === "draft"
-      ? { title: "任务尚未发布", hint: "该教师任务仍在准备中，发布后会出现在可学习任务中。" }
-      : detail.status === "not_started" || detail.status === "paused"
-        ? {
-            title: "任务尚未开始",
-            hint:
-              detail.status === "paused"
-                ? "点击右上角「继续任务」后即可继续作答。"
-                : "点击右上角「开始任务」后即可作答。",
-          }
-        : detail.status === "archived"
-          ? { title: "任务已归档", hint: "归档任务不可继续作答，但已提交的反馈仍可在下方查看。" }
-          : null;
   const practiceStatusNote =
     detail.status === "submitted"
       ? "本次作答已提交。你可以核对反馈后确认完成，也可以修改答案后再次提交。"
@@ -481,7 +522,7 @@ export default function TaskDetailPage() {
         }
       />
 
-      {/* 任务概览（PRD-01 §6.2：名称/目标/场景/关联岗位与证书/版本） */}
+      {/* 任务概览（名称、目标、关联岗位与证书、版本）。 */}
       <Card title={<TaskSectionTitle>任务概览</TaskSectionTitle>} className="mb-4">
         <div className="flex flex-col gap-3">
           <div className="task-detail-meta flex items-center gap-2 flex-wrap">
@@ -494,7 +535,6 @@ export default function TaskDetailPage() {
               </span>
             ) : null}
             <Tag>{dataTypeLabel(detail.data_type)}</Tag>
-            <Tag>{scenarioNameOf(detail.scenario_id)}</Tag>
             <Tag>{detail.counts_toward_mastery ? "计入掌握度" : "不计入掌握度"}</Tag>
             <span className="text-xs text-muted">版本 v{detail.version}</span>
             <span className="text-xs text-secondary">
@@ -557,29 +597,48 @@ export default function TaskDetailPage() {
         </div>
       </Card>
 
-      {/* 学习材料（RAG 引用走 CitationCard，其余按类型分行展示） */}
-      <Card title={<TaskSectionTitle>学习材料</TaskSectionTitle>} className="mb-4">
-        {detail.resources.length > 0 ? (
-          <ul className="flex flex-col gap-2" role="list">
-            {detail.resources.map((resource, index) => {
-              const resourceKey = resource.ref_id ?? `${resource.type}-${resource.title}-${index}`;
-              return resource.citation ? (
-                <li key={resourceKey}>
-                  <CitationCard citation={resource.citation as Citation} index={index + 1} />
-                </li>
-              ) : (
-                <li key={resourceKey} className="task-detail-resource flex items-start gap-2">
-                  <span className="badge badge-info">{resourceTypeLabel(resource.type)}</span>
-                  <span className="task-detail-resource-title text-sm">{resource.title}</span>
-                </li>
-              );
-            })}
-          </ul>
+      {/* Keep generated knowledge points as the only learning-content section; exercises live in the practice area below. */}
+      <Card title={<TaskSectionTitle>学习内容</TaskSectionTitle>} className="mb-4">
+        {detail.content_status === "generating" ? (
+          <div className="flex items-center gap-2 text-sm text-muted" role="status">
+            <Spinner /> 正在生成学习内容，请稍候…
+          </div>
+        ) : detail.content_status === "failed" ? (
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-danger">学习内容暂时不可用，请稍后重试。</p>
+            <Button size="sm" variant="secondary" onClick={() => void generateContent()}>
+              重试生成
+            </Button>
+          </div>
+        ) : detail.content_status === "none" ? (
+          // Older task rows are queued by the detail endpoint as they are
+          // first opened. Keep this fallback passive so students never need
+          // to discover or press a second generation button.
+          <div className="flex items-center gap-2 text-sm text-muted" role="status">
+            <Spinner /> 学习内容已自动排队，正在准备中，请稍候…
+          </div>
         ) : (
-          <EmptyState
-            title="暂无可用学习材料"
-            hint="该任务暂未关联已发布的教学资料；下方图谱参考资源可帮助你了解相关知识。"
-          />
+          detail.knowledge_points.length > 0 ? (
+            <div>
+              <h3 className="mb-2" style={{ fontSize: "var(--font-size-base)" }}>
+                知识点
+              </h3>
+              <ol className="flex flex-col gap-3">
+                {detail.knowledge_points.map((point, index) => (
+                  <li key={point.id} className="card-padded">
+                    <strong>
+                      {index + 1}. {point.title}
+                    </strong>
+                    <p className="text-sm text-secondary mt-2" style={{ whiteSpace: "pre-wrap" }}>
+                      {point.content}
+                    </p>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ) : (
+            <EmptyState title="暂无知识点" />
+          )
         )}
       </Card>
 
@@ -614,106 +673,164 @@ export default function TaskDetailPage() {
 
       {/* 练习区：样本对照 + 作答 + 自检清单 + 提交 */}
       <Card title={<TaskSectionTitle>练习区</TaskSectionTitle>} className="mb-4">
-        {practiceEmptyState ? (
-          <EmptyState title={practiceEmptyState.title} hint={practiceEmptyState.hint} />
-        ) : (
-          <div className="flex flex-col gap-4">
-            {practiceStatusNote ? (
-              <p className="task-detail-status-note" role="status">
-                {practiceStatusNote}
-              </p>
-            ) : null}
-            {samples.length > 0 ? (
-              <div>
-                <h3 className="mb-2" style={{ fontSize: "var(--font-size-base)" }}>
-                  标注样本
-                </h3>
-                {samples.map((sample, index) => (
-                  <pre
-                    key={index}
-                    className="font-mono text-xs card-padded card mb-2"
-                    style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}
-                  >
-                    {typeof sample === "string" ? sample : JSON.stringify(sample, null, 2)}
-                  </pre>
-                ))}
-              </div>
-            ) : null}
-            {questions.length === 0 ? (
-              <p className="text-sm text-secondary">
-                该任务没有预设练习题，完成学习后可直接提交，系统将按完成情况评分。
-              </p>
-            ) : (
-              questions.map((question, index) => {
-                const inputId = `task-answer-${detail.id}-${index}`;
-                const hintId = `${inputId}-hint`;
-                return (
-                  <div key={`${question.key}-${index}`}>
-                    <label className="field-label" htmlFor={inputId}>
-                      {question.prompt}
-                    </label>
-                    {question.hint ? (
-                      <p id={hintId} className="field-hint mb-2">
-                        {question.hint}
+        <div className="flex flex-col gap-4">
+          {practiceStatusNote ? (
+            <p className="task-detail-status-note" role="status">
+              {practiceStatusNote}
+            </p>
+          ) : null}
+          {samples.length > 0 ? (
+            <div>
+              <h3 className="mb-2" style={{ fontSize: "var(--font-size-base)" }}>
+                标注样本
+              </h3>
+              {samples.map((sample, index) => (
+                <pre
+                  key={index}
+                  className="font-mono text-xs card-padded card mb-2"
+                  style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}
+                >
+                  {typeof sample === "string" ? sample : JSON.stringify(sample, null, 2)}
+                </pre>
+              ))}
+            </div>
+          ) : null}
+          {/* AI-generated exercises share the same practice surface as legacy task questions. */}
+          {detail.exercises.length > 0 ? (
+            <div>
+              <h3 className="mb-2" style={{ fontSize: "var(--font-size-base)" }}>
+                AI 练习
+              </h3>
+              <div className="flex flex-col gap-4">
+                {detail.exercises.map((exercise, index) => (
+                  <div key={exercise.id} className="card-padded">
+                    <p className="text-sm">
+                      <strong>
+                        {index + 1}. {exercise.question}
+                      </strong>
+                    </p>
+                    {exercise.options?.length ? (
+                      <ul className="text-sm text-secondary mt-2">
+                        {exercise.options.map((option) => (
+                          <li key={option}>{option}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    <Textarea
+                      aria-label={`AI 练习 ${index + 1} 答案`}
+                      value={exerciseAnswers[exercise.id] ?? ""}
+                      disabled={!canPractice}
+                      onChange={(event) =>
+                        setExerciseAnswers((previous) => ({
+                          ...previous,
+                          [exercise.id]: event.target.value,
+                        }))
+                      }
+                    />
+                    <Button
+                      size="sm"
+                      className="mt-2"
+                      loading={exerciseSubmitting === exercise.id}
+                      disabled={!canPractice || !exerciseAnswers[exercise.id]?.trim()}
+                      onClick={() => void submitGeneratedExercise(exercise.id)}
+                    >
+                      提交 AI 练习
+                    </Button>
+                    {exercise.submission?.grade_status === "done" ? (
+                      <p className="text-sm mt-2" role="status">
+                        得分：{exercise.submission.score}/100 {exercise.submission.feedback}
                       </p>
                     ) : null}
-                    {question.prompt.length > 40 ? (
-                      <Textarea
-                        id={inputId}
-                        aria-describedby={question.hint ? hintId : undefined}
-                        value={answers[question.key] ?? ""}
-                        disabled={!canPractice}
-                        onChange={(e) =>
-                          setAnswers((prev) => ({ ...prev, [question.key]: e.target.value }))
-                        }
-                      />
-                    ) : (
-                      <Input
-                        id={inputId}
-                        aria-describedby={question.hint ? hintId : undefined}
-                        value={answers[question.key] ?? ""}
-                        disabled={!canPractice}
-                        onChange={(e) =>
-                          setAnswers((prev) => ({ ...prev, [question.key]: e.target.value }))
-                        }
-                      />
-                    )}
+                    {exercise.submission?.grade_status === "failed" ? (
+                      <p className="text-sm text-warning mt-2" role="status">
+                        AI 评阅暂不可用，请稍后重试。
+                      </p>
+                    ) : null}
+                    {exercise.submission &&
+                    ["pending", "grading"].includes(exercise.submission.grade_status) ? (
+                      <p className="text-sm text-muted mt-2" role="status">
+                        正在评阅…
+                      </p>
+                    ) : null}
                   </div>
-                );
-              })
-            )}
-            {checklist.length > 0 ? (
-              <div>
-                <h3 className="mb-2" style={{ fontSize: "var(--font-size-base)" }}>
-                  自检清单
-                </h3>
-                <div className="flex flex-col gap-2">
-                  {checklist.map((item, index) => (
-                    <label
-                      key={`${item}-${index}`}
-                      className="task-detail-checklist-item flex items-center gap-2 text-sm"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checks[item] ?? false}
-                        disabled={!canPractice}
-                        onChange={(e) =>
-                          setChecks((prev) => ({ ...prev, [item]: e.target.checked }))
-                        }
-                      />
-                      {item}
-                    </label>
-                  ))}
-                </div>
+                ))}
               </div>
-            ) : null}
+            </div>
+          ) : null}
+          {questions.length === 0 && detail.exercises.length === 0 ? (
+            <p className="text-sm text-secondary">
+              该任务没有预设练习题，完成学习后可直接提交，系统将按完成情况评分。
+            </p>
+          ) : (
+            questions.map((question, index) => {
+              const inputId = `task-answer-${detail.id}-${index}`;
+              const hintId = `${inputId}-hint`;
+              return (
+                <div key={`${question.key}-${index}`}>
+                  <label className="field-label" htmlFor={inputId}>
+                    {question.prompt}
+                  </label>
+                  {question.hint ? (
+                    <p id={hintId} className="field-hint mb-2">
+                      {question.hint}
+                    </p>
+                  ) : null}
+                  {question.prompt.length > 40 ? (
+                    <Textarea
+                      id={inputId}
+                      aria-describedby={question.hint ? hintId : undefined}
+                      value={answers[question.key] ?? ""}
+                      disabled={!canPractice}
+                      onChange={(e) =>
+                        setAnswers((prev) => ({ ...prev, [question.key]: e.target.value }))
+                      }
+                    />
+                  ) : (
+                    <Input
+                      id={inputId}
+                      aria-describedby={question.hint ? hintId : undefined}
+                      value={answers[question.key] ?? ""}
+                      disabled={!canPractice}
+                      onChange={(e) =>
+                        setAnswers((prev) => ({ ...prev, [question.key]: e.target.value }))
+                      }
+                    />
+                  )}
+                </div>
+              );
+            })
+          )}
+          {checklist.length > 0 ? (
+            <div>
+              <h3 className="mb-2" style={{ fontSize: "var(--font-size-base)" }}>
+                自检清单
+              </h3>
+              <div className="flex flex-col gap-2">
+                {checklist.map((item, index) => (
+                  <label
+                    key={`${item}-${index}`}
+                    className="task-detail-checklist-item flex items-center gap-2 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checks[item] ?? false}
+                      disabled={!canPractice}
+                      onChange={(e) => setChecks((prev) => ({ ...prev, [item]: e.target.checked }))}
+                    />
+                    {item}
+                  </label>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {questions.length > 0 || checklist.length > 0 ? (
             <div>
               <Button loading={submitting} disabled={!canPractice} onClick={submitAnswers}>
                 {detail.status === "submitted" ? "重新提交" : "提交答案"}
               </Button>
             </div>
-          </div>
-        )}
+          ) : null}
+        </div>
       </Card>
 
       {/* 反馈区：得分 + 逐项反馈 + 掌握度预览（提交后出现） */}

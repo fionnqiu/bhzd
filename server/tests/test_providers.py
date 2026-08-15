@@ -8,13 +8,9 @@
 from __future__ import annotations
 
 import asyncio
-import base64
-import hashlib
-import hmac as hmac_module
 import json
 import secrets
 import uuid
-from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
@@ -124,6 +120,51 @@ def test_get_enabled_provider_and_decrypt(db):
 
 # ---------------------------------------------------------------- chat_completions 协议
 
+def test_get_provider_by_role_prefers_grader_and_falls_back_to_primary(db):
+    """A dedicated grader wins; an absent grader resolves to the enabled primary row."""
+
+    primary_id = _add_provider(role="primary", base_url="https://primary.example.com/v1")
+    conn = connect(get_config().resolved_database_path)
+    try:
+        fallback_row = providers.get_provider_by_role(conn, "grader")
+        assert fallback_row is not None
+        assert fallback_row["id"] == primary_id
+        assert fallback_row["role"] == "primary"
+    finally:
+        conn.close()
+
+    grader_id = _add_provider(
+        role="grader",
+        base_url="https://grader.example.com/v1",
+        model="grader-model",
+    )
+    conn = connect(get_config().resolved_database_path)
+    try:
+        grader_row = providers.get_provider_by_role(conn, "grader")
+        assert grader_row is not None
+        assert grader_row["id"] == grader_id
+        assert grader_row["role"] == "grader"
+    finally:
+        conn.close()
+
+
+def test_complete_grader_role_uses_primary_when_grader_is_unset(db):
+    """Runtime grader calls share the helper's primary fallback contract."""
+
+    primary_id = _add_provider(role="primary", base_url="https://primary.example.com/v1")
+    _use_transport(
+        lambda request: httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "graded"}}]},
+        )
+    )
+
+    result = asyncio.run(providers.complete(MESSAGES, role="grader"))
+    assert result is not None
+    assert result["provider_id"] == primary_id
+    assert result["text"] == "graded"
+
+
 def test_chat_completions_payload_and_parse(db):
     provider_id = _add_provider(role="primary", api_key="sk-payload")
     captured: dict = {}
@@ -172,6 +213,93 @@ def test_complete_failover_primary_to_fallback(db):
     assert result["text"] == "回退答案"
     assert result["provider_id"] == fallback_id
     assert result["usage"] is None
+
+
+def test_responses_complete_maps_instructions_and_usage(db):
+    """Responses uses input/instructions and maps input/output token usage."""
+
+    provider_id = _add_provider(
+        role="primary",
+        protocol="responses",
+        base_url="https://api.openai.example.test/v1",
+        model="o4-mini",
+    )
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["json"] = json.loads(request.content.decode("utf-8"))
+        return httpx.Response(
+            200,
+            json={
+                "output_text": "Responses answer",
+                "usage": {"input_tokens": 9, "output_tokens": 4},
+            },
+        )
+
+    _use_transport(handler)
+    result = asyncio.run(
+        providers.complete([{"role": "system", "content": "Be concise"}, *MESSAGES])
+    )
+    assert result == {
+        "text": "Responses answer",
+        "model": "o4-mini",
+        "usage": {"prompt_tokens": 9, "completion_tokens": 4},
+        "provider_id": provider_id,
+    }
+    assert captured["url"] == "https://api.openai.example.test/v1/responses"
+    body = captured["json"]
+    assert isinstance(body, dict)
+    assert body["instructions"] == "Be concise"
+    assert body["input"][0]["content"] == "你好"
+
+
+def test_responses_stream_maps_delta_and_completed_usage(db):
+    """Responses SSE completion must work even when the visible delta is empty."""
+
+    provider_id = _add_provider(
+        role="primary",
+        protocol="responses",
+        base_url="https://api.openai.example.test/v1",
+        model="o4-mini",
+    )
+    sse_body = (
+        'data: {"type":"response.output_text.delta","delta":"答案"}\n\n'
+        'data: {"type":"response.output_text.delta","delta":""}\n\n'
+        'data: {"type":"response.completed","response":{"usage":{"input_tokens":2,"output_tokens":1}}}\n\n'
+    )
+    _use_transport(
+        lambda request: httpx.Response(
+            200,
+            content=sse_body.encode("utf-8"),
+            headers={"content-type": "text/event-stream"},
+        )
+    )
+
+    async def collect():
+        return [event async for event in providers.stream_deltas(MESSAGES)]
+
+    events = asyncio.run(collect())
+    assert events[0] == {"delta": "答案"}
+    assert {"delta": ""} in events
+    assert {"done": True, "model": "o4-mini", "usage": {"prompt_tokens": 2, "completion_tokens": 1}, "provider_id": provider_id} == events[-1]
+
+
+def test_first_text_delta_accepts_empty_delta_and_done_but_rejects_empty_stream():
+    async def events_with_empty_delta():
+        yield {"delta": ""}
+
+    async def events_with_done():
+        yield {"done": True}
+
+    async def no_events():
+        if False:
+            yield {}
+
+    asyncio.run(providers._first_text_delta(events_with_empty_delta()))
+    asyncio.run(providers._first_text_delta(events_with_done()))
+    with pytest.raises(providers.ProviderError, match="invalid_chat_response"):
+        asyncio.run(providers._first_text_delta(no_events()))
 
 
 def test_complete_returns_none_when_all_fail(db):
@@ -360,21 +488,23 @@ def test_discover_anthropic_models_uses_normalized_path_and_bounded_pagination(d
     assert calls[1].url.params["after_id"] == "claude-first"
 
 
-@pytest.mark.parametrize("protocol", ["xunfei_spark", "xunfei_xingchen"])
-def test_discover_xunfei_models_returns_unsupported_without_network(db, protocol):
-    """The signed WebSocket adapters do not have an account model-list contract yet."""
-    called = False
+def test_discover_responses_models_uses_openai_catalog_contract(db):
+    """Responses shares the OpenAI model catalog but uses the Responses runtime endpoint."""
+    captured: dict[str, object] = {}
 
-    def handler(_request: httpx.Request) -> httpx.Response:
-        nonlocal called
-        called = True
-        return httpx.Response(500)
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["body"] = request.content
+        return httpx.Response(200, json={"data": [{"id": "o4-mini"}]})
 
     _use_transport(handler)
-    assert asyncio.run(
-        providers.discover_models(protocol, "https://xf.example.test", "xf-secret")
-    ) == {"supported": False, "models": []}
-    assert called is False
+    result = asyncio.run(
+        providers.discover_models(
+            "responses", "https://api.openai.example.test/v1", "sk-responses"
+        )
+    )
+    assert result == {"supported": True, "models": [{"id": "o4-mini", "label": "o4-mini"}]}
+    assert captured["url"] == "https://api.openai.example.test/v1/models"
 
 
 def test_discover_models_uses_safe_error_codes_and_never_echoes_provider_content(db):
@@ -729,62 +859,6 @@ def test_provider_smoke_redacts_untrusted_provider_error(db, monkeypatch):
     assert "sk-private-redaction-key" not in result_json
 
 
-# ---------------------------------------------------------------- 讯飞签名（纯函数，免网络）
-
-def test_provider_smoke_passes_short_budget_to_xunfei(db, monkeypatch):
-    """The WebSocket adapter receives the same short test budget as HTTP adapters."""
-    provider_id = _add_provider(
-        protocol="xunfei_spark",
-        role="primary",
-        timeout_seconds=300,
-        extra={"max_tokens": 2048},
-    )
-    captured: dict[str, object] = {}
-
-    async def fake_xunfei_stream(
-        _row,
-        _api_key,
-        _messages,
-        *,
-        timeout_seconds=None,
-        max_tokens_override=None,
-        close_timeout_seconds=None,
-    ):
-        captured["timeout_seconds"] = timeout_seconds
-        captured["max_tokens_override"] = max_tokens_override
-        captured["close_timeout_seconds"] = close_timeout_seconds
-        yield {"delta": "ok"}
-
-    monkeypatch.setattr(providers, "_xunfei_stream", fake_xunfei_stream)
-    result = asyncio.run(providers.test_provider(_provider_row(provider_id)))
-
-    assert result["ok"] is True
-    assert captured == {
-        "timeout_seconds": 8.0,
-        "max_tokens_override": providers._PROVIDER_TEST_CHAT_MAX_TOKENS,
-        "close_timeout_seconds": providers._PROVIDER_TEST_STREAM_CLOSE_TIMEOUT_SECONDS,
-    }
-
-
-def test_xunfei_frame_uses_short_override_without_changing_runtime_default(db):
-    """The test-only cap must not overwrite a saved Xunfei generation limit."""
-    provider_id = _add_provider(
-        protocol="xunfei_spark",
-        extra={"max_tokens": 2048},
-    )
-    row = _provider_row(provider_id)
-    runtime_frame = providers._xunfei_frame(row, MESSAGES, "generalv3.5")
-    smoke_frame = providers._xunfei_frame(
-        row,
-        MESSAGES,
-        "generalv3.5",
-        max_tokens_override=16,
-    )
-
-    assert runtime_frame["parameter"]["chat"]["max_tokens"] == 2048
-    assert smoke_frame["parameter"]["chat"]["max_tokens"] == 16
-
-
 def test_chat_completion_reasoning_content_is_ignored(db):
     """Explicit reasoning fields never become the provider text contract."""
 
@@ -909,10 +983,49 @@ def test_multimodal_messages_are_mapped_per_provider_protocol(db):
             ],
         }
     ]
-    xunfei_frame = providers._xunfei_frame(row, video, "generalv3.5")
-    xunfei_text = xunfei_frame["payload"]["message"]["text"][0]["content"]
-    assert "clip.mp4" in xunfei_text
-    assert "dmVkaW8=" not in xunfei_text
+    responses_body = providers._responses_body(row, video, stream=False)
+    responses_text = " ".join(
+        block.get("text", "")
+        for block in responses_body["input"][0]["content"]
+        if isinstance(block, dict)
+    )
+    assert "clip.mp4" in responses_text
+    assert "dmVkaW8=" not in responses_text
+
+
+def test_rag_sampling_overrides_are_forwarded_to_each_protocol_body(db):
+    """RAG page values reach chat, Responses, and Anthropic request payloads."""
+    sampling = {"temperature": 0.65, "top_p": 0.8}
+    messages = [{"role": "user", "content": "test"}]
+
+    chat_row = _provider_row(_add_provider(protocol="chat_completions"))
+    chat = providers._cc_body(chat_row, messages, stream=False, sampling=sampling)
+    assert chat["temperature"] == 0.65
+    assert chat["top_p"] == 0.8
+
+    responses_row = _provider_row(_add_provider(protocol="responses"))
+    responses = providers._responses_body(
+        responses_row, messages, stream=True, sampling=sampling
+    )
+    assert responses["temperature"] == 0.65
+    assert responses["top_p"] == 0.8
+
+    anthropic_row = _provider_row(_add_provider(protocol="anthropic_messages"))
+    anthropic = providers._anthropic_body(
+        anthropic_row, messages, stream=False, sampling=sampling
+    )
+    assert anthropic["temperature"] == 0.65
+    assert anthropic["top_p"] == 0.8
+
+    # A malformed internal override is ignored rather than sent upstream.
+    safe = providers._cc_body(
+        chat_row,
+        messages,
+        stream=False,
+        sampling={"temperature": "bad", "top_p": float("nan")},
+    )
+    assert "temperature" not in safe
+    assert "top_p" not in safe
 
 
 def test_media_candidate_selection_requires_declared_model_input_and_wire_support(db):
@@ -945,31 +1058,3 @@ def test_media_candidate_selection_requires_declared_model_input_and_wire_suppor
         assert not providers.has_compatible_media_provider(conn, [Attachment()])
     finally:
         conn.close()
-
-
-def test_xunfei_signed_ws_url_signature(db):
-    url = providers._signed_ws_url(
-        "https://spark-api.xf-yun.com", "/v3.5/chat", "mykey:mysecret"
-    )
-    parsed = urlparse(url)
-    assert parsed.scheme == "wss"
-    assert parsed.netloc == "spark-api.xf-yun.com"
-    assert parsed.path == "/v3.5/chat"
-    query = parse_qs(parsed.query)
-    date = query["date"][0]
-    authorization = json.loads(base64.b64decode(query["authorization"][0]).decode("utf-8"))
-    assert authorization["api_key"] == "mykey"
-    assert authorization["algorithm"] == "hmac-sha256"
-    # 用相同算法独立重算签名，验证签名内容正确
-    signature_origin = f"host: spark-api.xf-yun.com\ndate: {date}\nGET /v3.5/chat HTTP/1.1"
-    expected = base64.b64encode(
-        hmac_module.new(b"mysecret", signature_origin.encode("utf-8"), hashlib.sha256).digest()
-    ).decode("ascii")
-    assert authorization["signature"] == expected
-
-    # 单 token 配置：key 本身充当签名材料（与旧栈行为一致）
-    url_single = providers._signed_ws_url("https://spark-api.xf-yun.com", "/v1/chat", "onlykey")
-    query_single = parse_qs(urlparse(url_single).query)
-    auth_single = json.loads(base64.b64decode(query_single["authorization"][0]).decode("utf-8"))
-    assert auth_single["api_key"] == "onlykey"
-    assert auth_single["signature"]  # 仍能产出签名而非报错

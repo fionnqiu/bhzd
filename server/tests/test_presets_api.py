@@ -10,26 +10,23 @@ from _learning_fixtures import api  # noqa: F401  # pytest 夹具复用
 
 def _seed_mastery(api, user_id: str, cap_id: str, score: float):
     api.conn.execute(
-        "INSERT INTO mastery (user_id, cap_id, scenario_id, score, source, updated_at) "
-        "VALUES (?, ?, '', ?, 'exercise', '2026-01-01')",
+        "INSERT INTO mastery (user_id, cap_id, score, source, updated_at) "
+        "VALUES (?, ?, ?, 'exercise', '2026-01-01')",
         (user_id, cap_id, score),
     )
     api.conn.commit()
 
 
-def test_list_filters(api):
+def test_list_filters_only_data_type(api):
     user = api.login_as("preset-filter@test.local")
     resp = api.client.get("/api/presets?data_type=audio")
     assert resp.status_code == 200
     ids = [p["id"] for p in resp.json()["items"]]
     assert ids == ["preset-cs-emotion", "preset-wake-word"]
-    resp = api.client.get("/api/presets?scenario_id=SCN-CONTENT-SAFETY-001")
-    ids = {p["id"] for p in resp.json()["items"]}
-    assert ids == {"preset-video-event", "preset-content-safety-text"}
-    resp = api.client.get("/api/presets?difficulty=1")
-    assert [p["id"] for p in resp.json()["items"]] == ["preset-intro-basics"]
-    resp = api.client.get("/api/presets?goal=证书")
-    assert [p["id"] for p in resp.json()["items"]] == ["preset-cert-1x"]
+    # Retired query dimensions are ignored by the public endpoint; difficulty
+    # and goal remain DTO data for grouping and display only.
+    assert api.client.get("/api/presets?difficulty=1").json()["total"] == 8
+    assert api.client.get("/api/presets?goal=证书").json()["total"] == 8
     # 无筛选 → 8 条全量
     assert api.client.get("/api/presets").json()["total"] == 8
 
@@ -90,7 +87,6 @@ def test_start_creates_pending_confirmation(api):
         "title",
         "goal",
         "data_type",
-        "scenario_id",
         "cap_ids",
         "steps",
         "resources",

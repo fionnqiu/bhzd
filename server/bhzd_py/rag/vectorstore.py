@@ -5,9 +5,7 @@
   检索时 SQL 先做文档级预过滤（状态/可见性/授权/过期/数据类型/指定文档/
   台账有效性），命中候选才在 Python 里算余弦——MVP 数据量下这比引入
   独立向量库更可靠，且天然离线可跑（PRD-06 §11 降级要求）。
-- 场景（scenario）默认**不**在 SQL 里硬排除：PRD-06 §4.4/§14.2 要求跨场景
-  资料"降权并提示"而非消失，因此硬过滤由 `exclude_scenario_mismatch`
-  显式开启，retriever 选择降权路径。
+- 已移除的上下文维度不再参与 SQL 预过滤；候选只按仍受支持的资料条件筛选。
 - `index_chunks` 用单事务"删旧插新"：PRD-06 §5.2 要求新索引成功后再切换，
   事务的原子性保证召回侧永远看到完整的旧索引或完整的新索引。
 """
@@ -39,7 +37,6 @@ class Candidate:
     page_end: int | None
     title: str
     version: str
-    scenario_ids: list[str]
     cap_ids: list[str]
     published_at: str | None
     created_at: str
@@ -54,8 +51,6 @@ def search(
     published_only: bool = True,
     data_type: str | None = None,
     document_ids: list[str] | None = None,
-    scenario_id: str | None = None,
-    exclude_scenario_mismatch: bool = False,
     now: str | None = None,
 ) -> list[Candidate]:
     """SQL 预过滤 + Python 余弦打分，返回全部候选（截断/重排交给调用方）。
@@ -100,17 +95,11 @@ def search(
         placeholders = ",".join("?" for _ in document_ids)
         clauses.append(f"d.id IN ({placeholders})")
         params.extend(document_ids)
-    if scenario_id and exclude_scenario_mismatch:
-        clauses.append(
-            "(d.scenario_ids_json = '[]' OR EXISTS"
-            " (SELECT 1 FROM json_each(d.scenario_ids_json) je WHERE je.value = ?))"
-        )
-        params.append(scenario_id)
     rows = db.execute(
         f"""
         SELECT c.id AS chunk_id, c.document_id, c.content, c.section_title,
                c.page_start, c.page_end, c.embedding,
-               d.title, d.version, d.scenario_ids_json, d.cap_ids_json,
+               d.title, d.version, d.cap_ids_json,
                d.published_at, d.created_at
         FROM rag_chunks c
         JOIN rag_documents d ON d.id = c.document_id
@@ -146,7 +135,6 @@ def search(
                 page_end=row["page_end"],
                 title=row["title"],
                 version=row["version"],
-                scenario_ids=json.loads(row["scenario_ids_json"] or "[]"),
                 cap_ids=json.loads(row["cap_ids_json"] or "[]"),
                 published_at=row["published_at"],
                 created_at=row["created_at"],

@@ -33,17 +33,16 @@ def db(tmp_db_path):
 def test_exercise_formula_and_preview_no_write(db):
     """练习公式：new = old + 0.15*score − 0.1*(1−score)；preview 不落库。"""
     service.apply_updates(
-        db, USER, [{"cap_id": CAP_A, "scenario_id": "", "delta": 0.5}], source="assessment"
+        db, USER, [{"cap_id": CAP_A, "delta": 0.5}], source="assessment"
     )
     delta = service.exercise_delta(0.8)
     assert delta == pytest.approx(0.15 * 0.8 - 0.1 * 0.2)  # 0.10
     preview = service.preview_from_deltas(
-        db, USER, [{"cap_id": CAP_A, "scenario_id": "", "delta": delta}]
+        db, USER, [{"cap_id": CAP_A, "delta": delta}]
     )
     assert preview == [
         {
             "cap_id": CAP_A,
-            "scenario_id": "",
             "delta": pytest.approx(0.10),
             "old_score": pytest.approx(0.5),
             "new_score": pytest.approx(0.6),
@@ -56,11 +55,11 @@ def test_exercise_formula_and_preview_no_write(db):
 def test_clamp_bounds(db):
     """低于 0 钳 0、高于 1 钳 1（PRD-06 §8.4）。"""
     applied = service.apply_updates(
-        db, USER, [{"cap_id": CAP_A, "scenario_id": "", "delta": -5.0}], source="diagnostic"
+        db, USER, [{"cap_id": CAP_A, "delta": -5.0}], source="diagnostic"
     )
     assert applied[0]["new_score"] == 0.0
     applied = service.apply_updates(
-        db, USER, [{"cap_id": CAP_A, "scenario_id": "", "delta": 9.0}], source="exercise"
+        db, USER, [{"cap_id": CAP_A, "delta": 9.0}], source="exercise"
     )
     assert applied[0]["new_score"] == 1.0
     row = db.execute(
@@ -78,10 +77,10 @@ def test_diagnostic_deltas_aggregation():
         {"cap_id": CAP_B, "severity": "minor"},
         {"cap_id": None, "severity": "major"},  # 无 cap 的错误被丢弃
     ]
-    deltas = service.diagnostic_deltas(errors, "SCN-CUSTOMER-SERVICE-001")
+    deltas = service.diagnostic_deltas(errors)
     assert deltas == [
-        {"cap_id": CAP_A, "scenario_id": "SCN-CUSTOMER-SERVICE-001", "delta": -0.45},
-        {"cap_id": CAP_B, "scenario_id": "SCN-CUSTOMER-SERVICE-001", "delta": -0.05},
+        {"cap_id": CAP_A, "delta": -0.45},
+        {"cap_id": CAP_B, "delta": -0.05},
     ]
 
 
@@ -89,14 +88,14 @@ def test_apply_updates_writes_history_events(db):
     service.apply_updates(
         db,
         USER,
-        [{"cap_id": CAP_A, "scenario_id": "", "delta": 0.3}],
+        [{"cap_id": CAP_A, "delta": 0.3}],
         source="exercise",
         ref_id="attempt-1",
     )
     service.apply_updates(
         db,
         USER,
-        [{"cap_id": CAP_A, "scenario_id": "", "delta": -0.2}],
+        [{"cap_id": CAP_A, "delta": -0.2}],
         source="diagnostic",
         ref_id="summary-1",
     )
@@ -119,30 +118,8 @@ def test_apply_updates_writes_history_events(db):
     )
 
 
-def test_scenario_isolated_rows(db):
-    """通用与场景掌握度是不同行（scenario_id '' = 通用）。"""
-    service.apply_updates(
-        db, USER, [{"cap_id": CAP_A, "scenario_id": "", "delta": 0.8}], source="exercise"
-    )
-    service.apply_updates(
-        db,
-        USER,
-        [{"cap_id": CAP_A, "scenario_id": "SCN-MEDICAL-001", "delta": 0.2}],
-        source="exercise",
-    )
-    all_rows = service.get_mastery(db, USER)
-    assert {(r["cap_id"], r["scenario_id"]) for r in all_rows} == {
-        (CAP_A, ""),
-        (CAP_A, "SCN-MEDICAL-001"),
-    }
-    general = service.get_mastery(db, USER, scenario_id="")
-    assert len(general) == 1 and general[0]["score"] == pytest.approx(0.8)
-
-
 def test_get_mastery_joins_cap_names(db):
-    service.apply_updates(
-        db, USER, [{"cap_id": CAP_A, "scenario_id": "", "delta": 0.5}], source="exercise"
-    )
+    service.apply_updates(db, USER, [{"cap_id": CAP_A, "delta": 0.5}], source="exercise")
     rows = service.get_mastery(db, USER)
     assert rows[0]["cap_name"] == "切割音频并对齐"  # 图谱中文名
 
@@ -150,7 +127,7 @@ def test_get_mastery_joins_cap_names(db):
 def test_weak_caps_ordering_and_threshold(db):
     for cap_id, delta in ((CAP_A, 0.1), (CAP_B, 0.3), (CAP_C, 0.9)):
         service.apply_updates(
-            db, USER, [{"cap_id": cap_id, "scenario_id": "", "delta": delta}], source="exercise"
+            db, USER, [{"cap_id": cap_id, "delta": delta}], source="exercise"
         )
     weak = service.weak_caps(db, USER)
     assert [w["cap_id"] for w in weak] == [CAP_A, CAP_B]  # 升序，0.9 不算薄弱

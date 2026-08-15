@@ -27,10 +27,9 @@ status: template_only
 | 2 | Image task | `[reference]` | `[observed status]` | `[observed errors or none observed]` | `[verbatim or summarized feedback]` |
 | 3 | Audio task | `[reference]` | `[observed status]` | `[observed errors or none observed]` | `[verbatim or summarized feedback]` |
 | 4 | Video task | `[reference]` | `[observed status]` | `[observed errors or none observed]` | `[verbatim or summarized feedback]` |
-| 5 | Scenario comparison | `[two scenario references]` | `[observed status]` | `[observed errors or none observed]` | `[feedback]` |
-| 6 | Enterprise-task conversion | `[task text reference]` | `[observed status]` | `[observed errors or none observed]` | `[feedback]` |
-| 7 | Structured diagnosis | `[authorized export reference]` | `[observed status]` | `[observed errors or none observed]` | `[feedback]` |
-| 8 | PRE remediation plan | `[capability or report reference]` | `[observed status]` | `[observed errors or none observed]` | `[feedback]` |
+| 5 | Enterprise-task conversion | `[task text reference]` | `[observed status]` | `[observed errors or none observed]` | `[feedback]` |
+| 6 | Structured diagnosis | `[authorized export reference]` | `[observed status]` | `[observed errors or none observed]` | `[feedback]` |
+| 7 | PRE remediation plan | `[capability or report reference]` | `[observed status]` | `[observed errors or none observed]` | `[feedback]` |
 
 ## Observations and errors
 

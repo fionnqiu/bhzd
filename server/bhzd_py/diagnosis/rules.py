@@ -16,7 +16,6 @@ from typing import Any
 ERR_EMPTY_LABEL = "empty_label"  # 标注内容为空
 ERR_INVALID_DURATION = "invalid_duration"  # 区间时长为负或为零
 ERR_OVERLAP = "overlap"  # 标注区间重叠
-ERR_UNKNOWN_LABEL = "unknown_label"  # 标签不在场景标签集内
 ERR_OUT_OF_DURATION = "out_of_duration"  # 区间超出媒体总时长
 ERR_ZERO_AREA = "zero_area_box"  # 标注框面积为零/负
 ERR_OUT_OF_BOUNDS = "bbox_out_of_bounds"  # 标注框超出图片边界
@@ -28,7 +27,6 @@ RULE_NAMES: dict[str, str] = {
     ERR_EMPTY_LABEL: "标注内容不得为空",
     ERR_INVALID_DURATION: "标注区间的结束时间必须大于开始时间",
     ERR_OVERLAP: "同一轨道的标注区间不得重叠",
-    ERR_UNKNOWN_LABEL: "标签必须取自场景规定的标签集",
     ERR_OUT_OF_DURATION: "标注区间不得超出媒体总时长",
     ERR_ZERO_AREA: "标注框的宽和高必须大于 0",
     ERR_OUT_OF_BOUNDS: "标注框不得超出图片边界",
@@ -57,13 +55,6 @@ RULE_CAP_MAP: dict[str, dict[str, str]] = {
         "audio": "CAP-AUD-NOISE-OVERLAP-001",
         "video": "CAP-VID-EVENT-BOUNDARY-001",
         "_default": "CAP-AUD-SEGMENT-ALIGN-001",
-    },
-    ERR_UNKNOWN_LABEL: {
-        "text": "CAP-TXT-LABEL-VALIDATE-001",
-        "image": "CAP-IMG-OBJECT-CLASS-001",
-        "audio": "CAP-AUD-EMOTION-PARALING-001",
-        "video": "CAP-VID-ACTION-EVENT-001",
-        "_default": "CAP-CORE-LABEL-SCHEMA-001",
     },
     ERR_OUT_OF_DURATION: {
         "audio": "CAP-AUD-SEGMENT-ALIGN-001",
@@ -122,10 +113,9 @@ def check_spans(
     *,
     data_type: str | None,
     media_duration: float | None,
-    label_set: set[str] | None,
     source_format: str,
 ) -> list[dict]:
-    """区间类规则（TextGrid / 通用 JSON）：空标注、时长非法、重叠、越界、标签合法性。
+    """区间类规则（TextGrid / 通用 JSON）：空标注、时长非法、重叠和越界。
 
     空标注的严重度分格式：TextGrid 空白区间常用来表示"非语音段"，单条只记
     minor；通用 JSON 里空 label 属于明显漏标，记 major。
@@ -145,17 +135,6 @@ def check_spans(
                     "每个标注区间都应有非空标签",
                     data_type,
                     "补全该区间的标注内容，或按规范删除无效区间",
-                )
-            )
-        elif label_set is not None and label not in label_set:
-            errors.append(
-                _err(
-                    ERR_UNKNOWN_LABEL,
-                    "major",
-                    label,
-                    "标签应取自：" + "、".join(sorted(label_set)),
-                    data_type,
-                    "核对场景标签表，改用规范标签值",
                 )
             )
         if end < start:
@@ -232,7 +211,6 @@ def check_boxes(
     *,
     data_type: str | None,
     declared_categories: set[str] | None,
-    label_set: set[str] | None,
 ) -> list[dict]:
     """框类规则（COCO / VOC）：零面积、越界、类别合法性、重复框。"""
     errors: list[dict] = []
@@ -278,7 +256,7 @@ def check_boxes(
                         "把框调整到图片边界以内",
                     )
                 )
-        # 类别合法性：COCO 看 categories 声明表；场景标签集在则进一步比对
+        # 类别合法性只来自 COCO categories 声明表，不依赖外部标签集。
         if declared_categories is not None and label and label not in declared_categories:
             errors.append(
                 _err(
@@ -290,18 +268,6 @@ def check_boxes(
                     "改用 categories 中声明的类别，或补充类别声明",
                 )
             )
-        elif label_set is not None and label and label not in label_set:
-            errors.append(
-                _err(
-                    ERR_UNKNOWN_LABEL,
-                    "major",
-                    label,
-                    "标签应取自：" + "、".join(sorted(label_set)),
-                    data_type,
-                    "核对场景标签表，改用规范标签值",
-                )
-            )
-
     # 重复框：同图同标签且 IoU=1（坐标完全一致才算重复，近似重叠不判罚）
     by_image: dict[Any, list[dict]] = {}
     for box in boxes:
@@ -328,7 +294,6 @@ def run_rules(
     doc: dict,
     *,
     data_type: str | None,
-    label_set: set[str] | None,
     source_format: str,
 ) -> list[dict]:
     """按规范化记录的 kind 分发到区间/框规则组。"""
@@ -337,7 +302,6 @@ def run_rules(
             doc["spans"],
             data_type=data_type,
             media_duration=doc.get("media_duration"),
-            label_set=label_set,
             source_format=source_format,
         )
     return check_boxes(
@@ -346,5 +310,4 @@ def run_rules(
         declared_categories=(
             set(doc["categories"]) if doc.get("categories") else None
         ),
-        label_set=label_set,
     )

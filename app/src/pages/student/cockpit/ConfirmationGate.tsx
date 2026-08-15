@@ -117,7 +117,7 @@ export function ConfirmationPreview({ confirmation }: { confirmation: Confirmati
           <div>
             <p className="text-sm text-muted">保存后掌握度变化：</p>
             {diag.mastery_preview.map((m) => (
-              <MasteryChangeRow key={`${m.cap_id}|${m.scenario_id}`} change={m} />
+              <MasteryChangeRow key={m.cap_id} change={m} />
             ))}
           </div>
         ) : null}

@@ -218,11 +218,10 @@ def upload_sample(client: TestClient, headers: dict, **overrides) -> dict:
         "license_status": "authorized",
         "visibility": "teacher",
         "data_types": ["audio"],
-        "scenario_ids": ["SCN-CAR"],
         "cap_ids": ["CAP-AUD-WAKE-COMMAND-001"],
     }
     for key, value in overrides.items():
-        form[key] = [value] if key in ("data_types", "scenario_ids", "cap_ids") else value
+        form[key] = [value] if key in ("data_types", "cap_ids") else value
     response = client.post(
         "/api/rag/documents",
         files={"file": ("唤醒词指南.md", SAMPLE_MD.encode("utf-8"), "text/markdown")},

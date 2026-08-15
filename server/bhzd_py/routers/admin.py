@@ -6,7 +6,7 @@
   x-csrf-token"对齐。
 - Provider DTO 永不携带 api_key：固定 api_key_masked 只证明服务端已有密钥
   （PRD-06 §3.3），明文与密钥长度均不出服务端。审计 before/after 也先经 DTO 脱敏。
-- 同角色（primary/fallback/embedding/rerank）至多一个 provider：set-role
+- 同角色（primary/fallback/embedding/rerank/grader）至多一个 provider：set-role
   与创建/更新里的角色赋值都在同一事务里先清后设，避免并发下出现两个主模型。
 - 指标端点（PRD-06 §13.1）全部用 SQL 诚实计算：无数据的指标返回 null 并
   在 note 里说明，绝不编造数字。
@@ -15,8 +15,11 @@
 from __future__ import annotations
 
 import asyncio
+import csv
 import hashlib
+import io
 import json
+import logging
 import re
 import secrets
 import sqlite3
@@ -25,6 +28,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..agent import providers
@@ -42,9 +46,10 @@ from ..security import (
 from ..config import get_config
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
-_PROTOCOLS = ("xunfei_xingchen", "xunfei_spark", "chat_completions", "anthropic_messages")
-_PROVIDER_ROLES = ("primary", "fallback", "embedding", "rerank", "none")
+_PROTOCOLS = ("chat_completions", "anthropic_messages", "responses")
+_PROVIDER_ROLES = ("primary", "fallback", "embedding", "rerank", "grader", "none")
 _USER_ROLES = ("student", "teacher", "content_admin", "system_admin")
 
 
@@ -205,9 +210,9 @@ class SetRoleIn(BaseModel):
 
 def _validate_protocol_role(protocol: str, role: str) -> None:
     if protocol not in _PROTOCOLS:
-        raise ApiError(400, "INVALID_PROTOCOL", "不支持的协议类型，可选：xunfei_xingchen / xunfei_spark / chat_completions / anthropic_messages")
+        raise ApiError(400, "INVALID_PROTOCOL", "不支持的协议类型，可选：chat_completions / anthropic_messages / responses")
     if role not in _PROVIDER_ROLES:
-        raise ApiError(400, "INVALID_ROLE", "供应商角色仅支持 primary / fallback / embedding / rerank / none")
+        raise ApiError(400, "INVALID_ROLE", "供应商角色仅支持 primary / fallback / embedding / rerank / grader / none")
 
 
 _MODEL_DISCOVERY_ERROR_RESPONSES: dict[str, tuple[int, str, str]] = {
@@ -658,20 +663,40 @@ _RAG_INT_RANGES: dict[str, tuple[int, int]] = {
     "chunk_size": (100, 2000),
     "chunk_overlap": (0, 1000),
     "top_k": (1, 20),
-    "max_citations": (1, 20),
 }
-_RAG_BOOL_FIELDS = ("title_inherit", "hybrid_search", "rerank_enabled", "require_manual_review")
-_RAG_ENUM_FIELDS: dict[str, tuple[str, ...]] = {
-    "refusal_policy": ("refuse", "generic_advice"),
-    "student_visibility_default": ("admin", "teacher", "student"),
-    "expired_doc_policy": ("remove", "keep"),
+_RAG_FLOAT_RANGES: dict[str, tuple[float, float]] = {
+    # Sampling controls are bounded at the management boundary so provider-
+    # specific values cannot destabilize retrieval-grounded answers.
+    "score_threshold": (0.0, 1.0),
+    "temperature": (0.0, 2.0),
+    "top_p": (0.0, 1.0),
 }
-_RAG_TEXT_LIMITS: dict[str, int] = {
-    "table_strategy": 20,
-    "citation_format": 200,
-    "prompt_template": 4000,
-    "prompt_template_version": 50,
-}
+_RAG_BOOL_FIELDS = (
+    "title_inherit",
+    "hybrid_search",
+    "rerank_enabled",
+    "query_rewrite_enabled",
+)
+_RAG_ENUM_FIELDS: dict[str, tuple[str, ...]] = {}
+_RAG_TEXT_LIMITS: dict[str, int] = {}
+# Keep the management contract explicit instead of serializing every SQLite
+# column.  The legacy table_strategy column remains in old databases for
+# migration safety, but it is not an editable or visible setting anymore.
+_RAG_SETTINGS_DTO_FIELDS = (
+    "id",
+    "chunk_size",
+    "chunk_overlap",
+    "title_inherit",
+    "top_k",
+    "score_threshold",
+    "temperature",
+    "top_p",
+    "hybrid_search",
+    "rerank_enabled",
+    "query_rewrite_enabled",
+    "updated_at",
+    "updated_by",
+)
 
 
 class RagSettingsPatch(BaseModel):
@@ -682,19 +707,13 @@ class RagSettingsPatch(BaseModel):
     chunk_size: int | None = None
     chunk_overlap: int | None = None
     title_inherit: bool | None = None
-    table_strategy: str | None = None
     top_k: int | None = None
     score_threshold: float | None = None
+    temperature: float | None = None
+    top_p: float | None = None
     hybrid_search: bool | None = None
     rerank_enabled: bool | None = None
-    citation_format: str | None = None
-    refusal_policy: str | None = None
-    max_citations: int | None = None
-    prompt_template: str | None = None
-    prompt_template_version: str | None = None
-    require_manual_review: bool | None = None
-    student_visibility_default: str | None = None
-    expired_doc_policy: str | None = None
+    query_rewrite_enabled: bool | None = None
 
 
 def _rag_settings_row(conn: sqlite3.Connection) -> sqlite3.Row:
@@ -708,7 +727,17 @@ def _rag_settings_row(conn: sqlite3.Connection) -> sqlite3.Row:
 
 
 def _rag_settings_dto(row: sqlite3.Row) -> dict[str, Any]:
-    dto = dict(row)
+    columns = set(row.keys())
+    dto = {
+        field: row[field]
+        for field in _RAG_SETTINGS_DTO_FIELDS
+        if field in columns
+    }
+    # A rolling deployment may briefly read a pre-020 database. Returning safe
+    # defaults keeps GET usable while the normal startup migration catches up.
+    dto.setdefault("query_rewrite_enabled", False)
+    dto.setdefault("temperature", 0.3)
+    dto.setdefault("top_p", 0.9)
     for field in _RAG_BOOL_FIELDS:
         dto[field] = bool(dto[field])
     return dto
@@ -742,9 +771,12 @@ def patch_rag_settings(
             if not (low <= value <= high):
                 raise ApiError(400, "INVALID_SETTING", f"{field} 必须在 {low} 到 {high} 之间")
             updates[field] = value
-        elif field == "score_threshold":
-            if not (0.0 <= value <= 1.0):
-                raise ApiError(400, "INVALID_SETTING", "score_threshold 必须在 0 到 1 之间")
+        elif field in _RAG_FLOAT_RANGES:
+            low, high = _RAG_FLOAT_RANGES[field]
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ApiError(400, "INVALID_SETTING", f"{field} 必须是数字")
+            if not (low <= float(value) <= high):
+                raise ApiError(400, "INVALID_SETTING", f"{field} 必须在 {low} 到 {high} 之间")
             updates[field] = value
         elif field in _RAG_BOOL_FIELDS:
             updates[field] = 1 if value else 0
@@ -809,15 +841,18 @@ def _revoke_user_sessions(conn: sqlite3.Connection, user_id: str) -> None:
         )
 
 
-@router.get("/api/admin/users")
-def list_users(
-    role: str | None = None,
-    q: str | None = None,
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-    admin: CurrentUser = Depends(get_admin_user),
-    conn: sqlite3.Connection = Depends(get_db),
-) -> dict[str, Any]:
+class UserBulkStatusIn(BaseModel):
+    """Bounded status mutation used by the admin table's multi-select actions."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    user_ids: list[str] = Field(min_length=1, max_length=200)
+    status: str
+
+
+def _user_filter(role: str | None, q: str | None) -> tuple[str, list[Any]]:
+    """Build the shared role/search predicate for list and export endpoints."""
+
     clauses: list[str] = []
     params: list[Any] = []
     if role:
@@ -829,13 +864,132 @@ def list_users(
         clauses.append("(email LIKE ? OR name LIKE ?)")
         like = f"%{q.strip()}%"
         params.extend([like, like])
-    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    return (f" WHERE {' AND '.join(clauses)}" if clauses else ""), params
+
+
+@router.get("/api/admin/users")
+def list_users(
+    role: str | None = None,
+    q: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    admin: CurrentUser = Depends(get_admin_user),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    where, params = _user_filter(role, q)
     total = conn.execute(f"SELECT COUNT(*) AS n FROM users{where}", params).fetchone()["n"]
     rows = conn.execute(
         f"SELECT * FROM users{where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
         (*params, limit, offset),
     ).fetchall()
     return {"items": [_admin_user_dto(row) for row in rows], "total": total}
+
+
+@router.get("/api/admin/users/export.csv")
+@router.get("/api/admin/users/export")
+def export_users_csv(
+    role: str | None = None,
+    q: str | None = None,
+    admin: CurrentUser = Depends(get_admin_user),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> Response:
+    """Export the active user filter as CSV without exposing credential fields."""
+
+    where, params = _user_filter(role, q)
+    total = conn.execute(f"SELECT COUNT(*) AS n FROM users{where}", params).fetchone()["n"]
+    if total > 10_000:
+        raise ApiError(413, "EXPORT_TOO_LARGE", "导出数据量过大，请缩小角色或搜索范围")
+    rows = conn.execute(
+        f"SELECT id, name, email, role, status, email_verified_at, created_at "
+        f"FROM users{where} ORDER BY created_at DESC",
+        params,
+    ).fetchall()
+
+    output = io.StringIO(newline="")
+    writer = csv.writer(output, lineterminator="\r\n")
+    writer.writerow(("id", "name", "email", "role", "status", "email_verified", "created_at"))
+
+    def safe_cell(value: Any) -> str:
+        # Spreadsheet formulas can execute when an exported cell starts with
+        # =,+,-,@; prefixing an apostrophe keeps user-controlled text inert.
+        text = "" if value is None else str(value)
+        return f"'{text}" if text[:1] in {"=", "+", "-", "@"} else text
+
+    for row in rows:
+        writer.writerow(
+            (
+                safe_cell(row["id"]),
+                safe_cell(row["name"]),
+                safe_cell(row["email"]),
+                safe_cell(row["role"]),
+                safe_cell(row["status"]),
+                "true" if row["email_verified_at"] else "false",
+                safe_cell(row["created_at"]),
+            )
+        )
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="users.csv"'},
+    )
+
+
+@router.patch("/api/admin/users/bulk-status")
+@router.patch("/api/admin/users/bulk")
+def patch_users_bulk_status(
+    body: UserBulkStatusIn,
+    request: Request,
+    admin: CurrentUser = Depends(_admin_csrf),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Apply one status to bounded user IDs, auditing each changed account."""
+
+    if body.status not in ("active", "disabled"):
+        raise ApiError(400, "INVALID_STATUS", "状态仅支持 active / disabled")
+    user_ids = list(dict.fromkeys(user_id.strip() for user_id in body.user_ids if user_id.strip()))
+    if not user_ids:
+        raise ApiError(400, "EMPTY_USER_IDS", "至少选择一个用户")
+    placeholders = ",".join("?" for _ in user_ids)
+    rows = conn.execute(
+        f"SELECT * FROM users WHERE id IN ({placeholders})", user_ids
+    ).fetchall()
+    by_id = {row["id"]: row for row in rows}
+    missing = [user_id for user_id in user_ids if user_id not in by_id]
+    if missing:
+        raise ApiError(404, "USER_NOT_FOUND", "部分用户不存在，未执行批量操作")
+    if body.status == "disabled" and admin.user["id"] in by_id:
+        raise ApiError(400, "SELF_OPERATION_FORBIDDEN", "不能禁用当前登录的管理员账号")
+
+    changed: list[dict[str, Any]] = []
+    for user_id in user_ids:
+        target = by_id[user_id]
+        if target["status"] == body.status:
+            continue
+        before = {"role": target["role"], "status": target["status"]}
+        conn.execute(
+            "UPDATE users SET status = ?, updated_at = ? WHERE id = ?",
+            (body.status, utc_now_iso(), user_id),
+        )
+        if body.status == "disabled":
+            _revoke_user_sessions(conn, user_id)
+        after = {"role": target["role"], "status": body.status}
+        audit(
+            conn,
+            admin.user,
+            "user.update",
+            target_type="user",
+            target_id=user_id,
+            before=before,
+            after=after,
+            ip=_ip(request),
+            user_agent=request.headers.get("user-agent"),
+        )
+        changed.append({"id": user_id, "status": body.status})
+    return {
+        "updated": len(changed),
+        "skipped": len(user_ids) - len(changed),
+        "items": changed,
+    }
 
 
 class UserPatchIn(BaseModel):
@@ -1093,6 +1247,61 @@ def _build_metrics(conn: sqlite3.Connection) -> dict[str, Any]:
     else:
         metrics["model_failure_rate_by_provider"] = None
 
+    # Runtime health indicators are deliberately derived from durable local
+    # tables.  Missing request telemetry is reported as None rather than
+    # pretending that a health check proves production traffic quality.
+    today = utc_now_iso()[:10]
+    login_rows = conn.execute(
+        "SELECT success, COUNT(*) AS n FROM login_attempts "
+        "WHERE substr(created_at, 1, 10) = ? GROUP BY success",
+        (today,),
+    ).fetchall()
+    login_counts = {int(row["success"]): int(row["n"]) for row in login_rows}
+    metrics["login_success_today"] = login_counts.get(1, 0)
+    metrics["login_failure_today"] = login_counts.get(0, 0)
+    now = utc_now_iso()
+    active_user = conn.execute(
+        "SELECT COUNT(*) AS n FROM user_sessions WHERE revoked_at IS NULL AND expires_at > ?",
+        (now,),
+    ).fetchone()["n"]
+    active_admin = conn.execute(
+        "SELECT COUNT(*) AS n FROM admin_sessions WHERE revoked_at IS NULL AND expires_at > ?",
+        (now,),
+    ).fetchone()["n"]
+    metrics["active_sessions"] = int(active_user or 0) + int(active_admin or 0)
+    api_events = conn.execute(
+        "SELECT props_json FROM analytics_events "
+        "WHERE event_name IN ('api_request_completed', 'api_request') "
+        "AND created_at >= datetime('now', '-1 day')"
+    ).fetchall()
+    api_results: list[bool] = []
+    for event in api_events:
+        try:
+            props = json.loads(event["props_json"] or "{}")
+            if isinstance(props, dict) and isinstance(props.get("ok"), bool):
+                api_results.append(props["ok"])
+        except (TypeError, json.JSONDecodeError):
+            continue
+    metrics["api_success_rate_24h"] = (
+        round(sum(api_results) / len(api_results), 4) if api_results else None
+    )
+    provider_latencies: list[float] = []
+    for provider in rows:
+        raw = provider["last_test_json"]
+        if not raw:
+            continue
+        try:
+            latency = json.loads(raw).get("latency_ms")
+            if isinstance(latency, (int, float)) and latency >= 0:
+                provider_latencies.append(float(latency))
+        except (TypeError, json.JSONDecodeError):
+            continue
+    metrics["provider_latency_avg_ms"] = (
+        round(sum(provider_latencies) / len(provider_latencies), 2)
+        if provider_latencies
+        else None
+    )
+
     return metrics
 
 
@@ -1127,29 +1336,36 @@ def _alert_fingerprint(alert: dict[str, Any]) -> str:
 def _visible_alerts(conn: sqlite3.Connection, user_id: str) -> list[dict[str, Any]]:
     """Evaluate, fingerprint, and apply only this administrator's active ignores."""
 
-    alerts = evaluate_alerts(conn)
-    for alert in alerts:
-        alert["fingerprint"] = _alert_fingerprint(alert)
-    active_fingerprints = [alert["fingerprint"] for alert in alerts]
-    if active_fingerprints:
-        placeholders = ",".join("?" for _ in active_fingerprints)
-        # Cleanup is global rather than scoped to the requesting administrator:
-        # an ignored condition must reappear for every administrator if it
-        # recovers before the original administrator opens the page again.
-        conn.execute(
-            f"DELETE FROM admin_alert_ignores WHERE fingerprint NOT IN ({placeholders})",
-            active_fingerprints,
-        )
-    else:
-        conn.execute("DELETE FROM admin_alert_ignores")
-    ignored = {
-        row["fingerprint"]
-        for row in conn.execute(
-            "SELECT fingerprint FROM admin_alert_ignores WHERE user_id = ?", (user_id,)
-        )
-    }
-    conn.commit()
-    return [alert for alert in alerts if alert["fingerprint"] not in ignored]
+    # Alert evaluation is a read-only dashboard enhancement.  A rolling
+    # deployment may briefly serve an older SQLite schema, so a missing
+    # optional table must not turn the entire security page into a 500.
+    try:
+        alerts = evaluate_alerts(conn)
+        for alert in alerts:
+            alert["fingerprint"] = _alert_fingerprint(alert)
+        active_fingerprints = [alert["fingerprint"] for alert in alerts]
+        if active_fingerprints:
+            placeholders = ",".join("?" for _ in active_fingerprints)
+            # Cleanup is global rather than scoped to the requesting administrator:
+            # an ignored condition must reappear for every administrator if it
+            # recovers before the original administrator opens the page again.
+            conn.execute(
+                f"DELETE FROM admin_alert_ignores WHERE fingerprint NOT IN ({placeholders})",
+                active_fingerprints,
+            )
+        else:
+            conn.execute("DELETE FROM admin_alert_ignores")
+        ignored = {
+            row["fingerprint"]
+            for row in conn.execute(
+                "SELECT fingerprint FROM admin_alert_ignores WHERE user_id = ?", (user_id,)
+            )
+        }
+        conn.commit()
+        return [alert for alert in alerts if alert["fingerprint"] not in ignored]
+    except sqlite3.Error as exc:
+        logger.warning("security alerts unavailable during schema transition: %s", exc)
+        return []
 
 @router.get("/api/admin/alerts")
 def get_alerts(

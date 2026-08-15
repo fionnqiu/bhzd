@@ -41,7 +41,6 @@ beforeEach(() => {
         heatmap: [],
         trend: [],
         top_errors: [],
-        scenario_comparison: [],
         suggestions: [],
         student_count: 3,
         sample_warning: false,
@@ -52,7 +51,7 @@ beforeEach(() => {
 });
 
 describe("AnalyticsPage filter rows", () => {
-  it("groups class, data type, and scene before source and time", async () => {
+  it("groups class and data type before source and time", async () => {
     render(
       <ToastProvider>
         <MemoryRouter>
@@ -68,11 +67,10 @@ describe("AnalyticsPage filter rows", () => {
 
     expect(primary).toBeInTheDocument();
     expect(secondary).toBeInTheDocument();
-    expect(primary?.querySelectorAll(".select")).toHaveLength(3);
+    expect(primary?.querySelectorAll(".select")).toHaveLength(2);
     expect(secondary?.querySelectorAll(".select")).toHaveLength(2);
     expect(primary?.querySelector('[aria-label="班级"]')).toBeInTheDocument();
     expect(primary?.querySelector('[aria-label="数据类型"]')).toBeInTheDocument();
-    expect(primary?.querySelector('[aria-label="行业场景"]')).toBeInTheDocument();
     expect(secondary?.querySelector('[aria-label="任务来源"]')).toBeInTheDocument();
     expect(secondary?.querySelector('[aria-label="时间范围"]')).toBeInTheDocument();
   });

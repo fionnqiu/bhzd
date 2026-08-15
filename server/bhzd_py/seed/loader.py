@@ -39,12 +39,11 @@ DEMO_CLASS_INVITE_CODE = "BHZD-DATA-2301"
 _DEMO_DOCS_DIR = Path(__file__).resolve().parent / "demo_docs"
 
 # 每篇演示文档的入库元数据（键为 demo_docs 下的文件名）
-# caps/scenarios 均取自真实图谱节点，保证图谱联动演示不出现悬空引用
+# 能力节点均取自真实图谱节点，保证图谱联动演示不出现悬空引用
 _DEMO_DOC_META: dict[str, dict] = {
     "智能客服语音标注规范-v2.3.md": {
         "source_type": "enterprise",
         "data_types": ["audio"],
-        "scenario_ids": ["SCN-CUSTOMER-SERVICE-001"],
         "cap_ids": [
             "CAP-AUD-EMOTION-PARALING-001",
             "CAP-AUD-TRANSCRIBE-PUNCT-001",
@@ -55,21 +54,18 @@ _DEMO_DOC_META: dict[str, dict] = {
     "车载唤醒词标注指南-v1.4.md": {
         "source_type": "enterprise",
         "data_types": ["audio"],
-        "scenario_ids": ["SCN-IN-VEHICLE-001"],
         "cap_ids": ["CAP-AUD-WAKE-COMMAND-001", "CAP-AUD-NOISE-OVERLAP-001"],
         "publisher": "标航智导合作企业车载语音项目组",
     },
     "NER实体标注规范-v3.0.md": {
         "source_type": "standard",
         "data_types": ["text"],
-        "scenario_ids": [],
         "cap_ids": ["CAP-TXT-ENTITY-BOUNDARY-001", "CAP-TXT-ENTITY-TYPE-001"],
         "publisher": "标航职业学院数据标注教研室",
     },
     "1+X数据标注职业技能考试说明-v2026.md": {
         "source_type": "standard",
         "data_types": ["text", "image", "audio"],
-        "scenario_ids": [],
         "cap_ids": ["CAP-CORE-LABEL-SCHEMA-001", "CAP-CORE-EXPORT-QA-001"],
         "publisher": "1+X 数据标注职业技能等级证书考核办公室",
     },
@@ -141,7 +137,7 @@ def _insert_user(
 
 
 def _validate_presets(config: AppConfig) -> list[str]:
-    """校验预设引用的图谱节点/场景/教学单元是否存在，返回告警列表（只告警不阻断）。"""
+    """校验预设引用的图谱节点/教学单元是否存在，返回告警列表（只告警不阻断）。"""
     warnings: list[str] = []
     data_dir = Path(config.resolved_data_dir)
     graph_path = data_dir / "graph" / "annotation-capability-graph.json"
@@ -162,9 +158,6 @@ def _validate_presets(config: AppConfig) -> list[str]:
         for cap_id in preset["cap_ids"]:
             if node_ids and cap_id not in node_ids:
                 warnings.append(f"预设 {preset['id']} 引用了不存在的能力节点 {cap_id}")
-        scenario_id = preset.get("scenario_id")
-        if scenario_id and node_ids and scenario_id not in node_ids:
-            warnings.append(f"预设 {preset['id']} 引用了不存在的场景节点 {scenario_id}")
         for unit_id in preset["unit_ids"]:
             if unit_ids and unit_id not in unit_ids:
                 warnings.append(f"预设 {preset['id']} 引用了不存在的教学单元 {unit_id}")
@@ -255,10 +248,10 @@ def _ingest_demo_document(
     )
     conn.execute(
         "INSERT INTO rag_documents (id, title, file_type, source_type, source_name, source_url,"
-        " source_ledger_id, version, license_status, data_types_json, scenario_ids_json,"
+        " source_ledger_id, version, license_status, data_types_json,"
         " cap_ids_json, visibility, status, storage_path, file_hash, process_version,"
         " created_by, created_at, updated_at, published_at)"
-        " VALUES (?, ?, 'md', ?, ?, NULL, ?, ?, 'authorized', ?, ?, ?, 'student', 'published',"
+        " VALUES (?, ?, 'md', ?, ?, NULL, ?, ?, 'authorized', ?, ?, 'student', 'published',"
         " NULL, NULL, 1, ?, ?, ?, ?)",
         (
             doc_id,
@@ -268,7 +261,6 @@ def _ingest_demo_document(
             ledger_id,
             version,
             json.dumps(meta["data_types"], ensure_ascii=False),
-            json.dumps(meta["scenario_ids"], ensure_ascii=False),
             json.dumps(meta["cap_ids"], ensure_ascii=False),
             created_by,
             now,
@@ -464,9 +456,9 @@ def _seed_demo(conn: sqlite3.Connection, *, school_id: str, admin_id: str) -> di
     task_id = _seed_id("task:demo-ner-intro")
     conn.execute(
         "INSERT OR IGNORE INTO learning_tasks (id, user_id, title, goal, data_type,"
-        " scenario_id, cap_ids_json, source, status, steps_json, resources_json,"
+        " cap_ids_json, source, status, steps_json, resources_json,"
         " counts_toward_mastery, created_by, created_at, updated_at)"
-        " VALUES (?, ?, ?, ?, 'text', NULL, ?, 'agent', 'not_started', ?, '[]', 1, ?, ?, ?)",
+        " VALUES (?, ?, ?, ?, 'text', ?, 'agent', 'not_started', ?, '[]', 1, ?, ?, ?)",
         (
             task_id,
             student_id,
@@ -484,9 +476,9 @@ def _seed_demo(conn: sqlite3.Connection, *, school_id: str, admin_id: str) -> di
     )
     conn.execute(
         "INSERT OR IGNORE INTO diagnostic_summaries (id, user_id, file_format, data_type,"
-        " scenario_id, error_count, severity_counts_json, report_json, weak_cap_ids_json,"
+        " error_count, severity_counts_json, report_json, weak_cap_ids_json,"
         " plan_json, created_at)"
-        " VALUES (?, ?, 'json', 'text', NULL, 2, ?, ?, ?, NULL, ?)",
+        " VALUES (?, ?, 'json', 'text', 2, ?, ?, ?, NULL, ?)",
         (
             _seed_id("diag:demo-summary"),
             student_id,

@@ -38,7 +38,6 @@ import {
   useToast,
   type Column,
 } from "../../components";
-import { useScenario } from "../../app/ScenarioContext";
 import {
   capNameOf,
   dataTypeLabel,
@@ -62,7 +61,7 @@ const FORMAT_ROWS: { format: string; accept: string; desc: string }[] = [
 // Fixed widths keep format guidance scan-friendly; longer descriptions use the table viewport.
 const FORMAT_COLUMNS: Column<(typeof FORMAT_ROWS)[number]>[] = [
   { key: "format", title: "格式", width: "10rem", render: (row) => <Tag>{row.format}</Tag> },
-  { key: "desc", title: "适用场景", width: "20rem" },
+  { key: "desc", title: "说明", width: "20rem" },
 ];
 
 const DATA_TYPE_OPTIONS = [
@@ -84,12 +83,9 @@ function SeverityBadge({ severity }: { severity: Severity }) {
 
 export default function DiagnosticsPage() {
   const toast = useToast();
-  const { scenarioId: globalScenarioId, scenarios } = useScenario();
   const capNames = useCapNames();
 
   const [dataType, setDataType] = useState("");
-  // 场景默认取全局场景上下文（顶栏选择器），页内可覆盖
-  const [scenarioId, setScenarioId] = useState(globalScenarioId);
   const [file, setFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -138,7 +134,6 @@ export default function DiagnosticsPage() {
       const formData = new FormData();
       formData.append("file", file);
       if (dataType) formData.append("data_type", dataType);
-      if (scenarioId) formData.append("scenario_id", scenarioId);
       const res = await api.postForm<DiagnosticUploadResponse>("/api/diagnostics", formData);
       setReport(res);
       toast.success("诊断完成，请查看报告");
@@ -232,12 +227,6 @@ export default function DiagnosticsPage() {
                 value={dataType}
                 options={DATA_TYPE_OPTIONS}
                 onChange={(e) => setDataType(e.target.value)}
-              />
-              <Select
-                aria-label="场景"
-                value={scenarioId}
-                options={scenarios.map((s) => ({ value: s.id, label: s.name }))}
-                onChange={(e) => setScenarioId(e.target.value)}
               />
             </div>
             <Button block loading={uploading} disabled={!file} onClick={upload}>

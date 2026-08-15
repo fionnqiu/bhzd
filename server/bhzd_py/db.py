@@ -41,18 +41,31 @@ def connect(database_path: str) -> sqlite3.Connection:
     """
     if database_path != ":memory:":
         Path(database_path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(database_path, check_same_thread=False)
+    # Detached content workers and request handlers can briefly contend for
+    # SQLite's single-writer slot.  A bounded busy timeout lets the second
+    # writer wait for the first commit instead of surfacing a transient 500.
+    conn = sqlite3.connect(database_path, timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
+    # Setting WAL on every connection is itself a locking operation.  Read the
+    # current mode first and only switch freshly-created databases; this keeps
+    # request/worker connections from competing with a long-lived read cursor.
+    journal_mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+    if str(journal_mode).lower() != "wal":
+        conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 
 @contextmanager
-def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
+def transaction(
+    conn: sqlite3.Connection, *, immediate: bool = False
+) -> Iterator[sqlite3.Connection]:
     """事务上下文：正常结束提交，异常回滚并继续抛出。"""
     try:
-        conn.execute("BEGIN")
+        # Reserve the writer slot before read-then-write fan-out when requested;
+        # this avoids stale WAL snapshots failing their later write upgrade.
+        conn.execute("BEGIN IMMEDIATE" if immediate else "BEGIN")
         yield conn
     except Exception:
         conn.rollback()

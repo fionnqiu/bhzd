@@ -30,13 +30,11 @@ every item.
    action, and record the observed feedback.
 4. Video task — open one published video lesson, perform the stated learner
    action, and record the observed feedback.
-5. Scenario comparison — compare two supported scenarios for the same data
-   domain and record what changed in the rule context or displayed plan.
-6. Enterprise-task conversion — enter a representative business request and
+5. Enterprise-task conversion — enter a representative business request and
    record either generated cards or the requested clarification.
-7. Structured diagnosis — upload a real, authorized structured export and
+6. Structured diagnosis — upload a real, authorized structured export and
    record the reported status, issues, and whether mastery changed.
-8. PRE remediation plan — select the relevant capability or diagnostic result
+7. PRE remediation plan — select the relevant capability or diagnostic result
    and record the displayed prerequisite-ordered remediation plan.
 
 ## Session conduct

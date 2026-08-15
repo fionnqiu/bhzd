@@ -15,3 +15,8 @@ var/
 *.egg-info/
 .playwright-mcp/
 search-build.txt
+# Untracked user datasets and tooling: per project convention, anything starting with
+# a dot is not project code, and these large/binary artifacts were excluded from VCS.
+.codex/
+docs/ragData/
+docs/资料库构建规则.md

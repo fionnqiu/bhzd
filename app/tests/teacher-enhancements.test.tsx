@@ -3,8 +3,8 @@
  *
  * 覆盖验收点：
  * - PRD-02 §5.3 AI 生成任务卡：POST /api/teacher/tasks/generate 的草稿整体
- *   填入表单（标题/目标/能力芯片/步骤/评分规则/资源引用），横幅如实展示
- *   sources_note 与 llm_used 徽章，且填入后所有字段仍可编辑；
+ *   填入表单（标题/目标/能力芯片/步骤/评分规则），旧资源字段不再进入编辑器；
+ *   横幅如实展示 sources_note 与 llm_used 徽章，且填入后所有字段仍可编辑；
  * - PRD-06 §10.1 已发布任务截止时间调整：选中已发布任务时出现"不生成新版本"
  *   说明，提交只 PATCH due_at；
  * - PRD-02 §6 学生个人能力地图：在独立分析页选择学生后调 analytics/students/{id} 渲染
@@ -85,7 +85,6 @@ describe("TaskPublishPage：AI 生成任务卡（PRD-02 §5.3）", () => {
     title: "客服语音情感标注实战",
     goal: "完成「客服语音情感标注实战」对应的标注任务，掌握相关规范要点并达到质检要求",
     data_type: "audio",
-    scenario_id: null,
     cap_ids: ["CAP-1"],
     caps: [{ cap_id: "CAP-1", cap_name: "语音切分" }],
     steps: [
@@ -126,7 +125,7 @@ describe("TaskPublishPage：AI 生成任务卡（PRD-02 §5.3）", () => {
   };
 
   beforeEach(() => {
-    mockedGet.mockImplementation((path, query) => {
+    mockedGet.mockImplementation((path, _query) => {
       if (path === "/api/teacher/tasks") return Promise.resolve({ items: [], total: 0 });
       if (path === "/api/teacher/classes") {
         return Promise.resolve({
@@ -144,7 +143,6 @@ describe("TaskPublishPage：AI 生成任务卡（PRD-02 §5.3）", () => {
         });
       }
       if (path === "/api/graph/nodes") {
-        if (query?.type === "SCN") return Promise.resolve({ items: [], total: 0 });
         return Promise.resolve({
           items: [{ id: "CAP-1", label: "语音切分", type: "CAP" }],
           total: 1,
@@ -189,9 +187,10 @@ describe("TaskPublishPage：AI 生成任务卡（PRD-02 §5.3）", () => {
 
     // 能力芯片 + 预览 Tag 都显示能力中文名
     await waitFor(() => expect(screen.getAllByText("语音切分").length).toBeGreaterThanOrEqual(2));
-    // 资源行 + 预览引用卡（[1] 标题）
-    expect((await screen.findAllByText(/客服语音标注规范/)).length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText("[1] 客服语音标注规范")).toBeInTheDocument();
+    // Legacy resources/citations may still be returned by the provider, but the
+    // publisher no longer exposes an editable resource row or preview card.
+    expect(screen.queryByText("[1] 客服语音标注规范")).not.toBeInTheDocument();
+    expect(screen.queryByText("学习资源")).not.toBeInTheDocument();
 
     // 横幅：审核提示 + llm_used 徽章 + sources_note
     expect(await screen.findByText("AI 草稿，请审核后发布")).toBeInTheDocument();
@@ -218,7 +217,6 @@ describe("TaskPublishPage：已发布任务截止时间调整（PRD-06 §10.1）
     title: "已发布的标注任务",
     goal: "完成标注",
     data_type: "audio",
-    scenario_id: null,
     cap_ids: ["CAP-1"],
     steps: [{ title: "学习规范" }],
     resources: [{ type: "link", title: "标注规范链接", url: "https://example.com/spec" }],
@@ -233,13 +231,12 @@ describe("TaskPublishPage：已发布任务截止时间调整（PRD-06 §10.1）
   };
 
   beforeEach(() => {
-    mockedGet.mockImplementation((path, query) => {
+    mockedGet.mockImplementation((path, _query) => {
       if (path === "/api/teacher/tasks") {
         return Promise.resolve({ items: [publishedTask], total: 1 });
       }
       if (path === "/api/teacher/classes") return Promise.resolve({ items: [], total: 0 });
       if (path === "/api/graph/nodes") {
-        if (query?.type === "SCN") return Promise.resolve({ items: [], total: 0 });
         return Promise.resolve({
           items: [{ id: "CAP-1", label: "语音切分", type: "CAP" }],
           total: 1,
@@ -295,7 +292,7 @@ describe("StudentAnalyticsPage：学生个人能力地图明细（PRD-02 §6）"
   };
 
   beforeEach(() => {
-    mockedGet.mockImplementation((path, query) => {
+    mockedGet.mockImplementation((path, _query) => {
       if (path === "/api/teacher/classes") {
         return Promise.resolve({
           items: [
@@ -320,7 +317,6 @@ describe("StudentAnalyticsPage：学生个人能力地图明细（PRD-02 §6）"
           heatmap: [],
           trend: [],
           top_errors: [],
-          scenario_comparison: [],
           suggestions: [],
           student_count: 1,
           sample_warning: true,
@@ -334,7 +330,6 @@ describe("StudentAnalyticsPage：学生个人能力地图明细（PRD-02 §6）"
             {
               cap_id: "CAP-1",
               cap_name: "语音切分",
-              scenario_id: "",
               score: 0.85,
               updated_at: "2026-07-31T10:00:00Z",
             },
@@ -355,7 +350,6 @@ describe("StudentAnalyticsPage：学生个人能力地图明细（PRD-02 §6）"
           mastery_events: [
             {
               cap_id: "CAP-1",
-              scenario_id: "",
               old_score: 0.7,
               new_score: 0.85,
               source: "practice",
@@ -386,10 +380,9 @@ describe("StudentAnalyticsPage：学生个人能力地图明细（PRD-02 §6）"
       ),
     );
 
-    // 掌握度表格：能力名 + 通用场景 + 分数徽章/百分比
+    // 掌握度表格：能力名 + 分数徽章/百分比
     expect(await screen.findByText("逐能力掌握度（1）")).toBeInTheDocument();
     expect(screen.getAllByText("语音切分").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("通用")).toBeInTheDocument();
     expect(screen.getAllByText("85%").length).toBeGreaterThanOrEqual(1);
 
     // 最近任务：标题 + 状态徽章 + 得分
@@ -480,7 +473,6 @@ describe("ClassDetailPage：学生诊断查看（PRD-06 §15 #2）", () => {
               id: "dg1",
               file_format: "textgrid",
               data_type: "audio",
-              scenario_id: null,
               error_count: 2,
               severity_counts: { major: 1, minor: 1 },
               created_at: "2026-07-29T08:00:00Z",

@@ -246,7 +246,7 @@ def _safe_draft(value: Any) -> dict[str, Any] | None:
     if isinstance(draft, dict):
         public["draft"] = {
             key: draft[key]
-            for key in ("title", "goal", "data_type", "scenario_id", "cap_ids", "steps", "resources", "rubric")
+            for key in ("title", "goal", "data_type", "cap_ids", "steps", "rubric")
             if key in draft
         }
     snapshot = _safe_insights(value.get("insights"))
@@ -285,7 +285,7 @@ def _confirmation_preview(row: sqlite3.Row) -> dict[str, Any] | None:
     if isinstance(draft, dict):
         safe["draft"] = {
             key: draft[key]
-            for key in ("title", "goal", "data_type", "scenario_id", "cap_ids", "steps", "resources", "rubric")
+            for key in ("title", "goal", "data_type", "cap_ids", "steps", "rubric")
             if key in draft
         }
     insights = _safe_insights(payload.get("insights"))
@@ -306,7 +306,6 @@ class TeacherRunCreate(BaseModel):
     request_draft: bool | None = None
     target_cap_ids: list[str] = Field(default_factory=list, max_length=3)
     data_type: str | None = Field(default=None, max_length=20)
-    scenario_id: str | None = Field(default=None, max_length=128)
     # The durable row stores only this owner-scoped token; media bytes remain
     # in the bounded in-process cache until the current run composes a reply.
     attachment: dict[str, Any] | None = None
@@ -318,10 +317,8 @@ class TeacherAgentDraftEdit(BaseModel):
     title: str | None = Field(default=None, max_length=120)
     goal: str | None = Field(default=None, max_length=1200)
     data_type: str | None = Field(default=None, max_length=20)
-    scenario_id: str | None = Field(default=None, max_length=128)
     cap_ids: list[str] | None = Field(default=None, max_length=3)
     steps: list[dict[str, Any]] | None = Field(default=None, max_length=8)
-    resources: list[dict[str, Any]] | None = Field(default=None, max_length=5)
     rubric: list[dict[str, Any]] | None = Field(default=None, max_length=6)
 
 
@@ -562,7 +559,6 @@ def create_run(
 
     detected = intents.detect(body.input)
     data_type = body.data_type or detected.data_type
-    scenario_id = body.scenario_id or detected.scenario_id
     if body.conversation_id:
         conversation = _load_teacher_conversation(
             db, conversation_id=body.conversation_id, teacher_id=current.user["id"]
@@ -607,16 +603,15 @@ def create_run(
             "request_draft": body.request_draft,
             "target_cap_ids": list(dict.fromkeys(body.target_cap_ids))[:3],
             "data_type": data_type,
-            "scenario_id": scenario_id,
             "attachment": normalized_attachment,
         }
     }
     db.execute(
         """
         INSERT INTO agent_runs
-          (id, conversation_id, user_id, status, input_text, plan_json, scenario_id, data_type, created_at,
+          (id, conversation_id, user_id, status, input_text, plan_json, data_type, created_at,
            agent_scope, class_id)
-        VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, 'teacher', ?)
+        VALUES (?, ?, ?, 'running', ?, ?, ?, ?, 'teacher', ?)
         """,
         (
             run_id,
@@ -624,7 +619,6 @@ def create_run(
             current.user["id"],
             body.input.strip(),
             json.dumps(request_envelope, ensure_ascii=False),
-            scenario_id,
             data_type,
             now,
             conversation["class_id"],
@@ -683,7 +677,6 @@ def get_run(
             "class_id": run["class_id"],
             "status": run["status"],
             "input_text": run["input_text"],
-            "scenario_id": run["scenario_id"],
             "data_type": run["data_type"],
             "error": run["error"],
             "created_at": run["created_at"],
@@ -824,7 +817,7 @@ def _merge_draft(base: dict[str, Any], edit: TeacherAgentDraftEdit | None) -> di
     if edit is None:
         return base
     merged = dict(base)
-    for key in ("title", "goal", "data_type", "scenario_id", "cap_ids", "steps", "resources", "rubric"):
+    for key in ("title", "goal", "data_type", "cap_ids", "steps", "rubric"):
         value = getattr(edit, key)
         if value is not None:
             merged[key] = value
@@ -900,19 +893,17 @@ def _normalize_draft_for_teacher_task(draft: dict[str, Any]) -> dict[str, Any]:
 
 
 def _validate_draft(db: sqlite3.Connection, draft: dict[str, Any]) -> None:
-    """Reuse task-schema validation and enforce student-safe resources on edits."""
+    """Validate the task-card fields without reintroducing resource attachments."""
 
     title = draft.get("title")
     cap_ids = draft.get("cap_ids")
-    resources = draft.get("resources")
-    if not isinstance(title, str) or not isinstance(cap_ids, list) or not isinstance(resources, list):
+    if not isinstance(title, str) or not isinstance(cap_ids, list):
         raise ApiError(400, "VALIDATION_ERROR", "草稿字段格式不正确")
-    if len(cap_ids) > 3 or len(resources) > 5:
-        raise ApiError(400, "VALIDATION_ERROR", "草稿关联的能力或资料数量超出限制")
+    if len(cap_ids) > 3:
+        raise ApiError(400, "VALIDATION_ERROR", "草稿关联的能力数量超出限制")
     if draft.get("data_type") is not None and draft["data_type"] not in ("text", "image", "audio", "video"):
         raise ApiError(400, "VALIDATION_ERROR", "数据类型仅支持 text / image / audio / video")
-    teacher._check_task_body(title, cap_ids, resources)
-    teacher_agent_tools.validate_student_resources(db, resources)
+    teacher._check_task_body(title, cap_ids)
 
 
 def _settle_waiting_step(
@@ -1045,10 +1036,10 @@ def _insert_teacher_draft(
     db.execute(
         """
         INSERT INTO learning_tasks
-          (id, user_id, title, goal, data_type, scenario_id, cap_ids_json, source,
+          (id, user_id, title, goal, data_type, cap_ids_json, source,
            status, steps_json, resources_json, rubric_json, practice_json,
            counts_toward_mastery, teacher_id, class_id, created_by, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'teacher', 'draft', ?, ?, ?, NULL, 1, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, 'teacher', 'draft', ?, ?, ?, NULL, 1, ?, ?, ?, ?, ?)
         """,
         (
             task_id,
@@ -1056,10 +1047,9 @@ def _insert_teacher_draft(
             str(draft["title"]).strip(),
             draft.get("goal"),
             draft.get("data_type"),
-            draft.get("scenario_id"),
             json.dumps(draft["cap_ids"], ensure_ascii=False),
             json.dumps(draft.get("steps") or [], ensure_ascii=False),
-            json.dumps(draft["resources"], ensure_ascii=False),
+            "[]",
             json.dumps(draft.get("rubric"), ensure_ascii=False)
             if draft.get("rubric") is not None
             else None,
@@ -1131,16 +1121,19 @@ def confirm_task(
             draft=draft,
         )
         published = 0
+        content_task_ids: list[str] = []
         if publish_requested:
             # The shared publisher owns fan-out and notifications. Keeping it
             # inside this transaction prevents an Agent confirmation from
             # settling without the matching student tasks.
-            published = teacher.publish_teacher_task_rows(
+            publish_result = teacher.publish_teacher_task_rows(
                 db,
                 task_id=task_id,
                 teacher_id=current.user["id"],
                 class_id=run["class_id"],
-            )["published"]
+            )
+            published = publish_result["published"]
+            content_task_ids = publish_result.get("_content_task_ids", [])
         now = utc_now_iso()
         confirmation_cursor = db.execute(
             """
@@ -1231,6 +1224,13 @@ def confirm_task(
             commit=False,
         )
         db.commit()
+        # The draft and any student copies are now visible to independent
+        # worker connections; queue them only after the confirmation transaction
+        # commits so no worker can observe a phantom task row.
+        from ..tools.task_tools import queue_task_content
+
+        for generated_task_id in [task_id, *content_task_ids]:
+            queue_task_content(db, generated_task_id)
     except ApiError:
         raise
     except Exception:

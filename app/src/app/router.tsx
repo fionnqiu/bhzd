@@ -18,6 +18,7 @@ import {
 import { useAuth } from "../auth/AuthContext";
 import type { Role } from "../api/types";
 import { ErrorState, Spinner } from "../components";
+import LegacyRagAdminRedirect from "./LegacyRagAdminRedirect";
 
 /**
  * Each route keeps its own suspense boundary so an authenticated shell stays mounted while a
@@ -39,7 +40,6 @@ function lazyRoute(loader: () => Promise<{ default: ComponentType }>) {
 // after a learner actually opens the graph page.
 const StudentLayout = lazyRoute(() => import("../layouts/StudentLayout"));
 const TeacherLayout = lazyRoute(() => import("../layouts/TeacherLayout"));
-const RagAdminLayout = lazyRoute(() => import("../layouts/RagAdminLayout"));
 const AdminLayout = lazyRoute(() => import("../layouts/AdminLayout"));
 const LoginPage = lazyRoute(() => import("../auth/LoginPage"));
 const RegisterPage = lazyRoute(() => import("../auth/RegisterPage"));
@@ -56,18 +56,14 @@ const ProfilePage = lazyRoute(() => import("../pages/student/ProfilePage"));
 const DashboardPage = lazyRoute(() => import("../pages/teacher/DashboardPage"));
 const ClassesPage = lazyRoute(() => import("../pages/teacher/ClassesPage"));
 const ClassDetailPage = lazyRoute(() => import("../pages/teacher/ClassDetailPage"));
+const TasksManagePage = lazyRoute(() => import("../pages/teacher/TasksManagePage"));
 const TaskPublishPage = lazyRoute(() => import("../pages/teacher/TaskPublishPage"));
 const AnalyticsPage = lazyRoute(() => import("../pages/teacher/AnalyticsPage"));
 const StudentAnalyticsPage = lazyRoute(() => import("../pages/teacher/StudentAnalyticsPage"));
 const DocumentsPage = lazyRoute(() => import("../pages/rag/DocumentsPage"));
 const UploadPage = lazyRoute(() => import("../pages/rag/UploadPage"));
 const DocumentDetailPage = lazyRoute(() => import("../pages/rag/DocumentDetailPage"));
-const ChunkEditorPage = lazyRoute(() => import("../pages/rag/ChunkEditorPage"));
-const JobsPage = lazyRoute(() => import("../pages/rag/JobsPage"));
-const LedgersPage = lazyRoute(() => import("../pages/rag/LedgersPage"));
 const SearchTestPage = lazyRoute(() => import("../pages/rag/SearchTestPage"));
-const EvalCasesPage = lazyRoute(() => import("../pages/rag/EvalCasesPage"));
-const PublishReviewPage = lazyRoute(() => import("../pages/rag/PublishReviewPage"));
 const ProvidersPage = lazyRoute(() => import("../pages/admin/ProvidersPage"));
 const RagSettingsPage = lazyRoute(() => import("../pages/admin/RagSettingsPage"));
 const UsersPage = lazyRoute(() => import("../pages/admin/UsersPage"));
@@ -79,7 +75,12 @@ const NotFoundPage = lazyRoute(() => import("../pages/system/NotFoundPage"));
 /** Visible, announced fallback while a route chunk is fetched instead of a blank content region. */
 function RouteLoading() {
   return (
-    <div className="loading-block" style={{ minHeight: "60vh" }} aria-live="polite" aria-busy="true">
+    <div
+      className="loading-block"
+      style={{ minHeight: "60vh" }}
+      aria-live="polite"
+      aria-busy="true"
+    >
       <Spinner large /> 正在加载页面…
     </div>
   );
@@ -97,7 +98,12 @@ function RouteErrorBoundary() {
       : "页面加载出现问题，请稍后重试。";
 
   return (
-    <section className="loading-block" style={{ minHeight: "60vh" }} role="alert" aria-live="assertive">
+    <section
+      className="loading-block"
+      style={{ minHeight: "60vh" }}
+      role="alert"
+      aria-live="assertive"
+    >
       <ErrorState message={message} onRetry={() => window.location.reload()} />
     </section>
   );
@@ -119,13 +125,7 @@ function RequireRole({ roles, children }: { roles: Role[]; children: ReactNode }
   const location = useLocation();
   if (bootstrapping) return <BootLoading />;
   if (!user) {
-    return (
-      <Navigate
-        to="/login"
-        replace
-        state={{ from: location.pathname + location.search }}
-      />
-    );
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
   }
   if (!roles.includes(user.role)) return <ForbiddenPage />;
   return <>{children}</>;
@@ -186,40 +186,33 @@ export const routes: RouteObject[] = [
       { index: true, element: <DashboardPage /> },
       { path: "classes", element: <ClassesPage /> },
       { path: "classes/:id", element: <ClassDetailPage /> },
-      { path: "tasks", element: <TaskPublishPage /> },
+      // Keep the directory and the long-running editor as separate routes so a refresh or a
+      // copied edit link always returns to the same teacher workflow state.
+      { path: "tasks", element: <TasksManagePage /> },
+      { path: "tasks/new", element: <TaskPublishPage /> },
+      { path: "tasks/:taskId", element: <TaskPublishPage /> },
       { path: "analytics", element: <AnalyticsPage /> },
       { path: "analytics/students", element: <StudentAnalyticsPage /> },
-      // Keep old review links useful for the RAG administrator without retaining a teacher review screen.
+      // Keep old review bookmarks useful without retaining a review screen.
       {
         path: "review",
         element: (
           <RequireRole roles={RAG_ADMIN_ROLES}>
-            <Navigate to="/rag-admin/publish" replace />
+            <Navigate to="/admin/rag" replace />
           </RequireRole>
         ),
       },
     ],
   },
 
-  // ---- RAG 管理壳
+  // ---- 历史 RAG 管理地址（独立门户已删除）
   {
-    path: "/rag-admin",
+    path: "/rag-admin/*",
     element: (
       <RequireRole roles={RAG_ADMIN_ROLES}>
-        <RagAdminLayout />
+        <LegacyRagAdminRedirect />
       </RequireRole>
     ),
-    children: [
-      { index: true, element: <DocumentsPage /> },
-      { path: "upload", element: <UploadPage /> },
-      { path: "documents/:id", element: <DocumentDetailPage /> },
-      { path: "documents/:id/chunks", element: <ChunkEditorPage /> },
-      { path: "jobs", element: <JobsPage /> },
-      { path: "ledgers", element: <LedgersPage /> },
-      { path: "search-test", element: <SearchTestPage /> },
-      { path: "eval-cases", element: <EvalCasesPage /> },
-      { path: "publish", element: <PublishReviewPage /> },
-    ],
   },
 
   // ---- 系统管理壳（仅 system_admin；服务端另校验管理端会话 cookie）
@@ -237,6 +230,12 @@ export const routes: RouteObject[] = [
       { path: "users", element: <UsersPage /> },
       { path: "security", element: <SecurityPage /> },
       { path: "audit-logs", element: <AuditLogsPage /> },
+      // RAG 知识库管理——从独立的 /rag-admin 壳迁入，路径统一为 /admin/rag/*
+      { path: "rag", element: <DocumentsPage /> },
+      { path: "rag/upload", element: <UploadPage /> },
+      { path: "rag/documents/:id", element: <DocumentDetailPage /> },
+      { path: "rag/search-test", element: <SearchTestPage /> },
+      // The legacy /rag-admin wildcard handles old document/chunk bookmarks.
     ],
   },
 

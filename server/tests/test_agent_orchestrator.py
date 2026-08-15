@@ -155,10 +155,9 @@ def test_tool_activity_projection_classifies_and_redacts_payloads():
 # ---------------------------------------------------------------------------
 
 def test_intent_vehicle_audio_full():
-    intent = intents.detect("我想学车载唤醒词标注")
+    intent = intents.detect("我想学语音标注")
     assert intent.kind == intents.KIND_LEARN_GOAL
     assert intent.data_type == "audio"
-    assert intent.scenario_id == "SCN-IN-VEHICLE-001"
     assert intent.missing == []
     assert intents.next_question(intent) is None
 
@@ -166,7 +165,7 @@ def test_intent_vehicle_audio_full():
 def test_intent_vague_goal_asks_data_type_first():
     intent = intents.detect("我想学标注")
     assert intent.kind == intents.KIND_LEARN_GOAL
-    assert "data_type" in intent.missing and "scenario" in intent.missing
+    assert "data_type" in intent.missing
     # PRD-06 §6.2：优先追问数据类型，话术逐字
     assert intents.next_question(intent) == "你要学习的是文本、图像、语音还是视频标注？"
 
@@ -187,33 +186,6 @@ def test_intent_agent_identity_uses_direct_chat_kind(text):
 
 def test_model_topic_without_agent_address_stays_rag_question():
     assert intents.detect("什么是模型？").kind == intents.KIND_RAG_QUESTION
-
-
-def test_intent_scenario_synonyms():
-    assert intents.detect("我想学智能客服语音转写").scenario_id == "SCN-CUSTOMER-SERVICE-001"
-    assert intents.detect("我想学医疗文本 NER 标注").scenario_id == "SCN-MEDICAL-001"
-    assert intents.detect("我想学内容安全文本审核").scenario_id == "SCN-CONTENT-SAFETY-001"
-    assert intents.detect("我想学座舱语音标注").scenario_id == "SCN-IN-VEHICLE-001"
-
-
-def test_intent_explicit_generic_closes_scenario_slot():
-    intent = intents.detect("我想学语音标注，通用场景")
-    assert intent.generic_scenario is True
-    assert "scenario" not in intent.missing
-
-
-def test_apply_context_can_keep_a_resumed_slot_over_conversation_default():
-    resumed = intents.detect("语音客服")
-    # ``prefer_context=False`` is used only for a resumed clarification: the
-    # prior answer must not be silently replaced by an older chat preference.
-    scoped = intents.apply_context(
-        resumed,
-        data_type="image",
-        scenario_id="SCN-IN-VEHICLE-001",
-        prefer_context=False,
-    )
-    assert scoped.data_type == "audio"
-    assert scoped.scenario_id == "SCN-CUSTOMER-SERVICE-001"
 
 
 # ---------------------------------------------------------------------------
@@ -329,52 +301,24 @@ def test_run_clarifies_and_completes(db, tmp_db_path, user_id, monkeypatch):
             assert len(row["payload"]["delta"]) <= 40
 
 
-def test_three_turn_clarification_reuses_goal_and_fills_one_slot_each_time(
-    db, tmp_db_path, user_id, monkeypatch
-):
-    install_stub_tools(monkeypatch)
-    first_run, conversation_id = insert_run(db, user_id, "我想学标注")
-    asyncio.run(orchestrator.execute_run(first_run, tmp_db_path))
-
-    second_run = _insert_follow_up_run(db, user_id, conversation_id, "语音")
-    asyncio.run(orchestrator.execute_run(second_run, tmp_db_path))
-    second_plan = json.loads(
-        db.execute("SELECT plan_json FROM agent_runs WHERE id = ?", (second_run,)).fetchone()["plan_json"]
-    )
-    assert second_plan["clarification"]["data_type"] == "audio"
-    assert second_plan["clarification"]["awaiting_slot"] == "scenario"
-
-    third_run = _insert_follow_up_run(db, user_id, conversation_id, "客服")
-    asyncio.run(orchestrator.execute_run(third_run, tmp_db_path))
-    args = _task_create_args(db, third_run)
-    assert args["goal"] == "我想学标注"
-    assert args["data_type"] == "audio"
-    assert args["scenario_id"] == "SCN-CUSTOMER-SERVICE-001"
-    assert db.execute("SELECT status FROM agent_runs WHERE id = ?", (third_run,)).fetchone()["status"] == "waiting_confirmation"
-
-
 def test_goal_reply_reuses_captured_scope_and_becomes_the_plan_goal(
     db, tmp_db_path, user_id, monkeypatch
 ):
     install_stub_tools(monkeypatch)
     first_run, conversation_id = insert_run(db, user_id, "嗨嗨")
     asyncio.run(orchestrator.execute_run(first_run, tmp_db_path))
-    second_run = _insert_follow_up_run(db, user_id, conversation_id, "语音")
+    second_run = _insert_follow_up_run(db, user_id, conversation_id, "文本")
     asyncio.run(orchestrator.execute_run(second_run, tmp_db_path))
-    third_run = _insert_follow_up_run(db, user_id, conversation_id, "客服")
+    third_run = _insert_follow_up_run(db, user_id, conversation_id, "学习规范")
     asyncio.run(orchestrator.execute_run(third_run, tmp_db_path))
-
-    fourth_run = _insert_follow_up_run(db, user_id, conversation_id, "学习规范")
-    asyncio.run(orchestrator.execute_run(fourth_run, tmp_db_path))
 
     # This phrase is recognized as learn_goal, but answers the explicit goal
     # question rather than starting a new task with the old scope by accident.
-    args = _task_create_args(db, fourth_run)
+    args = _task_create_args(db, third_run)
     assert args["goal"] == "学习规范"
-    assert args["data_type"] == "audio"
-    assert args["scenario_id"] == "SCN-CUSTOMER-SERVICE-001"
+    assert args["data_type"] == "text"
     assert db.execute(
-        "SELECT status FROM agent_runs WHERE id = ?", (fourth_run,)
+        "SELECT status FROM agent_runs WHERE id = ?", (third_run,)
     ).fetchone()["status"] == "waiting_confirmation"
 
 
@@ -389,39 +333,14 @@ def test_full_goal_after_goal_question_does_not_inherit_old_scope(
     third_run = _insert_follow_up_run(db, user_id, conversation_id, "客服")
     asyncio.run(orchestrator.execute_run(third_run, tmp_db_path))
 
-    new_run = _insert_follow_up_run(
-        db, user_id, conversation_id, "我想学图像标注，通用场景"
-    )
+    new_run = _insert_follow_up_run(db, user_id, conversation_id, "我想学图像标注")
     asyncio.run(orchestrator.execute_run(new_run, tmp_db_path))
 
-    # A new request supplies its own scope, so the prior audio/customer-service
-    # clarification must not leak into this independent plan.
+    # A new request supplies its own scope, so the prior clarification must not
+    # leak into this independent plan.
     args = _task_create_args(db, new_run)
-    assert args["goal"] == "我想学图像标注，通用场景"
+    assert args["goal"] == "我想学图像标注"
     assert args["data_type"] == "image"
-    assert args["scenario_id"] is None
-
-
-def test_clarification_payload_preserves_and_validates_question_slot():
-    payload = {
-        "kind": intents.KIND_UNKNOWN,
-        "data_type": "audio",
-        "scenario_id": "SCN-CUSTOMER-SERVICE-001",
-        "generic_scenario": False,
-        "goal_text": "嗨嗨",
-        "missing": ["goal"],
-        "awaiting_slot": "goal",
-    }
-
-    state = intents.ClarificationState.from_payload(payload)
-    assert state is not None
-    assert state.missing == ["goal"]
-    assert state.awaiting_slot == "goal"
-
-    # A mismatched persisted question is unsafe to resume and must be rejected.
-    assert intents.ClarificationState.from_payload(
-        {**payload, "awaiting_slot": "scenario"}
-    ) is None
 
 
 @pytest.mark.parametrize("intervening_status", ("failed", "waiting_confirmation"))
@@ -452,26 +371,8 @@ def test_nonresumable_direct_previous_run_blocks_older_clarification(
     assert persisted["kind"] == intents.KIND_UNKNOWN
     assert persisted["goal_text"] == "语音"
     assert persisted["data_type"] == "audio"
-    assert persisted["missing"] == ["scenario", "goal"]
-    assert persisted["awaiting_slot"] == "scenario"
-
-
-def test_generic_answer_closes_scenario_without_a_fourth_question(
-    db, tmp_db_path, user_id, monkeypatch
-):
-    install_stub_tools(monkeypatch)
-    first_run, conversation_id = insert_run(db, user_id, "我想学标注")
-    asyncio.run(orchestrator.execute_run(first_run, tmp_db_path))
-    second_run = _insert_follow_up_run(db, user_id, conversation_id, "语音")
-    asyncio.run(orchestrator.execute_run(second_run, tmp_db_path))
-
-    third_run = _insert_follow_up_run(db, user_id, conversation_id, "通用")
-    asyncio.run(orchestrator.execute_run(third_run, tmp_db_path))
-    args = _task_create_args(db, third_run)
-    assert args["goal"] == "我想学标注"
-    assert args["data_type"] == "audio"
-    assert args["scenario_id"] is None
-    assert db.execute("SELECT status FROM agent_runs WHERE id = ?", (third_run,)).fetchone()["status"] == "waiting_confirmation"
+    assert persisted["missing"] == ["goal"]
+    assert persisted["awaiting_slot"] == "goal"
 
 
 def test_new_recognized_intent_does_not_inherit_old_clarification(
@@ -481,35 +382,11 @@ def test_new_recognized_intent_does_not_inherit_old_clarification(
     first_run, conversation_id = insert_run(db, user_id, "我想学标注")
     asyncio.run(orchestrator.execute_run(first_run, tmp_db_path))
 
-    new_run = _insert_follow_up_run(db, user_id, conversation_id, "我想学图像标注，通用场景")
+    new_run = _insert_follow_up_run(db, user_id, conversation_id, "我想学图像标注")
     asyncio.run(orchestrator.execute_run(new_run, tmp_db_path))
     args = _task_create_args(db, new_run)
-    assert args["goal"] == "我想学图像标注，通用场景"
+    assert args["goal"] == "我想学图像标注"
     assert args["data_type"] == "image"
-    assert args["scenario_id"] is None
-
-
-def test_scope_priority_is_run_then_clarification_then_conversation(
-    db, tmp_db_path, user_id, monkeypatch
-):
-    install_stub_tools(monkeypatch)
-    first_run, conversation_id = insert_run(db, user_id, "我想学标注")
-    asyncio.run(orchestrator.execute_run(first_run, tmp_db_path))
-    # An existing chat preference must not replace the just-answered scenario,
-    # while an explicit selection attached to this run remains authoritative.
-    db.execute(
-        "UPDATE conversations SET data_type = 'image', scenario_id = 'SCN-IN-VEHICLE-001' WHERE id = ?",
-        (conversation_id,),
-    )
-    second_run = _insert_follow_up_run(db, user_id, conversation_id, "客服")
-    db.execute("UPDATE agent_runs SET data_type = 'video' WHERE id = ?", (second_run,))
-    db.commit()
-
-    asyncio.run(orchestrator.execute_run(second_run, tmp_db_path))
-    args = _task_create_args(db, second_run)
-    assert args["goal"] == "我想学标注"
-    assert args["data_type"] == "video"
-    assert args["scenario_id"] == "SCN-CUSTOMER-SERVICE-001"
 
 
 def test_l3_generic_preference_fills_omitted_student_task_type(

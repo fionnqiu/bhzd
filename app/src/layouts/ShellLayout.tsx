@@ -19,7 +19,7 @@ export interface NavItem {
   icon: LucideIcon;
   /** 精确匹配（index 路由必须 true，否则父路径常驻激活态） */
   end?: boolean;
-  /** Legacy metadata retained for callers; grouped labels are no longer rendered. */
+  /** Optional visible grouping label for dense operations navigation. */
   section?: string;
 }
 
@@ -45,7 +45,8 @@ export const PORTALS: PortalDef[] = [
     path: "/teacher",
     roles: ["teacher", "content_admin", "system_admin"],
   },
-  { key: "rag-admin", name: "RAG 管理", path: "/rag-admin", roles: ["system_admin"] },
+  // rag-admin 门户入口已从切换器移除：RAG 知识库管理已并入 /admin，
+  // system_admin 用户直接通过系统管理端侧边栏访问，无需独立门户切换。
   { key: "admin", name: "系统管理", path: "/admin", roles: ["system_admin"] },
 ];
 
@@ -290,26 +291,36 @@ export default function ShellLayout({
     </div>
   );
 
-  const navigation = navItems.map((item) => (
-    <NavLink
-      key={item.to}
-      to={item.to}
-      end={item.end}
-      aria-disabled={isStudentWorkbench && studentWorkbenchNavigationDisabled ? true : undefined}
-      tabIndex={isStudentWorkbench && studentWorkbenchNavigationDisabled ? -1 : undefined}
-      onClick={(event) => {
-        if (isStudentWorkbench && studentWorkbenchNavigationDisabled) {
-          event.preventDefault();
-          return;
-        }
-        setOpenMenu(null);
-        closeCompactSidebar();
-      }}
-    >
-      <item.icon size={18} aria-hidden />
-      <span>{item.label}</span>
-    </NavLink>
-  ));
+  const navigation = navItems.reduce<ReactNode[]>((items, item, index) => {
+    if (item.section && (index === 0 || navItems[index - 1]?.section !== item.section)) {
+      items.push(
+        <div key={`section-${item.section}`} className="sidebar-nav-section" aria-hidden>
+          {item.section}
+        </div>,
+      );
+    }
+    items.push(
+      <NavLink
+        key={item.to}
+        to={item.to}
+        end={item.end}
+        aria-disabled={isStudentWorkbench && studentWorkbenchNavigationDisabled ? true : undefined}
+        tabIndex={isStudentWorkbench && studentWorkbenchNavigationDisabled ? -1 : undefined}
+        onClick={(event) => {
+          if (isStudentWorkbench && studentWorkbenchNavigationDisabled) {
+            event.preventDefault();
+            return;
+          }
+          setOpenMenu(null);
+          closeCompactSidebar();
+        }}
+      >
+        <item.icon size={18} aria-hidden />
+        <span>{item.label}</span>
+      </NavLink>,
+    );
+    return items;
+  }, []);
 
   // The variant is a styling hook only; navigation, menus, and focus behavior stay shared.
   return (

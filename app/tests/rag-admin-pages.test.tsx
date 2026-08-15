@@ -1,6 +1,6 @@
 /**
- * RAG 管理端页面测试（PRD-03）：资料库状态操作 / 上传校验 / 切片编辑 /
- * 任务重试 / 召回测试 / 评测运行 / 发布审核。
+ * 系统管理端 RAG 页面测试（PRD-03）：活动资料库/上传/召回测试，以及
+ * 已合并工作流的底层组件回归覆盖。
  *
  * api 层整体打桩（与 auth-pages.test.tsx 同一模式）：断言页面触发的
  * 端点与载荷符合 rag_admin.py 契约，后端守卫话术透传到 toast。
@@ -61,7 +61,7 @@ function renderPage(ui: ReactElement, route = "/") {
   );
 }
 
-/** 带路由参数的页面渲染（ChunkEditor 需要 :id） */
+/** Mounts a parameterized RAG component without coupling it to the production route tree. */
 function renderWithRoute(ui: ReactElement, path: string, initial: string) {
   return render(
     <ToastProvider>
@@ -88,7 +88,6 @@ function makeDoc(overrides: Record<string, unknown>) {
     version: "1.0",
     license_status: "authorized",
     data_types: ["text"],
-    scenario_ids: [],
     cap_ids: [],
     visibility: "teacher",
     status: "draft",
@@ -162,17 +161,11 @@ describe("DocumentsPage（PRD-03 §4）", () => {
   it("渲染状态徽章与按状态操作列", async () => {
     renderPage(<DocumentsPage />);
     expect(await screen.findByText("已索引资料")).toBeInTheDocument();
-    // 审核状态派生徽章（筛选下拉也有同名 option，故用 getAllByText）
-    expect(screen.getAllByText("待审核").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("已通过").length).toBeGreaterThan(0);
-    // 行操作：indexed→送审；review_pending→发布审核链接；published→归档+重新索引；failed→重试；draft→删除
+    // 行操作：处理状态只提供重新索引/归档/重试/删除，审核不再是活动入口。
     const indexedRow = screen.getByText("已索引资料").closest("tr")!;
-    expect(within(indexedRow).getByRole("button", { name: "送审" })).toBeInTheDocument();
+    expect(within(indexedRow).queryByRole("button", { name: "送审" })).not.toBeInTheDocument();
     const reviewRow = screen.getByText("待审核资料").closest("tr")!;
-    expect(within(reviewRow).getByRole("link", { name: "发布审核" })).toHaveAttribute(
-      "href",
-      "/rag-admin/publish",
-    );
+    expect(within(reviewRow).queryByRole("link", { name: "发布审核" })).not.toBeInTheDocument();
     const publishedRow = screen.getByText("已发布资料").closest("tr")!;
     expect(within(publishedRow).getByRole("button", { name: "归档" })).toBeInTheDocument();
     expect(within(publishedRow).getByRole("button", { name: "重新索引" })).toBeInTheDocument();
@@ -185,22 +178,19 @@ describe("DocumentsPage（PRD-03 §4）", () => {
     // 行标题链接到详情页
     expect(screen.getByRole("link", { name: "已索引资料" })).toHaveAttribute(
       "href",
-      "/rag-admin/documents/doc-indexed?returnTo=%2Frag-admin",
+      "/admin/rag/documents/doc-indexed?returnTo=%2Fadmin%2Frag",
     );
   });
 
-  it("送审/重新索引触发对应端点", async () => {
+  it("重新索引触发对应端点且不调用旧审核端点", async () => {
     renderPage(<DocumentsPage />);
-    const indexedRow = (await screen.findByText("已索引资料")).closest("tr")!;
-    fireEvent.click(within(indexedRow).getByRole("button", { name: "送审" }));
-    await waitFor(() =>
-      expect(mockedPost).toHaveBeenCalledWith("/api/rag/documents/doc-indexed/submit-review"),
-    );
+    await screen.findByText("已索引资料");
     const publishedRow = screen.getByText("已发布资料").closest("tr")!;
     fireEvent.click(within(publishedRow).getByRole("button", { name: "重新索引" }));
     await waitFor(() =>
       expect(mockedPost).toHaveBeenCalledWith("/api/rag/documents/doc-published/index"),
     );
+    expect(mockedPost.mock.calls.some(([path]) => String(path).includes("submit-review"))).toBe(false);
   });
 
   it("失败资料重试：先查失败任务再 POST retry", async () => {
@@ -287,7 +277,6 @@ describe("UploadPage（PRD-03 §5）", () => {
     fillRequired();
     fireEvent.click(screen.getByRole("combobox", { name: "授权状态" }));
     fireEvent.click(screen.getByRole("option", { name: "已授权" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "智能客服标注" }));
     fireEvent.click(screen.getByRole("button", { name: "确认上传" }));
     await waitFor(() => expect(mockedPostForm).toHaveBeenCalledTimes(1));
     const [path, form] = mockedPostForm.mock.calls[0] as unknown as [string, FormData];
@@ -298,14 +287,9 @@ describe("UploadPage（PRD-03 §5）", () => {
     expect(form.get("license_status")).toBe("authorized");
     expect(form.get("visibility")).toBe("student");
     expect(form.getAll("data_types")).toEqual(["text"]);
-    expect(form.getAll("scenario_ids")).toEqual(["SCN-CUSTOMER-SERVICE-001"]);
-    expect(form.get("auto_submit")).toBe("false");
-    // 成功态：提示进入处理队列并可看解析日志（§5.3）
-    expect(await screen.findByText(/已进入异步处理队列/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "查看解析日志（任务队列）" })).toHaveAttribute(
-      "href",
-      "/rag-admin/jobs",
-    );
+    expect(form.get("auto_submit")).toBeNull();
+    // 成功态：处理完成后直接进入学生召回范围，不再提示人工审核。
+    expect(await screen.findByText(/完成后即可提供学生召回/)).toBeInTheDocument();
   });
 
   it("选择多个文件后批量导入并自动发布", async () => {
@@ -339,7 +323,7 @@ describe("UploadPage（PRD-03 §5）", () => {
     expect(path).toBe("/api/rag/documents/batch-import");
     expect(form.getAll("files").map((value) => (value as File).name)).toEqual(["one.md", "two.txt"]);
     expect(form.get("visibility")).toBe("student");
-    expect(form.get("auto_publish")).toBe("true");
+    expect(form.get("auto_publish")).toBeNull();
     expect(await screen.findByText(/批量结果：共 2 个，导入 2 个/)).toBeInTheDocument();
   });
 });
@@ -372,8 +356,8 @@ describe("ChunkEditorPage（PRD-03 §8）", () => {
   function renderEditor() {
     return renderWithRoute(
       <ChunkEditorPage />,
-      "/rag-admin/documents/:id/chunks",
-      "/rag-admin/documents/doc1/chunks",
+      "/admin/rag/documents/:id/chunks",
+      "/admin/rag/documents/doc1/chunks",
     );
   }
 
@@ -465,7 +449,7 @@ describe("JobsPage（PRD-03 §7）", () => {
   });
 
   it("概览计数 + 失败任务可理解错误 + 重试", async () => {
-    renderPage(<JobsPage />, "/rag-admin/jobs?status=failed");
+    renderPage(<JobsPage />, "/admin/rag/jobs?status=failed");
     // 概览四卡
     expect(await screen.findByText("待处理")).toBeInTheDocument();
     expect(screen.getByText("处理中")).toBeInTheDocument();
@@ -473,7 +457,7 @@ describe("JobsPage（PRD-03 §7）", () => {
     expect(await screen.findByText("客服规范")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "客服规范" })).toHaveAttribute(
       "href",
-      "/rag-admin/documents/doc1?returnTo=%2Frag-admin%2Fjobs%3Fstatus%3Dfailed",
+      "/admin/rag/documents/doc1?returnTo=%2Fadmin%2Frag%2Fjobs%3Fstatus%3Dfailed",
     );
     expect(screen.getByText(/PARSE_EMPTY_TEXT：未解析出文本/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
@@ -557,7 +541,6 @@ describe("SearchTestPage（PRD-03 §10）", () => {
             embedding_model: "local-hash-512",
             rerank_model: "provider-rerank",
             filters: {
-              scenario_id: null,
               data_type: null,
               published_only: true,
               document_ids: null,
@@ -737,7 +720,6 @@ describe("PublishReviewPage（PRD-03 §2 发布审核）", () => {
     title: "待审规范",
     uploader_name: "张老师",
     source_type: "standard",
-    scenario_ids: ["SCN-CUSTOMER-SERVICE-001"],
     data_types: ["text"],
     submitted_at: "2026-07-02T00:00:00Z",
   };

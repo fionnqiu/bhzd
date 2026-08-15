@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+import sqlite3
 import uuid
 from base64 import b64encode
 
@@ -465,19 +466,19 @@ def test_model_discovery_maps_provider_errors_without_exposing_upstream_text(adm
     assert raw_failure not in response.text
 
 
-def test_model_discovery_xunfei_reports_manual_entry_without_network(admin_client):
-    """The WebSocket protocols expose an explicit unsupported state instead of a guessed catalog."""
+def test_model_discovery_rejects_retired_protocol_without_network(admin_client):
+    """Retired protocols fail validation before any outbound model lookup."""
     response = admin_client.post(
         "/api/admin/providers/discover-models",
         json={
-            "protocol": "xunfei_spark",
-            "base_url": "https://spark.example.com",
-            "api_key": "xf-key:xf-secret",
+            "protocol": "legacy_ws",
+            "base_url": "https://legacy.example.com",
+            "api_key": "legacy-key",
         },
     )
 
-    assert response.status_code == 200, response.text
-    assert response.json() == {"supported": False, "models": []}
+    assert response.status_code == 400, response.text
+    assert response.json()["error"]["code"] == "INVALID_PROTOCOL"
 
 
 def test_credential_bearing_provider_helpers_require_csrf(app_and_admin):
@@ -735,14 +736,32 @@ def test_rag_settings_get_and_patch_with_audit(admin_client):
     defaults = resp.json()
     assert defaults["chunk_size"] == 500
     assert defaults["title_inherit"] is True  # 0/1 折成布尔
+    assert defaults["query_rewrite_enabled"] is False
+    assert defaults["temperature"] == 0.3
+    assert defaults["top_p"] == 0.9
+    assert "table_strategy" not in defaults  # retired setting stays DB-only for compatibility
+    assert "prompt_template" not in defaults
+    assert "require_manual_review" not in defaults
 
     resp = admin_client.patch(
-        "/api/admin/rag-settings", json={"chunk_size": 800, "top_k": 10, "score_threshold": 0.5}
+        "/api/admin/rag-settings",
+        json={
+            "chunk_size": 800,
+            "top_k": 10,
+            "score_threshold": 0.5,
+            "temperature": 0.2,
+            "top_p": 0.85,
+            "query_rewrite_enabled": True,
+        },
     )
     assert resp.status_code == 200, resp.text
     updated = resp.json()
     assert updated["chunk_size"] == 800
     assert updated["top_k"] == 10
+    assert updated["query_rewrite_enabled"] is True
+    assert updated["temperature"] == 0.2
+    assert updated["top_p"] == 0.85
+    assert "table_strategy" not in updated
 
     conn = _db()
     try:
@@ -761,15 +780,20 @@ def test_rag_settings_patch_range_validation(admin_client):
     assert admin_client.patch("/api/admin/rag-settings", json={"chunk_size": 5000}).status_code == 400
     assert admin_client.patch("/api/admin/rag-settings", json={"top_k": 0}).status_code == 400
     assert admin_client.patch("/api/admin/rag-settings", json={"score_threshold": 1.5}).status_code == 400
+    # Retired generation settings are rejected instead of silently persisted.
     assert admin_client.patch(
         "/api/admin/rag-settings", json={"refusal_policy": "always_answer"}
-    ).status_code == 400
+    ).status_code == 422
+    assert admin_client.patch("/api/admin/rag-settings", json={"temperature": 2.1}).status_code == 400
+    assert admin_client.patch("/api/admin/rag-settings", json={"top_p": -0.1}).status_code == 400
     # 重叠区不得大于等于切片长度（否则切片器死循环）
     assert admin_client.patch(
         "/api/admin/rag-settings", json={"chunk_size": 200, "chunk_overlap": 200}
     ).status_code == 400
     # 未知字段直接拒绝
     assert admin_client.patch("/api/admin/rag-settings", json={"unknown_field": 1}).status_code == 422
+    # Removed settings must not silently re-enter the management contract.
+    assert admin_client.patch("/api/admin/rag-settings", json={"table_strategy": "flatten"}).status_code == 422
 
 
 # ---------------------------------------------------------------- 用户与权限
@@ -800,6 +824,52 @@ def test_users_list_filter_and_patch_disable_revokes_sessions(app_and_admin):
     # 禁用动作写入审计
     resp = admin_client.get("/api/admin/audit-logs", params={"action": "user.update"})
     assert resp.json()["total"] >= 1
+
+
+def test_users_bulk_status_and_role_filtered_csv_export(app_and_admin):
+    """Bulk status changes stay audited and CSV export excludes credential material."""
+
+    _, admin_client, _ = app_and_admin
+    first_id = _insert_user("bulk-one@test.local", "批量一", "student", STUDENT_PASSWORD)
+    second_id = _insert_user("bulk-two@test.local", "=公式用户", "student", STUDENT_PASSWORD)
+
+    response = admin_client.patch(
+        "/api/admin/users/bulk-status",
+        json={"user_ids": [first_id, second_id], "status": "disabled"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["updated"] == 2
+    assert response.json()["skipped"] == 0
+
+    exported = admin_client.get(
+        "/api/admin/users/export.csv", params={"role": "student", "q": "bulk-"}
+    )
+    assert exported.status_code == 200
+    assert exported.headers["content-type"].startswith("text/csv")
+    assert "attachment" in exported.headers["content-disposition"]
+    assert "id,name,email,role,status,email_verified,created_at" in exported.text
+    assert "bulk-one@test.local" in exported.text
+    # Spreadsheet formula injection is neutralized and no password/hash field is exported.
+    assert "'=公式用户" in exported.text
+    assert "password_hash" not in exported.text
+
+    audit_rows = admin_client.get("/api/admin/audit-logs", params={"action": "user.update"})
+    assert audit_rows.json()["total"] >= 2
+
+
+def test_users_bulk_status_rejects_self_disable_without_partial_update(app_and_admin):
+    """A batch containing the current administrator is rejected before any row changes."""
+
+    _, admin_client, admin_id = app_and_admin
+    student_id = _insert_user("bulk-safe@test.local", "批量安全", "student", STUDENT_PASSWORD)
+    response = admin_client.patch(
+        "/api/admin/users/bulk",
+        json={"user_ids": [student_id, admin_id], "status": "disabled"},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "SELF_OPERATION_FORBIDDEN"
+    student = admin_client.get("/api/admin/users", params={"q": "bulk-safe@"}).json()["items"][0]
+    assert student["status"] == "active"
 
 
 def test_admin_cannot_disable_or_demote_self(app_and_admin):
@@ -870,10 +940,25 @@ def test_metrics_structure_and_honest_nulls(admin_client):
         "diagnostic_success_rate",
         "mastery_confirm_rate",
         "model_failure_rate_by_provider",
+        "login_success_today",
+        "login_failure_today",
+        "active_sessions",
+        "api_success_rate_24h",
+        "provider_latency_avg_ms",
     }
     assert set(body["metrics"].keys()) == expected_keys
-    # 空库：全部指标必须为 null 且 note 如实说明，不得编造数字
-    assert all(value is None for value in body["metrics"].values())
+    # Counts are honest zeroes in an empty database; rates remain null without samples.
+    # The admin fixture itself performs one successful login before this read.
+    assert body["metrics"]["login_success_today"] >= 1
+    assert body["metrics"]["login_failure_today"] == 0
+    assert body["metrics"]["active_sessions"] >= 1
+    assert body["metrics"]["api_success_rate_24h"] is None
+    assert body["metrics"]["provider_latency_avg_ms"] is None
+    assert all(
+        value is None
+        for name, value in body["metrics"].items()
+        if name not in {"login_success_today", "login_failure_today", "active_sessions"}
+    )
     assert "null" in body["note"]
 
 
@@ -905,3 +990,15 @@ def test_metrics_computed_from_real_data(admin_client):
     assert body["metrics"]["rag_retrieval_hit_rate"] == 0.5
     # 无数据的指标仍为 null
     assert body["metrics"]["mastery_confirm_rate"] is None
+
+
+def test_alerts_dashboard_degrades_when_optional_schema_is_unavailable(admin_client, monkeypatch):
+    """Security page remains usable while an older deployment is being migrated."""
+
+    def raise_schema_error(_conn):
+        raise sqlite3.OperationalError("no such table: optional_alert_source")
+
+    monkeypatch.setattr(admin, "evaluate_alerts", raise_schema_error)
+    response = admin_client.get("/api/admin/alerts")
+    assert response.status_code == 200, response.text
+    assert response.json()["alerts"] == []

@@ -33,10 +33,10 @@ def _seed_student_visible_resource(api, teacher_id: str) -> str:
         """
         INSERT INTO rag_documents
           (id, title, file_type, source_type, source_name, version, license_status,
-           data_types_json, scenario_ids_json, cap_ids_json, visibility, status,
+           data_types_json, cap_ids_json, visibility, status,
            created_by, created_at, updated_at, published_at)
         VALUES (?, '音频切分公开规范', 'md', 'teacher', '教师公开资料', 'v1', 'authorized',
-                '["audio"]', '[]', ?, 'student', 'published', ?, ?, ?, ?)
+                '["audio"]', ?, 'student', 'published', ?, ?, ?, ?)
         """,
         (document_id, json.dumps([CAP]), teacher_id, now, now, now),
     )
@@ -101,8 +101,8 @@ def _setup_class_with_analytics(api):
     )
     api.conn.execute(
         """
-        INSERT INTO mastery (user_id, cap_id, scenario_id, score, source, updated_at)
-        VALUES (?, ?, '', 0.35, 'exercise', ?)
+        INSERT INTO mastery (user_id, cap_id, score, source, updated_at)
+        VALUES (?, ?, 0.35, 'exercise', ?)
         """,
         (student["user_id"], CAP, now),
     )
@@ -162,9 +162,9 @@ def test_teacher_agent_uses_aggregate_only_data_and_publishes_task(api, tmp_db_p
         for item in payload["tool_calls"]
         if item["tool"] == "teacher.task_draft_preview"
     )
-    assert preview["draft"]["resources"] == [
-        {"type": "rag_document", "ref_id": resource_id, "title": "音频切分公开规范"}
-    ]
+    # Agent previews may cite retrieval context, but the task contract no
+    # longer exposes resource attachments for teacher/student assignment.
+    assert "resources" not in preview["draft"]
     assert preview["insights"]["weak_capabilities"][0]["avg_score"] == pytest.approx(0.35)
     confirmation = payload["confirmations"][0]
     assert confirmation["action_type"] == "teacher.task_publish"
@@ -207,6 +207,7 @@ def test_teacher_agent_uses_aggregate_only_data_and_publishes_task(api, tmp_db_p
     assert task["status"] == "draft"
     assert task["class_id"] == clazz["id"]
     assert task["user_id"] == teacher["user_id"]
+    assert task["resources_json"] == "[]"
 
     # Agent previews use reader-friendly description/criterion field names,
     # while the teacher task editor persists its canonical notes/key contract.
@@ -235,6 +236,7 @@ def test_teacher_agent_uses_aggregate_only_data_and_publishes_task(api, tmp_db_p
     assert detail_body["class_id"] == clazz["id"]
     assert detail_body["steps"] == expected_steps
     assert detail_body["rubric"] == expected_rubric
+    assert detail_body["resources"] == []
     assert api.conn.execute(
         "SELECT COUNT(*) AS count FROM learning_tasks WHERE parent_task_id = ?",
         (task["id"],),
@@ -254,6 +256,7 @@ def test_teacher_agent_uses_aggregate_only_data_and_publishes_task(api, tmp_db_p
     assert student_copy is not None
     assert student_copy["user_id"] == student["user_id"]
     assert student_copy["class_id"] == clazz["id"]
+    assert student_copy["resources_json"] == "[]"
     assert json.loads(student_copy["steps_json"]) == expected_steps
     assert json.loads(student_copy["rubric_json"]) == expected_rubric
 

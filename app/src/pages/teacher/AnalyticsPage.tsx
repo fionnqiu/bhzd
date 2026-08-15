@@ -33,7 +33,6 @@ import {
   TASK_SOURCE_OPTIONS,
   errMsg,
 } from "./utils";
-import type { GraphNode } from "../../api/types";
 
 /** 掌握度分数 → 热力色块背景（绿 120° → 红 0°，连续渐变，低饱和保证文字可读） */
 function heatColor(score: number): string {
@@ -50,17 +49,15 @@ export default function AnalyticsPage() {
   const [classError, setClassError] = useState<string | null>(null);
   const [classId, setClassId] = useState("");
   const [dataType, setDataType] = useState("");
-  const [scenarioId, setScenarioId] = useState("");
   const [source, setSource] = useState("");
   const [range, setRange] = useState("30d");
-  const [scenarios, setScenarios] = useState<GraphNode[]>([]);
 
   // ---- 班级聚合结果 ----
   const [data, setData] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 班级列表 + 场景词表（SCN 节点）挂载时拉一次
+  // 班级列表挂载时拉一次，后续分析请求复用已选班级。
   useEffect(() => {
     const controller = new AbortController();
     void api
@@ -74,16 +71,6 @@ export default function AnalyticsPage() {
       .catch((err) => {
         if (!controller.signal.aborted) setClassError(errMsg(err, "班级列表加载失败"));
       });
-    void api
-      .get<Paginated<GraphNode>>(
-        "/api/graph/nodes",
-        { type: "SCN", limit: 100 },
-        { signal: controller.signal },
-      )
-      .then((res) => {
-        if (!controller.signal.aborted) setScenarios(res.items);
-      })
-      .catch(() => undefined); // 场景筛选词表缺席时只少一个可选项，不阻断页面
     return () => controller.abort();
   }, []);
 
@@ -98,7 +85,6 @@ export default function AnalyticsPage() {
           {
             class_id: classId,
             data_type: dataType || undefined,
-            scenario_id: scenarioId || undefined,
             source: source || undefined,
             range,
           },
@@ -112,7 +98,7 @@ export default function AnalyticsPage() {
         if (!signal?.aborted) setLoading(false);
       }
     },
-    [classId, dataType, scenarioId, source, range],
+    [classId, dataType, source, range],
   );
 
   // 任一筛选变化即重新聚合（请求轻量，且教师调筛选是探索式操作）
@@ -210,13 +196,6 @@ export default function AnalyticsPage() {
               placeholder="全部数据类型"
               value={dataType}
               onChange={(e) => setDataType(e.target.value)}
-            />
-            <Select
-              aria-label="行业场景"
-              options={scenarios.map((s) => ({ value: s.id, label: s.label }))}
-              placeholder="全部场景"
-              value={scenarioId}
-              onChange={(e) => setScenarioId(e.target.value)}
             />
           </div>
           <div className="teacher-analytics-filter-row teacher-analytics-filter-row-secondary">
@@ -381,38 +360,6 @@ export default function AnalyticsPage() {
               )}
             </Card>
 
-            {/* 场景掌握度对比：分组横条（通用 + 各行业场景） */}
-            <Card title="场景掌握度对比">
-              {data.scenario_comparison.length === 0 ? (
-                <EmptyState
-                  title="暂无场景数据"
-                  hint="学生在场景任务中产生掌握度记录后将在此对比"
-                />
-              ) : (
-                <div className="flex flex-col gap-3">
-                  {data.scenario_comparison.map((scn) => (
-                    <div key={scn.scenario_id || "general"}>
-                      <div className="flex items-center justify-between mb-2">
-                        <span>{scn.scenario_name}</span>
-                        <span className="text-sm text-secondary">
-                          {Math.round(scn.avg_score * 100)}% · {scn.student_count} 人
-                        </span>
-                      </div>
-                      <ProgressBar
-                        value={scn.avg_score}
-                        tone={
-                          scn.avg_score < 0.6
-                            ? "danger"
-                            : scn.avg_score < 0.8
-                              ? "warning"
-                              : "success"
-                        }
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
           </div>
 
           {/* 教学干预建议：后端规则化生成（只引用真实数字），空态如实展示 */}

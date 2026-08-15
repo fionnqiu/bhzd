@@ -21,7 +21,16 @@ def _create_class(api, teacher, name="一班"):
 def _create_task(api, teacher, **overrides):
     body = {"title": "岗位任务：音频切割", "cap_ids": [CAP], "resources": [RES], "data_type": "audio"}
     body.update(overrides)
-    return api.client.post("/api/teacher/tasks", json=body, headers=teacher["headers"])
+    response = api.client.post("/api/teacher/tasks", json=body, headers=teacher["headers"])
+    if response.status_code == 201:
+        # P0-5 keeps the legacy column for reads, but every newly authored row
+        # starts with an empty resource projection even if an old client sends it.
+        row = api.conn.execute(
+            "SELECT resources_json FROM learning_tasks WHERE id = ?", (response.json()["id"],)
+        ).fetchone()
+        assert row is not None
+        assert row["resources_json"] == "[]"
+    return response
 
 
 def test_class_enroll_and_join_by_code(api):
@@ -144,8 +153,8 @@ def test_class_students_aggregates_task_mastery_and_activity_in_one_response(api
         ("2026-08-02T11:00:00+00:00", student_task["id"]),
     )
     api.conn.execute(
-        "INSERT INTO mastery (user_id, cap_id, scenario_id, score, source, updated_at) "
-        "VALUES (?, ?, '', 0.7, 'teacher_task', ?)",
+        "INSERT INTO mastery (user_id, cap_id, score, source, updated_at) "
+        "VALUES (?, ?, 0.7, 'teacher_task', ?)",
         (student["user_id"], CAP, "2026-08-02T12:00:00+00:00"),
     )
     api.conn.execute(
@@ -165,17 +174,21 @@ def test_class_students_aggregates_task_mastery_and_activity_in_one_response(api
 
 
 def test_task_validation_rules(api):
-    """PRD-02 §5.4：≥1 能力节点 + ≥1 来源资料；cap 必须存在于图谱。"""
+    """Teacher tasks require a real capability; resources are optional legacy data."""
     teacher = api.login_as("t-valid@test.local", role="teacher")
     no_caps = _create_task(api, teacher, cap_ids=[])
     assert no_caps.status_code == 400 and no_caps.json()["error"]["code"] == "CAPS_REQUIRED"
     no_res = _create_task(api, teacher, resources=[])
-    assert no_res.status_code == 400 and no_res.json()["error"]["code"] == "RESOURCES_REQUIRED"
+    assert no_res.status_code == 201
+    assert no_res.json()["resources"] == []
     bad_cap = _create_task(api, teacher, cap_ids=["CAP-NOPE-001"])
     assert bad_cap.status_code == 400 and "CAP-NOPE-001" in bad_cap.json()["error"]["message"]
     ok = _create_task(api, teacher)
     assert ok.status_code == 201, ok.text
     assert ok.json()["status"] == "draft"
+    assert api.conn.execute(
+        "SELECT resources_json FROM learning_tasks WHERE id = ?", (ok.json()["id"],)
+    ).fetchone()["resources_json"] == "[]"
 
 
 def test_publish_creates_student_copies(api):
@@ -207,6 +220,7 @@ def test_publish_creates_student_copies(api):
     assert row["parent_task_id"] == task["id"]
     assert row["teacher_id"] == teacher["user_id"]
     assert row["class_id"] == clazz["id"]
+    assert row["resources_json"] == "[]"
 
     # 审计已写发布记录
     audits = api.conn.execute(
@@ -240,11 +254,19 @@ def test_patch_published_task_bumps_version(api):
     assert body["version_bumped"] is True
     assert body["version"] == 2
     assert body["parent_task_id"] == task["id"]
+    assert body["resources"] == []
     # 学生副本还是旧标题
     copy = api.conn.execute(
         "SELECT * FROM learning_tasks WHERE parent_task_id = ?", (task["id"],)
     ).fetchone()
     assert copy["title"] == "岗位任务：音频切割"
+    assert copy["resources_json"] == "[]"
+    new_version = api.conn.execute(
+        "SELECT resources_json FROM learning_tasks WHERE parent_task_id = ? AND version = 2",
+        (task["id"],),
+    ).fetchone()
+    assert new_version is not None
+    assert new_version["resources_json"] == "[]"
     # 新版本原件出现在教师任务列表，旧版本原件保留
     mine = api.client.get("/api/teacher/tasks").json()
     assert mine["total"] == 2
@@ -261,8 +283,8 @@ def test_dashboard_omits_resource_review_and_rejects_teacher_review_access(api):
     api.act_as(teacher)
     # 学生一条薄弱掌握度；资源审核待办不再属于教师工作台。
     api.conn.execute(
-        "INSERT INTO mastery (user_id, cap_id, scenario_id, score, source, updated_at) "
-        "VALUES (?, ?, '', 0.3, 'exercise', '2026-07-01')",
+        "INSERT INTO mastery (user_id, cap_id, score, source, updated_at) "
+        "VALUES (?, ?, 0.3, 'exercise', '2026-07-01')",
         (student["user_id"], CAP),
     )
     api.conn.commit()
@@ -318,7 +340,6 @@ def test_system_admin_review_queue_returns_pending_documents_only(api):
                 "title": "待审核资料",
                 "uploader_name": "资料上传者",
                 "source_type": "enterprise",
-                "scenario_ids": [],
                 "data_types": [],
                 "submitted_at": reviewed_at,
             }
@@ -411,8 +432,8 @@ def test_analytics_sample_warning_and_heatmap(api):
     )
     api.act_as(teacher)
     api.conn.execute(
-        "INSERT INTO mastery (user_id, cap_id, scenario_id, score, source, updated_at) "
-        "VALUES (?, ?, '', 0.4, 'exercise', '2026-07-01')",
+        "INSERT INTO mastery (user_id, cap_id, score, source, updated_at) "
+        "VALUES (?, ?, 0.4, 'exercise', '2026-07-01')",
         (student["user_id"], CAP),
     )
     api.conn.commit()
@@ -425,8 +446,9 @@ def test_analytics_sample_warning_and_heatmap(api):
     assert body["heatmap"][0]["avg_score"] == pytest.approx(0.4)
     assert body["heatmap"][0]["weak_count"] == 1
     assert any("切割音频并对齐" in s for s in body["suggestions"])
-    for key in ("trend", "top_errors", "scenario_comparison"):
+    for key in ("trend", "top_errors"):
         assert key in body
+    assert "scenario_comparison" not in body
 
 
 def test_non_owner_teacher_forbidden(api):

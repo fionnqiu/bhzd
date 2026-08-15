@@ -22,6 +22,6 @@ globalThis.Request = class extends NativeRequest {
 
 afterEach(() => {
   cleanup();
-  // 组件可能写 localStorage（如场景选择），用例间必须隔离
+  // 组件可能写 localStorage；用例间必须隔离
   localStorage.clear();
 });

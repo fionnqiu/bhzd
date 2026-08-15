@@ -5,7 +5,7 @@ export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>
   "aria-label": string;
 }
 
-/** 纯图标按钮：表格行操作、弹窗/抽屉关闭等密集布局场景。 */
+/** 纯图标按钮：表格行操作、弹窗/抽屉关闭等密集布局。 */
 const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
   function IconButton({ className, children, ...rest }, ref) {
     return (

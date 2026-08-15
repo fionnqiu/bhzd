@@ -87,36 +87,36 @@ function renderWorkbenchShell(child = <></>) {
   );
 }
 
-/** Exercises the employee shell without importing a role-specific layout module. */
+/** Exercises the system-management RAG group without loading data-heavy pages. */
 function renderOperationsShell(compact = false) {
   stubViewport(compact);
   return render(
-    <MemoryRouter initialEntries={["/rag-admin/search-test"]}>
+    <MemoryRouter initialEntries={["/admin/rag/search-test"]}>
       <Routes>
         <Route
           element={
             <ShellLayout
-              portalKey="rag-admin"
-              portalName="RAG 知识库管理"
+              portalKey="admin"
+              portalName="系统管理"
               variant="operations-workbench"
               navItems={[
-                { to: "/rag-admin", label: "资料库", icon: Database, end: true, section: "资料管理" },
+                { to: "/admin/rag", label: "资料库", icon: Database, end: true, section: "RAG 知识库" },
                 {
-                  to: "/rag-admin/search-test",
+                  to: "/admin/rag/search-test",
                   label: "召回测试",
                   icon: SearchCheck,
-                  section: "检索与质量",
+                  section: "RAG 知识库",
                 },
               ]}
             />
           }
         >
           <Route
-            path="/rag-admin/search-test"
+            path="/admin/rag/search-test"
             element={<PageHeader title="召回测试" sub="验证知识库召回结果与排序质量" />}
           />
           <Route
-            path="/rag-admin"
+            path="/admin/rag"
             element={<PageHeader title="资料库" sub="管理资料与发布状态" />}
           />
         </Route>
@@ -216,9 +216,12 @@ describe("ShellLayout operations workbench navigation", () => {
       "/admin/users",
     );
     expect(within(navigation).queryByRole("link", { name: "用户权限" })).not.toBeInTheDocument();
+    // Obsolete group names must not leak into the unified system navigation.
+    expect(within(navigation).queryByText("核心配置")).not.toBeInTheDocument();
+    expect(within(navigation).queryByText("运维监控")).not.toBeInTheDocument();
   });
 
-  it("renders ungrouped navigation without a top bar or breadcrumb", async () => {
+  it("renders grouped operations navigation without a top bar or breadcrumb", async () => {
     renderOperationsShell();
 
     const shell = document.querySelector<HTMLElement>(".shell");
@@ -227,11 +230,12 @@ describe("ShellLayout operations workbench navigation", () => {
 
     expect(shell).toHaveAttribute("data-shell-variant", "operations-workbench");
     expect(sidebar).toHaveClass("operations-workbench-navigation");
-    expect(screen.queryByText("资料管理")).not.toBeInTheDocument();
-    expect(screen.queryByText("检索与质量")).not.toBeInTheDocument();
+    // Section labels keep dense operations navigation scannable without adding
+    // a second page-level navigation surface.
+    expect(screen.getByText("RAG 知识库")).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "当前位置" })).not.toBeInTheDocument();
     expect(screen.queryByRole("banner")).not.toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: "RAG 知识库管理" })).toHaveTextContent("召回测试");
+    expect(screen.getByRole("navigation", { name: "系统管理" })).toHaveTextContent("召回测试");
 
     fireEvent.click(collapseButton);
 

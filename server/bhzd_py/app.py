@@ -124,6 +124,17 @@ async def _lifespan(app: FastAPI):
         recovered_rag_jobs = rag_pipeline.recover_interrupted_jobs(conn)
         if recovered_rag_jobs:
             logger.warning("启动时重新排队中断的 RAG 任务: %d", recovered_rag_jobs)
+        # Content workers are detached from request lifecycles.  Reclaim rows
+        # left in ``generating`` after a process crash before this connection
+        # closes, then let the shared Agent loop finish them asynchronously.
+        from .tools.task_tools import recover_interrupted_task_content
+
+        recovered_content_tasks = recover_interrupted_task_content(conn)
+        if recovered_content_tasks:
+            logger.warning(
+                "startup recovered interrupted learning-content tasks: %d",
+                len(recovered_content_tasks),
+            )
         # Queue rows survive a process crash.  The bounded daemon below resumes
         # them after the lifespan connection is released, so 202 never depends
         # solely on the original BackgroundTasks worker remaining alive.

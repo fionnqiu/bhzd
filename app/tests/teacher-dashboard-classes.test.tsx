@@ -105,7 +105,6 @@ describe("DashboardPage（PRD-02 §3）", () => {
               title: "客服语音情感标注",
               goal: null,
               data_type: "audio",
-              scenario_id: null,
               cap_ids: ["CAP-1"],
               steps: [],
               resources: [],

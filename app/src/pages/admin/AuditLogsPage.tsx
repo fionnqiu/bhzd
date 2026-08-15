@@ -17,7 +17,9 @@ import { api } from "../../api/client";
 import type { AuditLog, Paginated } from "../../api/types";
 import {
   Card,
+  Button,
   DataTable,
+  Drawer,
   EmptyState,
   ErrorState,
   Input,
@@ -96,7 +98,7 @@ function diffLines(before: unknown, after: unknown, maxLines = 4): string[] {
   return lines;
 }
 
-/** 变更摘要单元格：diff 摘要 + 完整 JSON 折叠 */
+/** 变更摘要单元格：表格只保留短 diff，完整快照放进详情抽屉。 */
 function DiffCell({ log }: { log: AuditLog }) {
   if (log.before == null && log.after == null) return <span className="text-muted">—</span>;
   const lines = diffLines(log.before, log.after);
@@ -111,25 +113,76 @@ function DiffCell({ log }: { log: AuditLog }) {
       ) : (
         <span className="text-muted">（无字段级差异）</span>
       )}
-      <details className="mt-2">
-        <summary className="text-muted" style={{ cursor: "pointer" }}>
-          完整 JSON
-        </summary>
-        <pre
-          className="font-mono text-xs mt-2"
-          style={{
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-all",
-            background: "var(--color-surface-muted)",
-            padding: "var(--space-2)",
-            borderRadius: "var(--radius-sm)",
-            maxHeight: 220,
-            overflowY: "auto",
-          }}
-        >
-          {JSON.stringify({ before: log.before, after: log.after }, null, 2)}
-        </pre>
-      </details>
+      <span className="text-muted mt-1" style={{ display: "block" }}>
+        选择“查看详情”查看完整 JSON
+      </span>
+    </div>
+  );
+}
+
+function jsonSnapshot(value: unknown): string {
+  if (value == null) return "无快照";
+  try {
+    return JSON.stringify(value, null, 2) ?? "无快照";
+  } catch {
+    // Defensive fallback for malformed legacy values; the drawer must remain usable.
+    return String(value);
+  }
+}
+
+/** Full before/after snapshots are deliberately side-by-side for audit comparison. */
+function AuditDetail({ log }: { log: AuditLog }) {
+  const lines = diffLines(log.before, log.after, 100);
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <h3 className="text-sm mb-2">变更前（before）</h3>
+          <pre
+            className="font-mono text-xs"
+            style={{
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              background: "var(--color-surface-muted)",
+              padding: "var(--space-3)",
+              borderRadius: "var(--radius-sm)",
+              maxHeight: 300,
+              overflowY: "auto",
+            }}
+          >
+            {jsonSnapshot(log.before)}
+          </pre>
+        </div>
+        <div>
+          <h3 className="text-sm mb-2">变更后（after）</h3>
+          <pre
+            className="font-mono text-xs"
+            style={{
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              background: "var(--color-surface-muted)",
+              padding: "var(--space-3)",
+              borderRadius: "var(--radius-sm)",
+              maxHeight: 300,
+              overflowY: "auto",
+            }}
+          >
+            {jsonSnapshot(log.after)}
+          </pre>
+        </div>
+      </div>
+      <div>
+        <h3 className="text-sm mb-2">字段差异</h3>
+        {lines.length > 0 ? (
+          lines.map((line) => (
+            <div key={line} className="font-mono text-xs" style={{ wordBreak: "break-all" }}>
+              {line}
+            </div>
+          ))
+        ) : (
+          <span className="text-sm text-muted">没有可比较的字段差异。</span>
+        )}
+      </div>
     </div>
   );
 }
@@ -145,6 +198,7 @@ export default function AuditLogsPage() {
   const [toTime, setToTime] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -239,6 +293,21 @@ export default function AuditLogsPage() {
         </span>
       ),
     },
+    {
+      key: "details",
+      title: "详情",
+      width: "110px",
+      render: (log) => (
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-label={`查看审计详情：${log.action}`}
+          onClick={() => setSelectedLog(log)}
+        >
+          查看详情
+        </Button>
+      ),
+    },
   ];
 
   return (
@@ -303,6 +372,35 @@ export default function AuditLogsPage() {
         </Card>
       )}
       <p className="text-xs text-muted mt-2">审计日志不允许删除（PRD-06 §12.1）；动作清单为系统内置动作的常用子集。</p>
+      <Drawer
+        open={selectedLog !== null}
+        title={selectedLog ? `审计详情：${selectedLog.action}` : "审计详情"}
+        onClose={() => setSelectedLog(null)}
+      >
+        {selectedLog ? (
+          <>
+            <dl className="grid grid-cols-2 gap-3 mb-4 text-sm">
+              <div>
+                <dt className="text-muted">时间</dt>
+                <dd>{fmtTime(selectedLog.created_at)}</dd>
+              </div>
+              <div>
+                <dt className="text-muted">操作人</dt>
+                <dd>{selectedLog.actor_id ?? "系统"}</dd>
+              </div>
+              <div>
+                <dt className="text-muted">目标</dt>
+                <dd>{selectedLog.target_type ?? "—"}{selectedLog.target_id ? ` · ${selectedLog.target_id}` : ""}</dd>
+              </div>
+              <div>
+                <dt className="text-muted">来源</dt>
+                <dd>{selectedLog.ip ?? "—"}</dd>
+              </div>
+            </dl>
+            <AuditDetail log={selectedLog} />
+          </>
+        ) : null}
+      </Drawer>
     </div>
   );
 }

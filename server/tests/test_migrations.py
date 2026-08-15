@@ -14,7 +14,9 @@ EXPECTED_MIGRATIONS = [
     "008_learning_social.sql", "009_notifications.sql", "010_indexes.sql",
     "011_conversation_memory.sql", "012_private_layered_memory.sql",
     "013_teacher_agent_scope.sql", "014_admin_alert_ignores.sql",
-    "015_message_attachments.sql",
+    "015_message_attachments.sql", "016_remove_scenarios.sql",
+    "017_provider_protocol_grader.sql", "018_task_learning_content.sql",
+    "019_query_rewrite_setting.sql", "020_rag_sampling_settings.sql",
 ]
 
 EXPECTED_TABLES = {
@@ -29,6 +31,7 @@ EXPECTED_TABLES = {
     "favorites", "diagnostic_cache", "notifications",
     "conversation_memory_chunks", "private_memory_items", "private_memory_sources",
     "private_memory_fts", "admin_alert_ignores", "message_attachments",
+    "task_knowledge_points", "task_exercises", "task_exercise_submissions",
 }
 
 # Each plan mirrors a production predicate and ordering requirement.  Checking the
@@ -150,6 +153,27 @@ def test_fresh_database_applies_all_migrations(tmp_db_path):
         rows = conn.execute("SELECT name, sha256 FROM schema_migrations").fetchall()
         assert len(rows) == len(EXPECTED_MIGRATIONS)
         assert all(len(row["sha256"]) == 64 for row in rows)
+        provider_columns = {
+            row["name"]: row["type"]
+            for row in conn.execute("PRAGMA table_info(provider_configs)")
+        }
+        assert "protocol" in provider_columns and "role" in provider_columns
+        learning_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(learning_tasks)")
+        }
+        assert {"content_status", "content_generated_at"} <= learning_columns
+        rag_columns = {row["name"] for row in conn.execute("PRAGMA table_info(rag_settings)")}
+        # Sampling controls are persisted independently of provider-specific
+        # credentials so RAG tuning can be audited and replayed.
+        assert {"query_rewrite_enabled", "temperature", "top_p"} <= rag_columns
+        # The forward migration must expose the new role/protocol contract.
+        conn.execute(
+            "INSERT INTO provider_configs "
+            "(id,name,protocol,base_url,model,api_key_encrypted,role,created_at,updated_at) "
+            "VALUES ('migration-provider','test','responses','https://example.test/v1',"
+            "'model','opaque','grader','now','now')"
+        )
+        conn.rollback()
         # 008 的 CSRF 稳定化列：两张会话表都应有可空的 csrf_token 列
         for table in ("user_sessions", "admin_sessions"):
             cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
@@ -191,6 +215,64 @@ def test_teacher_agent_scope_rejects_unbound_teacher_rows(tmp_db_path):
         conn.close()
 
 
+def test_provider_protocol_migration_preserves_legacy_row_data(tmp_path):
+    """017 retires legacy protocols without losing provider metadata or secrets."""
+
+    legacy_migrations = tmp_path / "provider_migrations"
+    shutil.copytree(MIGRATIONS_DIR, legacy_migrations)
+    (legacy_migrations / "017_provider_protocol_grader.sql").unlink()
+    (legacy_migrations / "018_task_learning_content.sql").unlink()
+    (legacy_migrations / "019_query_rewrite_setting.sql").unlink()
+    # Keep this fixture anchored before the later RAG sampling migration; the
+    # test is specifically exercising the pre-017 provider protocol boundary.
+    (legacy_migrations / "020_rag_sampling_settings.sql").unlink()
+    database_path = str(tmp_path / "provider-migration.sqlite")
+    conn = connect(database_path)
+    try:
+        assert apply_migrations(conn, migrations_dir=legacy_migrations)[-1] == "016_remove_scenarios.sql"
+        original = {
+            "id": "legacy-provider",
+            "name": "legacy gateway",
+            "protocol": "xunfei_spark",
+            "base_url": "https://legacy.example.test",
+            "model": "generalv3",
+            "api_key_encrypted": "encrypted-key",
+            "role": "fallback",
+            "enabled": 1,
+            "timeout_seconds": 17.5,
+            "extra_json": '{"region":"cn"}',
+            "last_test_json": '{"ok":true}',
+            "created_at": "2026-08-01T00:00:00+00:00",
+            "updated_at": "2026-08-02T00:00:00+00:00",
+        }
+        conn.execute(
+            "INSERT INTO provider_configs "
+            "(id, name, protocol, base_url, model, api_key_encrypted, role, enabled, "
+            "timeout_seconds, extra_json, last_test_json, created_at, updated_at) "
+            "VALUES (:id, :name, :protocol, :base_url, :model, :api_key_encrypted, :role, "
+            ":enabled, :timeout_seconds, :extra_json, :last_test_json, :created_at, :updated_at)",
+            original,
+        )
+        conn.commit()
+
+        shutil.copy2(MIGRATIONS_DIR / "017_provider_protocol_grader.sql", legacy_migrations)
+        assert apply_migrations(conn, migrations_dir=legacy_migrations) == [
+            "017_provider_protocol_grader.sql"
+        ]
+
+        migrated = dict(
+            conn.execute(
+                "SELECT id, name, protocol, base_url, model, api_key_encrypted, role, enabled, "
+                "timeout_seconds, extra_json, last_test_json, created_at, updated_at "
+                "FROM provider_configs WHERE id = ?",
+                (original["id"],),
+            ).fetchone()
+        )
+        assert migrated == {**original, "protocol": "chat_completions", "enabled": 0}
+    finally:
+        conn.close()
+
+
 def test_hot_path_indexes_match_production_query_plans(tmp_db_path):
     conn = connect(tmp_db_path)
     try:
@@ -221,6 +303,63 @@ def test_rerun_is_idempotent(tmp_db_path):
     try:
         apply_migrations(conn)
         assert apply_migrations(conn) == []  # 第二次没有新迁移
+    finally:
+        conn.close()
+
+
+def test_scenario_removal_migration_unifies_mastery_and_drops_business_columns(tmp_path):
+    """016 removes only the business dimension and deterministically merges mastery rows."""
+
+    legacy_migrations = tmp_path / "legacy_migrations"
+    shutil.copytree(MIGRATIONS_DIR, legacy_migrations)
+    (legacy_migrations / "016_remove_scenarios.sql").unlink()
+    (legacy_migrations / "017_provider_protocol_grader.sql").unlink()
+    (legacy_migrations / "018_task_learning_content.sql").unlink()
+    (legacy_migrations / "019_query_rewrite_setting.sql").unlink()
+    # The scenario migration test must stop at 015 so it can seed the legacy
+    # scenario column layout before applying 016 in isolation.
+    (legacy_migrations / "020_rag_sampling_settings.sql").unlink()
+    database_path = str(tmp_path / "scenario-removal.sqlite")
+    conn = connect(database_path)
+    try:
+        assert apply_migrations(conn, migrations_dir=legacy_migrations)[-1] == "015_message_attachments.sql"
+        now = "2026-08-15T00:00:00+00:00"
+        conn.execute(
+            "INSERT INTO users (id, email, name, role, status, created_at, updated_at) "
+            "VALUES ('merge-user', 'merge@test.local', '合并测试', 'student', 'active', ?, ?)",
+            (now, now),
+        )
+        conn.executemany(
+            "INSERT INTO mastery (user_id, cap_id, scenario_id, score, source, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                ("merge-user", "cap-1", "SCN-LOW", 0.4, "old", "2026-08-14T00:00:00+00:00"),
+                ("merge-user", "cap-1", "SCN-HIGH", 0.9, "high", "2026-08-13T00:00:00+00:00"),
+                ("merge-user", "cap-1", "", 0.9, "latest", "2026-08-15T00:00:00+00:00"),
+            ],
+        )
+        conn.commit()
+        shutil.copy2(MIGRATIONS_DIR / "016_remove_scenarios.sql", legacy_migrations)
+        applied = apply_migrations(conn, migrations_dir=legacy_migrations)
+        assert applied == ["016_remove_scenarios.sql"]
+        for table, column in (
+            ("conversations", "scenario_id"),
+            ("agent_runs", "scenario_id"),
+            ("learning_tasks", "scenario_id"),
+            ("diagnostic_summaries", "scenario_id"),
+            ("rag_documents", "scenario_ids_json"),
+            ("mastery_events", "scenario_id"),
+        ):
+            columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+            assert column not in columns
+        mastery_columns = [row["name"] for row in conn.execute("PRAGMA table_info(mastery)")]
+        assert mastery_columns == ["user_id", "cap_id", "score", "source", "updated_at"]
+        merged = conn.execute(
+            "SELECT score, source, updated_at FROM mastery WHERE user_id = ? AND cap_id = ?",
+            ("merge-user", "cap-1"),
+        ).fetchone()
+        assert tuple(merged) == (0.9, "latest", "2026-08-15T00:00:00+00:00")
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
     finally:
         conn.close()
 

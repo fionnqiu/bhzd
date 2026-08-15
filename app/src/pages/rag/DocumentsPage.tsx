@@ -1,15 +1,14 @@
 /**
- * 资料库（/rag-admin）——资料列表/筛选/按状态操作（PRD-03 §4）。
+ * 系统管理 · 资料库（/admin/rag）——资料列表/筛选/按状态操作（PRD-03 §4）。
  *
  * 实现要点（为什么）：
- * - 审核状态/索引状态是 PRD 筛选区的业务视角，后端用 review_status /
- *   index_status 两个查询参数映射到底层单一 status（rag_admin.py list_documents），
- *   前端不做二次过滤，保证分页 total 正确。
+ * - 处理状态直接来自后端 pipeline；上传完成后资料自动发布，页面不再提供
+ *   送审、审核状态或台账入口，避免旧审核流程被重新激活。
  * - 更新时间排序：后端只支持"新→旧"，"旧→新"通过 total 换算从尾部取页再倒序，
  *   保证全局顺序正确而不是只倒当前页。
  * - 已发布资料不显示删除按钮（PRD-06 §5.2 只能归档）；删除 409 时透传后端
- *   中文提示（兜底并发场景：列表加载后他人发布了该资料）。
- * - 批量操作（PRD-03 §7 验收）：复选框跨页选择 + 批量送审/重新索引/归档。
+ *   中文提示（兜底并发情况：列表加载后他人发布了该资料）。
+ * - 批量操作保留重新索引/归档；
  *   资格提示只做引导，守卫以后端逐项判定为准（批量端点允许部分成功），
  *   失败项的中文原因在结果弹窗逐项透传。
  */
@@ -17,7 +16,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "../../api/client";
-import type { Paginated, RagDocument } from "../../api/types";
+import type { Paginated, RagDocument, RagJob } from "../../api/types";
 import {
   Button,
   ConfirmDialog,
@@ -29,28 +28,22 @@ import {
   Pagination,
   SearchInput,
   Select,
+  StatusBadge,
   Tag,
   useToast,
   type Column,
 } from "../../components";
 import {
   DATA_TYPE_OPTIONS,
+  clamp,
   errText,
   fmtTime,
   IndexStatusBadge,
-  ReviewStatusBadge,
   safeRagReturnPath,
-  SCENARIO_OPTIONS,
   SOURCE_TYPE_LABELS,
 } from "./ragShared";
 
 const DEFAULT_LIMIT = 20;
-
-const REVIEW_FILTER_OPTIONS = [
-  { value: "pending", label: "待审核" },
-  { value: "approved", label: "已通过" },
-  { value: "rejected", label: "已驳回" },
-];
 
 const INDEX_FILTER_OPTIONS = [
   { value: "indexed", label: "已索引" },
@@ -60,7 +53,7 @@ const INDEX_FILTER_OPTIONS = [
 /* ---------------------------------------------------------------- 批量操作 */
 
 /** 批量动作（与后端 BatchBody.action 一一对应；rag_admin.py batch_documents） */
-type BatchAction = "submit_review" | "reindex" | "archive";
+type BatchAction = "reindex" | "archive";
 
 /** 批量结果项（POST /api/rag/documents/batch 响应；允许部分成功，失败项带守卫原因） */
 interface BatchResultItem {
@@ -75,12 +68,6 @@ const BATCH_META: Record<
   BatchAction,
   { label: string; confirmText: string; danger?: boolean; describe: (n: number) => string }
 > = {
-  submit_review: {
-    label: "批量送审",
-    confirmText: "确认送审",
-    describe: (n) =>
-      `将对已选 ${n} 项资料提交送审，进入发布审核队列（审核通过并发布后学生端才可召回）。仅「已索引 / 已切片」状态的资料可送审，不满足条件的项由后端逐项返回失败原因，不影响其余项执行。`,
-  },
   reindex: {
     label: "批量重新索引",
     confirmText: "确认重建",
@@ -155,11 +142,9 @@ export default function DocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // 筛选条件（PRD-03 §4.1 筛选区：数据类型/行业场景/审核状态/索引状态/更新时间）
+  // 筛选条件：数据类型、处理/索引状态与更新时间；审核 is no longer an active workflow.
   const [q, setQ] = useState("");
   const [dataType, setDataType] = useState("");
-  const [scenarioId, setScenarioId] = useState("");
-  const [reviewStatus, setReviewStatus] = useState("");
   const [indexStatus, setIndexStatus] = useState("");
   const [sortAsc, setSortAsc] = useState(false);
 
@@ -183,8 +168,6 @@ export default function DocumentsPage() {
     const query = {
       limit,
       data_type: dataType || undefined,
-      scenario_id: scenarioId || undefined,
-      review_status: reviewStatus || undefined,
       index_status: indexStatus || undefined,
       q: q.trim() || undefined,
     };
@@ -225,7 +208,7 @@ export default function DocumentsPage() {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [offset, limit, dataType, scenarioId, reviewStatus, indexStatus, q, sortAsc]);
+  }, [offset, limit, dataType, indexStatus, q, sortAsc]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -239,7 +222,7 @@ export default function DocumentsPage() {
     setOffset(0);
   };
 
-  /** 简单动作（送审/重新索引）：POST → 提示 → 刷新；后端中文错误原样透传 */
+  /** 简单运营动作：POST → 提示 → 刷新；后端中文错误原样透传。 */
   const runAction = async (doc: RagDocument, path: string, okMsg: string) => {
     setBusyId(doc.id);
     try {
@@ -260,7 +243,7 @@ export default function DocumentsPage() {
   const retryDocument = async (doc: RagDocument) => {
     setBusyId(doc.id);
     try {
-      const jobs = await api.get<Paginated<{ id: string }>>("/api/rag/jobs", {
+      const jobs = await api.get<Paginated<RagJob>>("/api/rag/jobs", {
         document_id: doc.id,
         status: "failed",
         limit: 1,
@@ -335,28 +318,6 @@ export default function DocumentsPage() {
   const rowActions = (doc: RagDocument) => {
     const busy = busyId === doc.id;
     const buttons: React.ReactNode[] = [];
-    if (doc.status === "indexed" || doc.status === "chunked") {
-      buttons.push(
-        <Button
-          key="submit"
-          size="sm"
-          variant="secondary"
-          loading={busy}
-          onClick={() =>
-            void runAction(doc, `/api/rag/documents/${doc.id}/submit-review`, "已送审，等待发布审核")
-          }
-        >
-          送审
-        </Button>,
-      );
-    }
-    if (doc.status === "review_pending") {
-      buttons.push(
-        <Link key="review" to="/rag-admin/publish" className="btn btn-secondary btn-sm">
-          发布审核
-        </Link>,
-      );
-    }
     if (doc.status === "indexed" || doc.status === "published") {
       buttons.push(
         <Button
@@ -434,7 +395,7 @@ export default function DocumentsPage() {
       title: "标题",
       render: (doc) => (
         <Link
-          to={`/rag-admin/documents/${doc.id}?returnTo=${encodeURIComponent(returnTo)}`}
+          to={`/admin/rag/documents/${doc.id}?returnTo=${encodeURIComponent(returnTo)}`}
           state={{ returnTo }}
         >
           {doc.title}
@@ -458,16 +419,27 @@ export default function DocumentsPage() {
       ),
     },
     {
+      key: "processing_status",
+      title: "处理状态",
+      width: "150px",
+      // The list endpoint exposes the document's durable pipeline state, not a live job join.
+      // Keep that state visible here so an upload can be followed without opening the legacy queue.
+      render: (doc) => (
+        <div className="flex items-center gap-1" style={{ flexWrap: "wrap" }}>
+          <StatusBadge status={doc.status} />
+          {doc.status === "failed" && (doc.error_message || doc.error_code) ? (
+            <span className="text-xs text-danger" title={doc.error_message ?? doc.error_code ?? "处理失败"}>
+              {clamp(doc.error_message ?? doc.error_code ?? "处理失败", 40)}
+            </span>
+          ) : null}
+        </div>
+      ),
+    },
+    {
       key: "chunk_count",
       title: "切片数",
       width: "80px",
       render: (doc) => doc.chunk_count ?? "—",
-    },
-    {
-      key: "review",
-      title: "审核状态",
-      width: "100px",
-      render: (doc) => <ReviewStatusBadge status={doc.status} />,
     },
     {
       key: "index",
@@ -488,13 +460,13 @@ export default function DocumentsPage() {
     <div>
       <PageHeader
         title="RAG 资料库"
-        sub="管理知识库资料的全生命周期：上传、处理、审核、发布、归档"
+        sub="管理知识库资料的全生命周期：上传、解析、切片、索引、归档"
         actions={
           <>
-            <Link to="/rag-admin/upload" className="btn btn-primary">
+            <Link to="/admin/rag/upload" className="btn btn-primary">
               上传资料
             </Link>
-            <Link to="/rag-admin/search-test" className="btn btn-secondary">
+            <Link to="/admin/rag/search-test" className="btn btn-secondary">
               召回测试
             </Link>
           </>
@@ -518,23 +490,6 @@ export default function DocumentsPage() {
             onChange={(e) => resetAnd(() => setDataType(e.target.value))}
             options={[...DATA_TYPE_OPTIONS]}
             placeholder="全部数据类型"
-          />
-          <Select
-            aria-label="行业场景"
-            value={scenarioId}
-            onChange={(e) => resetAnd(() => setScenarioId(e.target.value))}
-            options={SCENARIO_OPTIONS.filter((s) => s.id !== "").map((s) => ({
-              value: s.id,
-              label: s.name,
-            }))}
-            placeholder="全部行业场景"
-          />
-          <Select
-            aria-label="审核状态"
-            value={reviewStatus}
-            onChange={(e) => resetAnd(() => setReviewStatus(e.target.value))}
-            options={REVIEW_FILTER_OPTIONS}
-            placeholder="全部审核状态"
           />
           <Select
             aria-label="索引状态"
@@ -564,9 +519,6 @@ export default function DocumentsPage() {
             <div className="card card-padded mb-4">
               <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
                 <strong>已选 {selected.length} 项</strong>
-                <Button size="sm" onClick={() => setBatchAction("submit_review")}>
-                  批量送审
-                </Button>
                 <Button size="sm" variant="secondary" onClick={() => setBatchAction("reindex")}>
                   批量重新索引
                 </Button>
@@ -578,7 +530,7 @@ export default function DocumentsPage() {
                 </Button>
               </div>
               <p className="text-xs text-muted mt-2">
-                状态提示：仅「已索引 / 已切片」可送审；「已归档」不可重建索引；重复归档会被拒绝。
+                状态提示：上传资料会自动完成解析、切片、索引并发布；「已归档」不可重建索引。
                 不满足条件的项不会使整单失败——后端逐项返回原因（允许部分成功）。
               </p>
             </div>
@@ -591,9 +543,9 @@ export default function DocumentsPage() {
             empty={
               <EmptyState
                 title="暂无资料"
-                hint="上传第一份教学资料，经审核发布后学生端才能召回"
+                hint="上传第一份教学资料，处理完成后学生端即可召回"
                 action={
-                  <Link to="/rag-admin/upload" className="btn btn-primary">
+                  <Link to="/admin/rag/upload" className="btn btn-primary">
                     上传资料
                   </Link>
                 }

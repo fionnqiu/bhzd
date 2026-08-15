@@ -2,7 +2,7 @@
  * 中部对话流（PRD-01 §3.2/§3.5）。
  *
  * 渲染顺序 = 学生感知顺序：受控处理记录 → 消息气泡 → 嵌入工具卡
- * → 场景切换建议 → 失败块（中文原因 + 重试）。处理记录只承载经过
+ * → 失败块（中文原因 + 重试）。处理记录只承载经过
  * 脱敏的阶段和工具摘要，不能回流模型推理、提示词或原始工具载荷。
  * 欢迎态不在此处——空白态由页面直接渲染 WelcomeState（有消息才算"对话中"）。
  */
@@ -18,10 +18,8 @@ import RightRail from "./RightRail";
 
 export interface ChatStreamProps {
   run: CockpitRun;
-  /** 下一步建议"继续提问"→ 聚焦输入框 */
+  /** 下一步建议“继续提问”→ 聚焦输入框 */
   onFocusComposer: () => void;
-  /** 场景切换建议确认（PRD-06 §7.3：用户点击才切，绝不自动切） */
-  onAcceptSuggestion: (scenarioId: string) => void;
 }
 
 export interface ConversationInfoBarProps {
@@ -57,7 +55,10 @@ function pageScrollRegion(anchor: HTMLElement | null): HTMLElement | null {
   return document.scrollingElement instanceof HTMLElement ? document.scrollingElement : null;
 }
 
-export default function ChatStream({ run, onFocusComposer, onAcceptSuggestion }: ChatStreamProps) {
+export default function ChatStream({
+  run,
+  onFocusComposer,
+}: ChatStreamProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const followBottomRef = useRef(true);
 
@@ -100,7 +101,6 @@ export default function ChatStream({ run, onFocusComposer, onAcceptSuggestion }:
     run.reconciledActivity,
     run.status,
     run.streamRecovery,
-    run.suggestion,
   ]);
 
   // RAG execution remains available to the backend and citation panel, but its
@@ -201,26 +201,6 @@ export default function ChatStream({ run, onFocusComposer, onAcceptSuggestion }:
               </Button>
               <Button size="sm" variant="ghost" onClick={onFocusComposer}>
                 修改后再发
-              </Button>
-            </div>
-          </Card>
-        ) : null}
-
-        {run.suggestion ? (
-          <Card title="场景建议" className="scenario-hint" data-testid="scenario-suggestion">
-            <p>{run.suggestion.message}</p>
-            <div className="flex gap-2 mt-2">
-              <Button
-                size="sm"
-                onClick={() => {
-                  onAcceptSuggestion(run.suggestion!.suggested_scenario_id);
-                  run.dismissSuggestion();
-                }}
-              >
-                切换到该场景
-              </Button>
-              <Button size="sm" variant="ghost" onClick={run.dismissSuggestion}>
-                暂不切换
               </Button>
             </div>
           </Card>

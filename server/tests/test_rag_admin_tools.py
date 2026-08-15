@@ -113,7 +113,6 @@ def test_system_admin_can_apply_rag_document_creation(db, system_admin):
                 "source_name": "测试标准库",
                 "version": "v1",
                 "data_types": ["text"],
-                "scenario_ids": ["SCN-TEST"],
             },
         )
     )

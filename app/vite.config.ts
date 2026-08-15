@@ -40,6 +40,9 @@ export default defineConfig({
     },
   },
   server: {
+    // The temporary SSH tunnel preserves its public Host header. Allow only this
+    // assigned hostname so Vite's DNS-rebinding protection stays enabled locally.
+    allowedHosts: ["e98ee1a6f47fd3.lhr.life"],
     fs: {
       allow: [appRoot, dataRoot],
     },

@@ -25,7 +25,6 @@ from bhzd_py.routers.notifications import router as notifications_router
 from bhzd_py.security import generate_token, hash_token
 
 CAP = "CAP-AUD-SEGMENT-ALIGN-001"
-SCN = "SCN-CUSTOMER-SERVICE-001"
 RES = {"type": "teaching_unit", "ref_id": "TU-AUDIO-SEGMENTATION-ALIGNMENT-001", "title": "切割话语并对齐文本时间戳"}
 
 
@@ -80,7 +79,15 @@ def _create_task(api, teacher, **overrides) -> dict:
     body.update(overrides)
     resp = api.client.post("/api/teacher/tasks", json=body, headers=teacher["headers"])
     assert resp.status_code == 201, resp.text
-    return resp.json()
+    task = resp.json()
+    # New teacher-authored rows retain the legacy column for compatibility but
+    # persist no resource association, regardless of an old client payload.
+    row = api.conn.execute(
+        "SELECT resources_json FROM learning_tasks WHERE id = ?", (task["id"],)
+    ).fetchone()
+    assert row is not None
+    assert row["resources_json"] == "[]"
+    return task
 
 
 def _notifications_of(api, user_id: str) -> list[dict]:
@@ -348,15 +355,14 @@ def _seed_published_doc(api, uploader_id: str) -> str:
         """
         INSERT INTO rag_documents
           (id, title, file_type, source_type, source_name, version, license_status,
-           data_types_json, scenario_ids_json, cap_ids_json, visibility, status,
+           data_types_json, cap_ids_json, visibility, status,
            created_by, created_at, updated_at, published_at)
         VALUES (?, '客服语音情感标注规范', 'md', 'standard', '赛项组委会', 'v1', 'authorized',
-                ?, ?, ?, 'student', 'published', ?, ?, ?, ?)
+                ?, ?, 'student', 'published', ?, ?, ?, ?)
         """,
         (
             doc_id,
             json.dumps(["audio"]),
-            json.dumps([SCN]),
             json.dumps([CAP]),
             uploader_id,
             now, now, now,
@@ -392,14 +398,16 @@ def test_generate_task_card_offline(api):
     assert draft["title"]
     assert draft["goal"]
     assert draft["data_type"] == "audio"  # intents 识别结果
-    assert draft["scenario_id"] == SCN
+    assert "scenario_id" not in draft
     assert draft["cap_ids"], "cap_ids 不能为空"
     assert draft["caps"][0]["cap_name"]
     assert len(draft["steps"]) >= 3
     assert len(draft["rubric"]) == 3
     assert draft["citations"], "已发布资料命中时 citations 不能为空"
     assert draft["citations"][0]["document_id"] == doc_id
-    assert draft["resources"][0]["citation"]
+    # Source hits remain as explanatory citations, but generated task drafts
+    # no longer carry assignable resource attachments.
+    assert "resources" not in draft
     assert draft["sources_note"]
     assert draft["llm_used"] is False  # 测试环境无 provider，走模板降级
     after = api.conn.execute("SELECT COUNT(*) AS n FROM learning_tasks").fetchone()["n"]
@@ -422,14 +430,9 @@ def test_generate_task_card_offline(api):
 def _seed_student_learning(api, student_id: str) -> None:
     now = db_module.utc_now_iso()
     api.conn.execute(
-        "INSERT INTO mastery (user_id, cap_id, scenario_id, score, source, updated_at) "
-        "VALUES (?, ?, '', 0.45, 'exercise', ?)",
+        "INSERT INTO mastery (user_id, cap_id, score, source, updated_at) "
+        "VALUES (?, ?, 0.45, 'exercise', ?)",
         (student_id, CAP, now),
-    )
-    api.conn.execute(
-        "INSERT INTO mastery (user_id, cap_id, scenario_id, score, source, updated_at) "
-        "VALUES (?, ?, ?, 0.7, 'exercise', ?)",
-        (student_id, CAP, SCN, now),
     )
     task_id = uuid.uuid4().hex
     api.conn.execute(
@@ -444,8 +447,8 @@ def _seed_student_learning(api, student_id: str) -> None:
         (uuid.uuid4().hex, task_id, student_id, now),
     )
     api.conn.execute(
-        "INSERT INTO mastery_events (id, user_id, cap_id, scenario_id, old_score, new_score, source, created_at) "
-        "VALUES (?, ?, ?, '', 0.3, 0.45, 'exercise', ?)",
+        "INSERT INTO mastery_events (id, user_id, cap_id, old_score, new_score, source, created_at) "
+        "VALUES (?, ?, ?, 0.3, 0.45, 'exercise', ?)",
         (uuid.uuid4().hex, student_id, CAP, now),
     )
     api.conn.commit()
@@ -464,10 +467,11 @@ def test_student_analytics_detail(api):
     resp = api.client.get(url, params={"class_id": clazz["id"]})
     assert resp.status_code == 200, resp.text
     payload = resp.json()
-    assert len(payload["mastery"]) == 2  # 通用 + 场景两条
-    general = [m for m in payload["mastery"] if m["scenario_id"] == ""][0]
-    assert general["cap_id"] == CAP and general["cap_name"]
-    assert general["score"] == pytest.approx(0.45)
+    assert len(payload["mastery"]) == 1
+    mastery = payload["mastery"][0]
+    assert "scenario_id" not in mastery
+    assert mastery["cap_id"] == CAP and mastery["cap_name"]
+    assert mastery["score"] == pytest.approx(0.45)
     assert len(payload["tasks"]) == 1
     assert payload["tasks"][0]["status"] == "completed"
     assert payload["tasks"][0]["score"] == pytest.approx(0.8)

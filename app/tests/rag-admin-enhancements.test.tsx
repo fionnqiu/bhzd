@@ -83,7 +83,6 @@ function makeDoc(overrides: Record<string, unknown>) {
     version: "1.0",
     license_status: "authorized",
     data_types: ["text"],
-    scenario_ids: [],
     cap_ids: [],
     visibility: "teacher",
     status: "draft",
@@ -120,7 +119,8 @@ describe("DocumentsPage 批量操作（PRD-03 §7）", () => {
     });
     mockedPost.mockImplementation((path: string) => {
       if (path === "/api/rag/documents/batch")
-        // 部分成功：indexed 可送审，draft 被后端守卫拒绝（后端是资格唯一权威）
+        // Batch remains useful for reindex/archive; the retired review action
+        // is intentionally absent from the active page contract.
         return Promise.resolve({
           results: [
             { id: "doc-indexed", ok: true },
@@ -128,7 +128,7 @@ describe("DocumentsPage 批量操作（PRD-03 §7）", () => {
               id: "doc-draft",
               ok: false,
               code: "INVALID_STATE",
-              message: "当前状态不可送审，请先完成解析与索引",
+              message: "当前状态不可重建索引",
             },
           ],
         });
@@ -136,7 +136,7 @@ describe("DocumentsPage 批量操作（PRD-03 §7）", () => {
     });
   });
 
-  it("选中 2 项 → 批量送审 → 校验载荷并展示部分成功结果弹窗", async () => {
+  it("选中 2 项 → 批量重新索引 → 校验载荷并展示部分成功结果弹窗", async () => {
     renderPage(<DocumentsPage />);
     expect(await screen.findByText("已索引资料")).toBeInTheDocument();
 
@@ -145,22 +145,22 @@ describe("DocumentsPage 批量操作（PRD-03 §7）", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "选择资料：草稿资料" }));
     expect(screen.getByText("已选 2 项")).toBeInTheDocument();
 
-    // 批量送审 → 二次确认（讲清后果与资格提示）
-    fireEvent.click(screen.getByRole("button", { name: "批量送审" }));
-    expect(await screen.findByText(/已选 2 项资料提交送审/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "确认送审" }));
+    // 批量重建索引 → 二次确认；审核不再是资料库的活动动作。
+    fireEvent.click(screen.getByRole("button", { name: "批量重新索引" }));
+    expect(await screen.findByText(/按当前系统切片参数/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "确认重建" }));
 
     // 载荷符合 POST /api/rag/documents/batch 契约（ids + action）
     await waitFor(() =>
       expect(mockedPost).toHaveBeenCalledWith("/api/rag/documents/batch", {
         ids: ["doc-indexed", "doc-draft"],
-        action: "submit_review",
+        action: "reindex",
       }),
     );
 
     // 结果弹窗：成功/失败汇总 + 失败项透传后端中文原因
     expect(await screen.findByText(/成功 1 项/)).toBeInTheDocument();
-    expect(screen.getByText(/当前状态不可送审，请先完成解析与索引/)).toBeInTheDocument();
+    expect(screen.getByText(/当前状态不可重建索引/)).toBeInTheDocument();
     expect(screen.getByText(/「已索引资料」/)).toBeInTheDocument();
   });
 
@@ -204,8 +204,8 @@ describe("DocumentDetailPage 召回记录（PRD-03 §6）", () => {
   function renderDetail() {
     return renderWithRoute(
       <DocumentDetailPage />,
-      "/rag-admin/documents/:id",
-      "/rag-admin/documents/doc1",
+      "/admin/rag/documents/:id",
+      "/admin/rag/documents/doc1",
     );
   }
 

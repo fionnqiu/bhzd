@@ -7,11 +7,10 @@
  * - vis-network 整体打桩：jsdom 无 canvas/布局引擎，真实 Network 初始化
  *   必炸；mock 后捕获事件回调，用人工派发验证"点节点 → 开抽屉"逻辑。
  */
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { ScenarioProvider } from "../src/app/ScenarioContext";
 import { ToastProvider } from "../src/components";
 import { ApiRequestError, api } from "../src/api/client";
 import PresetsPage from "../src/pages/student/PresetsPage";
@@ -76,21 +75,19 @@ const mockedPost = vi.mocked(api.post);
 const mockedDelete = vi.mocked(api.delete);
 const mockedPostForm = vi.mocked(api.postForm);
 
-/** 与生产 Provider 组合一致（Toast + 场景上下文）；附带跳转目标标记路由 */
+/** 与生产 Provider 组合一致（Toast）；附带跳转目标标记路由 */
 function renderPage(ui: ReactElement, route: string, path: string) {
   return render(
     <ToastProvider>
-      <ScenarioProvider>
-        <MemoryRouter initialEntries={[route]}>
-          <Routes>
-            <Route path={path} element={ui} />
-            <Route path="/tasks" element={<div>任务列表页标记</div>} />
-            <Route path="/tasks/:id" element={<div>任务详情页标记</div>} />
-            <Route path="/presets" element={<div>预设页标记</div>} />
-            <Route path="/graph" element={<div>图谱页标记</div>} />
-          </Routes>
-        </MemoryRouter>
-      </ScenarioProvider>
+      <MemoryRouter initialEntries={[route]}>
+        <Routes>
+          <Route path={path} element={ui} />
+          <Route path="/tasks" element={<div>任务列表页标记</div>} />
+          <Route path="/tasks/:id" element={<div>任务详情页标记</div>} />
+          <Route path="/presets" element={<div>预设页标记</div>} />
+          <Route path="/graph" element={<div>图谱页标记</div>} />
+        </Routes>
+      </MemoryRouter>
     </ToastProvider>,
   );
 }
@@ -120,7 +117,6 @@ describe("PresetsPage", () => {
     title: "数据标注零基础入门",
     description: "从零认识数据标注",
     data_type: "general",
-    scenario_id: null,
     goal: "掌握数据标注全流程",
     difficulty: 1,
     est_minutes: 90,
@@ -181,7 +177,6 @@ describe("PresetsPage", () => {
             title: "数据标注零基础入门·第1课：标注词汇入门",
             goal: "掌握数据标注全流程",
             data_type: null,
-            scenario_id: null,
             cap_ids: ["C1"],
             steps: [{ title: "认识标注术语", description: "" }],
             resources: [],
@@ -197,7 +192,7 @@ describe("PresetsPage", () => {
     renderPage(<PresetsPage />, "/presets", "/presets");
 
     // 点击1：打开路径抽屉；已掌握能力默认折叠（PRD-01 §4.4）
-    fireEvent.click((await screen.findAllByText("数据标注零基础入门"))[0]);
+    fireEvent.click(await screen.findByText("数据标注零基础入门"));
     expect(await screen.findByText("能力一")).toBeInTheDocument();
     expect(screen.queryByText("能力二")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /已掌握 1 项/ }));
@@ -236,7 +231,6 @@ describe("TasksPage", () => {
     title: "客服情感标注练习",
     goal: "完成一轮情感标注",
     data_type: "audio",
-    scenario_id: "SCN-CUSTOMER-SERVICE-001",
     cap_ids: ["CAP-1"],
     source: "teacher",
     status: "in_progress",
@@ -307,7 +301,6 @@ describe("TaskDetailPage", () => {
     title: "NER 边界练习",
     goal: "掌握实体边界划分",
     data_type: "text",
-    scenario_id: null,
     cap_ids: ["CAP-1"],
     source: "preset",
     status: "in_progress",
@@ -350,17 +343,13 @@ describe("TaskDetailPage", () => {
           attempt_id: "a1",
           score: 1,
           feedback: [{ key: "q1", expected: "正确", got: "正确", ok: true, hint: "回答正确" }],
-          mastery_preview: [
-            { cap_id: "CAP-1", scenario_id: "", delta: 0.15, old_score: 0.5, new_score: 0.65 },
-          ],
+          mastery_preview: [{ cap_id: "CAP-1", delta: 0.15, old_score: 0.5, new_score: 0.65 }],
           status: "submitted",
         });
       }
       if (path === "/api/tasks/t1/apply-mastery")
         return Promise.resolve({
-          applied: [
-            { cap_id: "CAP-1", scenario_id: "", delta: 0.15, old_score: 0.5, new_score: 0.65 },
-          ],
+          applied: [{ cap_id: "CAP-1", delta: 0.15, old_score: 0.5, new_score: 0.65 }],
           already_applied: false,
           status: "completed",
         });
@@ -422,18 +411,16 @@ describe("TaskDetailPage", () => {
     });
     render(
       <ToastProvider>
-        <ScenarioProvider>
-          <MemoryRouter
-            initialEntries={[
-              { pathname: "/tasks/t1", state: { returnTo: "/tasks?status=completed" } },
-            ]}
-          >
-            <Routes>
-              <Route path="/tasks/:id" element={<TaskDetailPage />} />
-              <Route path="/tasks" element={<div>任务列表页标记</div>} />
-            </Routes>
-          </MemoryRouter>
-        </ScenarioProvider>
+        <MemoryRouter
+          initialEntries={[
+            { pathname: "/tasks/t1", state: { returnTo: "/tasks?status=completed" } },
+          ]}
+        >
+          <Routes>
+            <Route path="/tasks/:id" element={<TaskDetailPage />} />
+            <Route path="/tasks" element={<div>任务列表页标记</div>} />
+          </Routes>
+        </MemoryRouter>
       </ToastProvider>,
     );
 
@@ -443,7 +430,7 @@ describe("TaskDetailPage", () => {
     expect(returnLinks).toHaveLength(2);
   });
 
-  it("刷新后恢复最近提交、教师来源和学习材料", async () => {
+  it("刷新后恢复最近提交、教师来源并隐藏历史任务资源", async () => {
     const restoredTask = {
       ...taskDetail,
       source: "teacher",
@@ -469,6 +456,11 @@ describe("TaskDetailPage", () => {
           },
         },
       ],
+      linked: {
+        certificates: [],
+        knowledge: [],
+        graph_resources: [{ id: "GR-1", name: "实体边界图谱参考" }],
+      },
       attempts: [
         {
           id: "a-restored",
@@ -486,9 +478,7 @@ describe("TaskDetailPage", () => {
         created_at: "2026-07-03T00:00:00Z",
         answers: { q1: "BIO" },
         feedback: [{ key: "q1", expected: "BIO", got: "BIO", ok: true, hint: "回答正确" }],
-        mastery_preview: [
-          { cap_id: "CAP-1", scenario_id: "", delta: 0.1, old_score: 0.6, new_score: 0.7 },
-        ],
+        mastery_preview: [{ cap_id: "CAP-1", delta: 0.1, old_score: 0.6, new_score: 0.7 }],
       },
     };
     mockedGet.mockImplementation((path: string) => {
@@ -501,9 +491,7 @@ describe("TaskDetailPage", () => {
       if (path === "/api/tasks/t1/apply-mastery") {
         expect(body).toEqual({ attempt_id: "a-restored" });
         return Promise.resolve({
-          applied: [
-            { cap_id: "CAP-1", scenario_id: "", delta: 0.1, old_score: 0.6, new_score: 0.7 },
-          ],
+          applied: [{ cap_id: "CAP-1", delta: 0.1, old_score: 0.6, new_score: 0.7 }],
           already_applied: false,
           status: "completed",
         });
@@ -515,13 +503,17 @@ describe("TaskDetailPage", () => {
     const answer = await screen.findByRole("textbox", { name: "边界是否正确？" });
     expect(answer).toHaveValue("BIO");
     expect(answer).toHaveAccessibleDescription("按 BIO");
-    expect(screen.getByRole("heading", { name: "学习材料", level: 2 })).toBeInTheDocument();
+    // Historical resources remain in the DTO for compatibility, but the task
+    // page no longer treats them as an assigned learning-material surface.
+    expect(screen.queryByRole("heading", { name: "学习材料", level: 2 })).not.toBeInTheDocument();
     expect(screen.getByText("教师发布")).toBeInTheDocument();
     expect(screen.getByText("教师任务")).toBeInTheDocument();
     expect(screen.queryByText("teacher-private-id")).not.toBeInTheDocument();
     expect(screen.queryByText("class-private-id")).not.toBeInTheDocument();
-    expect(screen.getByText("教学单元")).toBeInTheDocument();
-    expect(screen.getByText(/\[2\] BIO 标注规范/)).toBeInTheDocument();
+    expect(screen.getByText("图谱参考资源")).toBeInTheDocument();
+    expect(screen.getByText("实体边界图谱参考")).toBeInTheDocument();
+    expect(screen.queryByText("教学单元")).not.toBeInTheDocument();
+    expect(screen.queryByText(/BIO 标注规范/)).not.toBeInTheDocument();
     expect(
       screen.getByText("本次作答已提交。你可以核对反馈后确认完成，也可以修改答案后再次提交。"),
     ).toBeInTheDocument();
@@ -562,6 +554,108 @@ describe("TaskDetailPage", () => {
     expect(screen.getAllByRole("progressbar")[0]).toHaveAttribute("aria-valuenow", "50");
     expect(screen.getByRole("button", { name: "提交答案" })).toBeEnabled();
   });
+
+  it("历史任务的 none 状态展示自动排队提示，不提供手动生成按钮", async () => {
+    const legacyTask = {
+      ...taskDetail,
+      content_status: "none",
+      knowledge_points: [],
+      exercises: [],
+    };
+    mockedGet.mockImplementation((path: string) => {
+      if (path === "/api/tasks/t1") return Promise.resolve(legacyTask);
+      if (path === "/api/profile/mastery") return Promise.resolve({ items: [], total: 0 });
+      if (path === "/api/graph/overview") return Promise.resolve({ nodes: [], edges: [] });
+      return Promise.reject(new ApiRequestError(404, "NOT_FOUND", `未 mock 的 GET ${path}`));
+    });
+
+    // The server queues historical rows on first detail read; the UI must not
+    // reintroduce a second, student-triggered generation workflow.
+    renderPage(<TaskDetailPage />, "/tasks/t1", "/tasks/:id");
+
+    expect(await screen.findByText("学习内容已自动排队，正在准备中，请稍候…")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "开始生成学习内容" })).not.toBeInTheDocument();
+  });
+
+  it("学习内容保留知识点，AI 练习迁移到练习区并呈现评阅状态", async () => {
+    const readyTask = {
+      ...taskDetail,
+      content_status: "done",
+      knowledge_points: [
+        {
+          id: "k1",
+          title: "BIO 边界规则",
+          content: "实体边界必须保持连续。",
+          sort_order: 1,
+          created_at: "2026-08-01T00:00:00Z",
+          updated_at: "2026-08-01T00:00:00Z",
+        },
+      ],
+      exercises: [
+        {
+          id: "e1",
+          question: "标注一个连续实体。",
+          type: "open_ended",
+          options: null,
+          sort_order: 1,
+          created_at: "2026-08-01T00:00:00Z",
+          submission: {
+            id: "s1",
+            answer: "北京",
+            grade_status: "done",
+            score: 88,
+            feedback: "边界正确",
+            graded_at: "2026-08-01T00:02:00Z",
+            created_at: "2026-08-01T00:01:00Z",
+          },
+        },
+        {
+          id: "e2",
+          question: "说明一个常见边界错误。",
+          type: "open_ended",
+          options: ["越界", "漏标"],
+          sort_order: 2,
+          created_at: "2026-08-01T00:00:00Z",
+          submission: {
+            id: "s2",
+            answer: "",
+            grade_status: "failed",
+            score: null,
+            feedback: null,
+            graded_at: null,
+            created_at: "2026-08-01T00:01:00Z",
+          },
+        },
+      ],
+      content_generated_at: "2026-08-01T00:00:00Z",
+    };
+    mockedGet.mockImplementation((path: string) => {
+      if (path === "/api/tasks/t1") return Promise.resolve(readyTask);
+      if (path === "/api/profile/mastery") return Promise.resolve({ items: [], total: 0 });
+      if (path === "/api/graph/overview") return Promise.resolve({ nodes: [], edges: [] });
+      return Promise.reject(new ApiRequestError(404, "NOT_FOUND", `未 mock 的 GET ${path}`));
+    });
+    renderPage(<TaskDetailPage />, "/tasks/t1", "/tasks/:id");
+
+    expect(await screen.findByText(/BIO 边界规则/)).toBeInTheDocument();
+    expect(screen.getByText("实体边界必须保持连续。")).toBeInTheDocument();
+    expect(screen.queryByRole("tablist", { name: "学习内容类型" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "练习" })).not.toBeInTheDocument();
+
+    const practiceHeading = screen.getByRole("heading", { name: "练习区" });
+    const practiceCard = practiceHeading.closest(".card");
+    expect(practiceCard).not.toBeNull();
+    expect(
+      within(practiceCard as HTMLElement).getByRole("heading", { name: "AI 练习" }),
+    ).toBeInTheDocument();
+    expect(within(practiceCard as HTMLElement).getByText(/标注一个连续实体/)).toBeInTheDocument();
+    expect(within(practiceCard as HTMLElement).getByText(/说明一个常见边界错误/)).toBeInTheDocument();
+    expect(within(practiceCard as HTMLElement).getByText(/得分：88\/100/)).toBeInTheDocument();
+    expect(
+      within(practiceCard as HTMLElement).getByText("AI 评阅暂不可用，请稍后重试。"),
+    ).toBeInTheDocument();
+    expect(within(practiceCard as HTMLElement).getByText("越界")).toBeInTheDocument();
+  });
 });
 
 /* ---------------------------------------------------------------- 标注诊断 */
@@ -596,9 +690,7 @@ describe("DiagnosticsPage", () => {
     ],
     severity_counts: { major: 1, minor: 0 },
     weak_cap_ids: ["CAP-1"],
-    mastery_preview: [
-      { cap_id: "CAP-1", scenario_id: "", delta: -0.2, old_score: 0.5, new_score: 0.3 },
-    ],
+    mastery_preview: [{ cap_id: "CAP-1", delta: -0.2, old_score: 0.5, new_score: 0.3 }],
     plan: {
       weak_caps: [{ cap_id: "CAP-1", cap_name: "标签合法性校验" }],
       pre_path: ["CAP-1"],
@@ -609,7 +701,6 @@ describe("DiagnosticsPage", () => {
     },
     notice: null,
     data_type: "text",
-    scenario_id: null,
     diagnostic_token: "tok1",
   };
 
@@ -814,11 +905,9 @@ describe("ProfilePage", () => {
             {
               cap_id: "CAP-1",
               cap_name: "标注情感与副语言",
-              scenario_id: "",
               score: 0.3,
               source: "exercise",
               updated_at: "2026-07-01T00:00:00Z",
-              scenario_name: "通用",
             },
           ],
           total: 1,
@@ -892,6 +981,7 @@ describe("GraphPage", () => {
           resources: [],
           tasks: [],
           certificates: [],
+          // Preserve the raw graph relationship field while the UI keeps it hidden.
           scenarios: [],
           related: [],
           learning_materials: [
@@ -903,7 +993,6 @@ describe("GraphPage", () => {
           ],
           mastery: [
             {
-              scenario_id: "",
               score: 0.3,
               source: "exercise",
               updated_at: "2026-07-01T00:00:00Z",
@@ -914,9 +1003,11 @@ describe("GraphPage", () => {
       return Promise.reject(new ApiRequestError(404, "NOT_FOUND", `未 mock 的 GET ${path}`));
     });
     mockedPost.mockImplementation((path: string, body?: unknown) => {
-      if (path === "/api/tasks") {
-        expect(body).toEqual(expect.objectContaining({ cap_ids: ["CAP-1"] }));
-        return Promise.resolve({ id: "t5" });
+      if (path === "/api/tasks/start-learning") {
+        // P0-8 starts a task through the dedicated endpoint so content
+        // generation can run asynchronously without blocking navigation.
+        expect(body).toEqual({ cap_node_id: "CAP-1", generate_content: true });
+        return Promise.resolve({ task_id: "t5" });
       }
       return Promise.reject(new ApiRequestError(500, "NOT_MOCKED", `未 mock 的 POST ${path}`));
     });
@@ -943,20 +1034,10 @@ describe("GraphPage", () => {
     // 开始学习 → 快速建任务 → 跳详情
     fireEvent.click(screen.getByRole("button", { name: "开始学习" }));
     await waitFor(() => {
-      expect(mockedPost).toHaveBeenCalledWith(
-        "/api/tasks",
-        expect.objectContaining({
-          cap_ids: ["CAP-1"],
-          source: "agent",
-          resources: [
-            {
-              type: "teaching_unit",
-              ref_id: "TU-AUDIO-EMOTION-PARALINGUISTICS-001",
-              title: "分轨标注语音情感与副语言事件",
-            },
-          ],
-        }),
-      );
+      expect(mockedPost).toHaveBeenCalledWith("/api/tasks/start-learning", {
+        cap_node_id: "CAP-1",
+        generate_content: true,
+      });
     });
     expect(await screen.findByText("任务详情页标记")).toBeInTheDocument();
   });

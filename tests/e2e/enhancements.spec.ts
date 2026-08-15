@@ -2,7 +2,7 @@
  * 增强特性端到端验收（2026-08-01 增强包：入学测评/通知/RAG 治理/批量操作）。
  *
  * 前置：后端 8787 演示库运行中；playwright 配置自动拉起前端 4173。
- * 限流注意（NF5 5 次/分/IP）：整套用例登录次数 ≤3（1 次 UI 登录 + 2 次 API 缓存登录）。
+ * 限流注意（NF5 5 次/分/IP）：演示账号会话按账号缓存，避免同一账号重复登录。
  * 选择器全部以页面真实 aria-label/文本为准（已对照页面源码）。
  */
 
@@ -13,6 +13,7 @@ import { createPasswordEnvelope } from "./auth-envelope";
 const FRONTEND_ORIGIN = "http://127.0.0.1:4173";
 const STUDENT = { email: "student@demo.bhzd", password: "Demo1234!" };
 const TEACHER = { email: "teacher@demo.bhzd", password: "Demo1234!" };
+const ADMIN = { email: "admin@demo.bhzd", password: "Demo1234!" };
 
 test("入学测评：新注册学生被引导完成测评并生成初始能力地图", async ({
   page,
@@ -102,9 +103,10 @@ test("教师发布任务 → 学生通知铃铛收到并读", async ({ page, bro
   await studentPage.close();
 });
 
-test("RAG 上传→送审→发布→学生问答命中引用", async ({ page, browser }) => {
-  await injectSession(page, TEACHER);
-  await page.goto("/rag-admin/upload");
+test("系统管理上传 RAG 资料→自动发布→学生 Agent 命中引用", async ({ page, browser }) => {
+  // RAG 治理已并入系统管理端，并继续保持 system_admin 专属边界。
+  await injectSession(page, ADMIN);
+  await page.goto("/admin/rag/upload");
   const title = `e2e质检规范${Date.now() % 100000}`;
   const md = `# ${title} v1.0\n\n## 日合格率\n标注员每日合格率不得低于百分之九十六，低于该线必须当日复检。\n`;
   await page.locator('input[type="file"]').setInputFiles({
@@ -140,24 +142,18 @@ test("RAG 上传→送审→发布→学生问答命中引用", async ({ page, b
     timeout: 40000,
   });
 
-  // 详情页：送审 → 发布（学生范围）
+  // 新上传由服务端自动解析、切片、索引并进入学生召回范围，不再人工送审。
   await page
     .getByRole("link", { name: /查看详情|资料详情/ })
     .first()
     .click();
-  await page.getByRole("button", { name: "送审" }).click();
-  await expect(page.getByText(/已送审/)).toBeVisible({ timeout: 15000 });
-  await page.getByRole("button", { name: "发布…" }).click();
-  await page.getByText("学生端可见（进入学生召回）").click();
-  await page.getByRole("button", { name: "确认发布" }).click();
-  await expect(page.getByText(/已发布，学生端可召回/)).toBeVisible({
-    timeout: 15000,
-  });
+  await expect(page).toHaveURL(/\/admin\/rag\/documents\//);
+  await expect(page.getByText(title).first()).toBeVisible({ timeout: 15000 });
 
-  // 学生端：提问命中该资料并展示引用
+  // 学生端：知识问答已收进 Agent 工作台，提问仍应命中该资料并展示引用。
   const studentPage = await browser.newPage();
   await injectSession(studentPage, STUDENT);
-  await studentPage.goto("/rag-qa");
+  await studentPage.goto("/");
   const box = studentPage.locator("textarea").first();
   await box.fill("标注员每日合格率不得低于多少？");
   await studentPage

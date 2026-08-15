@@ -127,7 +127,7 @@ export function MasteryPreviewList({ changes, capNames }: MasteryPreviewListProp
   return (
     <ul className="flex flex-col gap-3">
       {changes.map((change) => {
-        const key = `${change.cap_id}|${change.scenario_id}`;
+        const key = change.cap_id;
         const oldPct =
           change.old_score == null ? null : Math.round(change.old_score * 100);
         const newPct =

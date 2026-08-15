@@ -28,7 +28,6 @@ import {
   Tag,
   useToast,
 } from "../../components";
-import { useScenario } from "../../app/ScenarioContext";
 import {
   capNameOf,
   dataTypeLabel,
@@ -86,7 +85,6 @@ export default function TasksPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
-  const { scenarios } = useScenario();
   const capNames = useCapNames();
 
   const [status, setStatus] = useState("");
@@ -135,9 +133,6 @@ export default function TasksPage() {
   }, [items, q]);
 
   const isFiltered = status !== "" || source !== "" || q.trim() !== "";
-
-  const scenarioNameOf = (scenarioId: string | null): string =>
-    scenarios.find((s) => s.id === (scenarioId ?? ""))?.name ?? "通用";
 
   /** 归档（软删除）：确认后调用归档端点并刷新列表 */
   const archiveTask = async () => {
@@ -342,7 +337,6 @@ export default function TasksPage() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <Tag>{taskSourceLabel(task.source)}</Tag>
                   <Tag>{dataTypeLabel(task.data_type)}</Tag>
-                  <Tag>{scenarioNameOf(task.scenario_id)}</Tag>
                 </div>
                 {task.cap_ids.length > 0 ? (
                   <div className="flex items-center gap-2 flex-wrap">

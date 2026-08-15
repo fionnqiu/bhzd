@@ -1,5 +1,5 @@
 /**
- * 解析与切片任务（/rag-admin/jobs）——队列概览 + 任务列表 + 重试（PRD-03 §7）。
+ * 已合并的解析任务组件：生产入口已收敛到 /admin/rag 的处理状态与失败重试。
  *
  * 关键决策（为什么）：
  * - 概览四卡（待处理/处理中/成功/失败）用 limit=1 的 count 查询取 total，
@@ -194,7 +194,7 @@ export default function JobsPage() {
       title: "资料名",
       render: (job) => (
         <Link
-          to={`/rag-admin/documents/${job.document_id}?returnTo=${encodeURIComponent(returnTo)}`}
+          to={`/admin/rag/documents/${job.document_id}?returnTo=${encodeURIComponent(returnTo)}`}
           state={{ returnTo }}
         >
           {docName(job)}

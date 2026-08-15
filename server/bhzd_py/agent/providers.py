@@ -17,35 +17,24 @@
 
 安全红线（为什么这么设计）：
 - API Key 只经 ``decrypt_key`` 在内存中短暂出现，永不写日志；日志只记录
-  ``_error_label`` 产生的安全短码（不含 URL/请求体，讯飞签名 URL 含签名，
-  因此异常对象本身绝不进日志）。
-- 正常 HTTP/讯飞调用使用 provider 行上的 ``timeout_seconds``；管理员连接测试
+  ``_error_label`` 产生的安全短码（不含 URL/请求体，因此异常对象本身绝不进日志）。
+- 正常 HTTP 调用使用 provider 行上的 ``timeout_seconds``；管理员连接测试
   另有短时总预算，避免交互操作被慢供应商长期占用。
 """
 
 from __future__ import annotations
 
 import asyncio
-import base64
 from contextlib import aclosing
-import hashlib
-import hmac
 import json
 import logging
 import math
 import re
 import sqlite3
 import time
-from datetime import datetime, timezone
 from typing import Any, AsyncIterator
-from urllib.parse import urlencode, urlparse, urlunparse
 
 import httpx
-
-try:
-    import websockets
-except ImportError:  # pragma: no cover - 依赖在 pyproject 中，防御性兜底
-    websockets = None  # type: ignore[assignment]
 
 from ..config import get_config
 from ..db import connect as db_connect
@@ -58,7 +47,9 @@ logger = logging.getLogger(__name__)
 # 放在模块级而非参数透传，是为了让公开接口签名保持稳定（其它域已按签名编码）。
 _TEST_TRANSPORT: httpx.AsyncBaseTransport | None = None
 
-_PROTOCOLS = ("chat_completions", "anthropic_messages", "xunfei_spark", "xunfei_xingchen")
+# Keep the adapter surface deliberately small: all supported providers use an
+# HTTP contract that can be mocked and audited consistently in local tests.
+_PROTOCOLS = ("chat_completions", "anthropic_messages", "responses")
 
 # A provider's saved role determines the smallest request that can prove its
 # configured capability. An enabled but unassigned provider uses the neutral
@@ -68,6 +59,7 @@ _SMOKE_CAPABILITY_BY_ROLE = {
     "fallback": "chat",
     "embedding": "embedding",
     "rerank": "rerank",
+    "grader": "chat",
     "none": "chat",
 }
 # A connectivity check is an interactive admin action, not a normal model run.
@@ -75,10 +67,32 @@ _SMOKE_CAPABILITY_BY_ROLE = {
 _PROVIDER_TEST_TIMEOUT_SECONDS = 8.0
 # A chat probe only needs one actual output token. Structured rerank validation
 # retains a larger budget because it must receive a complete JSON ordering.
-_PROVIDER_TEST_CHAT_MAX_TOKENS = 1
+# Some reasoning models emit an empty first delta while reserving their output
+# budget; four tokens gives the probe room to reach a valid protocol event.
+_PROVIDER_TEST_CHAT_MAX_TOKENS = 4
 _PROVIDER_TEST_STRUCTURED_MAX_TOKENS = 16
-# Returning after the first token must not inherit the normal WebSocket close wait.
+# Returning after the first token must not inherit the normal HTTP stream close wait.
 _PROVIDER_TEST_STREAM_CLOSE_TIMEOUT_SECONDS = 0.25
+
+
+def _sampling_overrides(sampling: dict[str, Any] | None) -> dict[str, float]:
+    """Return only finite RAG sampling values that are safe for provider bodies.
+
+    The admin API owns range validation.  This second boundary keeps internal
+    callers and older workers from forwarding malformed values to a provider,
+    while leaving provider-specific defaults untouched when no override exists.
+    """
+    if not isinstance(sampling, dict):
+        return {}
+    overrides: dict[str, float] = {}
+    for key in ("temperature", "top_p"):
+        value = sampling.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        numeric = float(value)
+        if math.isfinite(numeric):
+            overrides[key] = numeric
+    return overrides
 _SAFE_PROVIDER_ERROR_CODES = {
     "auth_error",
     "rate_limited",
@@ -124,19 +138,6 @@ _DISCOVERY_BLOCKED_EXTRA_HEADERS = {
     "transfer-encoding",
 }
 
-# 讯飞星火：模型名 → (API 版本路径, domain)，沿用旧栈已验证的路由表
-_SPARK_MODEL_ROUTES: dict[str, tuple[str, str]] = {
-    "generalv3.5": ("v3.5", "generalv3.5"),
-    "generalv3": ("v3.1", "generalv3"),
-    "generalv2": ("v2.1", "generalv2"),
-    "general": ("v1.1", "general"),
-    "4.0Ultra": ("v4.0", "4.0Ultra"),
-    "pro-128k": ("v3.5", "pro-128k"),
-    "max-32k": ("v3.5", "max-32k"),
-    "lite": ("v1.1", "lite"),
-}
-
-
 class ProviderError(RuntimeError):
     """provider 调用失败；消息只能是本模块构造的安全短码（可进日志/管理端）。"""
 
@@ -144,7 +145,7 @@ class ProviderError(RuntimeError):
 # ---------------------------------------------------------------- 公共查询/解密
 
 def get_enabled_provider(db: sqlite3.Connection, role: str) -> sqlite3.Row | None:
-    """取指定角色（primary/fallback/embedding/rerank）的启用 provider 行。
+    """取指定角色的启用 provider 行。
 
     set-role 接口保证同角色至多一行；ORDER BY 只是防御性兜底。
     """
@@ -153,6 +154,20 @@ def get_enabled_provider(db: sqlite3.Connection, role: str) -> sqlite3.Row | Non
         " ORDER BY updated_at DESC LIMIT 1",
         (role,),
     ).fetchone()
+
+
+def get_provider_by_role(db: sqlite3.Connection, role: str) -> sqlite3.Row | None:
+    """Resolve a runtime role with the safe grader-to-primary fallback.
+
+    Grading is intentionally a separate administrator role, but an unset
+    grader must not make ordinary exercise submissions fail.  Keeping the
+    fallback here gives API routes and background workers one auditable rule.
+    """
+
+    row = get_enabled_provider(db, role)
+    if row is None and role == "grader":
+        return get_enabled_provider(db, "primary")
+    return row
 
 
 def decrypt_key(row: sqlite3.Row) -> str:
@@ -192,8 +207,7 @@ _MEDIA_INPUT_TYPES = frozenset({"image", "audio", "video"})
 _PROTOCOL_MEDIA_INPUTS: dict[str, frozenset[str]] = {
     "chat_completions": frozenset({"image", "audio"}),
     "anthropic_messages": frozenset({"image"}),
-    "xunfei_spark": frozenset(),
-    "xunfei_xingchen": frozenset(),
+    "responses": frozenset({"image"}),
 }
 
 
@@ -229,7 +243,9 @@ def _candidate_rows_from_connection(db: sqlite3.Connection, role: str) -> list[s
     """Load the standard primary/fallback order from an existing connection."""
 
     rows: list[sqlite3.Row] = []
-    primary_row = get_enabled_provider(db, role)
+    # Resolve grader through the same primary fallback used by direct callers;
+    # this keeps complete()/stream_deltas() safe when no dedicated grader row exists.
+    primary_row = get_provider_by_role(db, role)
     if primary_row is not None:
         rows.append(primary_row)
     if role == "primary":
@@ -289,8 +305,6 @@ def _error_label(exc: Exception) -> str:
         if label in _SAFE_PROVIDER_ERROR_CODES:
             return label
         if re.fullmatch(r"http_[1-5]\d\d", label):
-            return label
-        if re.fullmatch(r"xunfei_error_\d+", label):
             return label
         return "provider_error"
     if isinstance(exc, (httpx.TimeoutException, TimeoutError)):
@@ -533,6 +547,7 @@ def _cc_body(
     *,
     stream: bool,
     max_tokens_override: int | None = None,
+    sampling: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     # Translate the orchestrator's private media marker only at the provider
     # boundary. This keeps base64 bytes out of persistence, SSE, and logs while
@@ -548,6 +563,9 @@ def _cc_body(
     for key in ("temperature", "max_tokens", "top_p"):
         if key in extra:
             body[key] = extra[key]
+    # RAG settings are request-scoped overrides; provider configuration remains
+    # the fallback for ordinary chat and for deployments without the new page.
+    body.update(_sampling_overrides(sampling))
     if max_tokens_override is not None:
         # Smoke checks only need a valid reply, so never wait for a full runtime response.
         body["max_tokens"] = max_tokens_override
@@ -623,6 +641,7 @@ async def _cc_complete(
     messages: list[dict],
     *,
     max_tokens_override: int | None = None,
+    sampling: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     resp = await client.post(
         _cc_url(row, "chat/completions"),
@@ -632,6 +651,7 @@ async def _cc_complete(
             messages,
             stream=False,
             max_tokens_override=max_tokens_override,
+            sampling=sampling,
         ),
     )
     _raise_for_status(resp)
@@ -657,6 +677,7 @@ async def _cc_stream(
     messages: list[dict],
     *,
     max_tokens_override: int | None = None,
+    sampling: dict[str, Any] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     async with client.stream(
         "POST",
@@ -667,6 +688,7 @@ async def _cc_stream(
             messages,
             stream=True,
             max_tokens_override=max_tokens_override,
+            sampling=sampling,
         ),
     ) as resp:
         _raise_for_status(resp)
@@ -675,6 +697,9 @@ async def _cc_stream(
                 continue
             payload = line[len("data: "):].strip()
             if payload == "[DONE]":
+                # Preserve an explicit completion marker so a probe can
+                # accept providers that finish without a visible token.
+                yield {"done": True}
                 break
             chunk = json.loads(payload)
             choice = (chunk.get("choices") or [{}])[0]
@@ -682,11 +707,204 @@ async def _cc_stream(
             # Some gateways emit reasoning_content beside content for the same
             # token. Forwarding only content keeps the stream answer-only.
             delta = delta_payload.get("content")
-            if delta:
+            if isinstance(delta, str):
                 yield {"delta": str(delta)}
             usage = _normalize_usage(chunk.get("usage"))
             if usage:
                 yield {"usage": usage}
+
+
+# ---------------------------------------------------------------- Responses API 协议
+
+def _responses_url(row: sqlite3.Row, suffix: str) -> str:
+    """Build the OpenAI Responses endpoint from the configured versioned base."""
+
+    return f"{row['base_url'].rstrip('/')}/{suffix}"
+
+
+def _responses_content(content: Any) -> Any:
+    """Map internal content into the Responses input shape.
+
+    Text-only messages stay strings for broad gateway compatibility.  Media
+    blocks use the documented ``input_text``/``input_image`` forms and fall
+    back to a truthful text description when a block is not portable.
+    """
+
+    if not isinstance(content, list):
+        return str(content or "")
+    mapped: list[dict[str, Any]] = []
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") == "text" and isinstance(block.get("text"), str):
+            mapped.append({"type": "input_text", "text": block["text"]})
+            continue
+        if block.get("type") != "media_attachment":
+            continue
+        mime_type = str(block.get("mime_type") or "").split(";", 1)[0].lower()
+        data = block.get("data")
+        if mime_type.startswith("image/") and isinstance(data, str) and data:
+            mapped.append(
+                {
+                    "type": "input_image",
+                    "image_url": f"data:{mime_type};base64,{data}",
+                }
+            )
+        else:
+            mapped.append({"type": "input_text", "text": _media_fallback_text(block)})
+    return mapped
+
+
+def _responses_body(
+    row: sqlite3.Row,
+    messages: list[dict],
+    *,
+    stream: bool,
+    max_tokens_override: int | None = None,
+    sampling: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Construct a Responses request while preserving system instructions."""
+
+    extra = _extra(row)
+    system_parts = [
+        _text_content(message.get("content", ""))
+        for message in messages
+        if message.get("role") == "system"
+    ]
+    body: dict[str, Any] = {
+        "model": row["model"],
+        "input": [
+            {
+                "role": message.get("role", "user"),
+                "content": _responses_content(message.get("content", "")),
+            }
+            for message in messages
+            if message.get("role") != "system"
+        ],
+        "stream": stream,
+    }
+    if system_parts:
+        body["instructions"] = "\n".join(part for part in system_parts if part)
+    if max_tokens_override is not None:
+        body["max_output_tokens"] = max_tokens_override
+    elif "max_tokens" in extra:
+        body["max_output_tokens"] = extra["max_tokens"]
+    if "temperature" in extra:
+        body["temperature"] = extra["temperature"]
+    # Responses uses the same sampling names as the admin RAG contract.
+    body.update(_sampling_overrides(sampling))
+    return body
+
+
+def _responses_text(payload: dict[str, Any]) -> str:
+    """Extract user-visible text without ever exposing reasoning fields."""
+
+    direct = payload.get("output_text")
+    if isinstance(direct, str):
+        return direct
+    parts: list[str] = []
+    for item in payload.get("output") or []:
+        if not isinstance(item, dict):
+            continue
+        for content in item.get("content") or []:
+            if not isinstance(content, dict):
+                continue
+            text = content.get("text")
+            if isinstance(text, str):
+                parts.append(text)
+    return "".join(parts)
+
+
+async def _responses_complete(
+    client: httpx.AsyncClient,
+    row: sqlite3.Row,
+    api_key: str,
+    messages: list[dict],
+    *,
+    max_tokens_override: int | None = None,
+    sampling: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Call ``/responses`` and normalize its output into the adapter contract."""
+
+    resp = await client.post(
+        _responses_url(row, "responses"),
+        headers=_cc_headers(row, api_key),
+        json=_responses_body(
+            row,
+            messages,
+            stream=False,
+            max_tokens_override=max_tokens_override,
+            sampling=sampling,
+        ),
+    )
+    _raise_for_status(resp)
+    payload = resp.json()
+    usage = payload.get("usage") if isinstance(payload, dict) else None
+    if isinstance(usage, dict):
+        usage = {
+            "prompt_tokens": usage.get("input_tokens"),
+            "completion_tokens": usage.get("output_tokens"),
+        }
+    return {
+        "text": _responses_text(payload if isinstance(payload, dict) else {}),
+        "model": row["model"],
+        "usage": _normalize_usage(usage),
+        "provider_id": row["id"],
+    }
+
+
+async def _responses_stream(
+    client: httpx.AsyncClient,
+    row: sqlite3.Row,
+    api_key: str,
+    messages: list[dict],
+    *,
+    max_tokens_override: int | None = None,
+    sampling: dict[str, Any] | None = None,
+) -> AsyncIterator[dict[str, Any]]:
+    """Normalize Responses SSE events into delta/usage/completion events."""
+
+    async with client.stream(
+        "POST",
+        _responses_url(row, "responses"),
+        headers=_cc_headers(row, api_key),
+        json=_responses_body(
+            row,
+            messages,
+            stream=True,
+            max_tokens_override=max_tokens_override,
+            sampling=sampling,
+        ),
+    ) as resp:
+        _raise_for_status(resp)
+        async for line in resp.aiter_lines():
+            if not line.startswith("data: "):
+                continue
+            payload = line[len("data: "):].strip()
+            if payload == "[DONE]":
+                yield {"done": True}
+                break
+            try:
+                event = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+            event_type = event.get("type")
+            if event_type == "response.output_text.delta":
+                delta = event.get("delta")
+                if isinstance(delta, str):
+                    yield {"delta": delta}
+            elif event_type == "response.completed":
+                response = event.get("response") or {}
+                usage = response.get("usage") or event.get("usage") or {}
+                normalized = _normalize_usage(
+                    {
+                        "prompt_tokens": usage.get("input_tokens"),
+                        "completion_tokens": usage.get("output_tokens"),
+                    }
+                )
+                if normalized:
+                    yield {"usage": normalized}
+                yield {"done": True}
 
 
 # ---------------------------------------------------------------- anthropic_messages 协议
@@ -821,6 +1039,7 @@ def _anthropic_body(
     *,
     stream: bool,
     max_tokens_override: int | None = None,
+    sampling: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     extra = _extra(row)
     # Anthropic 协议里 system 是顶层字段而非消息角色，必须剥离
@@ -850,6 +1069,7 @@ def _anthropic_body(
         body["system"] = "\n".join(p for p in system_parts if p)
     if "temperature" in extra:
         body["temperature"] = extra["temperature"]
+    body.update(_sampling_overrides(sampling))
     return body
 
 
@@ -864,6 +1084,7 @@ async def _anthropic_complete(
     messages: list[dict],
     *,
     max_tokens_override: int | None = None,
+    sampling: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     resp = await client.post(
         _anthropic_url(row),
@@ -873,6 +1094,7 @@ async def _anthropic_complete(
             messages,
             stream=False,
             max_tokens_override=max_tokens_override,
+            sampling=sampling,
         ),
     )
     _raise_for_status(resp)
@@ -900,6 +1122,7 @@ async def _anthropic_stream(
     messages: list[dict],
     *,
     max_tokens_override: int | None = None,
+    sampling: dict[str, Any] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     async with client.stream(
         "POST",
@@ -910,6 +1133,7 @@ async def _anthropic_stream(
             messages,
             stream=True,
             max_tokens_override=max_tokens_override,
+            sampling=sampling,
         ),
     ) as resp:
         _raise_for_status(resp)
@@ -921,8 +1145,8 @@ async def _anthropic_stream(
             event_type = chunk.get("type")
             if event_type == "content_block_delta":
                 text = ((chunk.get("delta") or {}).get("text"))
-                if text:
-                    yield {"delta": str(text)}
+                if isinstance(text, str):
+                    yield {"delta": text}
             elif event_type == "message_start":
                 # input_tokens 在消息开头给出
                 start_usage = ((chunk.get("message") or {}).get("usage")) or {}
@@ -934,6 +1158,7 @@ async def _anthropic_stream(
                 if delta_usage.get("output_tokens") is not None:
                     usage["completion_tokens"] = int(delta_usage["output_tokens"])
             elif event_type == "message_stop":
+                yield {"done": True}
                 break
         normalized = _normalize_usage(usage)
         if normalized:
@@ -959,20 +1184,16 @@ async def discover_models(
 ) -> dict[str, bool | list[dict[str, str]]]:
     """Fetch a bounded remote model catalog before a provider configuration is saved.
 
-    Only HTTP protocols with a verified list contract are queried.  Xunfei's
-    configured runtime uses signed WebSockets and has no account-entitlement
-    catalog contract here, so it intentionally reports unsupported without
-    making an outbound request.  Every raised error is a stable safe code; no
-    URL, request headers, upstream body, or entered API key is retained.
+    Only HTTP protocols with a verified list contract are queried.  Every
+    raised error is a stable safe code; no URL, request headers, upstream body,
+    or entered API key is retained.
     """
-    if protocol in ("xunfei_spark", "xunfei_xingchen"):
-        return {"supported": False, "models": []}
-    if protocol not in ("chat_completions", "anthropic_messages"):
+    if protocol not in ("chat_completions", "anthropic_messages", "responses"):
         raise ProviderError("unsupported_protocol")
 
     try:
         async with _new_model_discovery_client() as client:
-            if protocol == "chat_completions":
+            if protocol in ("chat_completions", "responses"):
                 payload = await _model_discovery_json(
                     client,
                     _chat_completions_models_url(base_url),
@@ -1030,159 +1251,6 @@ async def discover_models(
         raise ProviderError("provider_error") from None
 
 
-# ---------------------------------------------------------------- 讯飞 WebSocket 协议（星火/星辰）
-
-def _signed_ws_url(base_url: str, path: str, api_key: str) -> str:
-    """构造讯飞 HMAC-SHA256 签名 WebSocket URL。
-
-    签名知识沿用旧栈（已生产验证）：api_key 形如 "APIKey:APISecret"；
-    signature_origin 固定为 host/date/request-line 三行。签名单次有效窗口
-    由对端控制，因此每次调用都重新取 UTC 时间签名。
-    """
-    parsed = urlparse(base_url)
-    host = parsed.netloc or parsed.path
-    key, _, secret = api_key.partition(":")
-    if not secret:
-        # 单 token 配置：以 key 本身充当签名材料（与旧栈行为一致）
-        secret = key
-    date = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
-    signature_origin = f"host: {host}\ndate: {date}\nGET {path} HTTP/1.1"
-    signature = base64.b64encode(
-        hmac.new(secret.encode("utf-8"), signature_origin.encode("utf-8"), hashlib.sha256).digest()
-    ).decode("ascii")
-    authorization = base64.b64encode(
-        json.dumps(
-            {
-                "api_key": key,
-                "algorithm": "hmac-sha256",
-                "headers": "host date request-line",
-                "signature": signature,
-            }
-        ).encode("utf-8")
-    ).decode("ascii")
-    query = urlencode({"authorization": authorization, "date": date, "host": host})
-    return urlunparse(("wss", host, path, "", query, ""))
-
-
-def _spark_route(model: str, extra: dict[str, Any]) -> tuple[str, str]:
-    """星火模型 → (API 版本, domain)；extra 里的 version/domain 可覆盖默认值。"""
-    mapped = _SPARK_MODEL_ROUTES.get(model)
-    version = str(extra.get("version") or (mapped[0] if mapped else "v3.5"))
-    domain = str(extra.get("domain") or (mapped[1] if mapped else model))
-    return version, domain
-
-
-def _xunfei_frame(
-    row: sqlite3.Row,
-    messages: list[dict],
-    domain: str,
-    *,
-    max_tokens_override: int | None = None,
-) -> dict[str, Any]:
-    """星火/星辰共用同一帧族，仅路径与 domain 不同。"""
-    extra = _extra(row)
-    return {
-        "header": {
-            "app_id": str(extra.get("app_id", "")),
-            "uid": str(extra.get("uid", "")),
-        },
-        "parameter": {
-            "chat": {
-                "domain": domain,
-                "max_tokens": (
-                    max_tokens_override
-                    if max_tokens_override is not None
-                    else int(extra.get("max_tokens", 2048))
-                ),  # Probes use a short cap while runtime requests keep their saved limit.
-                "temperature": float(extra.get("temperature", 0.5)),
-            }
-        },
-        "payload": {
-            "message": {
-                "text": [
-                    {
-                        "role": m.get("role", "user"),
-                        # Xunfei's text-only frame receives a bounded media
-                        # description; the attachment bytes never cross this
-                        # adapter boundary for an unsupported protocol.
-                        "content": _text_content(m.get("content", "")),
-                    }
-                    for m in messages
-                ]
-            }
-        },
-    }
-
-
-async def _xunfei_stream(
-    row: sqlite3.Row,
-    api_key: str,
-    messages: list[dict],
-    *,
-    timeout_seconds: float | None = None,
-    max_tokens_override: int | None = None,
-    close_timeout_seconds: float | None = None,
-) -> AsyncIterator[dict[str, Any]]:
-    if websockets is None:  # pragma: no cover
-        raise ProviderError("provider_unavailable")
-    extra = _extra(row)
-    if row["protocol"] == "xunfei_spark":
-        version, domain = _spark_route(row["model"], extra)
-        path = f"/{version}/chat"  # 官方星火 WS 路径：/{version}/chat
-    else:
-        domain = str(extra.get("domain") or row["model"])
-        path = "/v1/wss/spark/chat"  # 星辰固定路径
-    url = _signed_ws_url(row["base_url"], path, api_key)
-    frame = _xunfei_frame(
-        row,
-        messages,
-        domain,
-        max_tokens_override=max_tokens_override,
-    )
-    timeout = _bounded_row_timeout(row, timeout_seconds)
-    usage: dict[str, int | None] = {"prompt_tokens": None, "completion_tokens": None}
-    # asyncio.timeout 包住整个 WS 会话：对端不回包时必须在行超时内退出
-    async with asyncio.timeout(timeout):
-        async with websockets.connect(  # type: ignore[union-attr]
-            url,
-            open_timeout=min(timeout, 10.0),
-            close_timeout=(
-                min(close_timeout_seconds, timeout)
-                if close_timeout_seconds is not None
-                else 5
-            ),
-        ) as ws:
-            await ws.send(json.dumps(frame, ensure_ascii=False))
-            async for raw in ws:
-                packet = json.loads(raw)
-                header = packet.get("header") or {}
-                code = header.get("code", 0)
-                if code not in (0, "0", None):
-                    # 对端错误码是数字，无敏感信息
-                    raise ProviderError(f"xunfei_error_{code}")
-                payload = packet.get("payload") or {}
-                choices = payload.get("choices") or {}
-                for item in choices.get("text") or []:
-                    content = item.get("content")
-                    if content:
-                        yield {"delta": str(content)}
-                raw_usage = payload.get("usage") or {}
-                if isinstance(raw_usage.get("text"), dict):  # 部分帧把 usage 嵌在 usage.text
-                    raw_usage = raw_usage["text"]
-                if raw_usage:
-                    prompt = raw_usage.get("prompt_tokens", raw_usage.get("text_in"))
-                    completion = raw_usage.get("completion_tokens", raw_usage.get("text_out"))
-                    if prompt is not None:
-                        usage["prompt_tokens"] = int(prompt)
-                    if completion is not None:
-                        usage["completion_tokens"] = int(completion)
-                if header.get("status") == 2:  # 讯飞协议：status=2 为最后一帧
-                    break
-    normalized = _normalize_usage(usage)
-    if normalized:
-        yield {"usage": normalized}
-
-
 # ---------------------------------------------------------------- 调度层
 
 async def _complete_strict(
@@ -1191,6 +1259,7 @@ async def _complete_strict(
     *,
     timeout_seconds: float | None = None,
     max_tokens_override: int | None = None,
+    sampling: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Make one provider call without fallback, optionally under a stricter probe budget."""
     api_key = _provider_api_key(row)
@@ -1203,6 +1272,7 @@ async def _complete_strict(
                 api_key,
                 messages,
                 max_tokens_override=max_tokens_override,
+                sampling=sampling,
             )
     if protocol == "anthropic_messages":
         async with _new_client(row, timeout_seconds=timeout_seconds) as client:
@@ -1212,55 +1282,60 @@ async def _complete_strict(
                 api_key,
                 messages,
                 max_tokens_override=max_tokens_override,
+                sampling=sampling,
             )
-    if protocol in ("xunfei_spark", "xunfei_xingchen"):
-        text_parts: list[str] = []
-        usage: dict[str, Any] | None = None
-        async for event in _xunfei_stream(
-            row,
-            api_key,
-            messages,
-            timeout_seconds=timeout_seconds,
-            max_tokens_override=max_tokens_override,
-        ):
-            if "delta" in event:
-                text_parts.append(event["delta"])
-            elif "usage" in event:
-                usage = event["usage"]
-        return {
-            "text": "".join(text_parts),
-            "model": row["model"],
-            "usage": usage,
-            "provider_id": row["id"],
-        }
+    if protocol == "responses":
+        async with _new_client(row, timeout_seconds=timeout_seconds) as client:
+            return await _responses_complete(
+                client,
+                row,
+                api_key,
+                messages,
+                max_tokens_override=max_tokens_override,
+                sampling=sampling,
+            )
     raise ProviderError(f"unknown_protocol_{protocol}")
 
 
-async def _stream_strict(row: sqlite3.Row, messages: list[dict]) -> AsyncIterator[dict[str, Any]]:
+async def _stream_strict(
+    row: sqlite3.Row,
+    messages: list[dict],
+    *,
+    sampling: dict[str, Any] | None = None,
+) -> AsyncIterator[dict[str, Any]]:
     """单 provider 流式调用；事件为 {"delta"} / {"usage"}。"""
     api_key = _provider_api_key(row)
     protocol = row["protocol"]
     if protocol == "chat_completions":
         async with _new_client(row) as client:
-            async for event in _cc_stream(client, row, api_key, messages):
+            async for event in _cc_stream(client, row, api_key, messages, sampling=sampling):
                 yield event
     elif protocol == "anthropic_messages":
         async with _new_client(row) as client:
-            async for event in _anthropic_stream(client, row, api_key, messages):
+            async for event in _anthropic_stream(client, row, api_key, messages, sampling=sampling):
                 yield event
-    elif protocol in ("xunfei_spark", "xunfei_xingchen"):
-        async for event in _xunfei_stream(row, api_key, messages):
-            yield event
+    elif protocol == "responses":
+        async with _new_client(row) as client:
+            async for event in _responses_stream(client, row, api_key, messages, sampling=sampling):
+                yield event
     else:
         raise ProviderError(f"unknown_protocol_{protocol}")
 
 
 def _candidate_rows(
-    role: str, media_requirements: list[tuple[str, str]] | None = None
+    role: str,
+    media_requirements: list[tuple[str, str]] | None = None,
+    *,
+    database_path: str | None = None,
 ) -> list[sqlite3.Row]:
-    """Load fallback candidates and omit rows unable to process current media."""
+    """Load fallback candidates and omit rows unable to process current media.
 
-    conn = db_connect(get_config().resolved_database_path)
+    Detached workers may carry a database path captured from their enqueueing
+    request.  Accepting that path here keeps provider selection on the same
+    SQLite file even when process configuration changes between requests.
+    """
+
+    conn = db_connect(database_path or get_config().resolved_database_path)
     try:
         rows = _candidate_rows_from_connection(conn, role)
         if not media_requirements:
@@ -1279,23 +1354,36 @@ def _candidate_rows(
         conn.close()
 
 
-async def complete(messages: list[dict], *, role: str = "primary") -> dict | None:
+async def complete(
+    messages: list[dict],
+    *,
+    role: str = "primary",
+    database_path: str | None = None,
+    sampling: dict[str, Any] | None = None,
+) -> dict | None:
     """非流式调用 LLM。
 
     返回 ``{"text", "model", "usage", "provider_id"}``；
     无可用 provider 或全部调用失败（已按 primary→fallback 尝试回退）返回
     ``None``，调用方据此走模板降级合成。
     """
-    for row in _candidate_rows(role, _media_requirements_from_messages(messages)):
+    for row in _candidate_rows(
+        role,
+        _media_requirements_from_messages(messages),
+        database_path=database_path,
+    ):
         try:
-            return await _complete_strict(row, messages)
+            return await _complete_strict(row, messages, sampling=sampling)
         except Exception as exc:
             _log_failure(row, exc)
     return None
 
 
 async def stream_deltas(
-    messages: list[dict], *, role: str = "primary"
+    messages: list[dict],
+    *,
+    role: str = "primary",
+    sampling: dict[str, Any] | None = None,
 ) -> AsyncIterator[dict]:
     """逐 token 流式产出 ``{"delta": str}``；结束产出
     ``{"done": True, "model", "usage", "provider_id"}``。
@@ -1313,7 +1401,7 @@ async def stream_deltas(
             # after emitted text still attributes its terminal usage correctly.
             final_model = row["model"]
             final_provider_id = row["id"]
-            async for event in _stream_strict(row, messages):
+            async for event in _stream_strict(row, messages, sampling=sampling):
                 if "delta" in event:
                     emitted_any = True
                     yield {"delta": event["delta"]}
@@ -1426,29 +1514,34 @@ async def _smoke_chat(row: sqlite3.Row) -> None:
                 )
             )
         return
-    if protocol in ("xunfei_spark", "xunfei_xingchen"):
-        await _first_text_delta(
-            _xunfei_stream(
-                row,
-                api_key,
-                messages,
-                timeout_seconds=_PROVIDER_TEST_TIMEOUT_SECONDS,
-                max_tokens_override=_PROVIDER_TEST_CHAT_MAX_TOKENS,
-                close_timeout_seconds=_PROVIDER_TEST_STREAM_CLOSE_TIMEOUT_SECONDS,
+    if protocol == "responses":
+        async with _new_client(row, timeout_seconds=_PROVIDER_TEST_TIMEOUT_SECONDS) as client:
+            await _first_text_delta(
+                _responses_stream(
+                    client,
+                    row,
+                    api_key,
+                    messages,
+                    max_tokens_override=_PROVIDER_TEST_CHAT_MAX_TOKENS,
+                )
             )
-        )
         return
     raise ProviderError(f"unknown_protocol_{protocol}")
 
 
 async def _first_text_delta(events: AsyncIterator[dict[str, Any]]) -> None:
-    """Consume a probe stream only until a provider proves it can emit text."""
-    # Explicitly close the generator on success so an HTTP/SSE or WebSocket stream
+    """Consume a probe until a protocol proves the configured model is usable.
+
+    A present ``delta`` key is meaningful even when its value is empty: some
+    reasoning models reserve the first event for hidden work.  A completion
+    marker also proves the upstream understood the request.  An iterator that
+    emits neither marker remains an invalid response rather than a false pass.
+    """
+    # Explicitly close the generator on success so an HTTP/SSE stream
     # cannot keep this interactive request open while the provider finishes its reply.
     async with aclosing(events):
         async for event in events:
-            delta = event.get("delta")
-            if isinstance(delta, str) and delta.strip():
+            if "delta" in event or event.get("done"):
                 return
     raise ProviderError("invalid_chat_response")
 
@@ -1478,7 +1571,7 @@ async def test_provider(row: sqlite3.Row) -> dict[str, Any]:
     start = time.perf_counter()
     error: str | None = None
     try:
-        # The outer deadline also covers WebSocket setup and future adapters that
+        # The outer deadline also covers HTTP setup and future adapters that
         # might not use the shared HTTP client helper.
         async with asyncio.timeout(_bounded_row_timeout(row, _PROVIDER_TEST_TIMEOUT_SECONDS)):
             if capability == "chat":

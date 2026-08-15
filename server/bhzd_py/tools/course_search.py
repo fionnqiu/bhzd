@@ -8,8 +8,8 @@
   cap_ids 取单元 JSON 全文里出现的所有 CAP-* 引用（确定性、来自数据本身）。
 - 单元没有时长字段，est_minutes 用 goals/objectives 数量做确定性启发式
   估算，仅作展示参考。
-- 场景过滤：单元本身不带场景，借助图谱 INSCN 边（场景→能力集合）间接
-  匹配；图谱文件缺失时退化为不按场景过滤（宁可多召回，不可静默零结果）。
+- 图谱关系仅作为能力元数据保留；课程检索只按单元自身的数据类型、能力
+  引用和关键词筛选，不再按已撤销的业务上下文过滤。
 """
 
 from __future__ import annotations
@@ -28,7 +28,6 @@ _CAP_ID_RE = re.compile(r"CAP-[A-Z0-9-]+-\d+")
 
 # (mtime, 单元列表) 进程内缓存
 _units_cache: tuple[float, list[dict]] | None = None
-_scenario_caps_cache: tuple[float, dict[str, set[str]]] | None = None
 
 
 def _load_units(data_dir: str) -> list[dict]:
@@ -48,30 +47,6 @@ def _load_units(data_dir: str) -> list[dict]:
     units = payload.get("units", payload if isinstance(payload, list) else [])
     _units_cache = (mtime, units)
     return units
-
-
-def _load_scenario_caps(data_dir: str) -> dict[str, set[str]]:
-    """场景 id → 该场景下的 CAP id 集合（图谱 INSCN 边）。"""
-    global _scenario_caps_cache
-    path = Path(data_dir) / "graph" / "annotation-capability-graph.json"
-    try:
-        mtime = path.stat().st_mtime
-    except OSError:
-        return {}
-    if _scenario_caps_cache and _scenario_caps_cache[0] == mtime:
-        return _scenario_caps_cache[1]
-    mapping: dict[str, set[str]] = {}
-    try:
-        graph = json.loads(path.read_text(encoding="utf-8"))
-        for edge in graph.get("edges", []):
-            if edge.get("relation") == "INSCN":
-                mapping.setdefault(edge.get("target", ""), set()).add(
-                    edge.get("source", "")
-                )
-    except (OSError, json.JSONDecodeError):
-        logger.warning("图谱文件不可读: %s", path, exc_info=True)
-    _scenario_caps_cache = (mtime, mapping)
-    return mapping
 
 
 def _unit_cap_ids(unit: dict) -> list[str]:
@@ -96,14 +71,8 @@ def course_search_handler(ctx: ToolContext) -> dict[str, Any]:
     units = _load_units(data_dir)
 
     data_type = args.get("data_type")
-    scenario_id = args.get("scenario_id")
     cap_ids = set(args.get("cap_ids") or [])
     query = (args.get("query") or "").strip()
-
-    scenario_caps: set[str] | None = None
-    if scenario_id:
-        # 图谱缺失时 mapping 为空 → 不按场景过滤（见模块 docstring 的取舍）
-        scenario_caps = _load_scenario_caps(data_dir).get(scenario_id) or None
 
     results: list[dict[str, Any]] = []
     for unit in units:
@@ -113,8 +82,6 @@ def course_search_handler(ctx: ToolContext) -> dict[str, Any]:
             continue
         unit_caps = set(_unit_cap_ids(unit))
         if cap_ids and not (unit_caps & cap_ids):
-            continue
-        if scenario_caps is not None and not (unit_caps & scenario_caps):
             continue
         if query:
             haystack = " ".join(
@@ -144,6 +111,6 @@ SPEC = ToolSpec(
     name="course.search",
     permission="read",
     auto_execute=True,
-    description="检索已发布教学单元（按数据类型/场景/能力/关键词过滤，top 8）",
+    description="检索已发布教学单元（按数据类型/能力/关键词过滤，top 8）",
     handler=course_search_handler,
 )

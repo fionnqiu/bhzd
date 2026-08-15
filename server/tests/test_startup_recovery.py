@@ -13,6 +13,7 @@ from bhzd_py import app as app_module
 from bhzd_py.agent import events as agent_events
 from bhzd_py.agent.recovery import INTERRUPTED_RUN_ERROR
 from bhzd_py.db import utc_now_iso
+from bhzd_py.tools import task_tools
 
 
 class _BrokenRouterModule:
@@ -113,6 +114,64 @@ def test_lifespan_fails_a_crash_left_running_run(tmp_db_path):
         assert json.loads(events[0]["payload_json"])["error"] == INTERRUPTED_RUN_ERROR
     finally:
         db.close()
+
+
+def test_lifespan_requeues_interrupted_learning_content_once(tmp_db_path, monkeypatch):
+    """A crash-left content claim is reset and re-claimed exactly once per process."""
+
+    db = make_db(tmp_db_path)
+    try:
+        user_id = insert_user(db, "content-recovery@test.local")
+        task_id = uuid.uuid4().hex
+        now = utc_now_iso()
+        db.execute(
+            """
+            INSERT INTO learning_tasks
+              (id, user_id, title, goal, cap_ids_json, source, status,
+               steps_json, resources_json, counts_toward_mastery, created_by,
+               created_at, updated_at, content_status, content_generated_at)
+            VALUES (?, ?, 'interrupted lesson', 'recover it', '[]', 'agent',
+                    'not_started', '[]', '[]', 1, ?, ?, ?, 'generating', NULL)
+            """,
+            (task_id, user_id, user_id, now, now),
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    scheduled: list[tuple[str, str | None]] = []
+
+    def capture(task_id: str, *, database_path: str | None = None):
+        # Keep the worker detached so this test isolates startup's durable
+        # reset/claim contract from provider timing.
+        scheduled.append((task_id, database_path))
+
+    monkeypatch.setattr(task_tools, "schedule_task_content", capture)
+    monkeypatch.setattr(
+        app_module,
+        "_start_startup_maintenance",
+        lambda _config, *, resume_rag_jobs: None,
+    )
+
+    with TestClient(app_module.create_app()):
+        pass
+
+    db = open_db(tmp_db_path)
+    try:
+        status = db.execute(
+            "SELECT content_status FROM learning_tasks WHERE id = ?", (task_id,)
+        ).fetchone()["content_status"]
+        database_path = db.execute("PRAGMA database_list").fetchone()[2]
+    finally:
+        db.close()
+    assert status == "generating"
+    assert scheduled == [(task_id, database_path)]
+
+    # Re-entering the lifespan in the same process must not enqueue a second
+    # provider worker for the claim that the first startup already accepted.
+    with TestClient(app_module.create_app()):
+        pass
+    assert scheduled == [(task_id, database_path)]
 
 
 def test_lifespan_requeues_a_rag_job_interrupted_after_its_claim(tmp_db_path, monkeypatch):

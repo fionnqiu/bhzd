@@ -12,7 +12,6 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -188,11 +187,10 @@ def upload_sample(client: TestClient, headers: dict, **overrides) -> dict:
         "license_status": "authorized",
         "visibility": "teacher",
         "data_types": ["audio"],
-        "scenario_ids": ["SCN-CAR"],
         "cap_ids": ["CAP-AUD-WAKE-COMMAND-001"],
     }
     for key, value in overrides.items():
-        form[key] = [value] if key in ("data_types", "scenario_ids", "cap_ids") else value
+        form[key] = [value] if key in ("data_types", "cap_ids") else value
     response = client.post(
         "/api/rag/documents",
         files={"file": ("唤醒词指南.md", SAMPLE_MD.encode("utf-8"), "text/markdown")},
@@ -455,10 +453,76 @@ def test_upload_returns_queued_snapshot_before_background_pipeline(client, db_pa
     assert body["document"]["status"] == "indexed"
 
 
+def test_student_upload_without_legacy_switch_auto_publishes(client, db_path, system_admin):
+    """The new student-visible upload flow publishes after indexing when the old switch is omitted."""
+    body = upload_sample(client, as_user(client, system_admin), visibility="student")
+
+    assert body["document"]["status"] == "published"
+    assert body["document"]["visibility"] == "student"
+    assert body["document"]["published_at"]
+
+    conn = connect(db_path)
+    review_count = conn.execute(
+        "SELECT COUNT(*) AS n FROM review_records WHERE target_id = ?",
+        (body["document"]["id"],),
+    ).fetchone()["n"]
+    conn.close()
+    assert review_count == 0
+
+
+def test_explicit_auto_submit_false_keeps_legacy_indexed_state(client, system_admin):
+    """An explicit false remains a narrow compatibility escape hatch for old API callers."""
+    body = upload_sample(
+        client,
+        as_user(client, system_admin),
+        visibility="student",
+        auto_submit="false",
+    )
+
+    assert body["document"]["status"] == "indexed"
+    assert body["document"]["visibility"] == "student"
+
+
+def test_student_auto_publish_still_honors_sensitive_content_guard(
+    client, db_path, system_admin
+):
+    """Automatic publication must leave blocked sensitive material indexed for remediation."""
+    headers = as_user(client, system_admin)
+    sensitive_md = "# Roster\n身份证号 110101199003071234\n"
+    response = client.post(
+        "/api/rag/documents",
+        files={"file": ("roster.md", sensitive_md.encode("utf-8"), "text/markdown")},
+        data={
+            "title": "Sensitive roster",
+            "source_type": "other",
+            "source_name": "Test organization",
+            "version": "v1",
+            "license_status": "authorized",
+            "visibility": "student",
+            "data_types": ["text"],
+        },
+        headers=headers,
+    )
+    assert response.status_code == 202, response.text
+    doc_id = response.json()["document"]["id"]
+
+    detail = client.get(f"/api/rag/documents/{doc_id}", headers=headers).json()
+    assert detail["document"]["status"] == "indexed"
+    assert detail["sensitive_flags"]["block_publish"] is True
+
+    conn = connect(db_path)
+    audit_row = conn.execute(
+        "SELECT action FROM audit_logs WHERE target_id = ? AND action = 'rag.auto_publish_document_blocked'",
+        (doc_id,),
+    ).fetchone()
+    conn.close()
+    assert audit_row is not None
+
+
 def test_student_forced_published_only(client, db_path, system_admin, student):
     """学生即使显式传 published_only=false 也被强制为 true（蓝图 §6.4）。"""
     headers = as_user(client, system_admin)
-    body = upload_sample(client, headers)
+    upload_sample(client, headers)
     student_headers = as_user(client, student)
     response = client.post(
         "/api/rag/query",
@@ -779,12 +843,20 @@ def test_eval_case_edit_delete_validate_documents_and_audit(client, db_path, sys
         json={
             "question": "初始问题",
             "must_hit_document_ids": [document["id"]],
-            "filters": {"published_only": True},
+            # Legacy clients may still submit the retired keys; the API must
+            # accept the case while keeping those keys out of its snapshot.
+            "filters": {
+                "published_only": True,
+                "scenario_id": "SCN-LEGACY",
+                "scenario_ids": ["SCN-LEGACY"],
+            },
         },
         headers=headers,
     )
     assert created.status_code == 201, created.text
     case_id = created.json()["case"]["id"]
+    assert "scenario_id" not in created.json()["case"]["filters"]
+    assert "scenario_ids" not in created.json()["case"]["filters"]
 
     patched = client.patch(
         f"/api/rag/eval-cases/{case_id}",
@@ -792,6 +864,7 @@ def test_eval_case_edit_delete_validate_documents_and_audit(client, db_path, sys
             "question": "更新后的问题",
             "expected_answer": "正确答案",
             "must_hit_document_ids": [document["id"], document["id"]],
+            "filters": {"published_only": True, "scenario_id": "SCN-STALE"},
         },
         headers=headers,
     )
@@ -800,6 +873,7 @@ def test_eval_case_edit_delete_validate_documents_and_audit(client, db_path, sys
     assert payload["question"] == "更新后的问题"
     assert payload["expected_answer"] == "正确答案"
     assert payload["must_hit_document_ids"] == [document["id"]]
+    assert "scenario_id" not in payload["filters"]
 
     invalid = client.patch(
         f"/api/rag/eval-cases/{case_id}",

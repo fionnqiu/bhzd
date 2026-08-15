@@ -13,7 +13,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiRequestError, api } from "../../api/client";
 import type { ConversationDetail, MasteryRecord, Paginated } from "../../api/types";
-import { useScenario } from "../../app/ScenarioContext";
 import { Button, Card, ConfirmDialog, ErrorState, useToast } from "../../components";
 import { useStudentWorkbenchShell } from "../../layouts/StudentWorkbenchShellContext";
 import { isTaskSyncConfirmationCommand, useCockpitRun } from "./cockpit/useCockpitRun";
@@ -31,10 +30,9 @@ import "./cockpit/cockpit.css";
 export default function CockpitPage() {
   // 入学测评门禁：未完成且未跳过的学生先进 /onboarding（v3.0 §11.1）
   useOnboardingGate();
-  const { scenarioId, scenarios, setScenarioId } = useScenario();
   const toast = useToast();
-  const run = useCockpitRun(scenarioId);
-  const upload = useDiagnosticUpload(scenarioId);
+  const run = useCockpitRun();
+  const upload = useDiagnosticUpload();
   const mediaUpload = useMediaUpload();
   const { releasePersistedImagePreviews } = mediaUpload;
   // Keep the portal callbacks stable while the transcript receives streamed
@@ -218,9 +216,6 @@ export default function CockpitPage() {
         // response when the learner chose a newer conversation in the meantime.
         if (requestId !== conversationLoadRequestRef.current) return;
         loadConversation(detail);
-        // Continuing a saved conversation should restore the context it was
-        // created with; older rows without a scene fall back to the generic one.
-        setScenarioId(detail.scenario_id ?? "");
         setActiveConversationId(detail.id);
         // The Composer changes variant after loading a transcript. Defer focus
         // until the persistent input has mounted in its conversation position.
@@ -230,7 +225,7 @@ export default function CockpitPage() {
         toast.error(err instanceof ApiRequestError ? err.message : "会话加载失败，请稍后重试");
       }
     },
-    [loadConversation, sending, setActiveConversationId, setScenarioId, toast],
+    [loadConversation, sending, setActiveConversationId, toast],
   );
 
   const handleNewConversation = useCallback(() => {
@@ -296,9 +291,6 @@ export default function CockpitPage() {
       mediaAttachments={mediaUpload.attachments}
       onRemoveMedia={mediaUpload.remove}
       onLoadDocumentPreview={mediaUpload.loadDocumentPreview}
-      scenarioId={scenarioId}
-      scenarioOptions={scenarios.map((scenario) => ({ value: scenario.id, label: scenario.name }))}
-      onScenarioChange={setScenarioId}
     />
   );
   return (
@@ -329,7 +321,6 @@ export default function CockpitPage() {
               <ChatStream
                 run={run}
                 onFocusComposer={() => composerRef.current?.focus()}
-                onAcceptSuggestion={(id) => setScenarioId(id)}
               />
             )}
 

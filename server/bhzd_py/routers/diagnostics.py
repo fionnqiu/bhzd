@@ -130,9 +130,7 @@ def _track(conn: sqlite3.Connection, user_id: str | None, name: str, props: dict
         pass
 
 
-def _build_cite_fn(
-    conn: sqlite3.Connection, scenario_id: str | None, data_type: str | None
-):
+def _build_cite_fn(conn: sqlite3.Connection, data_type: str | None):
     """组装 RAG 引用召回函数（question=规则中文名，published_only 学生口径）。
 
     rag.retriever 由 B2 域实现：当前接口为 retrieve(db, config, query,
@@ -155,9 +153,7 @@ def _build_cite_fn(
         results: list[dict] = []
         for rule in rule_texts:
             try:
-                filters = filters_cls(
-                    scenario_id=scenario_id, data_type=data_type, published_only=True
-                )
+                filters = filters_cls(data_type=data_type, published_only=True)
                 outcome = retrieve(conn, get_config(), rule, filters)
                 hits = getattr(outcome, "hits", None) or []
                 # 映射为 CitationDTO 形状（蓝图 §6.4：学生端不含 chunk_id/上传人）
@@ -190,7 +186,6 @@ class SaveSummaryBody(BaseModel):
 def upload_diagnostic(
     file: UploadFile = File(...),
     data_type: str | None = Form(None),
-    scenario_id: str | None = Form(None),
     current: CurrentUser = Depends(csrf_protect),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
@@ -209,8 +204,7 @@ def upload_diagnostic(
             content,
             file.filename or "upload",
             data_type=data_type or None,
-            scenario_id=scenario_id or None,
-            cite_fn=_build_cite_fn(conn, scenario_id or None, data_type or None),
+            cite_fn=_build_cite_fn(conn, data_type or None),
         )
     except DiagnosticError as exc:
         status = 422 if exc.code == "FIELDS_MISSING" else 400
@@ -218,11 +212,10 @@ def upload_diagnostic(
 
     # engine 报告不含请求上下文，落缓存前补上（save-summary 入库要用）
     report["data_type"] = data_type or None
-    report["scenario_id"] = scenario_id or None
 
     # engine 无 db 只算出 delta；这里用真实用户数据补齐 old/new 预览（预览即所得）
     deltas = [
-        {"cap_id": p["cap_id"], "scenario_id": p["scenario_id"], "delta": p["delta"]}
+        {"cap_id": p["cap_id"], "delta": p["delta"]}
         for p in report["mastery_preview"]
     ]
     report["mastery_preview"] = mastery_service.preview_from_deltas(
@@ -238,7 +231,6 @@ def upload_diagnostic(
             "file_format": report["file_format"],
             "error_count": len(report["errors"]),
             "data_type": data_type,
-            "scenario_id": scenario_id,
         },
     )
     return {**report, "diagnostic_token": token}
@@ -265,16 +257,15 @@ def save_summary(
     conn.execute(
         """
         INSERT INTO diagnostic_summaries
-          (id, user_id, file_format, data_type, scenario_id, error_count,
+          (id, user_id, file_format, data_type, error_count,
            severity_counts_json, report_json, weak_cap_ids_json, plan_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             summary_id,
             current.user["id"],
             report["file_format"],
             report.get("data_type"),
-            report.get("scenario_id"),
             len(report["errors"]),
             json.dumps(severity_counts, ensure_ascii=False),
             json.dumps(report, ensure_ascii=False),
@@ -285,7 +276,7 @@ def save_summary(
     )
     # 掌握度生效：用缓存报告里的 delta（与上传时展示的预览同源同公式）
     deltas = [
-        {"cap_id": p["cap_id"], "scenario_id": p["scenario_id"], "delta": p["delta"]}
+        {"cap_id": p["cap_id"], "delta": p["delta"]}
         for p in report["mastery_preview"]
     ]
     applied = mastery_service.apply_updates(
@@ -317,7 +308,7 @@ def list_summaries(
     ).fetchone()["n"]
     rows = conn.execute(
         """
-        SELECT id, file_format, data_type, scenario_id, error_count,
+        SELECT id, file_format, data_type, error_count,
                severity_counts_json, weak_cap_ids_json, created_at
         FROM diagnostic_summaries
         WHERE user_id = ?
@@ -331,7 +322,6 @@ def list_summaries(
             "id": row["id"],
             "file_format": row["file_format"],
             "data_type": row["data_type"],
-            "scenario_id": row["scenario_id"],
             "error_count": row["error_count"],
             "severity_counts": json.loads(row["severity_counts_json"]),
             "weak_cap_ids": json.loads(row["weak_cap_ids_json"]),

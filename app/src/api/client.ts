@@ -29,6 +29,8 @@ export class ApiRequestError extends Error {
 
 export interface RequestOptions {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  /** Response decoder; JSON remains the default, while downloads can request a Blob. */
+  responseType?: "json" | "blob";
   /** JSON 请求体；undefined 表示无 body（不会带 Content-Type） */
   body?: unknown;
   /** 查询参数；undefined/null 值会被跳过 */
@@ -221,6 +223,18 @@ async function doFetch<T>(path: string, options: RequestOptions): Promise<T> {
     abortHandle.dispose();
     return undefined as T;
   }
+  if (options.responseType === "blob" && res.ok) {
+    try {
+      // Keep the timeout armed until the complete download body arrives.
+      const blob = await res.blob();
+      abortHandle.dispose();
+      return blob as T;
+    } catch (err) {
+      abortHandle.dispose();
+      if (err instanceof ApiRequestError) throw err;
+      throw transportError(abortHandle);
+    }
+  }
   let text: string;
   try {
     // Keep the timeout armed until the complete response body arrives, not only response headers.
@@ -305,6 +319,8 @@ export const api = {
     query?: RequestOptions["query"],
     control: RequestControlOptions = {},
   ) => request<T>(path, { method: "GET", query, ...control }),
+  getBlob: (path: string, query?: RequestOptions["query"], control: RequestControlOptions = {}) =>
+    request<Blob>(path, { method: "GET", responseType: "blob", query, ...control }),
   post: <T>(path: string, body?: unknown, control: RequestControlOptions = {}) =>
     request<T>(path, { method: "POST", body, ...control }),
   put: <T>(path: string, body?: unknown, control: RequestControlOptions = {}) =>

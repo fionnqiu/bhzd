@@ -35,20 +35,6 @@ router = APIRouter(dependencies=[Depends(require_student_portal_user)])
 FAVORITE_ITEM_TYPES = ("rag_document", "citation", "teaching_unit", "graph_node")
 
 
-def _scenario_names() -> dict[str, str]:
-    """SCN id → 场景中文名（graphx 缺席降级空映射；'' 由调用方映射为"通用"）。"""
-    try:
-        from ..graphx import reason
-
-        return {
-            n["id"]: n.get("name") or n["id"]
-            for n in reason.get_graph()["nodes"]
-            if n.get("type") == "SCN"
-        }
-    except Exception:
-        return {}
-
-
 def _active_class_dtos(conn: sqlite3.Connection, user_id: str) -> list[dict[str, str]]:
     """Return the learner's current, non-archived classes without exposing invite codes.
 
@@ -70,17 +56,11 @@ def _active_class_dtos(conn: sqlite3.Connection, user_id: str) -> list[dict[str,
 
 @router.get("/api/profile/mastery")
 def profile_mastery(
-    scenario_id: str | None = None,
     current: CurrentUser = Depends(get_current_user),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
-    """本人掌握度列表（能力中文名 + 场景中文名；'' → 通用）。"""
-    items = mastery_service.get_mastery(conn, current.user["id"], scenario_id)
-    scn_names = _scenario_names()
-    for item in items:
-        item["scenario_name"] = (
-            "通用" if item["scenario_id"] == "" else scn_names.get(item["scenario_id"], item["scenario_id"])
-        )
+    """Return the learner's unified mastery records."""
+    items = mastery_service.get_mastery(conn, current.user["id"])
     return {"items": items, "total": len(items)}
 
 
@@ -93,7 +73,7 @@ def mastery_trend(
 ) -> dict:
     """本人掌握度变化时间序列（mastery_events），供成长趋势图使用。
 
-    days 上限 365：趋势图没有看一年前逐次事件的场景，限制窗口避免全表扫。
+    Days are capped at 365 to keep trend queries bounded and avoid full-table scans.
     按时间升序返回（图表从左到右），date 取 created_at 的日期部分便于按天聚合。
     """
     days = max(1, min(days, 365))
@@ -105,7 +85,7 @@ def mastery_trend(
         params.append(cap_id)
     rows = conn.execute(
         f"""
-        SELECT cap_id, scenario_id, old_score, new_score, source, created_at
+        SELECT cap_id, old_score, new_score, source, created_at
         FROM mastery_events
         WHERE {' AND '.join(clauses)}
         ORDER BY created_at ASC, id ASC
@@ -116,7 +96,6 @@ def mastery_trend(
         {
             "date": row["created_at"][:10],
             "cap_id": row["cap_id"],
-            "scenario_id": row["scenario_id"],
             "old_score": row["old_score"],
             "new_score": row["new_score"],
             "source": row["source"],
@@ -151,7 +130,7 @@ def profile_overview(
 
     events = conn.execute(
         """
-        SELECT cap_id, scenario_id, old_score, new_score, source, created_at
+        SELECT cap_id, old_score, new_score, source, created_at
         FROM mastery_events WHERE user_id = ?
         ORDER BY created_at DESC, id DESC LIMIT 50
         """,
@@ -162,7 +141,6 @@ def profile_overview(
         {
             "cap_id": e["cap_id"],
             "cap_name": names.get(e["cap_id"], e["cap_id"]),
-            "scenario_id": e["scenario_id"],
             "old_score": e["old_score"],
             "new_score": e["new_score"],
             "source": e["source"],
@@ -416,7 +394,7 @@ def submit_assessment(
     applied = mastery_service.apply_updates(
         conn,
         user_id,
-        [{"cap_id": r["cap_id"], "scenario_id": "", "delta": r["delta"]} for r in results],
+        [{"cap_id": r["cap_id"], "delta": r["delta"]} for r in results],
         source=assessment_seed.ASSESSMENT_SOURCE,
     )
 

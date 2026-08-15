@@ -2,7 +2,6 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { api, ApiRequestError } from "../src/api/client";
-import { ScenarioProvider } from "../src/app/ScenarioContext";
 import { ToastProvider } from "../src/components";
 import { StudentWorkbenchShellProvider } from "../src/layouts/StudentWorkbenchShellContext";
 import CockpitPage from "../src/pages/student/CockpitPage";
@@ -20,11 +19,9 @@ function renderCockpit() {
   return render(
     <MemoryRouter>
       <ToastProvider>
-        <ScenarioProvider>
-          <StudentWorkbenchShellProvider>
-            <CockpitPage />
-          </StudentWorkbenchShellProvider>
-        </ScenarioProvider>
+        <StudentWorkbenchShellProvider>
+          <CockpitPage />
+        </StudentWorkbenchShellProvider>
       </ToastProvider>
     </MemoryRouter>,
   );

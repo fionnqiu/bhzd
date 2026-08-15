@@ -1,5 +1,5 @@
 /**
- * 发布审核（/rag-admin/publish）——待发布队列 + 审核抽屉 + 发布记录（PRD-03 §2 发布审核）。
+ * 已下线的发布审核组件；生产上传流程已在 /admin/rag/upload 自动完成处理与发布。
  *
  * 关键决策（为什么）：
  * - 待发布列表用 /api/rag/review-queue 而不是裸 documents 查询：它 JOIN 了
@@ -46,7 +46,6 @@ import {
   LICENSE_LABELS,
   REVIEW_ACTION_LABELS,
   safeRagReturnPath,
-  scenarioLabel,
   SOURCE_TYPE_LABELS,
   VISIBILITY_LABELS,
 } from "./ragShared";
@@ -200,7 +199,7 @@ export default function PublishReviewPage() {
       title: "标题",
       render: (item) => (
         <Link
-          to={`/rag-admin/documents/${item.id}?returnTo=${encodeURIComponent(returnTo)}`}
+          to={`/admin/rag/documents/${item.id}?returnTo=${encodeURIComponent(returnTo)}`}
           state={{ returnTo }}
         >
           {item.title}
@@ -213,14 +212,6 @@ export default function PublishReviewPage() {
       title: "来源",
       width: "100px",
       render: (item) => SOURCE_TYPE_LABELS[item.source_type] ?? item.source_type,
-    },
-    {
-      key: "scenario_ids",
-      title: "场景",
-      render: (item) =>
-        item.scenario_ids.length > 0
-          ? item.scenario_ids.map((s) => <Tag key={s}>{scenarioLabel(s)}</Tag>)
-          : <Tag>通用</Tag>,
     },
     {
       key: "submitted_at",
@@ -246,7 +237,7 @@ export default function PublishReviewPage() {
       title: "标题",
       render: (doc) => (
         <Link
-          to={`/rag-admin/documents/${doc.id}?returnTo=${encodeURIComponent(returnTo)}`}
+          to={`/admin/rag/documents/${doc.id}?returnTo=${encodeURIComponent(returnTo)}`}
           state={{ returnTo }}
         >
           {doc.title}
@@ -341,9 +332,6 @@ export default function PublishReviewPage() {
             {doc ? (
               <div className="mb-4 text-sm">
                 <p className="mb-2">来源：{SOURCE_TYPE_LABELS[doc.source_type]} · {doc.source_name}</p>
-                <p className="mb-2">
-                  场景：{doc.scenario_ids.length ? doc.scenario_ids.map(scenarioLabel).join("、") : "通用"}
-                </p>
                 <p className="mb-2">切片数：{doc.chunk_count ?? 0}</p>
               </div>
             ) : null}
@@ -386,7 +374,7 @@ export default function PublishReviewPage() {
               )}
               {doc ? (
                 <Link
-                  to={`/rag-admin/documents/${doc.id}/chunks?returnTo=${encodeURIComponent(returnTo)}`}
+                  to={`/admin/rag/documents/${doc.id}?returnTo=${encodeURIComponent(returnTo)}`}
                   state={{ returnTo }}
                   className="text-sm"
                 >

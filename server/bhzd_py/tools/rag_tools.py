@@ -67,12 +67,10 @@ def rag_search_handler(ctx: ToolContext) -> dict[str, Any]:
     raw_filters = args.get("filters")
     if raw_filters is None:
         raw_filters = {}
-        if args.get("scenario_id"):
-            raw_filters["scenario_id"] = args["scenario_id"]
         if args.get("data_type"):
             raw_filters["data_type"] = args["data_type"]
     if isinstance(raw_filters, dict):
-        known = {"scenario_id", "data_type", "published_only", "document_ids"}
+        known = {"data_type", "published_only", "document_ids"}
         filters = retriever.RagFilters(
             **{k: v for k, v in raw_filters.items() if k in known}
         )
@@ -117,7 +115,6 @@ def rag_answer_handler(ctx: ToolContext) -> dict[str, Any]:
         ctx.db,
         ctx.config,
         args.get("question") or "",
-        scenario_id=args.get("scenario_id"),
         data_type=args.get("data_type"),
         published_only=bool(args.get("published_only", True)),
         document_ids=args.get("document_ids"),

@@ -2,14 +2,14 @@
 
 Pinned 公开契约（任务契约，签名不可改）：
 - class DiagnosticError(Exception)  # .code .message（实际定义在 detect.py，此处 re-export）
-- def diagnose(file_bytes, filename, *, data_type=None, scenario_id=None, cite_fn=None) -> dict
+- def diagnose(file_bytes, filename, *, data_type=None, cite_fn=None) -> dict
 
 关键决策（为什么）：
 - mastery_preview 只算 delta、不带 old/new：engine 是**无 db、无用户**的纯函数
   （原文件不落盘 NF3 的前提），old_score 需要用户数据，由 router 层拿到报告后
   调 mastery.service.preview_from_deltas 补齐——公式仍来自 mastery 单点。
-- graphx / 场景规则包 / 教学单元全部 lazy + 容错：诊断是离线优先能力，
-  图谱或场景文件缺失时降级为"无名称/无路径/无资源"，绝不让诊断主流程 500。
+- graphx / 教学单元全部 lazy + 容错：诊断是离线优先能力，图谱文件缺失时
+  降级为"无名称/无路径/无资源"，绝不让诊断主流程 500。
 - cite_fn 由 router 注入（接 RAG 召回），None 时不附引用——PRD-06 §9.2：
   无召回依据时不生成专业规范解释。
 """
@@ -42,33 +42,12 @@ _PARSERS = {
     FORMAT_GENERIC_JSON: parsers.parse_generic_json,
 }
 
-# 进程内小缓存：场景规则包与教学单元都是只读内容文件，避免每份诊断重复读盘
-_scenarios_cache: dict[str, dict] | None = None
+# 进程内小缓存：教学单元是只读内容文件，避免每份诊断重复读盘
 _units_cache: list[dict] | None = None
 
 
 def _data_dir() -> Path:
     return Path(get_config().resolved_data_dir)
-
-
-def _load_scenarios() -> dict[str, dict]:
-    """加载 data/scenarios/*.json，返回 scenario_id → scenario 体。"""
-    global _scenarios_cache
-    if _scenarios_cache is not None:
-        return _scenarios_cache
-    scenarios: dict[str, dict] = {}
-    scenario_dir = _data_dir() / "scenarios"
-    if scenario_dir.is_dir():
-        for path in sorted(scenario_dir.glob("*.json")):
-            try:
-                body = json.loads(path.read_text(encoding="utf-8"))
-                scenario = body.get("scenario", body)
-                if scenario.get("id"):
-                    scenarios[scenario["id"]] = scenario
-            except (json.JSONDecodeError, OSError):
-                continue  # 单个规则包损坏不拖垮诊断（离线降级口径）
-    _scenarios_cache = scenarios
-    return scenarios
 
 
 def load_teaching_units() -> list[dict]:
@@ -85,26 +64,6 @@ def load_teaching_units() -> list[dict]:
         units = []
     _units_cache = units
     return units
-
-
-def _scenario_label_set(scenario_id: str, data_type: str | None) -> set[str] | None:
-    """从场景规则包 examples 的 `configured_*` 输入键提取标签集。
-
-    场景 envelope 没有独立的"标签表"字段，标签集合实际散落在教学示例的
-    configured_intents / configured_labels 等输入里（合成教学素材口径）；
-    提取不到（规则包缺标签集）时返回 None，由 engine 跳过标签校验 + notice。
-    """
-    scenario = _load_scenarios().get(scenario_id)
-    if scenario is None:
-        return None
-    labels: set[str] = set()
-    for example in scenario.get("examples", []):
-        if data_type and example.get("data_type") != data_type:
-            continue
-        for key, value in (example.get("input") or {}).items():
-            if key.startswith("configured_") and isinstance(value, list):
-                labels.update(str(v) for v in value)
-    return labels or None
 
 
 def _cap_names() -> dict[str, str]:
@@ -227,7 +186,6 @@ def diagnose(
     filename: str,
     *,
     data_type: str | None = None,
-    scenario_id: str | None = None,
     cite_fn: Callable[[list[str]], list[dict]] | None = None,
 ) -> dict:
     """对上传的标注文件做确定性诊断，返回 DiagnosticReportDTO（蓝图 §6.3）。
@@ -241,14 +199,8 @@ def diagnose(
 
     notices: list[str] = list(doc.get("warnings") or [])
 
-    # 场景标签集：规则包缺标签集 → 跳过标签合法性校验 + notice（PRD-06 §9.2）
-    label_set: set[str] | None = None
-    if scenario_id:
-        label_set = _scenario_label_set(scenario_id, data_type)
-        if label_set is None:
-            notices.append(f"场景 {scenario_id} 的规则包未提供标签集，已跳过场景标签校验")
-
-    errors = run_rules(doc, data_type=data_type, label_set=label_set, source_format=file_format)
+    # Runtime rules are scoped only by data type; graph metadata is not a filter.
+    errors = run_rules(doc, data_type=data_type, source_format=file_format)
 
     # 规则库未覆盖的任务类型：不扣分 + notice（PRD-06 §9.2）
     if data_type and data_type not in COVERED_DATA_TYPES:
@@ -272,7 +224,7 @@ def diagnose(
     weak_cap_ids = list(dict.fromkeys(major_caps or minor_caps))
 
     # 掌握度预览：只给 delta（engine 无 db）；old/new 由 router 调 mastery 补齐
-    deltas = mastery_service.diagnostic_deltas(errors, scenario_id or "")
+    deltas = mastery_service.diagnostic_deltas(errors)
     mastery_preview = [
         {**item, "old_score": None, "new_score": None} for item in deltas
     ]

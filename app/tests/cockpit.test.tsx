@@ -6,7 +6,6 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { api, ApiRequestError } from "../src/api/client";
-import { ScenarioProvider } from "../src/app/ScenarioContext";
 import { ToastProvider } from "../src/components";
 import {
   StudentWorkbenchShellProvider,
@@ -63,21 +62,19 @@ function WorkbenchSidebarTestHost() {
   );
 }
 
-/** 与生产 Provider 组合一致的渲染（页面用 Link/useScenario/useToast） */
+/** 与生产 Provider 组合一致的渲染（页面用 Link/useToast） */
 function renderCockpit() {
   return render(
     <MemoryRouter>
       <ToastProvider>
-        <ScenarioProvider>
-          <StudentWorkbenchShellProvider>
-            {/* Mirror ShellLayout's route-level scroll owner so streaming tests
-                exercise the same page surface as the production workbench. */}
-            <main className="main-content student-workbench-main-content student-workbench-cockpit-main-content">
-              <CockpitPage />
-            </main>
-            <WorkbenchSidebarTestHost />
-          </StudentWorkbenchShellProvider>
-        </ScenarioProvider>
+        <StudentWorkbenchShellProvider>
+          {/* Mirror ShellLayout's route-level scroll owner so streaming tests
+              exercise the same page surface as the production workbench. */}
+          <main className="main-content student-workbench-main-content student-workbench-cockpit-main-content">
+            <CockpitPage />
+          </main>
+          <WorkbenchSidebarTestHost />
+        </StudentWorkbenchShellProvider>
       </ToastProvider>
     </MemoryRouter>,
   );
@@ -117,11 +114,6 @@ describe("指挥舱 · 欢迎态", () => {
     expect(scrollRegion).toContainElement(welcome);
     expect(welcome).toContainElement(composer);
     expect(composer).toHaveClass("composer-hero");
-    const scenarioSelect = within(composer).getByRole("combobox", { name: "继续场景" });
-    expect(scenarioSelect).toBeInTheDocument();
-    fireEvent.click(scenarioSelect);
-    fireEvent.click(screen.getByRole("option", { name: "车载语音标注" }));
-    expect(localStorage.getItem("bhzd.scenario_id")).toBe("SCN-IN-VEHICLE-001");
   });
 
   it("文本快捷入口只预填并聚焦 Composer，不会在用户确认前启动运行", async () => {
@@ -150,8 +142,7 @@ describe("指挥舱 · 欢迎态", () => {
     openPicker.mockRestore();
   });
 
-  it("用户从 Composer 提交目标时携带当前场景并打开事件流", async () => {
-    localStorage.setItem("bhzd.scenario_id", "SCN-CUSTOMER-SERVICE-001");
+  it("用户从 Composer 提交目标时打开事件流", async () => {
     renderCockpit();
     const input = await screen.findByLabelText("对话输入");
     fireEvent.change(input, { target: { value: TEST_RUN_GOAL } });
@@ -171,7 +162,6 @@ describe("指挥舱 · 欢迎态", () => {
     expect(screen.queryByTestId("agent-thinking-state")).not.toBeInTheDocument();
     const conversationInfo = screen.getByRole("status", { name: "当前对话信息" });
     expect(conversationInfo).toHaveTextContent("学习会话");
-    expect(conversationInfo).not.toHaveTextContent("继续场景：");
     expect(conversationInfo).toHaveClass("conversation-info-bar", "conversation-heading");
     // The transcript may scroll independently, while the active Composer must
     // remain its sibling so a long history cannot scroll the input away.
@@ -193,7 +183,6 @@ describe("指挥舱 · 欢迎态", () => {
       "/api/runs",
       expect.objectContaining({
         input: TEST_RUN_GOAL,
-        scenario_id: "SCN-CUSTOMER-SERVICE-001",
       }),
     );
     expect(latestStream().runId).toBe("r1");
@@ -863,27 +852,16 @@ describe("指挥舱 · 运行事件流", () => {
     );
   });
 
-  it("run.completed 不显示结果摘要；场景建议可手动切换", async () => {
+  it("run.completed 不显示结果摘要", async () => {
     await startRun();
     emit("run.completed", {
       seq: 2,
       summary: "已生成 NER 学习路径与练习任务。",
-      suggestion: {
-        type: "scenario_switch",
-        suggested_scenario_id: "SCN-IN-VEHICLE-001",
-        message: "检测到您的目标更接近另一个场景，可在会话设置中切换后继续。",
-      },
     });
 
     // 完成态不应重复渲染独立的结果摘要卡。
     expect(screen.queryByTestId("run-summary")).not.toBeInTheDocument();
     expect(screen.queryByText("结果摘要")).not.toBeInTheDocument();
-
-    const hint = await screen.findByTestId("scenario-suggestion");
-    fireEvent.click(within(hint).getByRole("button", { name: "切换到该场景" }));
-    // PRD-06 §7.3：只在用户点击后切换
-    expect(localStorage.getItem("bhzd.scenario_id")).toBe("SCN-IN-VEHICLE-001");
-    expect(screen.queryByTestId("scenario-suggestion")).not.toBeInTheDocument();
   });
 
   it("citation.attached → 引用来源进入对话画布", async () => {

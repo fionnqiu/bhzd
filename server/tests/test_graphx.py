@@ -116,10 +116,6 @@ def test_search_nodes_filters():
     assert len(by_type) == 4
     by_dtype = reason.search_nodes(node_type="CAP", data_type="image")
     assert by_dtype and all("image" in n["data_types"] for n in by_dtype)
-    by_scn = reason.search_nodes(scenario_id="SCN-CUSTOMER-SERVICE-001")
-    scn_ids = {n["id"] for n in by_scn}
-    assert "CAP-AUD-SPEAKER-001" in scn_ids  # INSCN 边命中的能力
-    assert "SCN-CUSTOMER-SERVICE-001" in scn_ids  # 场景节点本身也在结果里
     limited = reason.search_nodes(limit=3)
     assert len(limited) == 3
 

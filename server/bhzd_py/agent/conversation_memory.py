@@ -15,6 +15,7 @@ import logging
 import re
 import sqlite3
 import threading
+import time
 import uuid
 from typing import Any, Iterable
 
@@ -33,6 +34,12 @@ _HIDDEN_TAG_RE = re.compile(
     r"<\s*(?P<closing>/\s*)?(?:think|analysis|reasoning)\b[^>]*>",
     re.IGNORECASE,
 )
+
+# Keep references to post-response workers until their SQLite connection has
+# been closed.  Production requests remain asynchronous, while deterministic
+# callers such as the disposable demo can wait before removing the database.
+_CAPTURE_THREADS: set[threading.Thread] = set()
+_CAPTURE_THREADS_LOCK = threading.Lock()
 _INTERNAL_LABEL_RE = re.compile(
     r"^\s*(?:analysis|reasoning|chain[- ]of[- ]thought|"
     r"\u601d\u8003\u8fc7\u7a0b|\u63a8\u7406\u8fc7\u7a0b)\s*[:\uff1a]",
@@ -639,6 +646,11 @@ def _capture_worker(
     finally:
         if db is not None:
             db.close()
+        # Remove the worker only after its connection is closed.  The ordering
+        # lets disposable callers use the registry as a real SQLite-handle
+        # barrier instead of relying on a timing-based sleep.
+        with _CAPTURE_THREADS_LOCK:
+            _CAPTURE_THREADS.discard(threading.current_thread())
 
 
 def schedule_layered_capture(
@@ -654,7 +666,63 @@ def schedule_layered_capture(
         name="bhzd-private-memory",
         daemon=True,
     )
-    thread.start()
+    with _CAPTURE_THREADS_LOCK:
+        _CAPTURE_THREADS.add(thread)
+    try:
+        thread.start()
+    except BaseException:
+        # A failed start must not leave a phantom worker that blocks later
+        # teardown checks or makes the registry grow across requests.
+        with _CAPTURE_THREADS_LOCK:
+            _CAPTURE_THREADS.discard(thread)
+        raise
+
+
+def wait_for_layered_captures(timeout: float = 5.0) -> None:
+    """Wait until all currently scheduled memory workers have closed SQLite.
+
+    Normal request handling deliberately remains fire-and-forget.  This
+    explicit barrier is for bounded lifecycles such as CLI demos and tests,
+    where deleting a temporary database before a daemon worker exits raises a
+    Windows ``PermissionError``.  A timeout is surfaced to the caller instead
+    of silently falling back to ``ignore_cleanup_errors``.
+    """
+    if timeout < 0:
+        raise ValueError("timeout must be non-negative")
+    deadline = time.monotonic() + timeout
+    while True:
+        with _CAPTURE_THREADS_LOCK:
+            threads = list(_CAPTURE_THREADS)
+        if not threads:
+            return
+
+        for thread in threads:
+            is_alive = getattr(thread, "is_alive", None)
+            if not callable(is_alive):
+                # Lightweight fake threads used by unit tests do not expose
+                # lifecycle methods; they cannot hold a real SQLite handle.
+                with _CAPTURE_THREADS_LOCK:
+                    _CAPTURE_THREADS.discard(thread)
+                continue
+            if not is_alive():
+                with _CAPTURE_THREADS_LOCK:
+                    _CAPTURE_THREADS.discard(thread)
+                continue
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("timed out waiting for private memory workers")
+            join = getattr(thread, "join", None)
+            if callable(join):
+                join(remaining)
+
+        with _CAPTURE_THREADS_LOCK:
+            # A worker removes itself after closing its connection.  The
+            # fallback also clears completed test doubles that never execute
+            # their target function.
+            for thread in threads:
+                is_alive = getattr(thread, "is_alive", None)
+                if callable(is_alive) and not is_alive():
+                    _CAPTURE_THREADS.discard(thread)
 
 
 def _retrieve_l0_context(
@@ -862,8 +930,21 @@ def retrieve_context(
     )
 
 
+def estimate_tokens(text: str) -> int:
+    """Estimate tokens without adding a tokenizer dependency.
+
+    CJK characters are close to one token; ASCII prose averages roughly four
+    characters per token.  The estimate is intentionally conservative because
+    it only controls an internal context budget.
+    """
+
+    cjk = sum(1 for char in text if "一" <= char <= "鿿")
+    rest = len(text) - cjk
+    return cjk + max(0, rest // 4)
+
+
 def format_context(chunks: list[dict[str, str]]) -> str:
-    """Render private memory as internal context, never as a citation payload."""
+    """Render private memory under an approximately 600-token budget."""
 
     safe_lines: list[str] = []
     for chunk in chunks:
@@ -873,4 +954,12 @@ def format_context(chunks: list[dict[str, str]]) -> str:
         if safe_content is None:
             continue
         safe_lines.append(f"{chunk.get('role', 'memory')}: {safe_content}")
-    return "\n".join(safe_lines)
+    context = "\n".join(safe_lines)
+    if estimate_tokens(context) <= 600:
+        return context
+    # Trim by characters while measuring mixed CJK/ASCII density; this keeps
+    # the budget stable for both Chinese notes and English identifiers.
+    end = min(len(context), 2400)
+    while end > 0 and estimate_tokens(context[:end]) > 600:
+        end -= max(1, end // 20)
+    return context[:end].rstrip()

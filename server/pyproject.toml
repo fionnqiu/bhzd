@@ -71,3 +71,8 @@ warn_unused_ignores = true
 # 在仓库根执行 `python -m pytest server/tests` 时 pytest 同样会应用本配置。
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = [
+  # Quality cases are deterministic and offline, but remain separately selectable
+  # because they assert product-answer contracts rather than transport behavior.
+  "slow: answer-quality and broader regression cases that CI may select separately",
+]

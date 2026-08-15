@@ -21,10 +21,10 @@ def _mastery_service():
     return service
 
 
-def _old_score(ctx: ToolContext, cap_id: str, scenario_id: str) -> float:
+def _old_score(ctx: ToolContext, cap_id: str) -> float:
     row = ctx.db.execute(
-        "SELECT score FROM mastery WHERE user_id = ? AND cap_id = ? AND scenario_id = ?",
-        (ctx.user_row["id"], cap_id, scenario_id or ""),
+        "SELECT score FROM mastery WHERE user_id = ? AND cap_id = ?",
+        (ctx.user_row["id"], cap_id),
     ).fetchone()
     return float(row["score"]) if row else 0.0
 
@@ -35,12 +35,10 @@ def _preview_items(ctx: ToolContext) -> list[dict[str, Any]]:
         cap_id = update.get("cap_id")
         if not cap_id:
             continue
-        scenario_id = update.get("scenario_id") or ""
         items.append(
             {
                 "cap_id": cap_id,
-                "scenario_id": scenario_id,
-                "old_score": _old_score(ctx, cap_id, scenario_id),
+                "old_score": _old_score(ctx, cap_id),
                 "new_score": update.get("new_score", update.get("score")),
                 "source": ctx.args.get("source") or "exercise",
             }
@@ -82,7 +80,6 @@ def mastery_apply(ctx: ToolContext) -> dict[str, Any]:
             "mastery_updated",
             {
                 "cap_id": item["cap_id"],
-                "scenario_id": item["scenario_id"],
                 "old_score": item["old_score"],
                 "new_score": item["new_score"],
                 "source": item["source"],

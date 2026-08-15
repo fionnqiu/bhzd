@@ -238,7 +238,9 @@ item []:
             xmax = 3
             text = "angry"
 '''
-    r = cs.post("/api/diagnostics", files={"file": ("sample.TextGrid", tg.encode(), "text/plain")}, data={"data_type": "audio", "scenario_id": "SCN-CUSTOMER-SERVICE-001"}, headers=hs)
+    # The diagnostic flow is intentionally exercised with only supported dimensions;
+    # Retired context request fields are intentionally absent from the public contract.
+    r = cs.post("/api/diagnostics", files={"file": ("sample.TextGrid", tg.encode(), "text/plain")}, data={"data_type": "audio"}, headers=hs)
     rep = r.json()
     check("AC9 诊断报告生成", r.status_code == 200 and len(rep.get("errors", [])) > 0 and rep.get("plan"), f"errors={len(rep.get('errors', []))} weak={rep.get('weak_cap_ids')}")
     token = rep.get("diagnostic_token")
@@ -276,7 +278,7 @@ item []:
     body = {
         "title": "客服语音情感标注实训（企业任务转化）",
         "goal": "完成 20 条客服语音情感标注并通过质检",
-        "data_type": "audio", "scenario_id": "SCN-CUSTOMER-SERVICE-001",
+        "data_type": "audio",
         "cap_ids": [cap_id],
         "steps": [{"title": "学习规范", "description": "阅读客服语音标注规范"}, {"title": "完成标注", "description": "完成 20 条样本"}],
         "resources": [{"type": "document", "title": "智能客服语音标注规范 v2.3", "ref_id": "demo"}],
@@ -292,9 +294,12 @@ item []:
     check("AC8 学生任务列表可见教师任务", len(stu_tasks) > 0, stu_tasks[0]["title"] if stu_tasks else "")
 
     print("== RAG 治理链路（AC3/4/5/6）==")
+    # RAG mutations and evaluation history are system-admin operations; keep
+    # this smoke path aligned with the route's explicit role boundary.
+    ha = login(ca, "admin@demo.bhzd")
     md = "# 图像框选标注补充规范 v1.0\n\n## 框选边界\n所有目标框必须贴合目标外接矩形，误差不超过 2 像素。\n\n## 类别使用\n仅允许使用任务书发布的类别表。\n"
-    data = {"title": "图像框选标注补充规范", "source_type": "standard", "source_name": "标航教研组", "version": "v1.0", "license_status": "authorized", "visibility": "student", "data_types": "image", "scenario_ids": ""}
-    r = ct.post("/api/rag/documents", files={"file": ("box.md", md.encode(), "text/markdown")}, data=data, headers=ht)
+    data = {"title": "图像框选标注补充规范", "source_type": "standard", "source_name": "标航教研组", "version": "v1.0", "license_status": "authorized", "visibility": "student", "data_types": "image"}
+    r = ca.post("/api/rag/documents", files={"file": ("box.md", md.encode(), "text/markdown")}, data=data, headers=ha)
     doc_id = r.json().get("document", {}).get("id") or r.json().get("id")
     check("AC3 资料上传并进入处理队列", r.status_code in (200, 201, 202) and doc_id, f"status={r.status_code}")
 
@@ -303,9 +308,9 @@ item []:
     j0 = r0.json()
     check("AC4 未审核资料不进学生召回", r0.status_code == 200 and (j0.get("refused") is True or all("框选" not in ct_["title"] for ct_ in j0.get("citations", []))), f"status={r0.status_code} refused={j0.get('refused')}")
 
-    r = ct.post(f"/api/rag/documents/{doc_id}/submit-review", headers=ht)
+    r = ca.post(f"/api/rag/documents/{doc_id}/submit-review", headers=ha)
     note = f"submit={r.status_code}"
-    r = ct.post(f"/api/rag/documents/{doc_id}/publish", json={"scope": "student"}, headers=ht)
+    r = ca.post(f"/api/rag/documents/{doc_id}/publish", json={"scope": "student"}, headers=ha)
     note += f" publish={r.status_code}"
     check("AC3 发布成功", r.status_code == 200, note)
     r1 = cs.post("/api/rag/query", json=q, headers=hs).json()
@@ -315,7 +320,6 @@ item []:
     check("AC6 无可靠资料时拒答", r2.get("refused") is True, f"refused={r2.get('refused')} | {(r2.get('answer') or '')[:40]}")
 
     print("== 安全（AC12/AC13）==")
-    ha = login(ca, "admin@demo.bhzd")
     r = ca.post("/api/admin/providers", json={"name": "测试供应商", "protocol": "chat_completions", "base_url": "https://api.example.com", "model": "m1", "api_key": "sk-secret-123456", "role": "none"}, headers=ha)
     dumped = ca.get("/api/admin/providers", headers=ha).text
     check("AC12 API Key 不回显", r.status_code in (200, 201) and "sk-secret-123456" not in dumped, f"create={r.status_code}")
@@ -357,7 +361,7 @@ item []:
     task_payload = {  # 全新任务体（不可复用变量名 body——上面测评段已占用）
         "title": "通知链路验证任务",
         "goal": "验证通知触达",
-        "data_type": "audio", "scenario_id": "SCN-CUSTOMER-SERVICE-001",
+        "data_type": "audio",
         "cap_ids": [cap_id],
         "steps": [{"title": "完成练习", "description": "按规范完成"}],
         "resources": [{"type": "document", "title": "智能客服语音标注规范 v2.3", "ref_id": "demo"}],
@@ -402,24 +406,24 @@ item []:
     check("诊断授权后教师可见（默认拒绝）", fresh_diagnostic.status_code == 200 and saved_diagnostic.status_code == 200 and denied and granted, f"saved={saved_diagnostic.status_code} denied={denied} granted={granted}")
 
     # 召回记录（学生问答已触发）
-    docs = ct.get("/api/rag/documents?limit=1", headers=ht).json().get("items", [])
+    docs = ca.get("/api/rag/documents?limit=1", headers=ha).json().get("items", [])
     if docs:
-        r = ct.get(f"/api/rag/documents/{docs[0]['id']}/recall-records", headers=ht)
+        r = ca.get(f"/api/rag/documents/{docs[0]['id']}/recall-records", headers=ha)
         check("资料召回记录", r.status_code == 200 and r.json().get("total", 0) >= 0, f"total={r.json().get('total')}")
 
     # 资料批量操作（送审→发布链路已完成一单，此处批量重新索引）
-    r = ct.post("/api/rag/documents/batch", json={"ids": [doc_id], "action": "reindex"}, headers=ht)
+    r = ca.post("/api/rag/documents/batch", json={"ids": [doc_id], "action": "reindex"}, headers=ha)
     res = r.json().get("results", [])
     check("资料批量重新索引", r.status_code == 200 and res and res[0].get("ok"), f"{res}")
 
     # CSV 解析（P1 格式）
     csv_content = "名称,阈值\n日合格率,96%\n抽检比例,10%\n"
     data_csv = {"title": "质检指标表", "source_type": "standard", "source_name": "标航教研组", "version": "v1.0", "license_status": "internal", "visibility": "teacher", "data_types": "text"}
-    r = ct.post("/api/rag/documents", files={"file": ("qa.csv", csv_content.encode("utf-8-sig"), "text/csv")}, data=data_csv, headers=ht)
+    r = ca.post("/api/rag/documents", files={"file": ("qa.csv", csv_content.encode("utf-8-sig"), "text/csv")}, data=data_csv, headers=ha)
     check("CSV 资料解析入库", r.status_code in (200, 201, 202), f"status={r.status_code}")
 
     # 评测历史列表
-    r = ct.get("/api/rag/eval-runs", headers=ht)
+    r = ca.get("/api/rag/eval-runs", headers=ha)
     check("评测历史列表端点", r.status_code == 200 and "items" in r.json(), "")
 
     # 系统告警评估

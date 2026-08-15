@@ -73,9 +73,9 @@ def _cap_names() -> dict[str, str]:
 
 
 def _user_mastery(conn: sqlite3.Connection, user_id: str) -> dict[str, float]:
-    """用户的通用（scenario=''）掌握度映射；预设个性化只看通用视图（§8.4 口径）。"""
+    """Return unified mastery scores used to personalize preset steps."""
     rows = conn.execute(
-        "SELECT cap_id, score FROM mastery WHERE user_id = ? AND scenario_id = ''",
+        "SELECT cap_id, score FROM mastery WHERE user_id = ?",
         (user_id,),
     ).fetchall()
     return {row["cap_id"]: float(row["score"]) for row in rows}
@@ -120,7 +120,6 @@ def _preset_dto(preset: dict, mastery: dict[str, float]) -> dict:
         "title": preset["title"],
         "description": preset["description"],
         "data_type": preset["data_type"],
-        "scenario_id": preset["scenario_id"],
         "goal": preset["goal"],
         "difficulty": preset["difficulty"],
         "est_minutes": preset["est_minutes"],
@@ -148,23 +147,18 @@ def _get_preset_or_404(preset_id: str) -> dict:
 @router.get("/api/presets")
 def list_presets(
     data_type: str | None = None,
-    scenario_id: str | None = None,
-    goal: str | None = None,
-    difficulty: int | None = None,
     current: CurrentUser = Depends(get_current_user),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
-    """预设列表：四维筛选 + 薄弱优先排序（含薄弱能力多的路径排前面）。"""
+    """预设列表：数据类型筛选 + 薄弱优先排序。
+
+    Goal/difficulty remain in the DTO because groupOf() and card copy use them,
+    but they are intentionally not user-facing query dimensions.
+    """
     mastery = _user_mastery(conn, current.user["id"])
     items = []
     for preset in get_presets():
         if data_type and preset["data_type"] != data_type:
-            continue
-        if scenario_id and preset["scenario_id"] != scenario_id:
-            continue
-        if goal and goal not in (preset["goal"] or ""):
-            continue
-        if difficulty is not None and preset["difficulty"] != difficulty:
             continue
         items.append(_preset_dto(preset, mastery))
     # 薄弱优先 → 未掌握多者优先 → 难度低者优先（学习路径由浅入深）
@@ -228,7 +222,6 @@ def start_preset(
         "title": title,
         "goal": preset["goal"],
         "data_type": preset["data_type"] if preset["data_type"] != "general" else None,
-        "scenario_id": preset["scenario_id"],
         "cap_ids": preset["cap_ids"],
         "steps": steps,
         "resources": [
@@ -255,13 +248,12 @@ def start_preset(
     if conversation is None:
         conversation_id = uuid.uuid4().hex
         conn.execute(
-            "INSERT INTO conversations (id, user_id, title, scenario_id, data_type, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO conversations (id, user_id, title, data_type, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             (
                 conversation_id,
                 current.user["id"],
                 SYSTEM_CONVERSATION_TITLE,
-                preset["scenario_id"],
                 preset["data_type"],
                 utc_now_iso(),
                 utc_now_iso(),
@@ -273,15 +265,14 @@ def start_preset(
     conn.execute(
         """
         INSERT INTO agent_runs (id, conversation_id, user_id, status, input_text,
-                                scenario_id, data_type, created_at)
-        VALUES (?, ?, ?, 'waiting_confirmation', ?, ?, ?, ?)
+                                data_type, created_at)
+        VALUES (?, ?, ?, 'waiting_confirmation', ?, ?, ?)
         """,
         (
             run_id,
             conversation_id,
             current.user["id"],
             f"开始预设学习:{preset_id}",
-            preset["scenario_id"],
             preset["data_type"],
             utc_now_iso(),
         ),

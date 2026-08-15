@@ -69,7 +69,7 @@ def test_full_task_lifecycle(api):
     preview = result["mastery_preview"]
     assert len(preview) == 1
     assert preview[0]["cap_id"] == CAP
-    assert preview[0]["scenario_id"] == ""  # 任务无场景 → 通用掌握度
+    assert "scenario_id" not in preview[0]
     assert preview[0]["old_score"] == 0.0
     expected_new = 0.15 * result["score"] - 0.1 * (1 - result["score"])
     assert preview[0]["new_score"] == pytest.approx(expected_new)

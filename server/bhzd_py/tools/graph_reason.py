@@ -57,7 +57,6 @@ def graph_reason_handler(ctx: ToolContext) -> dict[str, Any]:
                     query=query or None,
                     node_type=args.get("node_type"),
                     data_type=args.get("data_type"),
-                    scenario_id=args.get("scenario_id"),
                     limit=int(args.get("limit", 8)),
                 )
                 or []

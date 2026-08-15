@@ -62,7 +62,6 @@ interface DiagnosticDetailRow {
   id: string;
   file_format: string | null;
   data_type: string | null;
-  scenario_id: string | null;
   error_count: number;
   severity_counts: Record<string, number>;
   created_at: string;

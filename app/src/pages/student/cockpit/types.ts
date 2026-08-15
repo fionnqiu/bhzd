@@ -97,15 +97,9 @@ export interface EmbeddedCardData {
   result: unknown;
 }
 
-/** run.completed 负载里的场景切换建议（PRD-06 §7.3：只建议，不自动切） */
-export interface ScenarioSuggestion {
-  suggested_scenario_id: string;
-  message: string;
-}
-
 export interface StartRunOptions {
   dataType?: string | null;
-  /** 诊断补强等场景的附件（runs.py RunCreate.attachment → 编排器读取） */
+  /** 诊断补强等流程的附件（runs.py RunCreate.attachment → 编排器读取） */
   attachment?: Record<string, unknown> | null;
   /** New multi-file envelope; the server keeps the legacy `attachment` path. */
   attachments?: { attachment_token: string }[] | null;

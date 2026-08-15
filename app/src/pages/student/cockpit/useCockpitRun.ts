@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiRequestError, api } from "../../../api/client";
+import { useToast } from "../../../components";
 import type { RunEventStream } from "../../../api/sse";
 import type {
   Citation,
@@ -16,7 +17,6 @@ import type {
   RunDetail,
   ToolCall,
 } from "../../../api/types";
-import { useToast } from "../../../components";
 import { attachRunStream } from "./runStream";
 import { actionLabel, toolLabel } from "./constants";
 import { nextId } from "./types";
@@ -28,7 +28,6 @@ import type {
   ChatMessage,
   CockpitStatus,
   EmbeddedCardData,
-  ScenarioSuggestion,
   StartRunOptions,
   TraceEntry,
 } from "./types";
@@ -41,7 +40,6 @@ export type {
   ChatMessage,
   CockpitStatus,
   EmbeddedCardData,
-  ScenarioSuggestion,
   StartRunOptions,
   TraceEntry,
 } from "./types";
@@ -315,7 +313,7 @@ function mergePersistedMessageAttachments(
   }));
 }
 
-export function useCockpitRun(scenarioId: string) {
+export function useCockpitRun() {
   const toast = useToast();
   const [status, setStatus] = useState<CockpitStatus>("idle");
   const [runId, setRunId] = useState<string | null>(null);
@@ -333,7 +331,6 @@ export function useCockpitRun(scenarioId: string) {
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
-  const [suggestion, setSuggestion] = useState<ScenarioSuggestion | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [streamRecovery, setStreamRecovery] = useState<StreamRecoveryState | null>(null);
 
@@ -373,9 +370,6 @@ export function useCockpitRun(scenarioId: string) {
   );
   // 最近一次输入：run.failed 后"重试"按原样重发（PRD-01 §3.5 可操作下一步）
   const lastInputRef = useRef<{ input: string; options: StartRunOptions } | null>(null);
-  // 场景在流存活期间可能切换；ref 保证 start 闭包拿到的是当前值
-  const scenarioRef = useRef(scenarioId);
-  scenarioRef.current = scenarioId;
   const conversationIdRef = useRef<string | null>(null);
   conversationIdRef.current = conversationId;
   confirmationRef.current = confirmation;
@@ -700,7 +694,6 @@ export function useCockpitRun(scenarioId: string) {
           // run. Keep the stream alive so another tab or this tab can resume it.
           setStatus("awaiting_confirmation");
           setSummary(null);
-          setSuggestion(null);
           setError(null);
           setStreamRecovery(null);
           sealStreamingMessages();
@@ -719,7 +712,6 @@ export function useCockpitRun(scenarioId: string) {
 
         if (detail.run.status === "running") {
           setSummary(null);
-          setSuggestion(null);
           setError(null);
           setStatus(detail.plan?.steps?.length ? "tool_running" : "planning");
           if (source === "stream_end" || source === "exhausted") {
@@ -742,7 +734,6 @@ export function useCockpitRun(scenarioId: string) {
           setReconciledActivity(null);
           setStatus("failed");
           setSummary(null);
-          setSuggestion(null);
           setError(detail.run.error || "运行失败，请稍后重试");
         } else {
           if (assistantResponseObservedRef.current) {
@@ -757,7 +748,6 @@ export function useCockpitRun(scenarioId: string) {
           setStatus("completed");
           setError(null);
           setSummary(detail.summary ?? null);
-          setSuggestion(detail.suggestion?.suggested_scenario_id ? detail.suggestion : null);
         }
       } catch {
         if (
@@ -940,7 +930,7 @@ export function useCockpitRun(scenarioId: string) {
               return merged;
             });
           },
-          onCompleted: (text, hint, seq) => {
+          onCompleted: (text, seq) => {
             // A different tab can confirm, cancel, or expire this write.  The
             // terminal event is authoritative, so remove any stale local gate.
             clearExpiryRetry();
@@ -950,7 +940,6 @@ export function useCockpitRun(scenarioId: string) {
             sealStreamingMessages();
             setStatus("completed");
             setSummary(text);
-            if (hint) setSuggestion(hint);
             if (assistantResponseObservedRef.current) {
               appendActivity(
                 activityEntry(seq, "responding", "completed", "回答已生成", {
@@ -1028,7 +1017,6 @@ export function useCockpitRun(scenarioId: string) {
     setCitations([]);
     setConfirmation(null);
     setSummary(null);
-    setSuggestion(null);
     setError(null);
     setStreamRecovery(null);
     clearReconcileRetry();
@@ -1073,7 +1061,6 @@ export function useCockpitRun(scenarioId: string) {
       try {
         const res = await api.post<CreateRunResponse>("/api/runs", {
           input: text,
-          scenario_id: scenarioRef.current || null,
           data_type: options.dataType ?? null,
           conversation_id: conversationIdRef.current,
           attachment: options.attachment ?? null,
@@ -1180,9 +1167,9 @@ export function useCockpitRun(scenarioId: string) {
     } catch (err) {
       if (err instanceof ApiRequestError && err.status === 410) {
         // PRD-06 §6.4：过期后必须重新生成预览，防止基于旧状态写入
-        toast.error("预览已过期，请重新生成");
         clearExpiryRetry();
         setConfirmation(null);
+        toast.error("预览已过期，请重新生成");
         await refreshRun();
       } else {
         toast.error(err instanceof ApiRequestError ? err.message : "操作失败，请稍后重试");
@@ -1218,9 +1205,9 @@ export function useCockpitRun(scenarioId: string) {
       setReconciledActivity(null);
     } catch (err) {
       if (err instanceof ApiRequestError && err.status === 410) {
-        toast.error("预览已过期，请重新生成");
         clearExpiryRetry();
         setConfirmation(null);
+        toast.error("预览已过期，请重新生成");
         await refreshRun();
       } else {
         toast.error(err instanceof ApiRequestError ? err.message : "操作失败，请稍后重试");
@@ -1345,8 +1332,6 @@ export function useCockpitRun(scenarioId: string) {
     [clearRunState, closeStream],
   );
 
-  const dismissSuggestion = useCallback(() => setSuggestion(null), []);
-
   return {
     status,
     runId,
@@ -1362,7 +1347,6 @@ export function useCockpitRun(scenarioId: string) {
     confirmation,
     confirming,
     summary,
-    suggestion,
     error,
     streamRecovery,
     start,
@@ -1374,7 +1358,6 @@ export function useCockpitRun(scenarioId: string) {
     expire,
     reset,
     loadConversation,
-    dismissSuggestion,
   };
 }
 

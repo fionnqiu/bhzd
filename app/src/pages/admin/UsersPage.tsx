@@ -10,7 +10,7 @@
  *   确认框文案如实说明，避免管理员以为只是"标记"。
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../../api/client";
 import type { AdminResetPasswordResponse, AdminUser, Paginated } from "../../api/types";
 import {
@@ -56,6 +56,10 @@ export default function UsersPage() {
   const [roleSaving, setRoleSaving] = useState(false);
   // 禁用/启用确认
   const [statusTarget, setStatusTarget] = useState<AdminUser | null>(null);
+  const [bulkStatus, setBulkStatus] = useState<"active" | "disabled" | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
   // 重置密码：确认 → 结果弹窗（临时密码仅此一次）
   const [resetTarget, setResetTarget] = useState<AdminUser | null>(null);
   const [tempPassword, setTempPassword] = useState<{ name: string; password: string } | null>(null);
@@ -85,6 +89,86 @@ export default function UsersPage() {
     void load(controller.signal);
     return () => controller.abort();
   }, [load]);
+
+  // Keep selections that still belong to the visible page.  Async reloads can
+  // deliver the same rows more than once (for example under StrictMode); an
+  // unconditional reset would drop a user's first selection before bulk save.
+  useEffect(() => {
+    const visible = new Set(items.map((user) => user.id));
+    setSelectedIds((current) => {
+      const next = new Set([...current].filter((id) => visible.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [items]);
+
+  const visibleIds = useMemo(() => items.map((user) => user.id), [items]);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+
+  const toggleSelected = (userId: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  };
+
+  const toggleAllVisible = () => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (allVisibleSelected) visibleIds.forEach((id) => next.delete(id));
+      else visibleIds.forEach((id) => next.add(id));
+      return next;
+    });
+  };
+
+  /** Apply one status to the selected page rows; the server performs all safety checks. */
+  const applyBulkStatus = async () => {
+    if (!bulkStatus || selectedIds.size === 0) return;
+    setBulkSaving(true);
+    try {
+      const result = await api.patch<{ updated: number; skipped: number }>(
+        "/api/admin/users/bulk-status",
+        { user_ids: [...selectedIds], status: bulkStatus },
+      );
+      toast.success(
+        `${bulkStatus === "disabled" ? "禁用" : "启用"}完成：${result.updated} 个账号${
+          result.skipped ? `，${result.skipped} 个无需变更` : ""
+        }`,
+      );
+      setBulkStatus(null);
+      setSelectedIds(new Set());
+      await load();
+    } catch (err) {
+      toast.error(errText(err));
+      setBulkStatus(null);
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      // CSV is a binary response, so use the client's Blob decoder instead of
+      // trying to parse the download as JSON; role/search filters stay server-side.
+      const blob = await api.getBlob("/api/admin/users/export.csv", {
+        role: role || undefined,
+        q: q.trim() || undefined,
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "users.csv";
+      anchor.click();
+      URL.revokeObjectURL(url);
+      toast.success("用户 CSV 已导出");
+    } catch (err) {
+      toast.error(errText(err, "用户 CSV 导出失败"));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const openRoleModal = (user: AdminUser) => {
     setRoleTarget(user);
@@ -151,6 +235,26 @@ export default function UsersPage() {
   };
 
   const columns: Column<AdminUser>[] = [
+    {
+      key: "select",
+      title: (
+        <input
+          type="checkbox"
+          aria-label="选择当前页全部用户"
+          checked={allVisibleSelected}
+          onChange={toggleAllVisible}
+        />
+      ),
+      width: "44px",
+      render: (u) => (
+        <input
+          type="checkbox"
+          aria-label={`选择 ${u.name}`}
+          checked={selectedIds.has(u.id)}
+          onChange={() => toggleSelected(u.id)}
+        />
+      ),
+    },
     { key: "name", title: "姓名", render: (u) => <strong>{u.name}</strong> },
     { key: "email", title: "邮箱", render: (u) => <span className="text-sm">{u.email}</span> },
     { key: "role", title: "角色", width: "110px", render: (u) => <RoleTag role={u.role} /> },
@@ -231,6 +335,38 @@ export default function UsersPage() {
               placeholder="搜索姓名或邮箱…"
             />
           </div>
+          <div className="flex items-center gap-2" style={{ marginLeft: "auto" }}>
+            {/* Export uses the current server-side filters and remains useful while the table refreshes. */}
+            <Button
+              size="sm"
+              variant="secondary"
+              loading={exporting}
+              onClick={() => void exportCsv()}
+            >
+              导出 CSV
+            </Button>
+            {selectedIds.size > 0 ? (
+              <>
+                <span className="text-sm text-secondary">已选 {selectedIds.size} 个</span>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => setBulkStatus("disabled")}
+                  disabled={bulkSaving}
+                >
+                  批量禁用
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setBulkStatus("active")}
+                  disabled={bulkSaving}
+                >
+                  批量启用
+                </Button>
+              </>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -275,7 +411,7 @@ export default function UsersPage() {
           />
         </Field>
         <p className="text-xs text-muted">
-          学生：仅学生端；教师：+班级与 RAG 上传审核；内容管理员：+RAG 管理端全部；系统管理员：+系统管理端。
+          学生：仅学生端；教师：+班级管理；内容管理员：+教学内容协作；系统管理员：+系统管理与知识库管理。
         </p>
       </Modal>
 
@@ -292,6 +428,21 @@ export default function UsersPage() {
         }
         onConfirm={toggleStatus}
         onCancel={() => setStatusTarget(null)}
+      />
+
+      {/* Bulk status changes use the same explicit confirmation as single-row actions. */}
+      <ConfirmDialog
+        open={bulkStatus !== null}
+        title={bulkStatus === "disabled" ? "批量禁用账号" : "批量启用账号"}
+        danger={bulkStatus === "disabled"}
+        confirmText={bulkStatus === "disabled" ? "确认批量禁用" : "确认批量启用"}
+        description={
+          bulkStatus === "disabled"
+            ? `将禁用已选的 ${selectedIds.size} 个账号并立即终止其会话。`
+            : `将启用已选的 ${selectedIds.size} 个账号，使其可以重新登录。`
+        }
+        onConfirm={() => void applyBulkStatus()}
+        onCancel={() => setBulkStatus(null)}
       />
 
       {/* 重置密码确认 */}

@@ -6,7 +6,7 @@ import "../pages/teacher/teacher-workbench.css";
 const NAV_ITEMS: NavItem[] = [
   { to: "/teacher", label: "工作台", icon: LayoutDashboard, end: true },
   { to: "/teacher/classes", label: "班级管理", icon: Users },
-  { to: "/teacher/tasks", label: "任务发布", icon: ClipboardList },
+  { to: "/teacher/tasks", label: "任务管理", icon: ClipboardList },
   { to: "/teacher/analytics", label: "学情分析", icon: BarChart3 },
 ];
 
