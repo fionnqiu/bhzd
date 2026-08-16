@@ -137,13 +137,18 @@ export function safeRagReturnPath(value: unknown): string {
   }
   const parsed = new URL(value, "https://bhzd.invalid");
   const { pathname, search } = parsed;
+  // This compatibility URL is deliberately normalized before the broad admin
+  // prefix check so old return targets cannot reopen the removed test console.
+  if (pathname === "/admin/rag/search-test" || pathname === "/admin/rag/search-test/") {
+    return `/admin/rag${search}`;
+  }
   if (pathname === "/admin/rag" || pathname.startsWith("/admin/rag/")) {
     return `${pathname}${search}`;
   }
   if (pathname === "/rag-admin") return `/admin/rag${search}`;
   if (pathname === "/rag-admin/upload") return `/admin/rag/upload${search}`;
   if (pathname === "/rag-admin/search-test" || pathname === "/rag-admin/eval-cases") {
-    return `/admin/rag/search-test${search}`;
+    return `/admin/rag${search}`;
   }
 
   const documentMatch = pathname.match(/^\/rag-admin\/documents\/([^/]+)(?:\/chunks)?$/);

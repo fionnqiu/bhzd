@@ -383,7 +383,7 @@ def _seed_published_doc(api, uploader_id: str) -> str:
 
 
 def test_generate_task_card_offline(api):
-    """离线（无 LLM）生成完整草稿：cap_ids 非空、引用来自已发布资料、不落库。"""
+    """离线草稿生成学习内容和练习，不制造步骤或评分规则。"""
     teacher = api.login_as("t-gen@test.local", role="teacher")
     doc_id = _seed_published_doc(api, teacher["user_id"])
     before = api.conn.execute("SELECT COUNT(*) AS n FROM learning_tasks").fetchone()["n"]
@@ -401,8 +401,11 @@ def test_generate_task_card_offline(api):
     assert "scenario_id" not in draft
     assert draft["cap_ids"], "cap_ids 不能为空"
     assert draft["caps"][0]["cap_name"]
-    assert len(draft["steps"]) >= 3
-    assert len(draft["rubric"]) == 3
+    assert draft["description"]
+    assert draft["steps"] == []
+    assert draft["rubric"] == []
+    assert draft["knowledge_points"]
+    assert draft["exercises"]
     assert draft["citations"], "已发布资料命中时 citations 不能为空"
     assert draft["citations"][0]["document_id"] == doc_id
     # Source hits remain as explanatory citations, but generated task drafts

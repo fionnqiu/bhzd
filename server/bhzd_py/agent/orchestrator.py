@@ -520,6 +520,47 @@ def _emit_progress(
 # 计划构建（蓝图 §10.3 计划边界 / PRD-06 §6.3）
 # ---------------------------------------------------------------------------
 
+
+_STAGE_MARKER_RE = re.compile(
+    r"(?:第\s*[一二三四五六七八九十\d]+\s*阶段|阶段\s*[一二三四五六七八九十\d]+)",
+    re.IGNORECASE,
+)
+
+
+def _extract_task_stages(text: str, *, base_title: str, data_type: str | None) -> list[dict[str, Any]]:
+    """Extract explicit multi-stage wording into independent task arguments.
+
+    This is deliberately conservative: only explicit stage markers (or a
+    ``分阶段`` phrase with multiple semicolon-separated clauses) fan out. A
+    normal long task remains one task, so an inferred paragraph cannot surprise
+    the learner with several writes behind one confirmation.
+    """
+
+    source = text.strip()
+    matches = list(_STAGE_MARKER_RE.finditer(source))
+    segments: list[str] = []
+    if len(matches) >= 2:
+        for index, match in enumerate(matches):
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(source)
+            segment = source[match.end() : end].strip(" ：:，,；;。\n\t")
+            if segment:
+                segments.append(segment)
+    elif "分阶段" in source or "多阶段" in source:
+        segments = [part.strip(" ：:，,；;。\n\t") for part in re.split(r"[；;]", source) if part.strip()]
+        if len(segments) < 2:
+            segments = []
+    if len(segments) < 2:
+        return []
+    return [
+        {
+            "title": f"{base_title}·阶段{index + 1}",
+            "goal": segment,
+            "description": segment,
+            "data_type": data_type,
+        }
+        for index, segment in enumerate(segments)
+    ]
+
 def _build_plan(
     intent: intents.Intent,
     run: sqlite3.Row,
@@ -583,8 +624,12 @@ def _build_plan(
     task_args = {
         "title": title,
         "goal": question,
+        "description": question,
         "data_type": data_type,
     }
+    stages = _extract_task_stages(question, base_title=title, data_type=data_type)
+    if stages:
+        task_args["stages"] = stages
     return [
             step(1, "检索相关规范资料", "rag.search",
                  {"query": question,
@@ -615,6 +660,13 @@ def _enrich_step_args(
                     caps = (results.get(other["id"]) or {}).get("cap_ids")
                     if caps:
                         args["cap_ids"] = caps
+                        # Each stage is an independent task card, so carry the
+                        # same evidence-backed capability hints into every
+                        # stage rather than leaving only the batch wrapper
+                        # annotated.
+                        for stage in args.get("stages") or []:
+                            if isinstance(stage, dict) and not stage.get("cap_ids"):
+                                stage["cap_ids"] = list(caps)
     elif tool == "graph.reason" and args.get("action") == "pre_path":
         if not args.get("target_id"):
             for other in steps:

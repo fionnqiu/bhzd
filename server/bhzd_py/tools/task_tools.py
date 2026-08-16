@@ -1,8 +1,7 @@
-"""task.preview（read）与 task.create（write，确认门）（蓝图 §9）。
+"""Student Agent task previews and confirmation-gated creation.
 
-任务卡内容是**确定性组装**：标题/目标/步骤/评分规则来自参数与数据
-（课程检索、图谱节点名），不由 LLM 生成——LLM 只负责在最终消息里
-解释这张卡（PRD-06 §6.1：Agent 可生成任务卡预览，但不可编造规范）。
+Task cards are assembled deterministically before confirmation.  This keeps the
+four learner-facing fields stable from the preview through durable persistence.
 """
 
 from __future__ import annotations
@@ -42,31 +41,24 @@ _DATA_TYPE_LABELS = {
     "video": "视频",
 }
 
-# Task scoring persists a list of {key, expected, weight, hint?}. Keeping the
-# default in that same shape prevents Agent-created tasks from storing a visual
-# rubric object that the task page and deterministic scorer cannot consume.
-_DEFAULT_RUBRIC: list[dict[str, Any]] = [
-    {
-        "key": "规范符合性",
-        "expected": "符合规范定义",
-        "weight": 60,
-        "hint": "逐项核对规范定义和示例。",
-    },
-    {
-        "key": "完整性",
-        "expected": "完整无遗漏",
-        "weight": 40,
-        "hint": "检查边界、字段和必填项是否遗漏。",
-    },
-]
+_EXERCISE_TYPE_ALIASES = {
+    "choice": "multiple_choice",
+    "single_choice": "multiple_choice",
+    "boolean": "true_false",
+    "truefalse": "true_false",
+}
+_SUPPORTED_EXERCISE_TYPES = frozenset({"open_ended", "multiple_choice", "true_false"})
 
 
 def _cap_names(cap_ids: list[str]) -> list[dict[str, str]]:
     """cap_id → 名称（graphx 惰性查询；未就绪时以 id 代名称，不阻断组卡）。"""
+    # The graph module is optional during lightweight test/startup paths, so
+    # keep its lazy import explicitly nullable for both runtime and type checks.
+    gx_reason: Any = None
     try:
         from ..graphx import reason as gx_reason  # B4，惰性导入
     except ImportError:
-        gx_reason = None
+        pass
     named: list[dict[str, str]] = []
     for cap_id in cap_ids:
         label = cap_id
@@ -81,77 +73,217 @@ def _cap_names(cap_ids: list[str]) -> list[dict[str, str]]:
     return named
 
 
-def _task_rubric(raw: Any) -> list[dict[str, Any]]:
-    """规范化 Agent 输入及旧版 rules 对象为任务评分器需要的列表契约。"""
-    candidates = raw
-    if isinstance(raw, dict):
-        candidates = raw.get("rules")
-    if not isinstance(candidates, list):
-        return [dict(item) for item in _DEFAULT_RUBRIC]
+def _normalized_knowledge_points(raw: Any) -> list[dict[str, str]]:
+    """Validate the reviewed learning-content shape before it is persisted."""
 
-    rubric: list[dict[str, Any]] = []
-    for item in candidates:
+    if not isinstance(raw, list):
+        raise ValueError("学习内容必须是列表")
+    normalized: list[dict[str, str]] = []
+    for item in raw[:10]:
         if not isinstance(item, dict):
-            continue
-        key = item.get("key") or item.get("criterion") or item.get("rule")
-        if key is None or not str(key).strip():
-            continue
-        # Older cards call these description/score; normalize them once before
-        # persistence so the student page and scorer share one stable shape.
-        expected = item.get("expected", item.get("description", item.get("rule", str(key))))
-        weight = item.get("weight", item.get("points", item.get("score", 1.0)))
-        rubric.append(
+            raise ValueError("学习内容项必须包含标题和正文")
+        title = str(item.get("title") or "").strip()[:200]
+        content = str(item.get("content") or "").strip()[:8000]
+        if not title or not content:
+            raise ValueError("学习内容项必须包含标题和正文")
+        normalized.append({"title": title, "content": content})
+    return normalized
+
+
+def _default_task_content(
+    title: str, description: str
+) -> tuple[list[dict[str, str]], list[dict[str, Any]]]:
+    """Provide a reviewable baseline when an Agent request omits either content field."""
+
+    focus = description or title
+    return (
+        [
             {
-                "key": str(key),
-                "expected": expected,
-                "weight": weight,
-                **({"hint": str(item["hint"])} if item.get("hint") is not None else {}),
+                "title": f"{title}核心要点",
+                "content": f"围绕 {focus} 梳理学习目标、关键规则和常见错误。",
+            }
+        ],
+        [
+            {
+                "question": f"请用自己的话说明完成“{focus}”时最重要的检查点。",
+                "type": "open_ended",
+                "options": [],
+                "reference_answer": "应覆盖任务目标、关键规则和质量检查点。",
+            }
+        ],
+    )
+
+
+def _normalized_exercises(raw: Any, *, require_choice_options: bool = True) -> list[dict[str, Any]]:
+    """Normalize exercises so the student UI always gets a usable control."""
+
+    if not isinstance(raw, list):
+        raise ValueError("练习必须是列表")
+    normalized: list[dict[str, Any]] = []
+    for item in raw[:20]:
+        if not isinstance(item, dict):
+            raise ValueError("练习项必须包含题目")
+        question = str(item.get("question") or "").strip()[:4000]
+        if not question:
+            raise ValueError("练习项必须包含题目")
+        raw_type = str(item.get("type") or "open_ended").strip().casefold().replace("-", "_")
+        kind = _EXERCISE_TYPE_ALIASES.get(raw_type, raw_type)
+        if kind not in _SUPPORTED_EXERCISE_TYPES:
+            kind = "open_ended"
+        raw_options = item.get("options")
+        if raw_options is not None and not isinstance(raw_options, list):
+            raise ValueError("选择题选项必须是列表")
+        options = [str(option).strip() for option in (raw_options or []) if str(option).strip()]
+        if kind == "multiple_choice" and not options:
+            if require_choice_options:
+                raise ValueError("选择题至少需要一个选项")
+            # Provider output without options cannot render as a choice control;
+            # retain the question as a text response instead of failing the task.
+            kind = "open_ended"
+        if kind == "true_false" and not options:
+            options = ["正确", "错误"]
+        normalized.append(
+            {
+                "question": question,
+                "type": kind,
+                "options": options,
+                "reference_answer": str(item.get("reference_answer") or "").strip()[:4000],
             }
         )
-    return rubric or [dict(item) for item in _DEFAULT_RUBRIC]
+    return normalized
+
+
+def _task_card_content(
+    args: dict[str, Any], title: str, description: str
+) -> tuple[list[dict[str, str]], list[dict[str, Any]]]:
+    """Return the canonical reviewed content displayed in a four-field task card."""
+
+    has_points = "knowledge_points" in args or "learning_content" in args
+    has_exercises = "exercises" in args or "practice" in args
+    default_points, default_exercises = _default_task_content(title, description)
+    points_raw = (
+        args.get("knowledge_points")
+        if "knowledge_points" in args
+        else args.get("learning_content", [])
+    )
+    exercises_raw = args.get("exercises") if "exercises" in args else args.get("practice", [])
+    return (
+        _normalized_knowledge_points(points_raw if has_points else default_points),
+        _normalized_exercises(exercises_raw if has_exercises else default_exercises),
+    )
+
+
+def _persist_task_content_rows(
+    conn: sqlite3.Connection,
+    task_id: str,
+    knowledge_points: list[dict[str, str]],
+    exercises: list[dict[str, Any]],
+    now: str,
+) -> dict[str, Any]:
+    """Write one reviewed/generated lesson without committing the caller transaction."""
+
+    for index, point in enumerate(knowledge_points):
+        conn.execute(
+            "INSERT INTO task_knowledge_points "
+            "(id, task_id, title, content, sort_order, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                uuid.uuid4().hex,
+                task_id,
+                point["title"],
+                point["content"],
+                index,
+                now,
+                now,
+            ),
+        )
+    for index, exercise in enumerate(exercises):
+        options = exercise["options"]
+        conn.execute(
+            "INSERT INTO task_exercises "
+            "(id, task_id, question, type, options_json, reference_answer, sort_order, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                uuid.uuid4().hex,
+                task_id,
+                exercise["question"],
+                exercise["type"],
+                json.dumps(options, ensure_ascii=False) if options else None,
+                exercise["reference_answer"],
+                index,
+                now,
+            ),
+        )
+    # A reviewed empty array is deliberate too: this terminal marker prevents a
+    # detached generator from silently replacing a card the learner confirmed.
+    conn.execute(
+        "UPDATE learning_tasks SET content_status = 'done', content_generated_at = ? WHERE id = ?",
+        (now, task_id),
+    )
+    return {
+        "knowledge_points": len(knowledge_points),
+        "exercises": len(exercises),
+        "status": "done",
+    }
 
 
 def build_task_card(args: dict[str, Any]) -> dict[str, Any]:
-    """组装 TaskCard（不落库）。步骤至少 2 步（契约要求）。"""
+    """组装四字段 TaskCard（不落库）。历史步骤/rubric 不再自动生成。"""
     data_type = args.get("data_type")
     label = _DATA_TYPE_LABELS.get(data_type or "", "")
     title = args.get("title") or (f"{label}标注练习任务" if label else "标注练习任务")
-    goal = args.get("goal") or "掌握该任务对应的标注规范并能独立完成练习"
+    goal = args.get("description") or args.get("goal") or "掌握该任务对应的标注规范并能独立完成练习"
     cap_ids = list(args.get("cap_ids") or [])
-    steps = args.get("steps") or [
-        {"title": "学习规范", "description": "阅读关联资料与教学单元，明确标注规则"},
-        {"title": "完成练习", "description": "按规范完成一组标注练习样本"},
-        {"title": "自查常见错误", "description": "对照评分规则自查并修正"},
-    ]
-    rubric = _task_rubric(args.get("rubric"))
+    points, exercises = _task_card_content(args, title, goal)
     return {
         "title": title,
         "goal": goal,
+        "description": goal,
         "data_type": data_type,
         "cap_ids": cap_ids,
         "cap_names": _cap_names(cap_ids),
-        "steps": steps if len(steps) >= 2 else steps + [{"title": "完成练习", "description": "按规范完成练习"}],
+        "knowledge_points": points,
+        "exercises": exercises,
         "est_minutes": args.get("est_minutes") or 45,
-        "rubric": rubric,
     }
 
 
 def task_preview_handler(ctx: ToolContext) -> dict[str, Any]:
-    card = build_task_card(ctx.args)
+    raw_stages = ctx.args.get("stages")
+    cards = (
+        [build_task_card(stage) for stage in raw_stages if isinstance(stage, dict)]
+        if isinstance(raw_stages, list) and len(raw_stages) > 1
+        else None
+    )
+    card = build_task_card(ctx.args) if cards is None else None
+    single_card = card or {}
     emit_telemetry(
         ctx.db,
         ctx.user_row["id"],
         "task_preview_created",
         {
-            "data_type": card.get("data_type"),
-            "cap_count": len(card.get("cap_ids") or []),
+            # A staged preview deliberately has no wrapper card.  Read the
+            # common data type from its first independent task instead of
+            # dereferencing the single-task shape during telemetry emission.
+            "data_type": (cards[0] if cards else single_card).get("data_type"),
+            "cap_count": sum(len(item.get("cap_ids") or []) for item in cards)
+            if cards is not None
+            else len(single_card.get("cap_ids") or []),
         },
     )
-    return {"card": card}
+    return {"card": card, "stages": cards} if cards is not None else {"card": card}
 
 
 def task_create_preview(ctx: ToolContext) -> dict[str, Any]:
-    """确认门预览载荷：展示将创建的任务卡全文（PRD-06 §6.4：名称/目标/步骤/关联能力）。"""
+    """确认门预览载荷：展示一张或多张四字段任务卡。"""
+    raw_stages = ctx.args.get("stages")
+    if isinstance(raw_stages, list) and len(raw_stages) > 1:
+        cards = [build_task_card(stage) for stage in raw_stages if isinstance(stage, dict)]
+        return {
+            "action": "task.create",
+            "summary": f"将创建 {len(cards)} 个分阶段学习任务",
+            "stages": cards,
+        }
     card = build_task_card(ctx.args)
     return {
         "action": "task.create",
@@ -161,53 +293,80 @@ def task_create_preview(ctx: ToolContext) -> dict[str, Any]:
 
 
 def task_create_apply(ctx: ToolContext) -> dict[str, Any]:
-    """确认后写 learning_tasks（source 默认 agent；状态 not_started）。"""
-    card = build_task_card(ctx.args)
-    task_id = uuid.uuid4().hex
+    """确认后原子写入一张或多张 learning_tasks（source 默认 agent）。"""
+    raw_stages = ctx.args.get("stages")
+    stage_args = (
+        [stage for stage in raw_stages if isinstance(stage, dict)]
+        if isinstance(raw_stages, list) and raw_stages
+        else [ctx.args]
+    )
     now = utc_now_iso()
     counts_toward_mastery = 1 if ctx.args.get("counts_toward_mastery", True) else 0
     source = ctx.args.get("source") or "agent"
     if source not in ("agent", "preset", "teacher", "diagnostic"):
         source = "agent"
-    ctx.db.execute(
-        """
-        INSERT INTO learning_tasks
-          (id, user_id, title, goal, data_type, cap_ids_json,
-           source, status, steps_json, resources_json, rubric_json,
-           counts_toward_mastery, created_by, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'not_started', ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            task_id,
-            ctx.user_row["id"],
-            card["title"],
-            card["goal"],
-            card.get("data_type"),
-            json.dumps(card["cap_ids"], ensure_ascii=False),
-            source,
-            json.dumps(card["steps"], ensure_ascii=False),
-            # The legacy column remains in the schema, but current Agent tasks
-            # intentionally have no catalog attachment.
-            "[]",
-            json.dumps(card["rubric"], ensure_ascii=False),
-            counts_toward_mastery,
-            ctx.user_row["id"],
-            now,
-            now,
-        ),
-    )
-    ctx.db.commit()
-    # The confirmation write is complete before content generation is queued;
-    # this keeps the worker on the durable background loop from racing an
-    # uncommitted task row while still returning the task immediately.
-    queue_task_content(ctx.db, task_id)
+    created: list[dict[str, Any]] = []
+    try:
+        for stage in stage_args:
+            card = build_task_card(stage)
+            task_id = uuid.uuid4().hex
+            ctx.db.execute(
+                """
+                INSERT INTO learning_tasks
+                  (id, user_id, title, goal, data_type, cap_ids_json,
+                   source, status, steps_json, resources_json, rubric_json,
+                   counts_toward_mastery, created_by, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'not_started', '[]', '[]', NULL, ?, ?, ?, ?)
+                """,
+                (
+                    task_id,
+                    ctx.user_row["id"],
+                    card["title"],
+                    card["description"],
+                    card.get("data_type"),
+                    json.dumps(card["cap_ids"], ensure_ascii=False),
+                    source,
+                    counts_toward_mastery,
+                    ctx.user_row["id"],
+                    now,
+                    now,
+                ),
+            )
+            # Keep every reviewed stage self-contained before the batch is
+            # visible, so no later worker can replace its confirmed detail.
+            _persist_task_content_rows(
+                ctx.db,
+                task_id,
+                card["knowledge_points"],
+                card["exercises"],
+                now,
+            )
+            created.append(
+                {
+                    "task_id": task_id,
+                    "title": card["title"],
+                    "card": card,
+                }
+            )
+        # Commit the complete batch before workers are queued so a provider
+        # never observes only a subset of a multi-stage confirmation.
+        ctx.db.commit()
+    except Exception:
+        ctx.db.rollback()
+        raise
     emit_telemetry(
         ctx.db,
         ctx.user_row["id"],
         "task_created",
-        {"task_id": task_id, "source": source},
+        {"task_ids": [item["task_id"] for item in created], "source": source},
     )
-    return {"task_id": task_id, "title": card["title"], "card": card}
+    if len(created) == 1:
+        return created[0]
+    return {
+        "task_ids": [item["task_id"] for item in created],
+        "tasks": created,
+        "count": len(created),
+    }
 
 
 def mark_task_content_generating(
@@ -456,6 +615,7 @@ async def _generate_task_content_uncached(
         )
         conn.commit()
         title = str(task["title"] or "学习任务")
+        description = str(task["goal"] or "").strip()
         cap_ids = json.loads(task["cap_ids_json"] or "[]")
         cap_text = ", ".join(str(item) for item in cap_ids) if isinstance(cap_ids, list) else ""
         knowledge_points: list[dict[str, Any]] = []
@@ -474,7 +634,14 @@ async def _generate_task_content_uncached(
                     },
                     {
                         "role": "user",
-                        "content": f"任务：{title}\n能力节点：{cap_text}",
+                        # A staged Agent request stores each stage's wording in
+                        # ``goal``. Supplying it here keeps generated content
+                        # specific to that stage rather than only its shared title.
+                        "content": (
+                            f"任务名称：{title}\n"
+                            f"任务描述：{description or title}\n"
+                            f"能力节点：{cap_text}"
+                        ),
                     },
                 ],
                 role="primary",
@@ -497,22 +664,11 @@ async def _generate_task_content_uncached(
         except Exception:
             logger.warning("task content provider failed; using deterministic draft", exc_info=True)
 
+        default_points, default_exercises = _default_task_content(title, description)
         if not knowledge_points:
-            knowledge_points = [
-                {
-                    "title": f"{title}核心概念",
-                    "content": f"围绕 {title} 梳理定义、步骤和常见错误。",
-                }
-            ]
+            knowledge_points = default_points
         if not exercises:
-            exercises = [
-                {
-                    "question": f"请用自己的话说明完成“{title}”时最重要的检查点。",
-                    "type": "open_ended",
-                    "options": None,
-                    "reference_answer": "应覆盖任务目标、关键步骤和质量检查点。",
-                }
-            ]
+            exercises = default_exercises
 
         # Manual teacher/student CRUD can finish while the provider call above
         # is in flight.  Re-check immediately before replacing rows so an
@@ -542,49 +698,18 @@ async def _generate_task_content_uncached(
                 "status": "done",
             }
 
-        for index, item in enumerate(knowledge_points):
-            conn.execute(
-                "INSERT INTO task_knowledge_points "
-                "(id, task_id, title, content, sort_order, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (
-                    uuid.uuid4().hex,
-                    task_id,
-                    str(item["title"])[:200],
-                    str(item["content"])[:8000],
-                    index,
-                    now,
-                    now,
-                ),
-            )
-        for index, item in enumerate(exercises):
-            options = item.get("options")
-            conn.execute(
-                "INSERT INTO task_exercises "
-                "(id, task_id, question, type, options_json, reference_answer, sort_order, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    uuid.uuid4().hex,
-                    task_id,
-                    str(item["question"])[:4000],
-                    str(item.get("type") or "open_ended"),
-                    json.dumps(options, ensure_ascii=False) if isinstance(options, list) else None,
-                    str(item.get("reference_answer") or "")[:4000],
-                    index,
-                    now,
-                ),
-            )
-        conn.execute(
-            "UPDATE learning_tasks SET content_status = 'done', "
-            "content_generated_at = ? WHERE id = ?",
-            (now, task_id),
+        # Provider output uses the same storage contract as reviewed Agent
+        # content. Missing choice options degrade to text input so a malformed
+        # provider response never creates an unusable selection exercise.
+        result = _persist_task_content_rows(
+            conn,
+            task_id,
+            _normalized_knowledge_points(knowledge_points),
+            _normalized_exercises(exercises, require_choice_options=False),
+            now,
         )
         conn.commit()
-        return {
-            "knowledge_points": len(knowledge_points),
-            "exercises": len(exercises),
-            "status": "done",
-        }
+        return result
     except Exception:
         logger.warning("task content persistence failed", exc_info=True)
         try:
@@ -712,8 +837,7 @@ def _copy_task_content(
             ),
         )
     conn.execute(
-        "UPDATE learning_tasks SET content_status = 'done', "
-        "content_generated_at = ? WHERE id = ?",
+        "UPDATE learning_tasks SET content_status = 'done', content_generated_at = ? WHERE id = ?",
         (now, target_task_id),
     )
     conn.commit()
@@ -771,9 +895,7 @@ async def generate_task_content(
                 conn.commit()
                 return {"knowledge_points": points, "exercises": exercises, "status": "done"}
             if source_task_id == task_id:
-                return await _generate_task_content_uncached(
-                    task_id, database_path=resolved_path
-                )
+                return await _generate_task_content_uncached(task_id, database_path=resolved_path)
             source_counts = _content_counts(conn, source_task_id)
             if not any(source_counts):
                 source_result = await _generate_task_content_uncached(
@@ -798,7 +920,9 @@ async def generate_task_content(
             )
             conn.commit()
         except Exception:
-            logger.warning("task content fan-out failure status could not be persisted", exc_info=True)
+            logger.warning(
+                "task content fan-out failure status could not be persisted", exc_info=True
+            )
         return {"knowledge_points": 0, "exercises": 0, "status": "failed"}
     finally:
         # Release the process-local startup claim after a terminal result so a

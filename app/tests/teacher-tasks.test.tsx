@@ -1,14 +1,11 @@
 /**
  * 教师端测试（二）：教学任务发布（PRD-02 §5）。
  *
- * 覆盖验收点：
- * - §5.4 客户端校验：能力节点 ≥1（未满足时绝不发请求），任务资源可为空；
- * - §5.4 预览面板常驻渲染，表单编辑实时反映到任务卡；
- * - P0-5/P0-6：发布页只保留手动输入与 AI 生成，不展示或提交资源关联；
- * - §5.4 发布链路：先落库（POST 草稿）再 publish，载荷含 class_id /
- *   due_at / counts_toward_mastery，成功后提示"已发布给 N 名学生"。
- *
- * api 层打桩；图谱 CAP 搜索走防抖（SearchInput 300ms），断言用 findBy 等待。
+ * 覆盖已确认的任务正文契约：
+ * - 任务编辑只包含名称、描述、学习内容和练习，名称是唯一最小必填项；
+ * - 学习内容和练习在任务行落库后分别保存，选择题保留题型、选项与教师参考答案；
+ * - 班级、截止时间和掌握度只属于独立发布设置，不会混入任务正文；
+ * - Teacher Agent 交接的草稿能恢复四字段内容，但不会隐式发布。
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -21,6 +18,7 @@ vi.mock("../src/api/client", () => {
   class MockApiRequestError extends Error {
     status: number;
     code: string;
+
     constructor(status: number, code: string, message: string) {
       super(message);
       this.name = "ApiRequestError";
@@ -28,6 +26,7 @@ vi.mock("../src/api/client", () => {
       this.code = code;
     }
   }
+
   return {
     ApiRequestError: MockApiRequestError,
     api: {
@@ -49,6 +48,15 @@ const mockedGet = vi.mocked(api.get);
 const mockedPost = vi.mocked(api.post);
 const mockedPatch = vi.mocked(api.patch);
 
+const testClass = {
+  id: "c1",
+  name: "数据标注2301班",
+  invite_code: "CODE",
+  student_count: 5,
+  recent_task_title: null,
+  created_at: "2026-01-01T00:00:00Z",
+};
+
 function renderPage() {
   return render(
     <ToastProvider>
@@ -59,58 +67,115 @@ function renderPage() {
   );
 }
 
-/** 通过能力搜索把 CAP-1「语音切分」加进表单（走真实防抖 + mock 搜索） */
-async function addCap() {
-  fireEvent.change(screen.getByPlaceholderText("搜索能力节点…"), {
-    target: { value: "语音" },
+function fillTitle(value = "客服语音情感标注实战") {
+  fireEvent.change(screen.getByPlaceholderText("例如：客服语音情感标注实战"), {
+    target: { value },
   });
-  const addBtn = await screen.findByRole("button", { name: "添加" }, { timeout: 2000 });
-  fireEvent.click(addBtn);
 }
 
-function fillTitle() {
-  fireEvent.change(screen.getByPlaceholderText("例如：客服语音情感标注实战"), {
-    target: { value: "客服语音情感标注实战" },
+function fillDescription(value = "学习并判断客服语音中的情感极性。") {
+  fireEvent.change(screen.getByPlaceholderText("说明学生要学习的主题、范围和预期结果"), {
+    target: { value },
   });
+}
+
+function addLearningContent() {
+  fireEvent.click(screen.getByRole("button", { name: "添加学习内容" }));
+  fireEvent.change(screen.getByPlaceholderText("知识点 1"), {
+    target: { value: "情感标注规范" },
+  });
+  fireEvent.change(screen.getByPlaceholderText("填写这一知识点的学习内容"), {
+    target: { value: "区分投诉、咨询和中性表达，并记录判断依据。" },
+  });
+}
+
+/** The project Select exposes a button + portal listbox, so choose its visible option. */
+function selectExerciseType(optionName: "选择题" | "判断题" | "问答题") {
+  fireEvent.click(screen.getByRole("combobox", { name: "练习 1 题型" }));
+  fireEvent.click(screen.getByRole("option", { name: optionName }));
+}
+
+function addChoiceExercise() {
+  fireEvent.click(screen.getByRole("button", { name: "添加练习" }));
+  fireEvent.change(screen.getByPlaceholderText("练习题 1"), {
+    target: { value: "客户明确表达不满时，应标注为哪种情感？" },
+  });
+  selectExerciseType("选择题");
+  fireEvent.change(screen.getByPlaceholderText("每行一个选项"), {
+    target: { value: "负面\n中性" },
+  });
+  fireEvent.change(screen.getByPlaceholderText("参考答案（仅教师可见）"), {
+    target: { value: "负面" },
+  });
+}
+
+function createAgentTask(id: string, title: string) {
+  return {
+    id,
+    published_count: 0,
+    title,
+    // goal remains the rolling storage-compatible alias for the visible task description.
+    goal: "根据对话生成的学习任务描述。",
+    description: "根据对话生成的学习任务描述。",
+    data_type: null,
+    cap_ids: [],
+    steps: [],
+    rubric: [],
+    knowledge_points: [
+      {
+        id: "kp-agent",
+        title: "复盘要点",
+        content: "对照示例梳理本轮学习的关键判断依据。",
+        sort_order: 0,
+        created_at: "2026-08-01T00:00:00Z",
+        updated_at: "2026-08-01T00:00:00Z",
+      },
+    ],
+    exercises: [
+      {
+        id: "ex-agent",
+        question: "提交前是否应复核所有必填项？",
+        type: "true_false",
+        options: ["正确", "错误"],
+        reference_answer: "正确",
+        sort_order: 0,
+        created_at: "2026-08-01T00:00:00Z",
+        submission: null,
+      },
+    ],
+    class_id: "c1",
+    version: 1,
+    updated_at: "2026-08-01T00:00:00Z",
+  };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockedGet.mockImplementation((path, _query) => {
+  mockedGet.mockImplementation((path) => {
     if (path === "/api/teacher/tasks") return Promise.resolve({ items: [], total: 0 });
-    if (path === "/api/teacher/classes") {
-      return Promise.resolve({
-        items: [
-          {
-            id: "c1",
-            name: "数据标注2301班",
-            invite_code: "CODE",
-            student_count: 5,
-            recent_task_title: null,
-            created_at: "2026-01-01T00:00:00Z",
-          },
-        ],
-        total: 1,
-      });
-    }
-    if (path === "/api/graph/nodes") {
-      return Promise.resolve({
-        items: [{ id: "CAP-1", label: "语音切分", type: "CAP" }],
-        total: 1,
-      });
-    }
-    return Promise.reject(new Error(`未 mock 的 GET ${String(path)}`));
+    if (path === "/api/teacher/classes") return Promise.resolve({ items: [testClass], total: 1 });
+    // The page still loads the graph name map for legacy task rows, but the
+    // active authoring UI must not require or render a capability association.
+    if (path === "/api/graph/nodes") return Promise.resolve({ items: [], total: 0 });
+    if (path === "/api/teacher/tasks/t1/knowledge-points") return Promise.resolve({ items: [] });
+    if (path === "/api/teacher/tasks/t1/exercises") return Promise.resolve({ items: [] });
+    return Promise.reject(new Error("未 mock 的 GET " + String(path)));
   });
   mockedPost.mockImplementation((path) => {
     if (path === "/api/teacher/tasks") {
       return Promise.resolve({ id: "t1", published_count: 0, version: 1, version_bumped: false });
     }
+    if (path === "/api/teacher/tasks/t1/knowledge-points") {
+      return Promise.resolve({ id: "kp1" });
+    }
+    if (path === "/api/teacher/tasks/t1/exercises") {
+      return Promise.resolve({ id: "ex1" });
+    }
     if (path === "/api/teacher/tasks/t1/publish") {
       return Promise.resolve({ published: 5, class_id: "c1" });
     }
-    return Promise.reject(new Error(`未 mock 的 POST ${String(path)}`));
+    return Promise.reject(new Error("未 mock 的 POST " + String(path)));
   });
-  // 已保存草稿再编辑发布时会先 PATCH 持久化最新内容（页面契约：publish 复制数据库行）
   mockedPatch.mockResolvedValue({
     id: "t1",
     published_count: 0,
@@ -120,98 +185,65 @@ beforeEach(() => {
 });
 
 describe("TaskPublishPage（PRD-02 §5）", () => {
-  it("opens the task handed off by Teacher Agent", async () => {
-    const agentTask = {
-      id: "t-agent",
-      published_count: 0,
-      title: "Agent 生成任务",
-      goal: "根据对话生成的学习目标",
-      data_type: "text",
-      cap_ids: [],
-      steps: [],
-      rubric: [],
-      resources: [],
-    };
+  it("opens the four-field task handed off by Teacher Agent", async () => {
+    const agentTask = createAgentTask("t-agent", "Agent 生成任务");
     mockedGet.mockImplementation((path) => {
       if (path === "/api/teacher/tasks/t-agent") return Promise.resolve(agentTask);
       if (path === "/api/teacher/tasks") return Promise.resolve({ items: [agentTask], total: 1 });
-      if (path === "/api/teacher/classes") return Promise.resolve({ items: [], total: 0 });
+      if (path === "/api/teacher/classes") return Promise.resolve({ items: [testClass], total: 1 });
       if (path === "/api/graph/nodes") return Promise.resolve({ items: [], total: 0 });
-      return Promise.reject(new Error(`未 mock 的 GET ${String(path)}`));
+      return Promise.reject(new Error("未 mock 的 GET " + String(path)));
     });
 
     render(
       <ToastProvider>
-        <MemoryRouter
-          initialEntries={[
-            { pathname: "/teacher/tasks", state: { taskId: "t-agent" } },
-          ]}
-        >
+        <MemoryRouter initialEntries={[{ pathname: "/teacher/tasks", state: { taskId: "t-agent" } }]}>
           <TaskPublishPage />
         </MemoryRouter>
       </ToastProvider>,
     );
 
     expect(await screen.findByDisplayValue("Agent 生成任务")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("根据对话生成的学习任务描述。")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("复盘要点")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("对照示例梳理本轮学习的关键判断依据。")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("提交前是否应复核所有必填项？")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "练习 1 题型" })).toHaveTextContent("判断题");
+    expect(screen.getByRole("combobox", { name: "选择班级" })).toHaveTextContent("数据标注2301班");
+    expect(mockedPost.mock.calls.some(([path]) => String(path).endsWith("/publish"))).toBe(false);
   });
 
-  it("normalizes an Agent-shaped persisted draft, keeps its class selected, and publishes only on demand", async () => {
-    const agentTask = {
-      id: "t-agent-contract",
-      published_count: 0,
-      title: "Agent field contract draft",
-      goal: "Turn the class insight into a review task.",
-      data_type: "image",
-      cap_ids: ["CAP-1"],
-      // This is the durable Agent payload shape saved before the publisher normalizes it.
-      steps: [{ title: "Review each annotation", description: "Compare it with the reference." }],
-      rubric: [
-        {
-          criterion: "Required labels",
-          description: "Use the agreed vocabulary consistently.",
-          points: 10,
-        },
-      ],
-      resources: [{ type: "rag_document", title: "Annotation guide", ref_id: "doc-1" }],
-      class_id: "c1",
-    };
-    mockedGet.mockImplementation((path, _query) => {
+  it("persists an Agent handoff as task fields plus learning content and exercises, then publishes only on demand", async () => {
+    const agentTask = createAgentTask("t-agent-contract", "Agent 字段契约草稿");
+    mockedGet.mockImplementation((path) => {
       if (path === "/api/teacher/tasks") return Promise.resolve({ items: [], total: 0 });
       if (path === "/api/teacher/tasks/t-agent-contract") return Promise.resolve(agentTask);
-      if (path === "/api/teacher/classes") {
-        return Promise.resolve({
-          items: [
-            {
-              id: "c1",
-              name: "数据标注2301班",
-              invite_code: "CODE",
-              student_count: 5,
-              recent_task_title: null,
-              created_at: "2026-01-01T00:00:00Z",
-            },
-          ],
-          total: 1,
-        });
+      if (path === "/api/teacher/classes") return Promise.resolve({ items: [testClass], total: 1 });
+      if (path === "/api/graph/nodes") return Promise.resolve({ items: [], total: 0 });
+      if (path === "/api/teacher/tasks/t-agent-contract/knowledge-points") {
+        return Promise.resolve({ items: agentTask.knowledge_points });
       }
-      if (path === "/api/graph/nodes") {
-        return Promise.resolve({
-          items: [{ id: "CAP-1", label: "语音切分", type: "CAP" }],
-          total: 1,
-        });
+      if (path === "/api/teacher/tasks/t-agent-contract/exercises") {
+        return Promise.resolve({ items: agentTask.exercises });
       }
-      return Promise.reject(new Error(`未 mock 的 GET ${String(path)}`));
+      return Promise.reject(new Error("未 mock 的 GET " + String(path)));
     });
-    mockedPatch.mockResolvedValue({
-      id: "t-agent-contract",
-      published_count: 0,
-      version: 1,
-      version_bumped: false,
+    mockedPatch.mockImplementation((path) => {
+      if (path === "/api/teacher/tasks/t-agent-contract") {
+        return Promise.resolve({
+          id: "t-agent-contract",
+          published_count: 0,
+          version: 1,
+          version_bumped: false,
+        });
+      }
+      return Promise.resolve({});
     });
     mockedPost.mockImplementation((path) => {
       if (path === "/api/teacher/tasks/t-agent-contract/publish") {
         return Promise.resolve({ published: 5, class_id: "c1" });
       }
-      return Promise.reject(new Error(`未 mock 的 POST ${String(path)}`));
+      return Promise.reject(new Error("未 mock 的 POST " + String(path)));
     });
 
     render(
@@ -222,9 +254,9 @@ describe("TaskPublishPage（PRD-02 §5）", () => {
       </ToastProvider>,
     );
 
-    expect(await screen.findByDisplayValue("Agent field contract draft")).toBeInTheDocument();
-    // Legacy task rows may still carry resources, but the publisher must not surface them.
-    expect(screen.queryByText("Annotation guide")).not.toBeInTheDocument();
+    expect(await screen.findByDisplayValue("Agent 字段契约草稿")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("复盘要点")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("提交前是否应复核所有必填项？")).toBeInTheDocument();
     await waitFor(() =>
       expect(mockedGet).toHaveBeenCalledWith(
         "/api/teacher/tasks/t-agent-contract",
@@ -232,37 +264,40 @@ describe("TaskPublishPage（PRD-02 §5）", () => {
         expect.objectContaining({ signal: expect.anything() }),
       ),
     );
-    expect(await screen.findByRole("combobox", { name: "选择班级" })).toHaveTextContent(
-      "数据标注2301班",
-    );
-    // Selecting the Agent's class restores publishing context; it never acts as an implicit publish.
-    expect(mockedPost.mock.calls.some(([path]) => String(path).endsWith("/publish"))).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
     await waitFor(() =>
+      expect(mockedPatch).toHaveBeenCalledWith("/api/teacher/tasks/t-agent-contract", {
+        title: "Agent 字段契约草稿",
+        description: "根据对话生成的学习任务描述。",
+      }),
+    );
+    await waitFor(() =>
       expect(mockedPatch).toHaveBeenCalledWith(
-        "/api/teacher/tasks/t-agent-contract",
-        expect.objectContaining({
-          steps: [
-            expect.objectContaining({
-              title: "Review each annotation",
-              notes: "Compare it with the reference.",
-            }),
-          ],
-          rubric: [
-            expect.objectContaining({
-              key: "Required labels",
-              expected: "Use the agreed vocabulary consistently.",
-              weight: 10,
-            }),
-          ],
-        }),
+        "/api/teacher/tasks/t-agent-contract/knowledge-points/kp-agent",
+        {
+          title: "复盘要点",
+          content: "对照示例梳理本轮学习的关键判断依据。",
+          sort_order: 0,
+        },
       ),
     );
-    const legacySaveCall = mockedPatch.mock.calls.find(
+    await waitFor(() =>
+      expect(mockedPatch).toHaveBeenCalledWith("/api/teacher/tasks/t-agent-contract/exercises/ex-agent", {
+        question: "提交前是否应复核所有必填项？",
+        type: "true_false",
+        options: ["正确", "错误"],
+        reference_answer: "正确",
+        sort_order: 0,
+      }),
+    );
+    const taskSaveCall = mockedPatch.mock.calls.find(
       ([path]) => path === "/api/teacher/tasks/t-agent-contract",
     );
-    expect(legacySaveCall?.[1]).not.toHaveProperty("resources");
+    expect(taskSaveCall?.[1]).not.toHaveProperty("cap_ids");
+    expect(taskSaveCall?.[1]).not.toHaveProperty("steps");
+    expect(taskSaveCall?.[1]).not.toHaveProperty("rubric");
+    expect(taskSaveCall?.[1]).not.toHaveProperty("resources");
     expect(mockedPost.mock.calls.some(([path]) => String(path).endsWith("/publish"))).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: "发布" }));
@@ -275,22 +310,24 @@ describe("TaskPublishPage（PRD-02 §5）", () => {
     );
   });
 
-  it("只展示手动输入和 AI 生成，不暴露资源关联来源", async () => {
+  it("renders only the four task fields and keeps legacy authoring controls absent", async () => {
     renderPage();
+
     expect(document.querySelector(".teacher-task-publish-page")).toBeInTheDocument();
-    expect(document.querySelector(".teacher-task-publish-layout")).toBeInTheDocument();
     expect(document.querySelector(".teacher-task-editor-layout")).toBeInTheDocument();
     expect(document.querySelector(".teacher-task-review-layout")).toBeInTheDocument();
-    expect(document.querySelector(".teacher-task-preview")).toBeInTheDocument();
-    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    expect(screen.getByText("任务名称")).toBeInTheDocument();
+    expect(screen.getByText("任务描述")).toBeInTheDocument();
+    expect(screen.getByText("学习内容")).toBeInTheDocument();
+    expect(screen.getByText("练习")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "AI 生成任务卡" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "仅填入学习目标" })).toBeInTheDocument();
-    expect(screen.queryByText("已发布资料")).not.toBeInTheDocument();
-    expect(screen.queryByText("预设模板")).not.toBeInTheDocument();
-    expect(screen.queryByText("历史任务")).not.toBeInTheDocument();
+    expect(screen.queryByText("关联能力")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("搜索能力节点…")).not.toBeInTheDocument();
+    expect(screen.queryByText("操作步骤")).not.toBeInTheDocument();
+    expect(screen.queryByText("评分规则")).not.toBeInTheDocument();
     expect(screen.queryByText("学习资源")).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText("资源标题")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /添加资源/ })).not.toBeInTheDocument();
     expect(mockedGet).not.toHaveBeenCalledWith(
       "/api/teacher/resources",
       expect.anything(),
@@ -303,135 +340,83 @@ describe("TaskPublishPage（PRD-02 §5）", () => {
     );
   });
 
-  it("AI 草稿兼容旧 resources 返回，但不把它们带入编辑器", async () => {
-    mockedPost.mockImplementation((path) => {
-      if (path === "/api/teacher/tasks/generate") {
-        return Promise.resolve({
-          title: "AI 生成任务",
-          goal: "完成一次规范化标注",
-          data_type: "text",
-          cap_ids: ["CAP-1"],
-          caps: [{ cap_id: "CAP-1", cap_name: "语音切分" }],
-          steps: [{ title: "检查标签", description: "逐项核对" }],
-          rubric: [{ criterion: "准确性", description: "达到 90%", points: 10 }],
-          // Older providers may still include these fields; the page intentionally ignores them.
-          resources: [{ type: "rag_document", title: "旧资源", ref_id: "doc-legacy" }],
-          citations: [{ document_id: "doc-legacy", title: "旧资源" }],
-          difficulty: 2,
-          est_minutes: 20,
-          sources_note: "基于历史模型响应",
-          llm_used: false,
-          notice: null,
-        });
-      }
-      return Promise.reject(new Error(`未 mock 的 POST ${String(path)}`));
-    });
-
+  it("requires only a name to save a draft and keeps publish settings out of the task payload", async () => {
     renderPage();
-    fireEvent.change(screen.getByPlaceholderText(/粘贴或描述企业岗位任务/), {
-      target: { value: "完成规范化标注" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "AI 生成任务卡" }));
-
-    expect(await screen.findByDisplayValue("AI 生成任务")).toBeInTheDocument();
-    expect(screen.queryByText("旧资源")).not.toBeInTheDocument();
-    expect(screen.queryByText("学习资源")).not.toBeInTheDocument();
-  });
-
-  it("keeps the right review cards in one width and scroll surface", async () => {
-    renderPage();
-    const review = document.querySelector(".teacher-task-review-layout");
-
-    // Selection, preview, and publishing remain siblings so one bounded review surface controls
-    // their vertical movement instead of giving the preview a competing nested scrollbar.
-    expect(review).toBeInTheDocument();
-    expect(review?.querySelector(":scope > .teacher-task-selection")).toBeInTheDocument();
-    expect(review?.querySelector(":scope > .teacher-task-preview")).toBeInTheDocument();
-    expect(review?.querySelector(":scope > .teacher-task-publish-settings")).toBeInTheDocument();
-    expect(review?.querySelectorAll(":scope > .card")).toHaveLength(2);
-    expect(review?.querySelector(".teacher-task-preview > .card")).toBeInTheDocument();
-  });
-
-  it("客户端校验：能力节点仍必需，但来源资料可选", async () => {
-    renderPage();
-    // 等基础数据（班级下拉）就绪，避免与初始加载竞争
     expect(await screen.findByDisplayValue("请选择班级")).toBeInTheDocument();
 
     fillTitle();
     fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
 
-    expect(await screen.findByText("任务必须至少关联一个能力节点")).toBeInTheDocument();
-    expect(mockedPost).not.toHaveBeenCalled();
-
-    // 补上能力后即可保存无资源任务；后端会把缺省资源持久化为空数组。
-    await addCap();
-    fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
     await waitFor(() =>
-      expect(screen.queryByText("任务必须至少关联一个能力节点")).not.toBeInTheDocument(),
-    );
-    await waitFor(() =>
-      expect(mockedPost).toHaveBeenCalledWith(
-        "/api/teacher/tasks",
-        expect.objectContaining({ title: "客服语音情感标注实战", cap_ids: ["CAP-1"] }),
-      ),
+      expect(mockedPost).toHaveBeenCalledWith("/api/teacher/tasks", {
+        title: "客服语音情感标注实战",
+        description: null,
+      }),
     );
     const saveCall = mockedPost.mock.calls.find(([path]) => path === "/api/teacher/tasks");
-    expect(saveCall?.[1]).not.toHaveProperty("resources");
+    expect(saveCall?.[1]).not.toHaveProperty("class_id");
+    expect(saveCall?.[1]).not.toHaveProperty("due_at");
+    expect(saveCall?.[1]).not.toHaveProperty("counts_toward_mastery");
+    expect(screen.queryByText("任务必须至少关联一个能力节点")).not.toBeInTheDocument();
   });
 
-  it("预览面板常驻渲染并随表单实时更新", async () => {
+  it("keeps a live preview of task name, description, learning content, and practice", async () => {
     renderPage();
-    // 空表单的诚实占位
     expect(screen.getByText("未命名任务")).toBeInTheDocument();
-    expect(screen.getByText("尚未关联能力节点（发布必需）")).toBeInTheDocument();
+    expect(screen.getByText("暂无学习内容")).toBeInTheDocument();
+    expect(screen.getByText("暂无练习")).toBeInTheDocument();
 
     fillTitle();
-    // 预览区出现任务卡标题（表单 input 之外的 heading）
+    fillDescription();
+    addLearningContent();
+    addChoiceExercise();
+
     expect(
       await screen.findByRole("heading", { name: "客服语音情感标注实战" }),
     ).toBeInTheDocument();
-
-    await addCap();
-    // 芯片 + 预览 Tag 都会显示能力名（findAll 命中一个即返回，数量断言要用 waitFor 收敛）
-    await waitFor(() => expect(screen.getAllByText("语音切分").length).toBeGreaterThanOrEqual(2));
-
-    // 资源字段即使出现在旧 DTO 中也不再进入编辑器或预览。
-    expect(screen.queryByText("学习资源")).not.toBeInTheDocument();
+    expect(screen.getAllByText("学习并判断客服语音中的情感极性。").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("情感标注规范").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("客户明确表达不满时，应标注为哪种情感？").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("（选择题）")).toBeInTheDocument();
+    expect(screen.queryByText("关联能力（")).not.toBeInTheDocument();
+    expect(screen.queryByText("操作步骤（")).not.toBeInTheDocument();
+    expect(screen.queryByText("评分规则")).not.toBeInTheDocument();
   });
 
-  it("发布：先保存草稿再 publish，载荷正确并提示发布人数", async () => {
+  it("publishes after persisting the four-field task body and its learning content and practice", async () => {
     renderPage();
     expect(await screen.findByDisplayValue("请选择班级")).toBeInTheDocument();
 
     fillTitle();
-    await addCap();
-    // 保存草稿：POST /api/teacher/tasks，不携带已移除的资源关联字段
-    fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
-    await waitFor(() =>
-      expect(mockedPost).toHaveBeenCalledWith(
-        "/api/teacher/tasks",
-        expect.objectContaining({
-          title: "客服语音情感标注实战",
-          cap_ids: ["CAP-1"],
-        }),
-      ),
-    );
-    const saveCall = mockedPost.mock.calls.find(([path]) => path === "/api/teacher/tasks");
-    expect(saveCall?.[1]).not.toHaveProperty("resources");
-    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
-
-    // 选择班级后发布
+    fillDescription();
+    addLearningContent();
+    addChoiceExercise();
     fireEvent.change(screen.getByDisplayValue("请选择班级"), {
       target: { value: "c1" },
     });
     fireEvent.click(screen.getByRole("button", { name: "发布" }));
 
-    // 发布链路：先把最新编辑 PATCH 回落库草稿，再调 publish 复制给学生
     await waitFor(() =>
-      expect(mockedPatch).toHaveBeenCalledWith(
-        "/api/teacher/tasks/t1",
-        expect.objectContaining({ title: "客服语音情感标注实战", cap_ids: ["CAP-1"] }),
-      ),
+      expect(mockedPost).toHaveBeenCalledWith("/api/teacher/tasks", {
+        title: "客服语音情感标注实战",
+        description: "学习并判断客服语音中的情感极性。",
+      }),
+    );
+    await waitFor(() =>
+      expect(mockedPost).toHaveBeenCalledWith("/api/teacher/tasks/t1/knowledge-points", {
+        title: "情感标注规范",
+        content: "区分投诉、咨询和中性表达，并记录判断依据。",
+        sort_order: 0,
+      }),
+    );
+    await waitFor(() =>
+      expect(mockedPost).toHaveBeenCalledWith("/api/teacher/tasks/t1/exercises", {
+        question: "客户明确表达不满时，应标注为哪种情感？",
+        type: "multiple_choice",
+        options: ["负面", "中性"],
+        reference_answer: "负面",
+        sort_order: 0,
+      }),
     );
     await waitFor(() =>
       expect(mockedPost).toHaveBeenCalledWith("/api/teacher/tasks/t1/publish", {
@@ -440,15 +425,13 @@ describe("TaskPublishPage（PRD-02 §5）", () => {
         counts_toward_mastery: true,
       }),
     );
-    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
   });
 
-  it("未选班级时发布被客户端拦截", async () => {
+  it("blocks publishing until a class is selected without requiring a capability relation", async () => {
     renderPage();
     expect(await screen.findByDisplayValue("请选择班级")).toBeInTheDocument();
 
     fillTitle();
-    await addCap();
     fireEvent.click(screen.getByRole("button", { name: "发布" }));
 
     expect(await screen.findByText("发布前请选择班级")).toBeInTheDocument();

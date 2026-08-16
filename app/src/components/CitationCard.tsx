@@ -12,7 +12,7 @@ export interface CitationCardProps {
 /**
  * 引用来源卡（PRD-01 §8）：文档名 + 章节 + 页码 + 版本。
  * 学生端 DTO 不含 chunk_id/上传人（PRD-06 §4.5），本组件也不接收这些字段——
- * 管理端调试视图请用 SearchTestHit 另做展示，不要复用本组件。
+ * 内部检索结果含有 chunk_id 时应使用专用 DTO 展示，不要复用本组件。
  */
 export default function CitationCard({ citation, index, onClick }: CitationCardProps) {
   const pages =

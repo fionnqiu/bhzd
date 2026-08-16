@@ -9,7 +9,11 @@ import pytest
 from _learning_fixtures import api  # noqa: F401  # pytest 夹具复用
 
 CAP = "CAP-AUD-SEGMENT-ALIGN-001"
-RES = {"type": "teaching_unit", "ref_id": "TU-AUDIO-SEGMENTATION-ALIGNMENT-001", "title": "切割话语并对齐文本时间戳"}
+RES = {
+    "type": "teaching_unit",
+    "ref_id": "TU-AUDIO-SEGMENTATION-ALIGNMENT-001",
+    "title": "切割话语并对齐文本时间戳",
+}
 
 
 def _create_class(api, teacher, name="一班"):
@@ -19,7 +23,12 @@ def _create_class(api, teacher, name="一班"):
 
 
 def _create_task(api, teacher, **overrides):
-    body = {"title": "岗位任务：音频切割", "cap_ids": [CAP], "resources": [RES], "data_type": "audio"}
+    body = {
+        "title": "岗位任务：音频切割",
+        "cap_ids": [CAP],
+        "resources": [RES],
+        "data_type": "audio",
+    }
     body.update(overrides)
     response = api.client.post("/api/teacher/tasks", json=body, headers=teacher["headers"])
     if response.status_code == 201:
@@ -41,13 +50,17 @@ def test_class_enroll_and_join_by_code(api):
     # 邀请码入班（学生侧）
     student = api.login_as("s1@test.local", name="小李")
     joined = api.client.post(
-        "/api/student/join-class", json={"invite_code": clazz["invite_code"]}, headers=student["headers"]
+        "/api/student/join-class",
+        json={"invite_code": clazz["invite_code"]},
+        headers=student["headers"],
     )
     assert joined.status_code == 200, joined.text
     assert joined.json()["already_enrolled"] is False
     # 幂等：重复入班
     again = api.client.post(
-        "/api/student/join-class", json={"invite_code": clazz["invite_code"]}, headers=student["headers"]
+        "/api/student/join-class",
+        json={"invite_code": clazz["invite_code"]},
+        headers=student["headers"],
     )
     assert again.json()["already_enrolled"] is True
     # 无效邀请码
@@ -78,7 +91,15 @@ def test_class_enroll_and_join_by_code(api):
     emails = {s["email"] for s in students.json()["items"]}
     assert emails == {"s1@test.local", "s2@test.local"}
     for item in students.json()["items"]:
-        for key in ("id", "name", "email", "task_count", "completion_rate", "avg_mastery", "last_active"):
+        for key in (
+            "id",
+            "name",
+            "email",
+            "task_count",
+            "completion_rate",
+            "avg_mastery",
+            "last_active",
+        ):
             assert key in item
 
     # 重新生成邀请码后旧码失效
@@ -112,9 +133,7 @@ def test_student_profile_lists_active_classes_and_soft_leaves(api):
         "个人中心二班",
     }
 
-    left = api.client.delete(
-        f"/api/student/classes/{first['id']}", headers=student["headers"]
-    )
+    left = api.client.delete(f"/api/student/classes/{first['id']}", headers=student["headers"])
     assert left.status_code == 200, left.text
     assert left.json()["class_name"] == "个人中心一班"
     remaining = api.client.get("/api/profile").json()["classes"]
@@ -133,7 +152,9 @@ def test_class_students_aggregates_task_mastery_and_activity_in_one_response(api
     clazz = _create_class(api, teacher, "聚合班")
     student = api.login_as("s-aggregate@test.local")
     api.client.post(
-        "/api/student/join-class", json={"invite_code": clazz["invite_code"]}, headers=student["headers"]
+        "/api/student/join-class",
+        json={"invite_code": clazz["invite_code"]},
+        headers=student["headers"],
     )
     api.act_as(teacher)
     task = _create_task(api, teacher).json()
@@ -174,10 +195,13 @@ def test_class_students_aggregates_task_mastery_and_activity_in_one_response(api
 
 
 def test_task_validation_rules(api):
-    """Teacher tasks require a real capability; resources are optional legacy data."""
+    """Tasks may omit optional capability links while rejecting unknown IDs."""
     teacher = api.login_as("t-valid@test.local", role="teacher")
+    # Capability links are optional in the four-field task contract; malformed
+    # links must still fail so an authored task cannot reference missing data.
     no_caps = _create_task(api, teacher, cap_ids=[])
-    assert no_caps.status_code == 400 and no_caps.json()["error"]["code"] == "CAPS_REQUIRED"
+    assert no_caps.status_code == 201, no_caps.text
+    assert no_caps.json()["cap_ids"] == []
     no_res = _create_task(api, teacher, resources=[])
     assert no_res.status_code == 201
     assert no_res.json()["resources"] == []
@@ -186,9 +210,12 @@ def test_task_validation_rules(api):
     ok = _create_task(api, teacher)
     assert ok.status_code == 201, ok.text
     assert ok.json()["status"] == "draft"
-    assert api.conn.execute(
-        "SELECT resources_json FROM learning_tasks WHERE id = ?", (ok.json()["id"],)
-    ).fetchone()["resources_json"] == "[]"
+    assert (
+        api.conn.execute(
+            "SELECT resources_json FROM learning_tasks WHERE id = ?", (ok.json()["id"],)
+        ).fetchone()["resources_json"]
+        == "[]"
+    )
 
 
 def test_publish_creates_student_copies(api):
@@ -197,12 +224,38 @@ def test_publish_creates_student_copies(api):
     task = _create_task(api, teacher).json()
     student = api.login_as("s-pub@test.local")
     api.client.post(
-        "/api/student/join-class", json={"invite_code": clazz["invite_code"]}, headers=student["headers"]
+        "/api/student/join-class",
+        json={"invite_code": clazz["invite_code"]},
+        headers=student["headers"],
     )
     api.act_as(teacher)
+    # Teacher-authored learning content must fan out atomically; students must
+    # never receive the retired steps/rubric body while waiting for a worker.
+    point = api.client.post(
+        f"/api/teacher/tasks/{task['id']}/knowledge-points",
+        json={"title": "切割边界", "content": "按静音段和语义完整性确认边界。", "sort_order": 0},
+        headers=teacher["headers"],
+    )
+    assert point.status_code == 201, point.text
+    exercise = api.client.post(
+        f"/api/teacher/tasks/{task['id']}/exercises",
+        json={
+            "question": "切割前是否需要确认语义完整性？",
+            "type": "true_false",
+            "options": ["正确", "错误"],
+            "reference_answer": "正确",
+            "sort_order": 0,
+        },
+        headers=teacher["headers"],
+    )
+    assert exercise.status_code == 201, exercise.text
     published = api.client.post(
         f"/api/teacher/tasks/{task['id']}/publish",
-        json={"class_id": clazz["id"], "due_at": "2026-08-10T00:00:00+00:00", "counts_toward_mastery": True},
+        json={
+            "class_id": clazz["id"],
+            "due_at": "2026-08-10T00:00:00+00:00",
+            "counts_toward_mastery": True,
+        },
         headers=teacher["headers"],
     )
     assert published.status_code == 201, published.text
@@ -221,6 +274,51 @@ def test_publish_creates_student_copies(api):
     assert row["teacher_id"] == teacher["user_id"]
     assert row["class_id"] == clazz["id"]
     assert row["resources_json"] == "[]"
+    assert row["steps_json"] == "[]"
+    assert row["rubric_json"] is None
+    assert row["practice_json"] is None
+    assert row["content_status"] == "done"
+    copied_points = api.conn.execute(
+        "SELECT title, content FROM task_knowledge_points WHERE task_id = ? ORDER BY sort_order",
+        (copy["id"],),
+    ).fetchall()
+    copied_exercises = api.conn.execute(
+        "SELECT question, type, options_json, reference_answer FROM task_exercises WHERE task_id = ? ORDER BY sort_order",
+        (copy["id"],),
+    ).fetchall()
+    source_points = api.conn.execute(
+        "SELECT title, content FROM task_knowledge_points WHERE task_id = ? ORDER BY sort_order",
+        (task["id"],),
+    ).fetchall()
+    source_exercises = api.conn.execute(
+        "SELECT question, type, options_json, reference_answer FROM task_exercises WHERE task_id = ? ORDER BY sort_order",
+        (task["id"],),
+    ).fetchall()
+    # Equal sort_order values are valid while a teacher is composing a draft.
+    # The copy must preserve every reviewed row, without treating SQLite's
+    # unspecified order among tied rows as a publication regression.
+    assert sorted((item["title"], item["content"]) for item in copied_points) == sorted(
+        (item["title"], item["content"]) for item in source_points
+    )
+    assert sorted(
+        (item["question"], item["type"], item["options_json"], item["reference_answer"])
+        for item in copied_exercises
+    ) == sorted(
+        (item["question"], item["type"], item["options_json"], item["reference_answer"])
+        for item in source_exercises
+    )
+    assert ("切割边界", "按静音段和语义完整性确认边界。") in [
+        (item["title"], item["content"]) for item in copied_points
+    ]
+    assert (
+        "切割前是否需要确认语义完整性？",
+        "true_false",
+        '["正确", "错误"]',
+        "正确",
+    ) in [
+        (item["question"], item["type"], item["options_json"], item["reference_answer"])
+        for item in copied_exercises
+    ]
 
     # 审计已写发布记录
     audits = api.conn.execute(
@@ -236,9 +334,31 @@ def test_patch_published_task_bumps_version(api):
     task = _create_task(api, teacher).json()
     student = api.login_as("s-ver@test.local")
     api.client.post(
-        "/api/student/join-class", json={"invite_code": clazz["invite_code"]}, headers=student["headers"]
+        "/api/student/join-class",
+        json={"invite_code": clazz["invite_code"]},
+        headers=student["headers"],
     )
     api.act_as(teacher)
+    # The new version must start from the reviewed lesson rather than a blank
+    # body, while the already-published student copy remains immutable.
+    point = api.client.post(
+        f"/api/teacher/tasks/{task['id']}/knowledge-points",
+        json={"title": "版本知识点", "content": "保留到下一版的学习内容。", "sort_order": 0},
+        headers=teacher["headers"],
+    )
+    assert point.status_code == 201, point.text
+    exercise = api.client.post(
+        f"/api/teacher/tasks/{task['id']}/exercises",
+        json={
+            "question": "版本练习题",
+            "type": "multiple_choice",
+            "options": ["保留", "忽略"],
+            "reference_answer": "保留",
+            "sort_order": 0,
+        },
+        headers=teacher["headers"],
+    )
+    assert exercise.status_code == 201, exercise.text
     api.client.post(
         f"/api/teacher/tasks/{task['id']}/publish",
         json={"class_id": clazz["id"]},
@@ -267,6 +387,22 @@ def test_patch_published_task_bumps_version(api):
     ).fetchone()
     assert new_version is not None
     assert new_version["resources_json"] == "[]"
+    copied_content = api.conn.execute(
+        "SELECT title, content FROM task_knowledge_points WHERE task_id = ? ORDER BY sort_order",
+        (body["id"],),
+    ).fetchall()
+    copied_exercises = api.conn.execute(
+        "SELECT question, type, options_json, reference_answer FROM task_exercises "
+        "WHERE task_id = ? ORDER BY sort_order",
+        (body["id"],),
+    ).fetchall()
+    assert ("版本知识点", "保留到下一版的学习内容。") in [
+        (item["title"], item["content"]) for item in copied_content
+    ]
+    assert ("版本练习题", "multiple_choice", '["保留", "忽略"]', "保留") in [
+        (item["question"], item["type"], item["options_json"], item["reference_answer"])
+        for item in copied_exercises
+    ]
     # 新版本原件出现在教师任务列表，旧版本原件保留
     mine = api.client.get("/api/teacher/tasks").json()
     assert mine["total"] == 2
@@ -278,7 +414,9 @@ def test_dashboard_omits_resource_review_and_rejects_teacher_review_access(api):
     clazz = _create_class(api, teacher)
     student = api.login_as("s-dash@test.local")
     api.client.post(
-        "/api/student/join-class", json={"invite_code": clazz["invite_code"]}, headers=student["headers"]
+        "/api/student/join-class",
+        json={"invite_code": clazz["invite_code"]},
+        headers=student["headers"],
     )
     api.act_as(teacher)
     # 学生一条薄弱掌握度；资源审核待办不再属于教师工作台。
@@ -324,7 +462,14 @@ def test_system_admin_review_queue_returns_pending_documents_only(api):
         VALUES (?, ?, 'md', 'enterprise', '队列测试来源', 'v1', 'authorized', ?, ?, ?, ?)
         """,
         [
-            (pending_id, "待审核资料", "review_pending", teacher["user_id"], reviewed_at, reviewed_at),
+            (
+                pending_id,
+                "待审核资料",
+                "review_pending",
+                teacher["user_id"],
+                reviewed_at,
+                reviewed_at,
+            ),
             (excluded_id, "未送审资料", "indexed", teacher["user_id"], reviewed_at, reviewed_at),
         ],
     )
@@ -375,7 +520,14 @@ def test_teacher_resources_only_lists_student_eligible_documents(api):
         (docs["eligible_b"], "学生可用资料 B", "student", "published", None, None),
         (docs["teacher_only"], "仅教师资料", "teacher", "published", None, None),
         (docs["not_published"], "尚未发布资料", "student", "indexed", None, None),
-        (docs["expired_document"], "已过期资料", "student", "published", "2000-01-01T00:00:00+00:00", None),
+        (
+            docs["expired_document"],
+            "已过期资料",
+            "student",
+            "published",
+            "2000-01-01T00:00:00+00:00",
+            None,
+        ),
         (docs["expired_ledger"], "过期台账资料", "student", "published", None, expired_ledger_id),
     ]
     api.conn.executemany(
@@ -387,7 +539,18 @@ def test_teacher_resources_only_lists_student_eligible_documents(api):
         VALUES (?, ?, 'md', 'enterprise', '测试来源', 'v1', 'authorized', ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
-            (doc_id, title, visibility, status, ledger_id, teacher["user_id"], now, now, now, expires_at)
+            (
+                doc_id,
+                title,
+                visibility,
+                status,
+                ledger_id,
+                teacher["user_id"],
+                now,
+                now,
+                now,
+                expires_at,
+            )
             for doc_id, title, visibility, status, expires_at, ledger_id in rows
         ],
     )
@@ -428,7 +591,9 @@ def test_analytics_sample_warning_and_heatmap(api):
     clazz = _create_class(api, teacher)
     student = api.login_as("s-ana@test.local")
     api.client.post(
-        "/api/student/join-class", json={"invite_code": clazz["invite_code"]}, headers=student["headers"]
+        "/api/student/join-class",
+        json={"invite_code": clazz["invite_code"]},
+        headers=student["headers"],
     )
     api.act_as(teacher)
     api.conn.execute(

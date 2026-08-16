@@ -246,7 +246,10 @@ def _safe_draft(value: Any) -> dict[str, Any] | None:
     if isinstance(draft, dict):
         public["draft"] = {
             key: draft[key]
-            for key in ("title", "goal", "data_type", "cap_ids", "steps", "rubric")
+            # Only the four authored task fields are safe to expose in a
+            # replay card. Routing metadata stays in the durable payload for
+            # server-side validation but is never rendered as task content.
+            for key in ("title", "description", "knowledge_points", "exercises")
             if key in draft
         }
     snapshot = _safe_insights(value.get("insights"))
@@ -285,7 +288,7 @@ def _confirmation_preview(row: sqlite3.Row) -> dict[str, Any] | None:
     if isinstance(draft, dict):
         safe["draft"] = {
             key: draft[key]
-            for key in ("title", "goal", "data_type", "cap_ids", "steps", "rubric")
+            for key in ("title", "description", "knowledge_points", "exercises")
             if key in draft
         }
     insights = _safe_insights(payload.get("insights"))
@@ -312,14 +315,12 @@ class TeacherRunCreate(BaseModel):
 
 
 class TeacherAgentDraftEdit(BaseModel):
-    """Editable fields intentionally omit practice/answers and publication controls."""
+    """Editable task fields; publication scope remains outside the task body."""
 
     title: str | None = Field(default=None, max_length=120)
-    goal: str | None = Field(default=None, max_length=1200)
-    data_type: str | None = Field(default=None, max_length=20)
-    cap_ids: list[str] | None = Field(default=None, max_length=3)
-    steps: list[dict[str, Any]] | None = Field(default=None, max_length=8)
-    rubric: list[dict[str, Any]] | None = Field(default=None, max_length=6)
+    description: str | None = Field(default=None, max_length=1200)
+    knowledge_points: list[dict[str, Any]] | None = Field(default=None, max_length=10)
+    exercises: list[dict[str, Any]] | None = Field(default=None, max_length=20)
 
 
 class TeacherConfirmationBody(BaseModel):
@@ -817,92 +818,111 @@ def _merge_draft(base: dict[str, Any], edit: TeacherAgentDraftEdit | None) -> di
     if edit is None:
         return base
     merged = dict(base)
-    for key in ("title", "goal", "data_type", "cap_ids", "steps", "rubric"):
+    for key in ("title", "description", "knowledge_points", "exercises"):
         value = getattr(edit, key)
         if value is not None:
             merged[key] = value
     return merged
 
 
-def _normalize_steps_for_teacher_task(raw: Any) -> list[dict[str, Any]]:
-    """Translate Agent step prose into the teacher publisher's editable shape.
+def _normalize_knowledge_points(raw: Any) -> list[dict[str, str]]:
+    """Normalize authored lesson rows before they enter the durable content tables."""
 
-    The teaching Agent intentionally produces ``description`` because that is
-    the learner-task card vocabulary.  The teacher publisher edits the same
-    prose as ``notes``.  Normalize at the persistence boundary so every new
-    Agent draft can be reopened and saved without a client-only conversion.
-    """
+    if not isinstance(raw, list):
+        return []
+    normalized: list[dict[str, str]] = []
+    for item in raw[:10]:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()
+        content = str(item.get("content") or "").strip()
+        if title and content:
+            normalized.append({"title": title[:200], "content": content[:8000]})
+    return normalized
+
+
+def _normalize_exercises(raw: Any) -> list[dict[str, Any]]:
+    """Normalize practice controls so stored types match the student renderer."""
 
     if not isinstance(raw, list):
         return []
     normalized: list[dict[str, Any]] = []
-    for item in raw:
+    aliases = {
+        "choice": "multiple_choice",
+        "single_choice": "multiple_choice",
+        "boolean": "true_false",
+        "truefalse": "true_false",
+        "true_false": "true_false",
+    }
+    for item in raw[:20]:
         if not isinstance(item, dict):
             continue
-        step: dict[str, Any] = {"title": str(item.get("title") or "").strip()}
-        notes = item.get("notes", item.get("description"))
-        if isinstance(notes, str) and notes.strip():
-            step["notes"] = notes.strip()
-        common_errors = item.get("common_errors")
-        if isinstance(common_errors, str) and common_errors.strip():
-            step["common_errors"] = common_errors.strip()
-        normalized.append(step)
-    return normalized
-
-
-def _normalize_rubric_for_teacher_task(raw: Any) -> list[dict[str, Any]] | None:
-    """Persist Agent rubrics in the scorer and publisher's stable row contract.
-
-    ``criterion/description/points`` is a presentation-friendly Agent shape,
-    while teacher tasks and deterministic scoring require
-    ``key/expected/weight``.  Keeping this mapping server-side prevents a
-    saved draft from becoming unpublishable after the initial confirmation.
-    """
-
-    if raw is None:
-        return None
-    if not isinstance(raw, list):
-        return None
-    normalized: list[dict[str, Any]] = []
-    for item in raw:
-        if not isinstance(item, dict):
+        question = str(item.get("question") or "").strip()
+        raw_kind = str(item.get("type") or "open_ended").strip().casefold().replace("-", "_")
+        kind = aliases.get(raw_kind, raw_kind)
+        if not question or kind not in {"open_ended", "multiple_choice", "true_false"}:
             continue
-        key = item.get("key", item.get("criterion"))
-        if key is None or not str(key).strip():
-            continue
-        rubric_item: dict[str, Any] = {
-            "key": str(key).strip(),
-            "expected": item.get("expected", item.get("description", str(key))),
-        }
-        weight = item.get("weight", item.get("points"))
-        if weight is not None:
-            rubric_item["weight"] = weight
-        if item.get("hint") is not None:
-            rubric_item["hint"] = str(item["hint"])
-        normalized.append(rubric_item)
+        options = [
+            str(option).strip()
+            for option in (item.get("options") or [])
+            if str(option).strip()
+        ]
+        if kind == "true_false" and not options:
+            options = ["正确", "错误"]
+        normalized.append(
+            {
+                "question": question[:4000],
+                "type": kind,
+                "options": options if options else None,
+                "reference_answer": str(item.get("reference_answer") or "").strip()[:4000],
+            }
+        )
     return normalized
 
 
 def _normalize_draft_for_teacher_task(draft: dict[str, Any]) -> dict[str, Any]:
-    """Create the single task-card shape shared by Agent save and task publish."""
+    """Build the active four-field task shape while ignoring legacy content."""
 
     normalized = dict(draft)
-    normalized["steps"] = _normalize_steps_for_teacher_task(draft.get("steps"))
-    normalized["rubric"] = _normalize_rubric_for_teacher_task(draft.get("rubric"))
+    # Pending confirmations created before this change can still be settled,
+    # but their legacy task prose/rubrics must not be written into new rows.
+    normalized["description"] = str(draft.get("description") or draft.get("goal") or "").strip()
+    normalized["knowledge_points"] = _normalize_knowledge_points(draft.get("knowledge_points"))
+    normalized["exercises"] = _normalize_exercises(draft.get("exercises"))
+    normalized.pop("goal", None)
+    normalized.pop("steps", None)
+    normalized.pop("rubric", None)
     return normalized
 
 
 def _validate_draft(db: sqlite3.Connection, draft: dict[str, Any]) -> None:
-    """Validate the task-card fields without reintroducing resource attachments."""
+    """Validate the authored fields and keep routing metadata server-owned."""
 
     title = draft.get("title")
-    cap_ids = draft.get("cap_ids")
-    if not isinstance(title, str) or not isinstance(cap_ids, list):
+    description = draft.get("description")
+    cap_ids = draft.get("cap_ids", [])
+    points = draft.get("knowledge_points")
+    exercises = draft.get("exercises")
+    if (
+        not isinstance(title, str)
+        or not isinstance(description, str)
+        or not isinstance(cap_ids, list)
+        or not isinstance(points, list)
+        or not isinstance(exercises, list)
+    ):
         raise ApiError(400, "VALIDATION_ERROR", "草稿字段格式不正确")
     if len(cap_ids) > 3:
         raise ApiError(400, "VALIDATION_ERROR", "草稿关联的能力数量超出限制")
     if draft.get("data_type") is not None and draft["data_type"] not in ("text", "image", "audio", "video"):
         raise ApiError(400, "VALIDATION_ERROR", "数据类型仅支持 text / image / audio / video")
+    for point in points:
+        if not isinstance(point, dict) or not point.get("title") or not point.get("content"):
+            raise ApiError(400, "VALIDATION_ERROR", "学习内容必须包含标题和正文")
+    for exercise in exercises:
+        if not isinstance(exercise, dict) or not exercise.get("question"):
+            raise ApiError(400, "VALIDATION_ERROR", "练习题必须包含题干")
+        if exercise.get("type") == "multiple_choice" and not exercise.get("options"):
+            raise ApiError(400, "VALIDATION_ERROR", "选择题必须提供选项")
     teacher._check_task_body(title, cap_ids)
 
 
@@ -1029,30 +1049,27 @@ def _insert_teacher_draft(
     class_id: str,
     draft: dict[str, Any],
 ) -> tuple[str, dict[str, Any]]:
-    """Save only a teacher-owned ``draft`` row; publication stays elsewhere."""
+    """Persist a teacher-owned four-field draft and its authored lesson rows."""
 
     task_id = uuid.uuid4().hex
     now = utc_now_iso()
+    title = str(draft["title"]).strip()
+    description = str(draft.get("description") or "").strip()
     db.execute(
         """
         INSERT INTO learning_tasks
           (id, user_id, title, goal, data_type, cap_ids_json, source,
            status, steps_json, resources_json, rubric_json, practice_json,
            counts_toward_mastery, teacher_id, class_id, created_by, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'teacher', 'draft', ?, ?, ?, NULL, 1, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, 'teacher', 'draft', '[]', '[]', NULL, NULL, 1, ?, ?, ?, ?, ?)
         """,
         (
             task_id,
             teacher_id,
-            str(draft["title"]).strip(),
-            draft.get("goal"),
+            title,
+            description,
             draft.get("data_type"),
-            json.dumps(draft["cap_ids"], ensure_ascii=False),
-            json.dumps(draft.get("steps") or [], ensure_ascii=False),
-            "[]",
-            json.dumps(draft.get("rubric"), ensure_ascii=False)
-            if draft.get("rubric") is not None
-            else None,
+            json.dumps(draft.get("cap_ids") or [], ensure_ascii=False),
             teacher_id,
             class_id,
             teacher_id,
@@ -1060,9 +1077,51 @@ def _insert_teacher_draft(
             now,
         ),
     )
+    for index, point in enumerate(draft["knowledge_points"]):
+        db.execute(
+            "INSERT INTO task_knowledge_points "
+            "(id, task_id, title, content, sort_order, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                uuid.uuid4().hex,
+                task_id,
+                point["title"],
+                point["content"],
+                index,
+                now,
+                now,
+            ),
+        )
+    for index, exercise in enumerate(draft["exercises"]):
+        options = exercise.get("options")
+        db.execute(
+            "INSERT INTO task_exercises "
+            "(id, task_id, question, type, options_json, reference_answer, sort_order, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                uuid.uuid4().hex,
+                task_id,
+                exercise["question"],
+                exercise["type"],
+                json.dumps(options, ensure_ascii=False) if options else None,
+                exercise.get("reference_answer") or None,
+                index,
+                now,
+            ),
+        )
+    # Agent content is already reviewed in the confirmation card and is
+    # written atomically with the task. Mark it terminal before fan-out so a
+    # detached generator cannot replace this authored lesson after commit.
+    db.execute(
+        "UPDATE learning_tasks SET content_status = 'done', content_generated_at = ? WHERE id = ?",
+        (now, task_id),
+    )
     return task_id, {
         "id": task_id,
-        "title": str(draft["title"]).strip(),
+        "title": title,
+        "description": description,
+        "knowledge_points": draft["knowledge_points"],
+        "exercises": draft["exercises"],
         "status": "draft",
         "class_id": class_id,
         "publish_required": True,
@@ -1224,13 +1283,14 @@ def confirm_task(
             commit=False,
         )
         db.commit()
-        # The draft and any student copies are now visible to independent
-        # worker connections; queue them only after the confirmation transaction
-        # commits so no worker can observe a phantom task row.
-        from ..tools.task_tools import queue_task_content
+        # The source task already owns reviewed content and is terminal. Only
+        # published student copies need a post-commit worker, which reuses the
+        # source rows instead of generating a different lesson per student.
+        if content_task_ids:
+            from ..tools.task_tools import queue_task_content
 
-        for generated_task_id in [task_id, *content_task_ids]:
-            queue_task_content(db, generated_task_id)
+            for generated_task_id in content_task_ids:
+                queue_task_content(db, generated_task_id)
     except ApiError:
         raise
     except Exception:

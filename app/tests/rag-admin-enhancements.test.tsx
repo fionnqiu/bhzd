@@ -1,6 +1,6 @@
 /**
  * RAG-ADMIN + SYSTEM-ADMIN 增强测试：资料批量操作 / 资料详情召回记录 /
- * 评测历史（服务端数据源）/ 上传 csv+xlsx / 系统告警。
+ * 上传 csv+xlsx / 系统告警。
  *
  * api 层整体打桩（与 rag-admin-pages.test.tsx 同一模式）：断言页面触发的
  * 端点与载荷符合 rag_admin.py / admin.py 契约，后端中文话术原样透传。
@@ -13,7 +13,6 @@ import { api } from "../src/api/client";
 import { ToastProvider } from "../src/components";
 import DocumentsPage from "../src/pages/rag/DocumentsPage";
 import DocumentDetailPage from "../src/pages/rag/DocumentDetailPage";
-import EvalCasesPage from "../src/pages/rag/EvalCasesPage";
 import UploadPage from "../src/pages/rag/UploadPage";
 import SecurityPage from "../src/pages/admin/SecurityPage";
 
@@ -238,7 +237,7 @@ describe("DocumentDetailPage 召回记录（PRD-03 §6）", () => {
     renderDetail();
     expect(await screen.findByText("情感标签怎么判？")).toBeInTheDocument();
     expect(screen.getByText("学生问答")).toBeInTheDocument();
-    expect(screen.getByText("召回测试")).toBeInTheDocument();
+    expect(screen.getByText("历史管理检索")).toBeInTheDocument();
     expect(screen.getByText("0.910")).toBeInTheDocument();
     expect(screen.getByText("张同学")).toBeInTheDocument();
     // 分页摘要（共 2 条 · 第 1 / 1 页）
@@ -249,79 +248,6 @@ describe("DocumentDetailPage 召回记录（PRD-03 §6）", () => {
     mockDetail({ items: [], total: 0 });
     renderDetail();
     expect(await screen.findByText("暂无召回记录")).toBeInTheDocument();
-  });
-});
-
-/* ---------------------------------------------------------------- 评测历史（服务端数据源） */
-
-describe("EvalCasesPage 历史对比（GET /api/rag/eval-runs）", () => {
-  const RUN = {
-    id: "run-h1",
-    status: "completed",
-    metrics: {
-      recall_at_k: 0.8,
-      citation_accuracy: 0.5,
-      refusal_accuracy: null,
-      answer_faithfulness: 0.92,
-      latency_ms_avg: 120.4,
-      case_count: 2,
-    },
-    created_at: "2026-07-29T00:00:00Z",
-    finished_at: "2026-07-29T00:01:00Z",
-  };
-
-  beforeEach(() => {
-    mockedGet.mockImplementation((path: string) => {
-      if (path === "/api/rag/eval-cases") return Promise.resolve({ items: [], total: 0 });
-      if (path === "/api/rag/documents") return Promise.resolve({ items: [], total: 0 });
-      if (path === "/api/rag/eval-runs") return Promise.resolve({ items: [RUN], total: 1 });
-      if (path === "/api/rag/eval-runs/run-h1")
-        // 列表不携带 case_results，展开时按需拉详情
-        return Promise.resolve({
-          ...RUN,
-          case_results: [
-            {
-              case_id: "case-1",
-              question: "情感标签判定规则？",
-              refused: false,
-              hit_document_ids: ["d1"],
-              hit_chunk_ids: ["ck-a"],
-              recall_hit: true,
-              citation_ok: false,
-              refusal_ok: null,
-              faithfulness: 0.92,
-              latency_ms: 118,
-            },
-          ],
-        });
-      return Promise.reject(new Error(`未打桩的 GET ${path}`));
-    });
-  });
-
-  it("历史列表来自服务端（不读 localStorage），点击展开逐用例结果", async () => {
-    const getItemSpy = vi.spyOn(Storage.prototype, "getItem");
-    try {
-      renderPage(<EvalCasesPage />);
-      // 历史卡片渲染 API 数据（localStorage 无任何记录也能显示）
-      expect(await screen.findByText("历史对比（最近 1 次运行）")).toBeInTheDocument();
-      expect(mockedGet).toHaveBeenCalledWith(
-        "/api/rag/eval-runs",
-        { limit: 10 },
-        expect.objectContaining({ signal: expect.anything() }),
-      );
-      // 五指标 mini-row：recall 0.8 → 80%，latency → 120ms，无样本 → —
-      expect(screen.getByText("80%")).toBeInTheDocument();
-      expect(screen.getByText("120ms")).toBeInTheDocument();
-      // 旧 localStorage 方案已移除
-      expect(getItemSpy).not.toHaveBeenCalledWith("bhzd.eval_run_ids");
-
-      // 展开逐用例结果 → 按需拉详情端点
-      fireEvent.click(screen.getByRole("button", { name: "逐用例结果" }));
-      expect(await screen.findByText("情感标签判定规则？")).toBeInTheDocument();
-      expect(mockedGet).toHaveBeenCalledWith("/api/rag/eval-runs/run-h1");
-    } finally {
-      getItemSpy.mockRestore();
-    }
   });
 });
 

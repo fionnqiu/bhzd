@@ -1,16 +1,15 @@
 /**
- * 系统管理 · 资料上传（/admin/rag/upload）——拖拽上传 + 元数据 + 处理配置（PRD-03 §5）。
+ * 系统管理 · 资料上传（/admin/rag/upload）——文件优先 + 可选元数据（PRD-03 §5）。
  *
  * 关键规则（为什么）：
- * - 来源（source_name）与授权状态（license_status）未填时前端直接拦截提交
- *   （PRD-03 §5.3 验收："未填写来源和授权状态时不得上传"），其余必填项与
- *   后端 upload_document 的 422 校验一一对应，错误落到字段旁。
+ * - 文件是唯一必填项；留空的高级元数据由服务端写入可追溯的安全默认值，
+ *   其中待确认授权不会绕过既有的学生端发布门禁。
  * - 多值字段（data_types/cap_ids）按 FastAPI `list[str] = Form`
  *   契约用同名重复 append，不能 JSON 序列化成单值。
  * - 切片参数不在本页配置：后端上传固定读取系统 RAG 参数（rag_admin.py
  *   _default_stage_params），页面如实说明，不假装可配。
- * - 上传响应是 202 + 同步管线结果：展示最终状态与任务；资料索引完成后
- *   自动发布到学生召回范围，不再要求人工送审。
+ * - 上传响应是 202 + 同步管线结果：展示最终状态与任务；资料完成索引后仍须
+ *   通过授权确认与发布门禁，不能把默认的 pending 状态误当成学生端可见。
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -73,7 +72,7 @@ export default function UploadPage() {
   const [batchFiles, setBatchFiles] = useState<File[]>([]);
   const [batchFileError, setBatchFileError] = useState<string | null>(null);
 
-  // ---- 元数据（PRD-03 §5.2 必填项 + 能力关联） ----
+  // ---- 可选元数据（服务端会为未提交字段提供审计友好的默认值） ----
   const [title, setTitle] = useState("");
   const [sourceType, setSourceType] = useState("");
   const [sourceName, setSourceName] = useState("");
@@ -178,16 +177,10 @@ export default function UploadPage() {
     };
   }, [searchCaps]);
 
-  /** 提交前校验：与后端 422 口径一致，来源/授权状态是 PRD 硬性验收 */
+  /** Only file selection is required; optional metadata is sent when supplied. */
   const validate = (): boolean => {
     const errors: Record<string, string> = {};
     if (!file) errors.file = "请选择要上传的文件";
-    if (!title.trim()) errors.title = "请填写资料标题";
-    if (!sourceType) errors.sourceType = "请选择资料类型";
-    if (!sourceName.trim()) errors.sourceName = "请填写来源（未填来源不得上传）";
-    if (!version.trim()) errors.version = "请填写版本号";
-    if (dataTypes.length === 0) errors.dataTypes = "请至少选择一种适用数据类型";
-    if (!licenseStatus) errors.licenseStatus = "请选择授权状态（未填授权状态不得上传）";
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -195,11 +188,6 @@ export default function UploadPage() {
   const validateBatch = (): boolean => {
     const errors: Record<string, string> = {};
     if (batchFiles.length === 0) errors.file = "请选择要导入的文件或目录";
-    if (!sourceType) errors.sourceType = "请选择资料类型";
-    if (!sourceName.trim()) errors.sourceName = "请填写来源（未填来源不得上传）";
-    if (!version.trim()) errors.version = "请填写版本号";
-    if (dataTypes.length === 0) errors.dataTypes = "请至少选择一种适用数据类型";
-    if (!licenseStatus) errors.licenseStatus = "请选择授权状态（未填授权状态不得上传）";
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -210,16 +198,12 @@ export default function UploadPage() {
     try {
       const form = new FormData();
       form.append("file", file);
-      form.append("title", title.trim());
-      form.append("source_type", sourceType);
-      form.append("source_name", sourceName.trim());
+      if (title.trim()) form.append("title", title.trim());
+      if (sourceType) form.append("source_type", sourceType);
+      if (sourceName.trim()) form.append("source_name", sourceName.trim());
       if (sourceUrl.trim()) form.append("source_url", sourceUrl.trim());
-      form.append("version", version.trim());
-      form.append("license_status", licenseStatus);
-      // The new flow always publishes student-visible material after the
-      // pipeline succeeds; the old visibility form field remains optional on
-      // the API for compatibility but is intentionally absent here.
-      form.append("visibility", "student");
+      if (version.trim()) form.append("version", version.trim());
+      if (licenseStatus) form.append("license_status", licenseStatus);
       // 多值字段：同名重复 append（FastAPI list[str] = Form 契约）
       dataTypes.forEach((v) => form.append("data_types", v));
       caps.forEach((c) => form.append("cap_ids", c.id));
@@ -240,13 +224,11 @@ export default function UploadPage() {
     try {
       const form = new FormData();
       batchFiles.forEach((selected) => form.append("files", selected));
-      form.append("source_type", sourceType);
-      form.append("source_name", sourceName.trim());
+      if (sourceType) form.append("source_type", sourceType);
+      if (sourceName.trim()) form.append("source_name", sourceName.trim());
       if (sourceUrl.trim()) form.append("source_url", sourceUrl.trim());
-      form.append("version", version.trim());
-      form.append("license_status", licenseStatus);
-      // Batch publication is deliberately student-scoped, matching the approved teaching default.
-      form.append("visibility", "student");
+      if (version.trim()) form.append("version", version.trim());
+      if (licenseStatus) form.append("license_status", licenseStatus);
       dataTypes.forEach((value) => form.append("data_types", value));
       caps.forEach((cap) => form.append("cap_ids", cap.id));
       const imported = await api.postForm<SelectedFilesImportResult>(
@@ -255,7 +237,9 @@ export default function UploadPage() {
         { timeoutMs: 600_000 },
       );
       setBatchImportResult(imported);
-      toast.success(`已排入 ${imported.files.queued} 份资料的处理与自动发布队列`);
+      // Pending-license imports can be processed now, but remain blocked from
+      // student publication until an authorized reviewer confirms the source.
+      toast.success(`已排入 ${imported.files.queued} 份资料的处理队列；授权确认后才会发布`);
     } catch (err) {
       toast.error(errText(err, "批量导入失败，请稍后重试"));
     } finally {
@@ -271,7 +255,7 @@ export default function UploadPage() {
         <Card title="上传成功">
           <div className="flex flex-col gap-3">
             <p>
-              「{result.document.title}」已进入解析、切片、索引流程，完成后即可提供学生召回。
+              「{result.document.title}」已进入解析、切片、索引流程；授权确认并通过发布门禁后才可提供学生召回。
             </p>
             <p className="flex items-center gap-2">
               当前状态：<StatusBadge status={result.document.status} />
@@ -309,7 +293,7 @@ export default function UploadPage() {
         <div className="flex flex-col gap-3">
           <p className="text-sm text-secondary">
             可选择多个文件或整个目录（每批最多 1000 个）；系统只上传你明确选择的文件，不会扫描固定的 docs/ragData。
-            每份资料会逐一解析、切片、索引并通过门禁后自动发布到学生端。
+            每份资料会逐一解析、切片、索引；只有完成授权确认并通过发布门禁后，才会自动发布到学生端。
           </p>
           <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
             <Button variant="secondary" onClick={() => batchFilesInputRef.current?.click()}>
@@ -319,7 +303,7 @@ export default function UploadPage() {
               选择目录
             </Button>
             <Button loading={importingBatch} disabled={batchFiles.length === 0} onClick={() => void importSelectedFiles()}>
-              {importingBatch ? "正在导入并建立队列" : "导入所选资料并自动发布"}
+              {importingBatch ? "正在导入并建立队列" : "导入所选资料并自动处理"}
             </Button>
           </div>
           <input
@@ -421,13 +405,17 @@ export default function UploadPage() {
         ) : null}
       </Card>
 
-      {/* 元数据（PRD-03 §5.2 必填表） */}
-      <Card title="元数据" className="mb-4">
+      {/* Advanced values remain available without turning ordinary uploads into a form-filling workflow. */}
+      <details className="mb-4">
+        <summary className="text-sm" style={{ cursor: "pointer", marginBottom: "var(--space-2)" }}>
+          高级元数据（可选）
+        </summary>
+      <Card title="资料元数据">
         <div className="grid grid-cols-2">
-          <Field label="资料标题" required error={fieldErrors.title} hint="学生端引用来源展示名">
+          <Field label="资料标题" hint="留空时使用文件名">
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例如：智能客服语音标注规范" />
           </Field>
-          <Field label="资料类型" required error={fieldErrors.sourceType}>
+          <Field label="资料类型" hint="留空时使用“其他”">
             <Select
               aria-label="资料类型"
               value={sourceType}
@@ -436,10 +424,10 @@ export default function UploadPage() {
               placeholder="请选择资料类型"
             />
           </Field>
-          <Field label="来源单位 / 作者" required error={fieldErrors.sourceName} hint="未填来源不得上传">
+          <Field label="来源单位 / 作者" hint="留空时记录为“用户上传资料”">
             <Input value={sourceName} onChange={(e) => setSourceName(e.target.value)} placeholder="例如：工业和信息化部 / 张老师" />
           </Field>
-          <Field label="版本号" required error={fieldErrors.version} hint="资料变更追踪，例如 2.3">
+          <Field label="版本号" hint="留空时使用 1.0">
             <Input value={version} onChange={(e) => setVersion(e.target.value)} placeholder="例如：1.0" />
           </Field>
           <Field label="来源链接（可选）">
@@ -447,7 +435,7 @@ export default function UploadPage() {
           </Field>
         </div>
 
-        <Field label="适用数据类型" required error={fieldErrors.dataTypes}>
+        <Field label="适用数据类型" hint="留空时使用文本">
           <div className="flex gap-3" style={{ flexWrap: "wrap" }}>
             {DATA_TYPE_OPTIONS.map((opt) => (
               <label key={opt.value} className="flex items-center gap-1">
@@ -511,7 +499,7 @@ export default function UploadPage() {
         </Field>
 
         <div className="grid grid-cols-2">
-          <Field label="授权状态" required error={fieldErrors.licenseStatus} hint="确认资料可用于教学系统">
+          <Field label="授权状态" hint="留空时为待确认，不会自动发布给学生">
             <Select
               aria-label="授权状态"
               value={licenseStatus}
@@ -532,13 +520,15 @@ export default function UploadPage() {
           </p>
         ) : null}
       </Card>
+      </details>
 
       {/* Processing is deliberately automatic so a successful upload cannot
           be stranded behind a manual review toggle or a hidden queue step. */}
       <Card title="自动处理" className="mb-4">
         <p className="text-sm text-secondary mb-3">
           切片策略使用系统默认切片参数（chunk_size / overlap 由系统管理端 RAG 参数统一配置），
-          上传后自动完成解析、切片、索引并发布到学生召回范围。
+          上传后自动完成解析、切片与索引；未填写授权状态的资料保留“待确认”记录，
+          完成授权确认并通过发布门禁后才可发布到学生端，不会绕过发布门禁。
         </p>
       </Card>
 

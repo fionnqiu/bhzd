@@ -317,13 +317,15 @@ export default function ActivityTimeline({
 }) {
   const [open, setOpen] = useState(live);
   const recordStateRef = useRef({ activityGroupId, live });
+  // 每个记录组只自动折叠一次：之后用户手动展开/收起的选择优先于任何重渲染。
+  const settledGroupRef = useRef<string | null>(null);
   const seenActivityKeysRef = useRef<Set<string> | null>(null);
   const generatedId = useId();
   useLayoutEffect(() => {
     const previous = recordStateRef.current;
-    // Keep the current turn open when it settles so the reviewed lifecycle
-    // summary remains visible beside the answer, while historical records stay
-    // compact and a learner's manual fold choice is preserved.
+    // 新一轮运行（组 id 变化或从历史态回到 live）始终展开；运行结束后是否
+    // 自动折叠由下面的 settle 效果决定——主流 agent 让答案成为视觉主体，
+    // 处理记录在成功时收成单行摘要、失败时保持展开便于定位问题。
     if (previous.activityGroupId !== activityGroupId || (!previous.live && live)) {
       setOpen(true);
     }
@@ -348,6 +350,17 @@ export default function ActivityTimeline({
   const current = visibleActivities[visibleActivities.length - 1] ?? null;
   const toolCount = visibleActivities.filter((activity) => activity.stage === "tool").length;
   const hasPlan = planSteps.length > 0;
+
+  useEffect(() => {
+    // 主流 agent 行为：运行成功结束后自动收成单行摘要，答案成为视觉主体；
+    // 失败（status==="failed"）保持展开便于定位问题。每个记录组只自动折叠
+    // 一次，此后用户的手动展开/收起优先。历史记录初始即折叠，幂等无影响。
+    if (live || current?.status !== "completed") return;
+    const groupKey = activityGroupId ?? generatedId;
+    if (settledGroupRef.current === groupKey) return;
+    settledGroupRef.current = groupKey;
+    setOpen(false);
+  }, [activityGroupId, current?.status, generatedId, live]);
 
   if (!current && !hasPlan && !processingLabel) return null;
 

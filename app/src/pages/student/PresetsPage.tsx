@@ -38,10 +38,8 @@ import {
   useToast,
 } from "../../components";
 import {
-  capNameOf,
   dataTypeLabel,
   errMsg,
-  useCapNames,
 } from "./shared";
 
 /* ---------------------------------------------------------------- 分组与筛选 */
@@ -84,7 +82,6 @@ interface StartState {
 export default function PresetsPage() {
   const navigate = useNavigate();
   const toast = useToast();
-  const capNames = useCapNames();
 
   const [filters, setFilters] = useState({ dataType: "" });
   const [items, setItems] = useState<Preset[] | null>(null);
@@ -364,31 +361,9 @@ export default function PresetsPage() {
           <div className="flex flex-col gap-3">
             <div>
               <strong>{preview.title}</strong>
-              <div className="flex items-center gap-2 flex-wrap mt-2">
-                <Tag>{dataTypeLabel(preview.data_type)}</Tag>
-              </div>
             </div>
-            {preview.goal ? <p className="text-sm text-secondary">目标：{preview.goal}</p> : null}
-            {preview.steps && preview.steps.length > 0 ? (
-              <div>
-                <h3 className="mb-2" style={{ fontSize: "var(--font-size-base)" }}>
-                  学习步骤
-                </h3>
-                <ol className="flex flex-col gap-2">
-                  {preview.steps.map((step, index) => (
-                    <li key={index} className="text-sm">
-                      {index + 1}. {step.title}
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            ) : null}
-            {preview.cap_ids && preview.cap_ids.length > 0 ? (
-              <div className="flex items-center gap-2 flex-wrap">
-                {preview.cap_ids.map((capId) => (
-                  <Tag key={capId}>{capNameOf(capNames, capId)}</Tag>
-                ))}
-              </div>
+            {preview.description || preview.goal ? (
+              <p className="text-sm text-secondary">{preview.description ?? preview.goal}</p>
             ) : null}
             <p className="text-xs text-muted">
               确认后将创建首个学习任务（30 分钟内确认有效），任务其余单元将在后续学习中逐步解锁。

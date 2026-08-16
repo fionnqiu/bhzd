@@ -3,8 +3,8 @@
  *
  * 覆盖验收点：
  * - PRD-02 §5.3 AI 生成任务卡：POST /api/teacher/tasks/generate 的草稿整体
- *   填入表单（标题/目标/能力芯片/步骤/评分规则），旧资源字段不再进入编辑器；
- *   横幅如实展示 sources_note 与 llm_used 徽章，且填入后所有字段仍可编辑；
+ *   填入名称、描述、学习内容和练习；旧能力、步骤、评分与资源编辑不再出现；
+ *   横幅如实展示 sources_note 与 llm_used 徽章，且填入后四字段仍可编辑；
  * - PRD-06 §10.1 已发布任务截止时间调整：选中已发布任务时出现"不生成新版本"
  *   说明，提交只 PATCH due_at；
  * - PRD-02 §6 学生个人能力地图：在独立分析页选择学生后调 analytics/students/{id} 渲染
@@ -83,39 +83,39 @@ describe("TaskPublishPage：AI 生成任务卡（PRD-02 §5.3）", () => {
   /** generate 端点响应（结构对齐 teacher.py generate_teacher_task） */
   const aiDraft = {
     title: "客服语音情感标注实战",
-    goal: "完成「客服语音情感标注实战」对应的标注任务，掌握相关规范要点并达到质检要求",
+    goal: "完成「客服语音情感标注实战」对应的学习任务，掌握相关规范要点。",
+    description: "完成「客服语音情感标注实战」对应的学习任务，掌握相关规范要点。",
     data_type: "audio",
-    cap_ids: ["CAP-1"],
-    caps: [{ cap_id: "CAP-1", cap_name: "语音切分" }],
-    steps: [
-      { title: "学习规范", description: "通读《客服语音标注规范》并圈出相关条款" },
-      { title: "示范学习", description: "对照示范样本理解规范应用" },
-      { title: "实操标注", description: "按规范独立完成标注实操" },
-      { title: "自检互检", description: "逐项自检并修正后提交" },
-    ],
-    resources: [
+    caps: [],
+    knowledge_points: [
       {
-        type: "rag_document",
-        ref_id: "d1",
-        title: "客服语音标注规范",
-        citation: "【客服语音标注规范  v1.0】",
+        title: "情感判断标准",
+        content: "区分投诉、咨询和中性表达，并记录支撑判断的原句。",
+      },
+      {
+        title: "复核方法",
+        content: "提交前复核情感标签、上下文与遗漏项。",
       },
     ],
-    citations: [
+    exercises: [
       {
-        document_id: "d1",
-        title: "客服语音标注规范",
-        section_title: null,
-        page_start: null,
-        page_end: null,
-        version: "1.0",
-        score: 0.9,
+        question: "客户明确表达不满时，应选择哪种情感？",
+        type: "multiple_choice",
+        options: ["负面", "中性", "正面"],
+        reference_answer: "负面",
       },
-    ],
-    rubric: [
-      { criterion: "规范符合性", description: "标注结果符合引用规范条款", points: 40 },
-      { criterion: "标注准确率", description: "类别/边界/转写准确", points: 40 },
-      { criterion: "质检通过率", description: "自检修正后再提交", points: 20 },
+      {
+        question: "提交前需要复核全部必填项。",
+        type: "true_false",
+        options: ["正确", "错误"],
+        reference_answer: "正确",
+      },
+      {
+        question: "请说明你判断负面情感的依据。",
+        type: "open_ended",
+        options: null,
+        reference_answer: "结合客户表达的不满与投诉意图说明。",
+      },
     ],
     difficulty: 3,
     est_minutes: 60,
@@ -142,12 +142,7 @@ describe("TaskPublishPage：AI 生成任务卡（PRD-02 §5.3）", () => {
           total: 1,
         });
       }
-      if (path === "/api/graph/nodes") {
-        return Promise.resolve({
-          items: [{ id: "CAP-1", label: "语音切分", type: "CAP" }],
-          total: 1,
-        });
-      }
+      if (path === "/api/graph/nodes") return Promise.resolve({ items: [], total: 0 });
       return Promise.reject(new Error(`未 mock 的 GET ${String(path)}`));
     });
     mockedPost.mockImplementation((path) => {
@@ -174,22 +169,23 @@ describe("TaskPublishPage：AI 生成任务卡（PRD-02 §5.3）", () => {
       ),
     );
 
-    // 标题 / 学习目标 / 步骤 / 评分规则填入（都是表单控件的 value）
+    // 四字段草稿填入：任务名称、描述、学习内容与练习都是可编辑表单控件。
     expect(await screen.findByDisplayValue("客服语音情感标注实战")).toBeInTheDocument();
-    expect(screen.getByDisplayValue(/掌握相关规范要点并达到质检要求/)).toBeInTheDocument();
-    expect(screen.getByDisplayValue("学习规范")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("通读《客服语音标注规范》并圈出相关条款")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("规范符合性")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("标注结果符合引用规范条款")).toBeInTheDocument();
-    // 两条评分行权重都是 40，用 getAll 断言而非 getBy（第三条权重 20 唯一）
-    expect(screen.getAllByDisplayValue("40").length).toBe(2);
-    expect(screen.getByDisplayValue("20")).toBeInTheDocument();
+    expect(screen.getByDisplayValue(/掌握相关规范要点/)).toBeInTheDocument();
+    expect(screen.getByDisplayValue("情感判断标准")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("区分投诉、咨询和中性表达，并记录支撑判断的原句。")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("客户明确表达不满时，应选择哪种情感？")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "练习 1 题型" })).toHaveTextContent("选择题");
+    expect(
+      (screen.getAllByPlaceholderText("每行一个选项")[0] as HTMLTextAreaElement).value,
+    ).toContain("负面");
+    expect(screen.getByRole("combobox", { name: "练习 2 题型" })).toHaveTextContent("判断题");
+    expect(screen.getByRole("combobox", { name: "练习 3 题型" })).toHaveTextContent("问答题");
 
-    // 能力芯片 + 预览 Tag 都显示能力中文名
-    await waitFor(() => expect(screen.getAllByText("语音切分").length).toBeGreaterThanOrEqual(2));
-    // Legacy resources/citations may still be returned by the provider, but the
-    // publisher no longer exposes an editable resource row or preview card.
-    expect(screen.queryByText("[1] 客服语音标注规范")).not.toBeInTheDocument();
+    // Removed task-authoring fields must not reappear when AI returns a draft.
+    expect(screen.queryByText("关联能力")).not.toBeInTheDocument();
+    expect(screen.queryByText("操作步骤")).not.toBeInTheDocument();
+    expect(screen.queryByText("评分规则")).not.toBeInTheDocument();
     expect(screen.queryByText("学习资源")).not.toBeInTheDocument();
 
     // 横幅：审核提示 + llm_used 徽章 + sources_note
@@ -216,12 +212,22 @@ describe("TaskPublishPage：已发布任务截止时间调整（PRD-06 §10.1）
     id: "t9",
     title: "已发布的标注任务",
     goal: "完成标注",
+    description: "完成标注",
     data_type: "audio",
-    cap_ids: ["CAP-1"],
-    steps: [{ title: "学习规范" }],
-    resources: [{ type: "link", title: "标注规范链接", url: "https://example.com/spec" }],
-    rubric: null,
-    practice: null,
+    cap_ids: [],
+    steps: [],
+    rubric: [],
+    knowledge_points: [
+      {
+        id: "kp9",
+        title: "标注规范",
+        content: "按要求完成标注。",
+        sort_order: 0,
+        created_at: "2026-07-01T00:00:00Z",
+        updated_at: "2026-07-01T00:00:00Z",
+      },
+    ],
+    exercises: [],
     status: "draft",
     version: 1,
     parent_task_id: null,
@@ -236,12 +242,7 @@ describe("TaskPublishPage：已发布任务截止时间调整（PRD-06 §10.1）
         return Promise.resolve({ items: [publishedTask], total: 1 });
       }
       if (path === "/api/teacher/classes") return Promise.resolve({ items: [], total: 0 });
-      if (path === "/api/graph/nodes") {
-        return Promise.resolve({
-          items: [{ id: "CAP-1", label: "语音切分", type: "CAP" }],
-          total: 1,
-        });
-      }
+      if (path === "/api/graph/nodes") return Promise.resolve({ items: [], total: 0 });
       return Promise.reject(new Error(`未 mock 的 GET ${String(path)}`));
     });
     mockedPatch.mockResolvedValue({ ...publishedTask, version_bumped: false });

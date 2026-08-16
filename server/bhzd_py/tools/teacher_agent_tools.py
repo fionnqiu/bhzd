@@ -222,33 +222,50 @@ def task_draft_preview(
         data_type or "", ""
     )
     title = f"{modality}{primary_label}定向巩固任务"[:80]
+    description = f"{mastery_note}通过规范学习、示范练习和自检巩固 {primary_label}。"
+    # The active task contract is content-first. Capability and data-type
+    # values remain internal routing metadata; only the four fields below are
+    # exposed to a teacher for review and editing.
+    knowledge_points = [
+        {
+            "title": f"{primary_label}核心规范要点",
+            "content": f"阅读关联资料，整理 {primary_label} 的关键规则与常见遗漏。",
+        },
+        {
+            "title": "质量检查要点",
+            "content": "完成练习后逐项核对标签、边界和遗漏项，并记录需要复查的样本。",
+        },
+    ]
+    exercises = [
+        {
+            "question": f"在“{primary_label}”学习中，哪一项最能体现规范符合性？",
+            "type": "multiple_choice",
+            "options": ["按规范定义逐项核对", "只看样本数量", "跳过边界样本"],
+            "reference_answer": "按规范定义逐项核对",
+        },
+        {
+            "question": "完成提交前，是否已按规范复核全部必填项？",
+            "type": "true_false",
+            "options": ["正确", "错误"],
+            "reference_answer": "正确",
+        },
+        {
+            "question": f"请用自己的话说明完成“{primary_label}”练习后需要检查的一项内容。",
+            "type": "open_ended",
+            "options": None,
+            "reference_answer": "应包含对关键规则、边界或标签的核查。",
+        },
+    ]
     draft = {
         "title": title,
-        "goal": f"{mastery_note}通过规范学习、示范练习和自检巩固 {primary_label}。",
-        # These normalized categories originate from an explicit selection or
-        # intent detection.  They preserve the teacher's goal without copying
-        # free text into a tool payload that might contain pasted student data.
+        "description": description,
+        # Keep routing values in the durable server payload so confirmation
+        # can validate and persist the task without exposing metadata in the
+        # task正文 itself.
         "data_type": data_type,
         "cap_ids": cap_ids,
-        "steps": [
-            {
-                "title": "聚焦规范要点",
-                "description": f"阅读关联资料，整理 {primary_label} 的关键规则与常见遗漏。",
-            },
-            {
-                "title": "完成定向练习",
-                "description": "按规范完成练习，并在提交前逐项自查。",
-            },
-            {
-                "title": "复盘并巩固",
-                "description": "根据反馈复盘薄弱环节，记录下一次练习需要注意的规则。",
-            },
-        ],
-        "rubric": [
-            {"criterion": "规范符合性", "description": "结果符合关联资料中的规则", "points": 50},
-            {"criterion": "完整性", "description": "关键字段、边界或标签无遗漏", "points": 30},
-            {"criterion": "自检质量", "description": "提交前完成对照检查并修正问题", "points": 20},
-        ],
+        "knowledge_points": knowledge_points,
+        "exercises": exercises,
     }
     return {
         "ready_to_save": True,

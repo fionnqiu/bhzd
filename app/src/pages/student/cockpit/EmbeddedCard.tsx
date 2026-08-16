@@ -2,7 +2,7 @@
  * 嵌入工具结果卡（PRD-01 §3.2"嵌入式工具结果" + NF19 两级展示）。
  *
  * tool.call.completed 的 result 按工具名分派渲染：
- * - task.preview → 任务卡（标题/目标/能力/步骤/资源/时长）
+ * - task.preview → 任务卡（任务名称/描述/学习内容/练习）
  * - task.create → 创建成功卡（确认门落地后的回执，链到任务列表）
  * - course.search → 课程单元列表
  * - graph.reason → 节点 chips + PRE 路径 + "在图谱中查看"
@@ -18,8 +18,6 @@ import type {
   Citation,
   DiagnosticReport,
   RagAnswer,
-  TaskResource,
-  TaskStep,
 } from "../../../api/types";
 import { dataTypeLabel, toolLabel } from "./constants";
 import type { EmbeddedCardData } from "./types";
@@ -29,47 +27,36 @@ import type { EmbeddedCardData } from "./types";
 interface TaskCardShape {
   title?: string;
   goal?: string;
-  data_type?: string | null;
-  cap_names?: { cap_id: string; name: string }[];
-  steps?: TaskStep[];
-  resources?: TaskResource[];
-  est_minutes?: number;
+  description?: string;
+  knowledge_points?: { title?: string; content?: string }[];
+  exercises?: { question?: string; type?: string }[];
 }
 
 function TaskCardBody({ card }: { card: TaskCardShape }) {
   return (
     <div className="task-card">
-      <div className="flex items-center gap-2">
-        <strong>{card.title ?? "标注练习任务"}</strong>
-        <Tag>{dataTypeLabel(card.data_type)}标注</Tag>
-        {card.est_minutes ? <Tag>约 {card.est_minutes} 分钟</Tag> : null}
-      </div>
-      {card.goal ? <p className="text-sm text-secondary mt-2">目标：{card.goal}</p> : null}
-      {card.cap_names?.length ? (
-        <div className="flex gap-1 mt-2" style={{ flexWrap: "wrap" }}>
-          {card.cap_names.map((c) => (
-            <Tag key={c.cap_id}>{c.name}</Tag>
-          ))}
+      <strong>{card.title ?? "标注练习任务"}</strong>
+      {card.description ?? card.goal ? (
+        <p className="text-sm text-secondary mt-2">{card.description ?? card.goal}</p>
+      ) : null}
+      {card.knowledge_points?.length ? (
+        <div className="mt-3">
+          <strong className="text-sm">学习内容</strong>
+          <ul className="task-card-steps">
+            {card.knowledge_points.map((point, index) => (
+              <li key={`${point.title ?? "point"}-${index}`}>{point.title ?? point.content}</li>
+            ))}
+          </ul>
         </div>
       ) : null}
-      {card.steps?.length ? (
-        <ol className="task-card-steps">
-          {card.steps.map((s, i) => (
-            <li key={i}>
-              <strong>{s.title}</strong>
-              {s.description ? (
-                <span className="text-sm text-muted"> — {s.description}</span>
-              ) : null}
-            </li>
-          ))}
-        </ol>
-      ) : null}
-      {card.resources?.length ? (
-        <div className="mt-2">
-          <span className="text-sm text-muted">学习资源：</span>
-          {card.resources.map((r, i) => (
-            <Tag key={i}>{r.title}</Tag>
-          ))}
+      {card.exercises?.length ? (
+        <div className="mt-3">
+          <strong className="text-sm">练习</strong>
+          <ul className="task-card-steps">
+            {card.exercises.map((exercise, index) => (
+              <li key={`${exercise.question ?? "exercise"}-${index}`}>{exercise.question}</li>
+            ))}
+          </ul>
         </div>
       ) : null}
     </div>
@@ -134,19 +121,37 @@ function CardBody({ card }: { card: EmbeddedCardData }) {
   const result = (card.result ?? {}) as Record<string, unknown>;
 
   switch (card.tool) {
-    case "task.preview":
-      return <TaskCardBody card={(result.card ?? {}) as TaskCardShape} />;
-    case "task.create":
+    case "task.preview": {
+      const stages = Array.isArray(result.stages)
+        ? result.stages.filter((stage): stage is TaskCardShape => !!stage && typeof stage === "object")
+        : [];
+      // A staged Agent request creates independent tasks, so its preview must
+      // expose each resulting task card instead of collapsing them into one.
+      return stages.length > 0 ? (
+        <div className="flex flex-col gap-3">
+          {stages.map((stage, index) => (
+            <TaskCardBody key={`${stage.title ?? "task"}-${index}`} card={stage} />
+          ))}
+        </div>
+      ) : (
+        <TaskCardBody card={(result.card ?? {}) as TaskCardShape} />
+      );
+    }
+    case "task.create": {
+      const count = typeof result.count === "number" ? result.count : 1;
       return (
         <div>
           <p className="text-success">
-            学习任务「{String(result.title ?? "")}」已同步。
+            {count > 1
+              ? `已同步 ${count} 个分阶段学习任务。`
+              : `学习任务「${String(result.title ?? "")}」已同步。`}
           </p>
           <Link className="text-sm" to="/tasks">
             前往学习任务查看 →
           </Link>
         </div>
       );
+    }
     case "course.search": {
       const units = (result.units ?? []) as {
         unit_id: string;

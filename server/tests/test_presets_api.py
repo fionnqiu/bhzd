@@ -82,14 +82,14 @@ def test_start_creates_pending_confirmation(api):
     assert body["confirmation"]["action_type"] == "task.create"
     assert body["confirmation"]["status"] == "pending"
     preview = body["preview"]
-    # 预览载荷必须带齐 Agent 确认端点建任务所需的全部字段
+    # 预览只携带四字段任务正文和创建所需的内部来源信息；不再把
+    # 单元目标转换为操作步骤或资源绑定。
     for key in (
         "title",
         "goal",
+        "description",
         "data_type",
         "cap_ids",
-        "steps",
-        "resources",
         "source",
         "counts_toward_mastery",
     ):
@@ -97,7 +97,9 @@ def test_start_creates_pending_confirmation(api):
     assert preview["source"] == "preset"
     assert preview["counts_toward_mastery"] == 1
     assert preview["cap_ids"] == ["CAP-TXT-ENTITY-BOUNDARY-001", "CAP-TXT-ENTITY-TYPE-001", "CAP-TXT-LABEL-VALIDATE-001"]
-    assert preview["steps"]  # 来自首个单元的 goals
+    assert preview["description"] == "按字符偏移标注实体边界"
+    assert "steps" not in preview
+    assert "resources" not in preview
 
     row = api.conn.execute(
         "SELECT * FROM pending_confirmations WHERE id = ?",

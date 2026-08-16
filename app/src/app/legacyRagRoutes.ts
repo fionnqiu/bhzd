@@ -7,8 +7,9 @@ export function legacyRagAdminTarget(pathname: string): string {
   const suffix = pathname.replace(/^\/rag-admin(?:\/|$)/, "").replace(/\/$/, "");
   if (!suffix) return "/admin/rag";
   if (suffix === "upload") return "/admin/rag/upload";
-  if (suffix === "search-test") return "/admin/rag/search-test";
-  if (suffix === "eval-cases") return "/admin/rag/search-test";
+  // The recall console was removed from the visible workflow; old bookmarks
+  // return to the remaining RAG entry point rather than exposing a dead page.
+  if (suffix === "search-test" || suffix === "eval-cases") return "/admin/rag";
   if (suffix === "jobs" || suffix === "ledgers" || suffix === "publish") return "/admin/rag";
 
   const documentMatch = suffix.match(/^documents\/([^/]+)(?:\/chunks)?$/);

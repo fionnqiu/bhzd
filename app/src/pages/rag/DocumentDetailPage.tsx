@@ -8,7 +8,7 @@
  *   scan_sensitive_info：phone/id_card/email/block_publish），身份证命中
  *   会阻止发布，这里必须醒目前置，而不是等发布失败才发现。
  * - 召回记录来自 GET /documents/{id}/recall-records（recall_logs：学生问答
- *   与召回测试两条渠道命中日志），独立分页加载，失败不影响详情主数据。
+ *   与历史管理检索两条渠道命中日志），独立分页加载，失败不影响详情主数据。
  */
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
@@ -73,10 +73,15 @@ interface RecallRecord {
   created_at: string;
 }
 
-/** 召回渠道 → 中文（recall_logs.channel；未知渠道原样显示兜底） */
+/**
+ * 召回渠道 → 中文（recall_logs.channel；未知渠道原样显示兜底）。
+ *
+ * ``search_test`` 是保留的历史/API 渠道名；界面使用中性名称，避免已删除
+ * 的管理端板块继续出现在资料详情中。
+ */
 const RECALL_CHANNEL_LABELS: Record<string, string> = {
   student_query: "学生问答",
-  search_test: "召回测试",
+  search_test: "历史管理检索",
 };
 
 export default function DocumentDetailPage() {
@@ -466,7 +471,7 @@ export default function DocumentDetailPage() {
         )}
       </Card>
 
-      {/* 召回记录（PRD-03 §6：学生问答 + 召回测试两条渠道的命中日志） */}
+      {/* 召回记录（学生问答与保留的历史管理检索命中日志） */}
       <Card title={`召回记录（共 ${recallTotal} 条）`} className="mt-4">
         {recallError ? (
           <div className="flex items-center gap-2">
@@ -485,7 +490,7 @@ export default function DocumentDetailPage() {
               empty={
                 <EmptyState
                   title="暂无召回记录"
-                  hint="该资料尚未在学生问答或召回测试中被命中，可到召回测试台手动验证"
+                  hint="该资料尚未产生可追溯的召回命中记录。"
                 />
               }
             />

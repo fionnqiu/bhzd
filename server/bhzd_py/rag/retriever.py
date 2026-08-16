@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from ..config import AppConfig
 from .embeddings import embed_chunks, run_coro_sync
 from .vectorstore import search as vector_search
+from .vectorstore import search_keyword as keyword_search
 
 # 拒答话术（PRD-06 §4.4"无召回结果/低于阈值"）
 REFUSAL_MESSAGE = "知识库暂无可靠依据，无法给出专业结论"
@@ -117,6 +118,12 @@ class RagFilters:
     data_type: str | None = None
     published_only: bool = True
     document_ids: list[str] | None = None
+    # ``hybrid`` preserves the configured default; callers can force pure
+    # vector or lexical ranking for the administrator recall console.
+    mode: str | None = None
+    # This console/evaluation override is intentionally not a global setting:
+    # it applies only to pure vector recall and is persisted with a test case.
+    retrieval_top_p: float | None = None
 
 
 @dataclass
@@ -301,6 +308,45 @@ def _try_rerank(db: sqlite3.Connection, query: str, hits: list[RagHit]) -> tuple
 
 # ---------------------------------------------------------------- retrieve
 
+_RETRIEVAL_MODES = frozenset({"hybrid", "vector", "keyword"})
+
+
+def _resolve_retrieval_mode(requested: str | None, hybrid_default: bool) -> str:
+    """Resolve a console override while preserving the historical setting default."""
+    if requested in _RETRIEVAL_MODES:
+        return requested
+    return "hybrid" if hybrid_default else "vector"
+
+
+def _apply_retrieval_top_p(hits: list[RagHit], top_p: float, top_k: int) -> list[RagHit]:
+    """Apply a vector-only cumulative cosine-similarity nucleus filter.
+
+    Similarities are clamped to zero before normalization because cosine scores
+    may be negative. A non-positive/empty mass keeps the best hit as a useful
+    fail-open fallback; otherwise the smallest prefix whose cumulative mass
+    reaches ``top_p`` is retained and finally capped by ``top_k``. The router
+    validates the public range; this guard keeps direct internal callers from
+    accidentally turning an invalid override into surprising filtering.
+    """
+    if not hits:
+        return []
+    if not 0.0 < float(top_p) <= 1.0:
+        return hits[:top_k]
+    if top_p >= 1.0:
+        return hits[:top_k]
+    masses = [max(0.0, float(hit.score)) for hit in hits]
+    total = sum(masses)
+    if total <= 0.0:
+        return hits[:1]
+    selected_count = 0
+    cumulative = 0.0
+    for mass in masses:
+        selected_count += 1
+        cumulative += mass / total
+        if cumulative >= top_p:
+            break
+    return hits[: max(1, min(top_k, selected_count))]
+
 def retrieve(
     db: sqlite3.Connection,
     config: AppConfig,
@@ -324,15 +370,27 @@ def retrieve(
         except Exception:
             effective_query = query
 
-    query_blobs, query_model = embed_chunks(db, [effective_query])  # provider 优先、本地兜底
-    candidates = vector_search(
-        db,
-        query_blobs[0],
-        embedding_model=query_model,
-        published_only=filters.published_only,
-        data_type=filters.data_type,
-        document_ids=filters.document_ids,
-    )
+    mode = _resolve_retrieval_mode(filters.mode, settings.hybrid_search)
+    query_model: str | None = None
+    if mode == "keyword":
+        # Lexical mode deliberately avoids embedding generation so it remains
+        # useful while a document is waiting for indexing or a provider is down.
+        candidates = keyword_search(
+            db,
+            published_only=filters.published_only,
+            data_type=filters.data_type,
+            document_ids=filters.document_ids,
+        )
+    else:
+        query_blobs, query_model = embed_chunks(db, [effective_query])  # provider 优先、本地兜底
+        candidates = vector_search(
+            db,
+            query_blobs[0],
+            embedding_model=query_model,
+            published_only=filters.published_only,
+            data_type=filters.data_type,
+            document_ids=filters.document_ids,
+        )
 
     # 多版本去重：同标题只保留最新已发布版本所属文档（published_at 优先）
     best_doc_by_title: dict[str, tuple[str, str]] = {}
@@ -346,9 +404,13 @@ def retrieve(
     for cand in candidates:
         if cand.document_id not in allowed_docs:
             continue  # 旧版本资料不参与召回
-        score = cand.cosine
-        if settings.hybrid_search:
-            score = 0.7 * cand.cosine + 0.3 * _keyword_ratio(effective_query, cand.content)
+        keyword_score = _keyword_ratio(effective_query, cand.content)
+        if mode == "keyword":
+            score = keyword_score
+        elif mode == "hybrid":
+            score = 0.7 * cand.cosine + 0.3 * keyword_score
+        else:
+            score = cand.cosine
         scored.append(
             RagHit(
                 chunk_id=cand.chunk_id,
@@ -361,8 +423,15 @@ def retrieve(
                 content=cand.content,
                 score=round(score, 4),
             )
-        )
+    )
     scored.sort(key=lambda h: h.score, reverse=True)
+    # A per-run nucleus override applies only to pure vector similarity while
+    # scores are still in cosine order. Hybrid and keyword runs retain their
+    # established TopK behavior, and reranking never changes eligibility.
+    if mode == "vector" and filters.retrieval_top_p is not None:
+        scored = _apply_retrieval_top_p(scored, filters.retrieval_top_p, k)
+    else:
+        scored = scored[:k]
 
     # 可选重排：只重排向量序前 _RERANK_POOL_SIZE 名（控制 prompt 体积），
     # 成功则按 rerank_score 重排并记录模型名，失败静默保持向量序
@@ -379,10 +448,9 @@ def retrieve(
             rerank_model = None  # 重排未真正执行，诊断里如实报 None
 
     below_threshold = not scored or scored[0].score < settings.score_threshold
-    hits = scored[:k]
     latency_ms = int((time.perf_counter() - started) * 1000)
     return RetrievalResult(
-        hits=hits,
+        hits=scored,
         latency_ms=latency_ms,
         below_threshold=below_threshold,
         notice=None,
@@ -480,6 +548,8 @@ def answer_question(
     published_only: bool = True,
     document_ids: list[str] | None = None,
     top_k: int | None = None,
+    mode: str | None = None,
+    retrieval_top_p: float | None = None,
     composer=None,
 ) -> RagAnswer:
     """召回 + 证据压缩 + LLM/模板合成 + 引用组装；无可靠依据时拒答不编造（AC6）。
@@ -496,6 +566,10 @@ def answer_question(
             data_type=data_type,
             published_only=published_only,
             document_ids=document_ids,
+            # Evaluation callers pass their saved console shape here so answer
+            # metrics use the same candidate set as Recall@K.
+            mode=mode,
+            retrieval_top_p=retrieval_top_p,
         ),
         top_k=top_k,
     )

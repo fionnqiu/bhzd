@@ -523,6 +523,24 @@ def _short_json(value: Any, limit: int = 200) -> str:
     return json.dumps(value, ensure_ascii=False, default=str)[:limit]
 
 
+def _task_result_cards(result: dict[str, Any], *, created: bool = False) -> list[dict[str, Any]]:
+    """Normalize single-task and staged tool results for learner-facing summaries."""
+
+    candidates = result.get("tasks") if created else result.get("stages")
+    if not isinstance(candidates, list):
+        return []
+    cards: list[dict[str, Any]] = []
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        card = (candidate.get("card") or candidate) if created else candidate
+        if isinstance(card, dict):
+            # Creation results wrap their card with database identifiers; the
+            # summary should describe the learner-visible task, not that wrapper.
+            cards.append(card)
+    return cards
+
+
 def template_tool_summary(tool_name: str, result: Any) -> str:
     """把单个工具结果渲染成一行/一段中文摘要（执行轨迹与降级回答共用）。"""
     if not isinstance(result, dict):
@@ -550,19 +568,37 @@ def template_tool_summary(tool_name: str, result: Any) -> str:
         return f"图谱定位到 {len(nodes)} 个相关节点：{names}"
 
     if tool_name == "task.preview":
-        card = result.get("card") or result
-        steps = card.get("steps") or []
-        lines = [f"任务卡预览：{card.get('title', '未命名任务')}"]
-        if card.get("goal"):
-            lines.append(f"目标：{card['goal']}")
-        for i, s in enumerate(steps, 1):
-            title = s.get("title") if isinstance(s, dict) else str(s)
-            lines.append(f"步骤{i}：{title}")
-        if card.get("est_minutes"):
-            lines.append(f"预计时长：约 {card['est_minutes']} 分钟")
+        stages = _task_result_cards(result)
+        single_card = result.get("card")
+        cards = stages or [single_card if isinstance(single_card, dict) else result]
+        lines = [
+            f"已生成 {len(cards)} 个分阶段学习任务预览："
+            if stages
+            else f"任务卡预览：{cards[0].get('title', '未命名任务')}"
+        ]
+        for index, card in enumerate(cards, 1):
+            if stages:
+                lines.append(f"{index}. {card.get('title', '未命名任务')}")
+            description = card.get("description") or card.get("goal")
+            if description:
+                lines.append(f"任务描述：{description}")
+            points = card.get("knowledge_points") or []
+            exercises = card.get("exercises") or []
+            if points:
+                lines.append(f"学习内容：{len(points)} 项")
+            if exercises:
+                lines.append(f"练习：{len(exercises)} 题")
         return "\n".join(lines)
 
     if tool_name == "task.create":
+        stages = _task_result_cards(result, created=True)
+        count = result.get("count")
+        if len(stages) > 1 or (isinstance(count, int) and count > 1):
+            total = len(stages) or count
+            lines = [f"已创建 {total} 个分阶段学习任务："]
+            for index, card in enumerate(stages, 1):
+                lines.append(f"{index}. {card.get('title', '未命名任务')}")
+            return "\n".join(lines)
         return f"已创建学习任务：{result.get('title', result.get('task_id', ''))}"
 
     if tool_name == "diagnostic.preview":
@@ -664,10 +700,17 @@ def template_compact_tool_summary(tool_name: str, result: Any) -> str:
         count = len(result.get("nodes") or [])
         return f"知识图谱定位完成：找到 {count} 个相关节点。" if count else "未定位到相关知识节点。"
     if tool_name == "task.preview":
+        stages = _task_result_cards(result)
+        if stages:
+            return f"已生成 {len(stages)} 个分阶段学习任务。"
         card = result.get("card") or result
         title = card.get("title")
         return f"已生成学习任务「{title}」。" if title else "已生成学习任务。"
     if tool_name == "task.create":
+        stages = _task_result_cards(result, created=True)
+        count = result.get("count")
+        if len(stages) > 1 or (isinstance(count, int) and count > 1):
+            return f"已创建 {len(stages) or count} 个分阶段学习任务。"
         title = result.get("title")
         return f"已创建学习任务「{title}」。" if title else "学习任务已创建。"
     if tool_name == "diagnostic.preview":

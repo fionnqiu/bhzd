@@ -199,7 +199,9 @@ def test_task_detail_includes_caps_and_attempts(api):
     assert detail.status_code == 200
     body = detail.json()
     assert body["caps"] == [{"cap_id": CAP, "cap_name": "切割音频并对齐"}]
-    assert body["steps"][0]["title"] == "第一步"
+    # The compatibility field remains in the DTO, but new learning tasks no
+    # longer keep an operation-step workflow as part of their content.
+    assert body["steps"] == []
     assert body["attempts"] == []
 
 
@@ -302,7 +304,14 @@ def test_task_detail_strips_practice_answer_fixtures_but_keeps_practice_display(
     detail = api.client.get(f"/api/tasks/{task['id']}")
     assert detail.status_code == 200, detail.text
     assert detail.json()["practice"] == {
-        "questions": [{"key": "q1", "prompt": "请填写标注结果", "hint": "核对字段完整性"}],
+        "questions": [
+            {
+                "key": "q1",
+                "prompt": "请填写标注结果",
+                "hint": "核对字段完整性",
+                "type": "open_ended",
+            }
+        ],
         "samples": [{"input": {"text": "待标注文本"}, "nested": {"context": "保留给学生"}}],
         "checklist": ["已检查字段"],
     }

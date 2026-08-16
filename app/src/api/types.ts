@@ -372,10 +372,21 @@ export interface Preset {
 export interface TaskPreview {
   title: string;
   goal?: string | null;
+  /** New task cards expose a description while `goal` remains legacy-compatible. */
+  description?: string | null;
   data_type?: string | null;
   cap_ids?: string[];
   steps?: TaskStep[];
   resources?: TaskResource[];
+  /** Preview-only lesson content, used before the task rows are persisted. */
+  knowledge_points?: Array<{ title: string; content?: string }>;
+  exercises?: Array<{
+    question: string;
+    type?: "open_ended" | "multiple_choice" | "true_false" | string;
+    options?: string[] | null;
+  }>;
+  /** An explicit staged Agent request renders each independent task preview. */
+  stages?: TaskPreview[];
   source?: string;
   preset_id?: string;
   counts_toward_mastery?: number | boolean;
@@ -508,6 +519,8 @@ export interface StudentTaskPracticeQuestion {
   question?: string;
   title?: string;
   hint?: string;
+  type?: "open_ended" | "multiple_choice" | "true_false" | string;
+  options?: string[];
 }
 
 export interface StudentTaskPractice {
@@ -521,6 +534,8 @@ export interface TaskSummary {
   id: string;
   title: string;
   goal: string | null;
+  /** Active task description; goal remains for rolling API compatibility. */
+  description?: string | null;
   data_type: string | null;
   cap_ids: string[];
   source: TaskSource;
@@ -557,7 +572,7 @@ export interface TaskExerciseSubmission {
 export interface TaskExercise {
   id: string;
   question: string;
-  type: "open_ended" | "multiple_choice" | string;
+  type: "open_ended" | "multiple_choice" | "true_false" | string;
   options: string[] | null;
   sort_order: number;
   created_at: string;
@@ -909,7 +924,7 @@ export interface SourceLedger {
   risk_no_documents: boolean;
 }
 
-/** 召回测试台命中（rag_admin.py `_hit_debug_dict`；管理端调试态含 chunk_id） */
+/** 保留管理检索 API 的命中 DTO（rag_admin.py `_hit_debug_dict`；含 chunk_id）。 */
 export interface SearchTestHit {
   chunk_id: string;
   document_id: string;
@@ -923,7 +938,22 @@ export interface SearchTestHit {
   rerank_score: number | null;
 }
 
-/** POST /api/rag/search-test（rag_admin.py search_test） */
+/** Explicit retrieval strategies shared by the retained management API and student answers. */
+export type RagRetrievalMode = "vector" | "keyword" | "hybrid";
+
+/** POST /api/rag/query；学生问答与保留管理检索 API 复用同一检索形状。 */
+export interface RagQueryRequest {
+  question: string;
+  data_type?: string | null;
+  published_only?: boolean;
+  document_ids?: string[] | null;
+  mode?: RagRetrievalMode | null;
+  top_k?: number | null;
+  /** Per-request nucleus override; only meaningful for vector mode. */
+  retrieval_top_p?: number | null;
+}
+
+/** POST /api/rag/search-test（保留兼容 API；rag_admin.py search_test）。 */
 export interface SearchTestResult {
   vector_results: SearchTestHit[];
   reranked_results: SearchTestHit[];
@@ -935,6 +965,12 @@ export interface SearchTestResult {
     latency_ms: number;
     embedding_model: string | null;
     rerank_model: string | null;
+    /** Effective vector / keyword / hybrid mode for this run. */
+    retrieval_mode?: "vector" | "keyword" | "hybrid";
+    /** Per-run vector-only nucleus override; distinct from answer top_p. */
+    retrieval_top_p?: number | null;
+    /** Selected set is echoed so an ad-hoc console run cannot be mislabeled. */
+    eval_set_id?: string | null;
     filters: Record<string, unknown>;
     prompt_template_version: string;
   };
@@ -949,8 +985,22 @@ export interface EvalCase {
   must_hit_document_ids: string[];
   must_hit_chunk_ids: string[];
   filters: Record<string, unknown>;
+  eval_set_id?: string | null;
+  /** Compatibility alias accepted by the API during the test-set migration. */
+  test_set_id?: string | null;
   created_by: string;
   created_at: string;
+}
+
+/** Named regression collection for saved recall test cases. */
+export interface EvalSet {
+  id: string;
+  name: string;
+  description: string | null;
+  case_count: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface EvalCaseResult {
@@ -981,6 +1031,8 @@ export interface EvalRun {
   status: "running" | "completed" | "failed";
   metrics: EvalMetrics | null;
   case_results: EvalCaseResult[];
+  eval_set_id?: string | null;
+  test_set_id?: string | null;
   created_by?: string;
   created_at?: string;
   finished_at?: string | null;
@@ -1061,6 +1113,7 @@ export interface TeacherTask {
   id: string;
   title: string;
   goal: string | null;
+  description?: string | null;
   data_type: string | null;
   cap_ids: string[];
   steps: TaskStep[];
@@ -1077,6 +1130,8 @@ export interface TeacherTask {
   /** 任务创建后自动生成的 AI 学习内容状态。旧服务端缺省为 none。 */
   content_status?: TaskContentStatus;
   content_generated_at?: string | null;
+  knowledge_points?: TaskKnowledgePoint[];
+  exercises?: Array<TaskExercise & { reference_answer?: string | null }>;
   created_at: string;
   updated_at: string;
   /** 仅 PATCH 响应携带：有学生副本时编辑产生 version+1 新记录 */

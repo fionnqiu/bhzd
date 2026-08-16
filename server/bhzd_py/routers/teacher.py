@@ -140,10 +140,22 @@ def _teacher_task_dto(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
         "SELECT COUNT(*) AS n FROM learning_tasks WHERE parent_task_id = ?",
         (row["id"],),
     ).fetchone()["n"]
+    # Learning content has its own tables and is the active task contract.
+    # Loading it here keeps the editor and preview in sync without reviving the
+    # historical steps/rubric fields as user-facing task content.
+    points = conn.execute(
+        "SELECT * FROM task_knowledge_points WHERE task_id = ? ORDER BY sort_order, id",
+        (row["id"],),
+    ).fetchall()
+    exercises = conn.execute(
+        "SELECT * FROM task_exercises WHERE task_id = ? ORDER BY sort_order, id",
+        (row["id"],),
+    ).fetchall()
     return {
         "id": row["id"],
         "title": row["title"],
         "goal": row["goal"],
+        "description": row["goal"],
         "data_type": row["data_type"],
         "cap_ids": _task_json(row, "cap_ids_json", []),
         "steps": _task_json(row, "steps_json", []),
@@ -165,6 +177,8 @@ def _teacher_task_dto(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
         "content_generated_at": (
             row["content_generated_at"] if "content_generated_at" in row.keys() else None
         ),
+        "knowledge_points": [_teacher_knowledge_point_dto(point) for point in points],
+        "exercises": [_teacher_exercise_dto(exercise) for exercise in exercises],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -193,12 +207,87 @@ def _teacher_exercise_dto(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "id": row["id"],
         "question": row["question"],
-        "type": row["type"],
-        "options": options if isinstance(options, list) else None,
+        "type": _normalize_exercise_type(row["type"]),
+        "options": (
+            [str(option) for option in options if str(option).strip()]
+            if isinstance(options, list)
+            else (["正确", "错误"] if _normalize_exercise_type(row["type"]) == "true_false" else None)
+        ),
         "reference_answer": row["reference_answer"],
         "sort_order": row["sort_order"],
         "created_at": row["created_at"],
     }
+
+
+# The exercise editor and student renderer share this small discriminated
+# union.  Aliases are accepted only at the boundary; persisted rows use the
+# stable values so grading and UI controls remain predictable.
+_EXERCISE_TYPES = {"open_ended", "multiple_choice", "true_false"}
+
+
+def _normalize_exercise_type(value: Any) -> str:
+    normalized = str(value or "open_ended").strip().casefold().replace("-", "_")
+    normalized = {
+        "boolean": "true_false",
+        "truefalse": "true_false",
+        "判断": "true_false",
+        "判断题": "true_false",
+        "choice": "multiple_choice",
+        "single_choice": "multiple_choice",
+    }.get(normalized, normalized)
+    return normalized if normalized in _EXERCISE_TYPES else "open_ended"
+
+
+def _copy_teacher_learning_content(
+    conn: sqlite3.Connection, source_task_id: str, target_task_id: str, now: str
+) -> tuple[int, int]:
+    """Copy the active four-field lesson content into a new teacher version.
+
+    Versioning protects students' existing assignments.  Copying these rows in
+    the same transaction means a title/description-only edit cannot silently
+    turn the new version into an empty lesson before the teacher revises it.
+    """
+
+    points = conn.execute(
+        "SELECT * FROM task_knowledge_points WHERE task_id = ? ORDER BY sort_order, id",
+        (source_task_id,),
+    ).fetchall()
+    exercises = conn.execute(
+        "SELECT * FROM task_exercises WHERE task_id = ? ORDER BY sort_order, id",
+        (source_task_id,),
+    ).fetchall()
+    for point in points:
+        conn.execute(
+            "INSERT INTO task_knowledge_points "
+            "(id, task_id, title, content, sort_order, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                uuid.uuid4().hex,
+                target_task_id,
+                point["title"],
+                point["content"],
+                point["sort_order"],
+                now,
+                now,
+            ),
+        )
+    for exercise in exercises:
+        conn.execute(
+            "INSERT INTO task_exercises "
+            "(id, task_id, question, type, options_json, reference_answer, sort_order, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                uuid.uuid4().hex,
+                target_task_id,
+                exercise["question"],
+                exercise["type"],
+                exercise["options_json"],
+                exercise["reference_answer"],
+                exercise["sort_order"],
+                now,
+            ),
+        )
+    return len(points), len(exercises)
 
 
 def _assert_teacher_content_editable(
@@ -645,6 +734,7 @@ def student_diagnostics(
 class TeacherTaskBody(BaseModel):
     title: str
     goal: str | None = None
+    description: str | None = None
     data_type: str | None = None
     cap_ids: list[str] = []
     steps: list[dict] = []
@@ -655,6 +745,7 @@ class TeacherTaskBody(BaseModel):
 class TeacherTaskPatchBody(BaseModel):
     title: str | None = None
     goal: str | None = None
+    description: str | None = None
     data_type: str | None = None
     cap_ids: list[str] | None = None
     steps: list[dict] | None = None
@@ -700,9 +791,10 @@ def _check_task_body(title: str, cap_ids: list[str]) -> None:
     """
     if not title.strip():
         raise ApiError(400, "VALIDATION_ERROR", "任务标题不能为空")
-    if not cap_ids:
-        raise ApiError(400, "CAPS_REQUIRED", "任务必须至少关联一个能力节点")
-    _validate_cap_ids(cap_ids)
+    # Capability links remain an internal mastery hint for old tasks, but are
+    # no longer a required field in the four-part task authoring workflow.
+    if cap_ids:
+        _validate_cap_ids(cap_ids)
 
 
 @router.get("/api/teacher/tasks")
@@ -790,15 +882,17 @@ def create_teacher_task(
             task_id,
             current.user["id"],
             body.title.strip(),
-            body.goal,
+            body.description if body.description is not None else body.goal,
             body.data_type,
             json.dumps(body.cap_ids, ensure_ascii=False),
-            json.dumps(body.steps, ensure_ascii=False),
+            # Keep the legacy column empty for new tasks; operation steps are
+            # no longer part of the teacher authoring contract.
+            "[]",
             # New task rows deliberately keep the historical resource column
             # empty; old rows are still returned unchanged by the DTO.
             "[]",
-            json.dumps(body.rubric, ensure_ascii=False) if body.rubric is not None else None,
-            json.dumps(body.practice, ensure_ascii=False) if body.practice is not None else None,
+            None,
+            None,
             current.user["id"],
             current.user["id"],
             now,
@@ -984,10 +1078,13 @@ def create_teacher_exercise(
     row = _assert_teacher_content_editable(conn, task_id, current.user["id"])
     if not body.question.strip():
         raise ApiError(400, "VALIDATION_ERROR", "练习题不能为空")
-    if body.type not in {"open_ended", "multiple_choice"}:
+    kind = _normalize_exercise_type(body.type)
+    if kind != body.type:
         raise ApiError(400, "VALIDATION_ERROR", "练习题类型不受支持")
     options = [item.strip() for item in (body.options or []) if item.strip()]
-    if body.type == "multiple_choice" and not options:
+    if kind == "true_false" and not options:
+        options = ["正确", "错误"]
+    if kind == "multiple_choice" and not options:
         raise ApiError(400, "VALIDATION_ERROR", "选择题必须提供选项")
     if body.sort_order < 0:
         raise ApiError(400, "VALIDATION_ERROR", "排序值不能为负数")
@@ -1001,7 +1098,7 @@ def create_teacher_exercise(
             exercise_id,
             row["id"],
             body.question.strip(),
-            body.type,
+            kind,
             json.dumps(options, ensure_ascii=False) if options else None,
             body.reference_answer.strip() if body.reference_answer else None,
             body.sort_order,
@@ -1042,8 +1139,9 @@ def patch_teacher_exercise(
     if exercise is None:
         raise ApiError(404, "EXERCISE_NOT_FOUND", "练习题不存在")
     question = body.question.strip() if body.question is not None else exercise["question"]
-    kind = body.type if body.type is not None else exercise["type"]
-    if not question or kind not in {"open_ended", "multiple_choice"}:
+    requested_kind = body.type if body.type is not None else exercise["type"]
+    kind = _normalize_exercise_type(requested_kind)
+    if not question or kind != requested_kind:
         raise ApiError(400, "VALIDATION_ERROR", "练习题内容或类型无效")
     if body.options is None:
         try:
@@ -1052,6 +1150,8 @@ def patch_teacher_exercise(
             options = []
     else:
         options = [item.strip() for item in body.options if item.strip()]
+    if kind == "true_false" and not options:
+        options = ["正确", "错误"]
     if kind == "multiple_choice" and not options:
         raise ApiError(400, "VALIDATION_ERROR", "选择题必须提供选项")
     sort_order = body.sort_order if body.sort_order is not None else exercise["sort_order"]
@@ -1165,7 +1265,7 @@ def patch_teacher_task(
 
     content_changed = any(
         getattr(body, field) is not None
-        for field in ("title", "goal", "data_type", "cap_ids", "steps", "rubric", "practice")
+        for field in ("title", "goal", "description", "data_type", "cap_ids")
     )
     if has_children and not content_changed:
         # 仅截止变更（或空 PATCH）：学生副本已更新，无需版本升级，直接收尾
@@ -1187,20 +1287,19 @@ def patch_teacher_task(
     _check_task_body(title, cap_ids)
     new_fields = {
         "title": title.strip(),
-        "goal": body.goal if body.goal is not None else row["goal"],
+        "goal": (
+            body.description
+            if body.description is not None
+            else body.goal if body.goal is not None else row["goal"]
+        ),
         "data_type": body.data_type if body.data_type is not None else row["data_type"],
         "cap_ids_json": json.dumps(cap_ids, ensure_ascii=False),
-        "steps_json": json.dumps(
-            body.steps if body.steps is not None else _task_json(row, "steps_json", []),
-            ensure_ascii=False,
-        ),
+        # Preserve old authored rows for history, but never manufacture new
+        # operation steps through the active four-field editor.
+        "steps_json": row["steps_json"],
         "resources_json": "[]",
-        "rubric_json": (
-            json.dumps(body.rubric, ensure_ascii=False) if body.rubric is not None else row["rubric_json"]
-        ),
-        "practice_json": (
-            json.dumps(body.practice, ensure_ascii=False) if body.practice is not None else row["practice_json"]
-        ),
+        "rubric_json": row["rubric_json"],
+        "practice_json": row["practice_json"],
     }
     if has_children:
         # 版本升级：新建 version+1 原件，parent_task_id 链回上一版；学生副本不动
@@ -1235,8 +1334,18 @@ def patch_teacher_task(
                 now,
             ),
         )
+        copied_points, copied_exercises = _copy_teacher_learning_content(conn, task_id, new_id, now)
+        if copied_points or copied_exercises:
+            # Copied authored rows are already the complete lesson for this
+            # version. Mark them terminal before commit so a detached generator
+            # cannot race a teacher's subsequent content edits.
+            conn.execute(
+                "UPDATE learning_tasks SET content_status = 'done', content_generated_at = ? WHERE id = ?",
+                (now, new_id),
+            )
         conn.commit()
-        _queue_generated_content(conn, [new_id])
+        if not (copied_points or copied_exercises):
+            _queue_generated_content(conn, [new_id])
         audit(conn, current.user, "teacher_task.version_bump", target_type="learning_task",
               target_id=new_id, before={"version": row["version"]},
               after={"version": row["version"] + 1, "from": task_id})
@@ -1305,7 +1414,7 @@ def publish_teacher_task_rows(
                status, steps_json, resources_json, rubric_json, practice_json,
                counts_toward_mastery, teacher_id, class_id, due_at, version,
                parent_task_id, created_by, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, 'teacher', 'not_started', ?, ?, ?, ?, ?, ?, ?, ?, 1,
+            VALUES (?, ?, ?, ?, ?, ?, 'teacher', 'not_started', '[]', '[]', NULL, NULL, ?, ?, ?, ?, 1,
                     ?, ?, ?, ?)
             """,
             (
@@ -1315,10 +1424,6 @@ def publish_teacher_task_rows(
                 row["goal"],
                 row["data_type"],
                 row["cap_ids_json"],
-                row["steps_json"],
-                "[]",
-                row["rubric_json"],
-                row["practice_json"],
                 1 if counts_toward_mastery else 0,
                 teacher_id,
                 class_id,
@@ -1329,7 +1434,22 @@ def publish_teacher_task_rows(
                 now,
             ),
         )
-        content_task_ids.append(student_task_id)
+        copied_points, copied_exercises = _copy_teacher_learning_content(
+            conn, task_id, student_task_id, now
+        )
+        if copied_points or copied_exercises:
+            # The learner copy is complete at commit time.  Keeping retired
+            # JSON fields empty prevents a legacy task body from reappearing
+            # beside the current four-field content on the student side.
+            conn.execute(
+                "UPDATE learning_tasks SET content_status = 'done', content_generated_at = ? WHERE id = ?",
+                (now, student_task_id),
+            )
+        else:
+            # Older source tasks may not yet have authored content rows.  The
+            # existing worker will generate the source once and fan it out,
+            # preserving a recoverable upgrade path without delaying publish.
+            content_task_ids.append(student_task_id)
     # Notifications share the transaction with task copies, so students never
     # see a publish notice for a task row that was rolled back.
     due_note = f"，截止时间 {due_at}" if due_at else ""
@@ -1502,16 +1622,29 @@ def generate_teacher_task(
     # 4) 模板组装草稿（确定性，离线可用）
     title = _draft_title(description)
     norm_title = hits[0].title if hits else "相关标注规范"
-    steps = [
-        {"title": "学习规范", "description": f"通读《{norm_title}》，圈出与本次任务直接相关的条款"},
-        {"title": "示范学习", "description": "对照示范样本逐条理解规范的应用方式，记录易错点"},
-        {"title": "实操标注", "description": f"按规范独立完成「{title}」的标注实操"},
-        {"title": "自检互检", "description": "按评分规则逐项自检并修正，提交前对照规范复核一遍"},
+    knowledge_points = [
+        {
+            "title": f"{title}的核心规范",
+            "content": f"通读《{norm_title}》，整理与“{title}”直接相关的定义、边界和示例。",
+        },
+        {
+            "title": "质量检查要点",
+            "content": "完成练习后逐项核对标签、边界和遗漏项，并记录需要复查的样本。",
+        },
     ]
-    rubric = [
-        {"criterion": "规范符合性", "description": "标注结果符合引用规范条款", "points": 40},
-        {"criterion": "标注准确率", "description": "类别/边界/转写准确，错误率低", "points": 40},
-        {"criterion": "质检通过率", "description": "自检发现并修正问题后再提交", "points": 20},
+    exercises = [
+        {
+            "question": f"在“{title}”中，哪一项最能体现规范符合性？",
+            "type": "multiple_choice",
+            "options": ["按规范定义逐项核对", "只看样本数量", "跳过边界样本"],
+            "reference_answer": "按规范定义逐项核对",
+        },
+        {
+            "question": "完成提交前，是否已经按规范复核全部必填项？",
+            "type": "true_false",
+            "options": ["正确", "错误"],
+            "reference_answer": "正确",
+        },
     ]
     # 难度/时长：PRD 未给公式。难度沿用预设路径的 1-4 整数口径，企业实战/综合
     # 类描述默认升一档；时长取一节课 60 分钟占位，教师发布前可改
@@ -1529,8 +1662,8 @@ def generate_teacher_task(
                     {
                         "role": "system",
                         "content": "你是职业院校数据标注课程的助教。根据教师的企业任务描述，"
-                        "输出润色后的任务标题（不超过30字）和4条学习步骤的标题。"
-                        "共5行，每行一条，不要编号，不要解释。",
+                        "输出润色后的任务标题（不超过30字）和一段任务描述。"
+                        "共2行，每行一条，不要编号，不要解释。",
                     },
                     {"role": "user", "content": description},
                 ]
@@ -1540,8 +1673,8 @@ def generate_teacher_task(
             lines = [ln.strip() for ln in polished["text"].splitlines() if ln.strip()]
             if lines:
                 title = lines[0][:30]
-                for step, line in zip(steps, lines[1:5]):
-                    step["title"] = line[:20]
+                if len(lines) > 1:
+                    generated_description = lines[1][:200]
                 llm_used = True
     except Exception:
         llm_used = False
@@ -1580,15 +1713,24 @@ def generate_teacher_task(
         sources_note = f"生成过程参考了 {len(hits[:5])} 份已发布知识库资料；任务不会绑定资料，发布前请核对条款"
     else:
         sources_note = "知识库暂无可靠命中的已发布资料，草稿按图谱能力生成；发布前请补充至少一份来源资料"
+    description_text = locals().get(
+        "generated_description",
+        f"完成「{title}」对应的学习任务，掌握相关规范要点并达到质检要求",
+    )
     return {
         "title": title,
-        "goal": f"完成「{title}」对应的标注任务，掌握相关规范要点并达到质检要求",
+        "goal": description_text,
+        "description": description_text,
         "data_type": data_type,
         "cap_ids": cap_ids,
         "caps": [{"cap_id": cid, "cap_name": names.get(cid, cid)} for cid in cap_ids],
-        "steps": steps,
+        # Legacy keys remain in the response for rolling clients, but new
+        # clients consume the explicit learning-content/practice arrays.
+        "steps": [],
         "citations": citations,
-        "rubric": rubric,
+        "rubric": [],
+        "knowledge_points": knowledge_points,
+        "exercises": exercises,
         "difficulty": difficulty,
         "est_minutes": est_minutes,
         "sources_note": sources_note,

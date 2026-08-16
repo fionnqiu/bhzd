@@ -17,6 +17,7 @@ EXPECTED_MIGRATIONS = [
     "015_message_attachments.sql", "016_remove_scenarios.sql",
     "017_provider_protocol_grader.sql", "018_task_learning_content.sql",
     "019_query_rewrite_setting.sql", "020_rag_sampling_settings.sql",
+    "021_rag_eval_sets_and_retrieval.sql",
 ]
 
 EXPECTED_TABLES = {
@@ -26,7 +27,7 @@ EXPECTED_TABLES = {
     "pending_confirmations", "learning_profiles", "mastery", "mastery_events",
     "learning_tasks", "task_attempts", "diagnostic_summaries", "analytics_events",
     "rag_documents", "rag_chunks", "rag_jobs", "source_ledgers", "review_records",
-    "eval_cases", "eval_runs", "rag_settings", "provider_configs", "audit_logs",
+    "eval_cases", "eval_runs", "eval_sets", "rag_settings", "provider_configs", "audit_logs",
     "recall_logs",
     "favorites", "diagnostic_cache", "notifications",
     "conversation_memory_chunks", "private_memory_items", "private_memory_sources",
@@ -223,9 +224,10 @@ def test_provider_protocol_migration_preserves_legacy_row_data(tmp_path):
     (legacy_migrations / "017_provider_protocol_grader.sql").unlink()
     (legacy_migrations / "018_task_learning_content.sql").unlink()
     (legacy_migrations / "019_query_rewrite_setting.sql").unlink()
-    # Keep this fixture anchored before the later RAG sampling migration; the
+    # Keep this fixture anchored before the later RAG setting migrations; the
     # test is specifically exercising the pre-017 provider protocol boundary.
     (legacy_migrations / "020_rag_sampling_settings.sql").unlink()
+    (legacy_migrations / "021_rag_eval_sets_and_retrieval.sql").unlink()
     database_path = str(tmp_path / "provider-migration.sqlite")
     conn = connect(database_path)
     try:
@@ -319,6 +321,7 @@ def test_scenario_removal_migration_unifies_mastery_and_drops_business_columns(t
     # The scenario migration test must stop at 015 so it can seed the legacy
     # scenario column layout before applying 016 in isolation.
     (legacy_migrations / "020_rag_sampling_settings.sql").unlink()
+    (legacy_migrations / "021_rag_eval_sets_and_retrieval.sql").unlink()
     database_path = str(tmp_path / "scenario-removal.sqlite")
     conn = connect(database_path)
     try:

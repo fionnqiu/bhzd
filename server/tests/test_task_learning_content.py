@@ -143,6 +143,53 @@ def test_start_learning_generates_content_and_reuses_task(api, monkeypatch):
     assert detail.json()["exercises"]
 
 
+def test_content_generation_uses_the_persisted_stage_description(api, monkeypatch):
+    """A staged Agent row must give its own description to the content worker."""
+
+    queued: list[str] = []
+    monkeypatch.setattr(
+        task_tools,
+        "schedule_task_content",
+        lambda task_id, **_kwargs: queued.append(task_id),
+    )
+    student = api.login_as("content-stage-description@test.local")
+    created = api.client.post(
+        "/api/tasks",
+        json={
+            "title": "文本标注练习任务·阶段2",
+            "description": "针对歧义边界完成独立判断练习",
+            "data_type": "text",
+            "cap_ids": [CAP],
+        },
+        headers=student["headers"],
+    )
+    assert created.status_code == 201, created.text
+    task_id = created.json()["id"]
+    assert queued == [task_id]
+
+    captured: list[list[dict]] = []
+
+    async def generate(messages, **_kwargs):
+        captured.append(messages)
+        return {
+            "text": json.dumps(
+                {
+                    "knowledge_points": [{"title": "歧义边界", "content": "核对上下文"}],
+                    "exercises": [{"question": "选择正确边界", "type": "multiple_choice"}],
+                },
+                ensure_ascii=False,
+            )
+        }
+
+    monkeypatch.setattr(providers, "complete", generate)
+    database_path = api.conn.execute("PRAGMA database_list").fetchone()[2]
+    result = asyncio.run(task_tools.generate_task_content(task_id, database_path=database_path))
+
+    assert result["status"] == "done"
+    assert captured
+    assert "任务描述：针对歧义边界完成独立判断练习" in captured[0][-1]["content"]
+
+
 def test_task_detail_auto_queues_legacy_none_content(api, monkeypatch):
     """Opening a historical task starts generation without a learner action."""
 

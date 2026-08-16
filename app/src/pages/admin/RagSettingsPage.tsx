@@ -238,7 +238,7 @@ export default function RagSettingsPage() {
     <div>
       <PageHeader
         title="RAG 参数配置"
-        sub={`切片与召回调优；温度和 top-p 作为内置采样参数在此调整${
+        sub={`切片、召回与答案采样调优；检索测试的 top-p 按单次运行设置${
           updatedAt ? `（最近更新：${fmtTime(updatedAt)}）` : ""
         }`}
         actions={

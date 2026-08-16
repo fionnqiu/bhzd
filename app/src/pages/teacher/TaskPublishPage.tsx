@@ -8,8 +8,8 @@
  * - 已发布任务（published_count>0）的原件不能被学生副本"静默漂移"：后端
  *   PATCH 会自动生成 version+1 新记录（version_bumped），页面用横幅提前
  *   告知，并在保存后切换到新版本继续编辑。
- * - 能力节点≥1 是发布所需的最小结构；来源资料属于可选补充，空列表会
- *   以 [] 落库，统一由 RAG 问答页承载知识获取。
+ * - 任务正文只保留名称、描述、学习内容和练习；班级、截止时间和掌握度开关
+ *   只在发布动作中传递，避免把发布范围误存为任务内容或元数据。
  * - 预览面板始终常驻渲染（PRD §5.4"发布前必须展示预览"）：表单任何编辑
  *   实时反映到右侧任务卡，而不是发布前才弹一次预览。
  * - "AI 生成任务卡"（PRD-02 §5.3）：POST /api/teacher/tasks/generate 返回
@@ -30,6 +30,8 @@ import type {
   GraphNode,
   Paginated,
   PublishTaskResponse,
+  TaskExercise,
+  TaskKnowledgePoint,
   TeacherTask,
 } from "../../api/types";
 import {
@@ -39,14 +41,12 @@ import {
   Field,
   Input,
   PageHeader,
-  SearchInput,
   Select,
   Spinner,
-  Tag,
   Textarea,
   useToast,
 } from "../../components";
-import { DATA_TYPE_OPTIONS, dataTypeLabel, errMsg, fmtDateTime } from "./utils";
+import { errMsg, fmtDateTime } from "./utils";
 
 /* ---------------------------------------------------------------- 表单模型 */
 
@@ -78,9 +78,24 @@ interface FormState {
   caps: CapPick[];
   steps: StepRow[];
   rubric: RubricRow[];
+  knowledgePoints: TaskKnowledgePoint[];
+  exercises: ExerciseDraft[];
   classId: string;
   dueAt: string;
   counts: boolean;
+}
+
+interface ExerciseDraft {
+  id?: string;
+  question: string;
+  type: "open_ended" | "multiple_choice" | "true_false";
+  options: string;
+  reference_answer: string;
+}
+
+/** Keep legacy exercise rows from turning an uncontrolled API string into a form-select value. */
+function normalizeExerciseType(value: unknown): ExerciseDraft["type"] {
+  return value === "multiple_choice" || value === "true_false" ? value : "open_ended";
 }
 
 function emptyForm(): FormState {
@@ -93,6 +108,8 @@ function emptyForm(): FormState {
     caps: [],
     steps: [],
     rubric: [],
+    knowledgePoints: [],
+    exercises: [],
     classId: "",
     dueAt: "",
     counts: true, // PRD-06 §10.1：计入掌握度由教师发布时选择，默认计入
@@ -154,6 +171,14 @@ function formFromTask(task: TeacherTask, capNames: Record<string, string>): Form
     caps: task.cap_ids.map((cid) => ({ id: cid, name: capNames[cid] ?? cid })),
     steps: task.steps.map(stepRowFromTask),
     rubric: (task.rubric ?? []).map(rubricRowFromTask),
+    knowledgePoints: task.knowledge_points ?? [],
+    exercises: (task.exercises ?? []).map((exercise) => ({
+      id: exercise.id,
+      question: exercise.question,
+      type: normalizeExerciseType(exercise.type),
+      options: (exercise.options ?? []).join("\n"),
+      reference_answer: exercise.reference_answer ?? "",
+    })),
     // Agent drafts are already scoped to an owned class.  Preselecting it
     // removes a redundant step, but the teacher must still review and click
     // the separate publish action before any student record is created.
@@ -183,11 +208,19 @@ function taskIdFromSearch(search: string): string | null {
 interface GenerateTaskDraft {
   title: string;
   goal: string;
+  description?: string;
   data_type: string | null;
   cap_ids: string[];
   caps: { cap_id: string; cap_name: string }[];
   steps: { title: string; description?: string }[];
   rubric: { criterion: string; description: string; points: number }[];
+  knowledge_points?: { title: string; content: string }[];
+  exercises?: {
+    question: string;
+    type: "open_ended" | "multiple_choice" | "true_false";
+    options?: string[] | null;
+    reference_answer?: string | null;
+  }[];
   difficulty: number;
   est_minutes: number;
   /** 引用来源说明（无命中资料时提示需手动补资料），必须如实展示给教师 */
@@ -252,8 +285,6 @@ export default function TaskPublishPage() {
   // Manual description is the single editable source; AI generation consumes it
   // and fills the normal task fields without creating resource associations.
   const [manualText, setManualText] = useState("");
-  const [capQuery, setCapQuery] = useState("");
-  const [capResults, setCapResults] = useState<GraphNode[]>([]);
 
   const patchForm = (patch: Partial<FormState>) => setForm((f) => ({ ...f, ...patch }));
 
@@ -327,27 +358,6 @@ export default function TaskPublishPage() {
     return () => controller.abort();
   }, [agentTaskHandoffRetry, capNames, loadTasks]);
 
-  const searchCaps = useCallback(
-    async (q: string, signal?: AbortSignal) => {
-      try {
-        const res = await api.get<Paginated<GraphNode>>(
-          "/api/graph/nodes",
-          {
-            q: q || undefined,
-            type: "CAP",
-            limit: 10,
-          },
-          { signal },
-        );
-        if (signal?.aborted) return;
-        setCapResults(res.items);
-      } catch (err) {
-        if (!signal?.aborted) toast.error(errMsg(err, "能力节点搜索失败"));
-      }
-    },
-    [toast],
-  );
-
   /* ------------------------------------------------ 手动输入与 AI 生成 */
 
   const fillFromManual = () => {
@@ -358,7 +368,7 @@ export default function TaskPublishPage() {
       goal: manualText.trim(),
       title: form.title || manualText.trim().split("\n")[0].slice(0, 50),
     });
-    toast.info("已填入学习目标，请继续完善步骤与评分规则");
+    toast.info("已填入任务描述，请继续完善学习内容和练习");
   };
 
   /** 切换/新建任务时清掉与上一张任务卡绑定的瞬态（AI 横幅、截止调整输入） */
@@ -382,20 +392,24 @@ export default function TaskPublishPage() {
       });
       patchForm({
         title: draft.title,
-        goal: draft.goal,
+        goal: draft.description ?? draft.goal,
         dataType: draft.data_type ?? "",
         caps: draft.caps.map((c) => ({ id: c.cap_id, name: c.cap_name })),
-        // 后端步骤字段是 description，表单行口径是 notes（注意事项），在此对齐
-        steps: draft.steps.map((s) => ({
-          title: s.title,
-          notes: s.description ?? "",
-          commonErrors: "",
+        steps: [],
+        rubric: [],
+        knowledgePoints: (draft.knowledge_points ?? []).map((point, index) => ({
+          ...point,
+          id: `draft-point-${index}`,
+          sort_order: index,
+          created_at: "",
+          updated_at: "",
         })),
-        // 后端评分项是 criterion/description/points，表单行是 key/expected/weight
-        rubric: draft.rubric.map((r) => ({
-          key: r.criterion,
-          expected: r.description,
-          weight: String(r.points),
+        exercises: (draft.exercises ?? []).map((exercise, index) => ({
+          id: `draft-exercise-${index}`,
+          question: exercise.question,
+          type: exercise.type,
+          options: (exercise.options ?? []).join("\n"),
+          reference_answer: exercise.reference_answer ?? "",
         })),
       });
       // 生成带回的能力名并入名称映射，预览/芯片都能显示中文名而非裸 id
@@ -442,7 +456,6 @@ export default function TaskPublishPage() {
   const validate = (forPublish: boolean): boolean => {
     const next: Record<string, string> = {};
     if (!form.title.trim()) next.title = "任务名称不能为空";
-    if (form.caps.length === 0) next.caps = "任务必须至少关联一个能力节点";
     if (forPublish && !form.classId) next.classId = "发布前请选择班级";
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -450,26 +463,106 @@ export default function TaskPublishPage() {
 
   const buildBody = () => ({
     title: form.title,
-    goal: form.goal.trim() || null,
-    data_type: form.dataType || null,
-    cap_ids: form.caps.map((c) => c.id),
-    steps: form.steps
-      .filter((s) => s.title.trim())
-      .map((s) => ({
-        title: s.title,
-        notes: s.notes.trim() || undefined,
-        common_errors: s.commonErrors.trim() || undefined,
-      })),
-    rubric: form.rubric.length
-      ? form.rubric
-          .filter((r) => r.key.trim())
-          .map((r) => ({
-            key: r.key.trim(),
-            expected: r.expected,
-            weight: r.weight.trim() === "" ? undefined : Number(r.weight),
-          }))
-      : null,
+    description: form.goal.trim() || null,
   });
+
+  /** Persist the active learning-content tables after the task row exists. */
+  const persistContent = async (taskId: string, replaceCopiedContent = false) => {
+    // Empty rows are an intentional affordance while a teacher is composing.
+    // Ignore those placeholders, but reject partially authored rows so a save
+    // never silently drops work that the backend cannot represent.
+    const knowledgePoints = form.knowledgePoints.filter((point) => point.title.trim() || point.content.trim());
+    if (knowledgePoints.some((point) => !point.title.trim() || !point.content.trim())) {
+      throw new Error("每项学习内容都需要填写标题和内容");
+    }
+    const exercises = form.exercises.filter(
+      (exercise) => exercise.question.trim() || exercise.options.trim() || exercise.reference_answer.trim(),
+    );
+    if (exercises.some((exercise) => !exercise.question.trim())) {
+      throw new Error("每道练习都需要填写题目");
+    }
+    if (
+      exercises.some(
+        (exercise) =>
+          exercise.type === "multiple_choice" &&
+          exercise.options.split(/\r?\n/).every((option) => !option.trim()),
+      )
+    ) {
+      throw new Error("选择题需要至少一个选项");
+    }
+    const currentPoints = await api.get<{ items: TaskKnowledgePoint[] }>(
+      `/api/teacher/tasks/${taskId}/knowledge-points`,
+    );
+    const desiredPointIds = new Set(
+      replaceCopiedContent
+        ? []
+        : knowledgePoints
+            .filter((point) => !point.id.startsWith("draft-"))
+            .map((point) => point.id),
+    );
+    await Promise.all(
+      currentPoints.items
+        .filter((point) => !desiredPointIds.has(point.id))
+        .map((point) => api.delete(`/api/teacher/tasks/${taskId}/knowledge-points/${point.id}`)),
+    );
+    for (const [index, point] of knowledgePoints.entries()) {
+      const body = { title: point.title, content: point.content, sort_order: index };
+      if (replaceCopiedContent || point.id.startsWith("draft-")) {
+        await api.post(`/api/teacher/tasks/${taskId}/knowledge-points`, body);
+      } else {
+        await api.patch(`/api/teacher/tasks/${taskId}/knowledge-points/${point.id}`, body);
+      }
+    }
+
+    const currentExercises = await api.get<{ items: Array<TaskExercise & { reference_answer?: string | null }> }>(
+      `/api/teacher/tasks/${taskId}/exercises`,
+    );
+    const desiredExerciseIds = new Set(
+      replaceCopiedContent
+        ? []
+        : exercises
+            .filter((exercise) => exercise.id && !exercise.id.startsWith("draft-"))
+            .map((exercise) => exercise.id),
+    );
+    await Promise.all(
+      currentExercises.items
+        .filter((exercise) => !desiredExerciseIds.has(exercise.id))
+        .map((exercise) => api.delete(`/api/teacher/tasks/${taskId}/exercises/${exercise.id}`)),
+    );
+    for (const [index, exercise] of exercises.entries()) {
+      const body = {
+        question: exercise.question,
+        type: exercise.type,
+        options: exercise.options.split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
+        reference_answer: exercise.reference_answer.trim() || null,
+        sort_order: index,
+      };
+      if (replaceCopiedContent || !exercise.id || exercise.id.startsWith("draft-")) {
+        await api.post(`/api/teacher/tasks/${taskId}/exercises`, body);
+      } else {
+        await api.patch(`/api/teacher/tasks/${taskId}/exercises/${exercise.id}`, body);
+      }
+    }
+
+    // Refresh generated IDs after create/version-copy so later saves update
+    // the current task rows rather than issuing PATCH requests for old IDs.
+    const [persistedPoints, persistedExercises] = await Promise.all([
+      api.get<{ items: TaskKnowledgePoint[] }>(`/api/teacher/tasks/${taskId}/knowledge-points`),
+      api.get<{ items: Array<TaskExercise & { reference_answer?: string | null }> }>(
+        `/api/teacher/tasks/${taskId}/exercises`,
+      ),
+    ]);
+    return {
+      knowledgePoints: persistedPoints.items,
+      exercises: persistedExercises.items.map((exercise) => ({
+        id: exercise.id,
+        question: exercise.question,
+        type: normalizeExerciseType(exercise.type),
+        options: (exercise.options ?? []).join("\n"),
+        reference_answer: exercise.reference_answer ?? "",
+      })),
+    };
+  };
 
   /** 保存草稿（新建 POST / 编辑 PATCH）；返回落库后的任务（版本升级时是新 id） */
   const saveTask = async (): Promise<TeacherTask | null> => {
@@ -481,7 +574,13 @@ export default function TaskPublishPage() {
     if (res.version_bumped) {
       toast.info(`已生成新版本 v${res.version}，不影响已开始的学生`);
     }
-    patchForm({ taskId: res.id, publishedCount: res.published_count });
+    const persistedContent = await persistContent(res.id, Boolean(res.version_bumped));
+    patchForm({
+      taskId: res.id,
+      publishedCount: res.published_count,
+      knowledgePoints: persistedContent.knowledgePoints,
+      exercises: persistedContent.exercises,
+    });
     void loadTasks();
     return res;
   };
@@ -522,11 +621,6 @@ export default function TaskPublishPage() {
   };
 
   /* ------------------------------------------------ 动态行编辑 */
-
-  const updateStep = (i: number, patch: Partial<StepRow>) =>
-    patchForm({ steps: form.steps.map((s, idx) => (idx === i ? { ...s, ...patch } : s)) });
-  const updateRubric = (i: number, patch: Partial<RubricRow>) =>
-    patchForm({ rubric: form.rubric.map((r, idx) => (idx === i ? { ...r, ...patch } : r)) });
 
   // The selection list stays beside the preview so teachers can compare an existing task before
   // changing the draft. Keeping it separate also prevents a third visual column on wide screens.
@@ -746,7 +840,7 @@ export default function TaskPublishPage() {
                     borderRadius: "var(--radius-md)",
                   }}
                 >
-                  AI 生成说明：基于任务描述定位能力节点，生成标题/目标/步骤/评分规则的完整草稿；
+                  AI 生成说明：基于任务描述生成任务名称、描述、学习内容和练习；
                   草稿不落库，填入表单后可继续编辑，审核确认后再保存或发布。
                 </div>
                 <div className="flex gap-2">
@@ -805,7 +899,7 @@ export default function TaskPublishPage() {
               </div>
             ) : null}
 
-            {/* 任务内容编辑（PRD §5.2 教师编辑：目标/步骤/资源/评分规则） */}
+            {/* Active task authoring surface: name, description, learning content, practice. */}
             <Card title="任务内容">
               <Field label="任务名称" required error={errors.title}>
                 <Input
@@ -815,178 +909,172 @@ export default function TaskPublishPage() {
                   onChange={(e) => patchForm({ title: e.target.value })}
                 />
               </Field>
-              <Field label="学习目标">
+              <Field label="任务描述">
                 <Textarea
                   rows={3}
                   value={form.goal}
-                  placeholder="完成本任务后学生应达到的目标"
+                  placeholder="说明学生要学习的主题、范围和预期结果"
                   onChange={(e) => patchForm({ goal: e.target.value })}
                 />
               </Field>
-              <div className="grid teacher-task-fields">
-                <Field label="数据类型">
-                  <Select
-                    options={DATA_TYPE_OPTIONS}
-                    placeholder="不限"
-                    value={form.dataType}
-                    onChange={(e) => patchForm({ dataType: e.target.value })}
-                  />
-                </Field>
-              </div>
-
-              {/* 关联能力（必填 ≥1）：搜索图谱 CAP 节点，芯片式多选 */}
-              <Field
-                label="关联能力"
-                required
-                error={errors.caps}
-                hint="从能力图谱搜索并添加，至少 1 个"
-              >
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {form.caps.map((cap) => (
-                    <span key={cap.id} className="tag flex items-center gap-1">
-                      {cap.name}
-                      <button
-                        type="button"
-                        aria-label={`移除 ${cap.name}`}
-                        className="icon-btn"
-                        style={{ padding: 0, width: 16, height: 16 }}
-                        onClick={() =>
-                          patchForm({ caps: form.caps.filter((c) => c.id !== cap.id) })
-                        }
-                      >
-                        <X size={12} />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-                <SearchInput
-                  value={capQuery}
-                  onChange={() => undefined /* 见上方状态注释：输入过程由组件自管 */}
-                  onSearch={(q, signal) => {
-                    setCapQuery(q);
-                    void searchCaps(q, signal);
-                  }}
-                  placeholder="搜索能力节点…"
-                />
-                <ul className="flex flex-col gap-1 mt-2">
-                  {capResults
-                    .filter((n) => !form.caps.some((c) => c.id === n.id))
-                    .map((node) => (
-                      <li key={node.id} className="flex items-center justify-between">
-                        <span className="text-sm">{node.label}</span>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            patchForm({ caps: [...form.caps, { id: node.id, name: node.label }] });
-                            setCapNames((m) => ({ ...m, [node.id]: node.label }));
-                          }}
-                        >
-                          <Plus size={14} /> 添加
-                        </Button>
-                      </li>
-                    ))}
-                </ul>
-              </Field>
-
-              {/* 操作步骤（动态行：说明 + 注意事项 + 常见错误） */}
-              <Field label="操作步骤">
+              <Field label="学习内容">
                 <div className="flex flex-col gap-3">
-                  {form.steps.map((step, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        border: "1px solid var(--color-border)",
-                        borderRadius: "var(--radius-md)",
-                        padding: "var(--space-3)",
-                      }}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm text-secondary">步骤 {i + 1}</span>
+                  {form.knowledgePoints.map((point, index) => (
+                    <div key={point.id} className="card-padded">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={point.title}
+                          placeholder={`知识点 ${index + 1}`}
+                          onChange={(event) =>
+                            patchForm({
+                              knowledgePoints: form.knowledgePoints.map((item) =>
+                                item.id === point.id ? { ...item, title: event.target.value } : item,
+                              ),
+                            })
+                          }
+                        />
                         <Button
                           variant="ghost"
                           size="sm"
-                          aria-label={`删除步骤 ${i + 1}`}
+                          aria-label={`删除学习内容 ${index + 1}`}
                           onClick={() =>
-                            patchForm({ steps: form.steps.filter((_, idx) => idx !== i) })
+                            patchForm({ knowledgePoints: form.knowledgePoints.filter((item) => item.id !== point.id) })
                           }
                         >
                           <Trash2 size={14} />
                         </Button>
                       </div>
-                      <Input
-                        value={step.title}
-                        placeholder="步骤说明（必填）"
-                        onChange={(e) => updateStep(i, { title: e.target.value })}
+                      <Textarea
+                        className="mt-2"
+                        rows={3}
+                        value={point.content}
+                        placeholder="填写这一知识点的学习内容"
+                        onChange={(event) =>
+                          patchForm({
+                            knowledgePoints: form.knowledgePoints.map((item) =>
+                              item.id === point.id ? { ...item, content: event.target.value } : item,
+                            ),
+                          })
+                        }
                       />
-                      <div className="grid teacher-task-step-fields mt-2">
-                        <Input
-                          value={step.notes}
-                          placeholder="注意事项"
-                          onChange={(e) => updateStep(i, { notes: e.target.value })}
-                        />
-                        <Input
-                          value={step.commonErrors}
-                          placeholder="常见错误"
-                          onChange={(e) => updateStep(i, { commonErrors: e.target.value })}
-                        />
-                      </div>
                     </div>
                   ))}
                   <Button
                     variant="secondary"
                     onClick={() =>
                       patchForm({
-                        steps: [...form.steps, { title: "", notes: "", commonErrors: "" }],
+                        knowledgePoints: [
+                          ...form.knowledgePoints,
+                          {
+                            id: `draft-point-${Date.now()}`,
+                            title: "",
+                            content: "",
+                            sort_order: form.knowledgePoints.length,
+                            created_at: "",
+                            updated_at: "",
+                          },
+                        ],
                       })
                     }
                   >
-                    <Plus size={14} /> 添加步骤
+                    <Plus size={14} /> 添加学习内容
                   </Button>
                 </div>
               </Field>
 
-              {/* 评分规则（动态行：评分项 + 期望 + 权重） */}
-              <Field label="评分规则">
-                <div className="flex flex-col gap-2">
-                  {form.rubric.map((item, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <Input
-                        value={item.key}
-                        placeholder="评分项，如 accuracy"
-                        onChange={(e) => updateRubric(i, { key: e.target.value })}
-                      />
-                      <Input
-                        value={item.expected}
-                        placeholder="期望值，如 ≥0.9"
-                        onChange={(e) => updateRubric(i, { expected: e.target.value })}
-                      />
-                      <Input
-                        type="number"
-                        value={item.weight}
-                        placeholder="权重"
-                        style={{ width: 90 }}
-                        onChange={(e) => updateRubric(i, { weight: e.target.value })}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label={`删除评分项 ${i + 1}`}
-                        onClick={() =>
-                          patchForm({ rubric: form.rubric.filter((_, idx) => idx !== i) })
-                        }
-                      >
-                        <Trash2 size={14} />
-                      </Button>
+              <Field label="练习">
+                <div className="flex flex-col gap-3">
+                  {form.exercises.map((exercise, index) => (
+                    <div key={exercise.id ?? index} className="card-padded">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={exercise.question}
+                          placeholder={`练习题 ${index + 1}`}
+                          onChange={(event) =>
+                            patchForm({
+                              exercises: form.exercises.map((item, itemIndex) =>
+                                itemIndex === index ? { ...item, question: event.target.value } : item,
+                              ),
+                            })
+                          }
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`删除练习 ${index + 1}`}
+                          onClick={() => patchForm({ exercises: form.exercises.filter((_, itemIndex) => itemIndex !== index) })}
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-2 mt-2">
+                        <Select
+                          aria-label={`练习 ${index + 1} 题型`}
+                          value={exercise.type}
+                          options={[
+                            { value: "open_ended", label: "问答题" },
+                            { value: "multiple_choice", label: "选择题" },
+                            { value: "true_false", label: "判断题" },
+                          ]}
+                          onChange={(event) =>
+                            patchForm({
+                              exercises: form.exercises.map((item, itemIndex) =>
+                                itemIndex === index
+                                  ? { ...item, type: event.target.value as ExerciseDraft["type"] }
+                                  : item,
+                              ),
+                            })
+                          }
+                        />
+                        <Input
+                          value={exercise.reference_answer}
+                          placeholder="参考答案（仅教师可见）"
+                          onChange={(event) =>
+                            patchForm({
+                              exercises: form.exercises.map((item, itemIndex) =>
+                                itemIndex === index
+                                  ? { ...item, reference_answer: event.target.value }
+                                  : item,
+                              ),
+                            })
+                          }
+                        />
+                      </div>
+                      {exercise.type !== "open_ended" ? (
+                        <Textarea
+                          className="mt-2"
+                          rows={3}
+                          value={exercise.options}
+                          placeholder="每行一个选项"
+                          onChange={(event) =>
+                            patchForm({
+                              exercises: form.exercises.map((item, itemIndex) =>
+                                itemIndex === index ? { ...item, options: event.target.value } : item,
+                              ),
+                            })
+                          }
+                        />
+                      ) : null}
                     </div>
                   ))}
                   <Button
                     variant="secondary"
                     onClick={() =>
-                      patchForm({ rubric: [...form.rubric, { key: "", expected: "", weight: "" }] })
+                      patchForm({
+                        exercises: [
+                          ...form.exercises,
+                          {
+                            id: `draft-exercise-${Date.now()}`,
+                            question: "",
+                            type: "open_ended",
+                            options: "",
+                            reference_answer: "",
+                          },
+                        ],
+                      })
                     }
                   >
-                    <Plus size={14} /> 添加评分项
+                    <Plus size={14} /> 添加练习
                   </Button>
                 </div>
               </Field>
@@ -1007,59 +1095,34 @@ export default function TaskPublishPage() {
               </p>
               <h3>{form.title || "未命名任务"}</h3>
               {form.goal.trim() ? <p className="text-sm text-secondary mt-2">{form.goal}</p> : null}
-              <div className="flex flex-wrap gap-2 mt-3">
-                <Tag>{dataTypeLabel(form.dataType)}</Tag>
-                <Tag>{form.counts ? "计入掌握度" : "不计入掌握度"}</Tag>
-              </div>
-
-              <h4 className="mt-4">关联能力（{form.caps.length}）</h4>
-              {form.caps.length === 0 ? (
-                <p className="text-sm text-danger">尚未关联能力节点（发布必需）</p>
-              ) : (
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {form.caps.map((c) => (
-                    <Tag key={c.id}>{c.name}</Tag>
-                  ))}
-                </div>
-              )}
-
-              <h4 className="mt-4">
-                操作步骤（{form.steps.filter((s) => s.title.trim()).length}）
-              </h4>
-              <ol
-                className="flex flex-col gap-2 mt-2"
-                style={{ listStyle: "decimal", paddingLeft: "var(--space-5)" }}
-              >
-                {form.steps
-                  .filter((s) => s.title.trim())
-                  .map((s, i) => (
-                    <li key={i}>
-                      <div>{s.title || "未命名步骤"}</div>
-                      {s.notes.trim() ? (
-                        <div className="text-xs text-secondary">注意：{s.notes}</div>
-                      ) : null}
-                      {s.commonErrors.trim() ? (
-                        <div className="text-xs text-secondary">常见错误：{s.commonErrors}</div>
-                      ) : null}
-                    </li>
-                  ))}
-              </ol>
-
-              {form.rubric.some((r) => r.key.trim()) ? (
-                <>
-                  <h4 className="mt-4">评分规则</h4>
-                  <ul className="flex flex-col gap-1 mt-2">
-                    {form.rubric
-                      .filter((r) => r.key.trim())
-                      .map((r, i) => (
-                        <li key={i} className="text-sm">
-                          {r.key}：{r.expected || "—"}
-                          {r.weight.trim() ? `（权重 ${r.weight}）` : ""}
+              <div className="flex flex-col gap-3 mt-4">
+                <section>
+                  <h4>学习内容（{form.knowledgePoints.length}）</h4>
+                  {form.knowledgePoints.length > 0 ? (
+                    <ol className="flex flex-col gap-2 mt-2" style={{ listStyle: "decimal", paddingLeft: "var(--space-5)" }}>
+                      {form.knowledgePoints.map((point) => (
+                        <li key={point.id}>
+                          <strong>{point.title || "未命名知识点"}</strong>
+                          <p className="text-sm text-secondary mt-1">{point.content}</p>
                         </li>
                       ))}
-                  </ul>
-                </>
-              ) : null}
+                    </ol>
+                  ) : <p className="text-sm text-muted mt-2">暂无学习内容</p>}
+                </section>
+                <section>
+                  <h4>练习（{form.exercises.length}）</h4>
+                  {form.exercises.length > 0 ? (
+                    <ol className="flex flex-col gap-2 mt-2" style={{ listStyle: "decimal", paddingLeft: "var(--space-5)" }}>
+                      {form.exercises.map((exercise, index) => (
+                        <li key={exercise.id ?? index} className="text-sm">
+                          {exercise.question || "未命名练习"}
+                          <span className="text-xs text-muted">（{exercise.type === "multiple_choice" ? "选择题" : exercise.type === "true_false" ? "判断题" : "问答题"}）</span>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : <p className="text-sm text-muted mt-2">暂无练习</p>}
+                </section>
+              </div>
 
               <h4 className="mt-4">发布信息</h4>
               <p className="text-sm text-secondary mt-2">

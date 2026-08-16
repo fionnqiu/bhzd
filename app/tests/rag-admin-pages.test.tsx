@@ -1,5 +1,5 @@
 /**
- * 系统管理端 RAG 页面测试（PRD-03）：活动资料库/上传/召回测试，以及
+ * 系统管理端 RAG 页面测试（PRD-03）：活动资料库/上传，以及
  * 已合并工作流的底层组件回归覆盖。
  *
  * api 层整体打桩（与 auth-pages.test.tsx 同一模式）：断言页面触发的
@@ -15,8 +15,6 @@ import DocumentsPage from "../src/pages/rag/DocumentsPage";
 import UploadPage from "../src/pages/rag/UploadPage";
 import ChunkEditorPage from "../src/pages/rag/ChunkEditorPage";
 import JobsPage from "../src/pages/rag/JobsPage";
-import SearchTestPage from "../src/pages/rag/SearchTestPage";
-import EvalCasesPage from "../src/pages/rag/EvalCasesPage";
 import PublishReviewPage from "../src/pages/rag/PublishReviewPage";
 
 vi.mock("../src/api/client", () => {
@@ -247,28 +245,37 @@ describe("UploadPage（PRD-03 §5）", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "文本" }));
   }
 
-  it("未填授权状态时前端拦截上传（§5.3 验收）", async () => {
+  it("仅选择文件即可提交，并将空高级元数据交给服务端默认", async () => {
     renderPage(<UploadPage />);
-    fillRequired();
+    // The simplified upload keeps the default license pending; indexing alone
+    // must never be presented as permission to expose a document to students.
+    expect(
+      screen.getByText(/完成授权确认并通过发布门禁后才可发布到学生端/),
+    ).toBeInTheDocument();
+    const selected = new File(["# 规范内容"], "spec.md", { type: "text/markdown" });
+    fireEvent.change(screen.getByLabelText("选择文件"), {
+      target: { files: [selected] },
+    });
     fireEvent.click(screen.getByRole("button", { name: "确认上传" }));
-    expect(await screen.findByText("请选择授权状态（未填授权状态不得上传）")).toBeInTheDocument();
-    expect(mockedPostForm).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockedPostForm).toHaveBeenCalledTimes(1));
+    const [path, form] = mockedPostForm.mock.calls[0] as unknown as [string, FormData];
+    expect(path).toBe("/api/rag/documents");
+    expect(form.get("file")).toBe(selected);
+    // The title is prefilled from the filename for clarity; all other blank
+    // advanced values stay absent so the API owns auditable safe defaults.
+    expect(form.get("title")).toBe("spec");
+    expect(form.get("source_type")).toBeNull();
+    expect(form.get("source_name")).toBeNull();
+    expect(form.get("version")).toBeNull();
+    expect(form.get("license_status")).toBeNull();
+    expect(form.get("visibility")).toBeNull();
+    expect(form.getAll("data_types")).toEqual([]);
   });
 
-  it("未填来源时前端拦截上传（§5.3 验收）", async () => {
+  it("未选择文件时前端拦截上传", async () => {
     renderPage(<UploadPage />);
-    // 只选文件 + 授权状态，不填来源
-    fireEvent.change(screen.getByLabelText("选择文件"), {
-      target: { files: [new File(["x"], "a.md", { type: "text/markdown" })] },
-    });
-    fireEvent.click(screen.getByRole("combobox", { name: "资料类型" }));
-    fireEvent.click(screen.getByRole("option", { name: "教材" }));
-    fireEvent.change(screen.getByPlaceholderText("例如：1.0"), { target: { value: "1.0" } });
-    fireEvent.click(screen.getByRole("checkbox", { name: "文本" }));
-    fireEvent.click(screen.getByRole("combobox", { name: "授权状态" }));
-    fireEvent.click(screen.getByRole("option", { name: "已授权" }));
     fireEvent.click(screen.getByRole("button", { name: "确认上传" }));
-    expect(await screen.findByText("请填写来源（未填来源不得上传）")).toBeInTheDocument();
+    expect((await screen.findAllByText("请选择要上传的文件")).length).toBeGreaterThan(0);
     expect(mockedPostForm).not.toHaveBeenCalled();
   });
 
@@ -285,14 +292,16 @@ describe("UploadPage（PRD-03 §5）", () => {
     expect(form.get("source_type")).toBe("standard");
     expect(form.get("source_name")).toBe("工业和信息化部");
     expect(form.get("license_status")).toBe("authorized");
-    expect(form.get("visibility")).toBe("student");
+    expect(form.get("visibility")).toBeNull();
     expect(form.getAll("data_types")).toEqual(["text"]);
     expect(form.get("auto_submit")).toBeNull();
-    // 成功态：处理完成后直接进入学生召回范围，不再提示人工审核。
-    expect(await screen.findByText(/完成后即可提供学生召回/)).toBeInTheDocument();
+    // The success state keeps the pending-license boundary visible as well.
+    expect(
+      await screen.findByText(/授权确认并通过发布门禁后才可提供学生召回/),
+    ).toBeInTheDocument();
   });
 
-  it("选择多个文件后批量导入并自动发布", async () => {
+  it("选择多个文件后批量导入并自动处理", async () => {
     mockedPostForm.mockResolvedValue({
       files: { total: 2, imported: 2, failed: 0, queued: 2 },
       auto_publish: true,
@@ -315,14 +324,16 @@ describe("UploadPage（PRD-03 §5）", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "文本" }));
     fireEvent.click(screen.getByRole("combobox", { name: "授权状态" }));
     fireEvent.click(screen.getByRole("option", { name: "已授权" }));
-    fireEvent.click(screen.getByRole("button", { name: "导入所选资料并自动发布" }));
+    fireEvent.click(screen.getByRole("button", { name: "导入所选资料并自动处理" }));
     await waitFor(() =>
       expect(mockedPostForm).toHaveBeenCalledTimes(1),
     );
     const [path, form] = mockedPostForm.mock.calls[0] as unknown as [string, FormData];
     expect(path).toBe("/api/rag/documents/batch-import");
     expect(form.getAll("files").map((value) => (value as File).name)).toEqual(["one.md", "two.txt"]);
-    expect(form.get("visibility")).toBe("student");
+    // Visibility remains a server-owned default when the simplified form
+    // omits it, keeping batch imports on the same safety path as one file.
+    expect(form.get("visibility")).toBeNull();
     expect(form.get("auto_publish")).toBeNull();
     expect(await screen.findByText(/批量结果：共 2 个，导入 2 个/)).toBeInTheDocument();
   });
@@ -489,226 +500,6 @@ describe("JobsPage（PRD-03 §7）", () => {
     expect(await screen.findByText("客服规范")).toBeInTheDocument();
     expect(listRequests).toBe(2);
     expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
-  });
-});
-
-/* ---------------------------------------------------------------- 召回测试台 */
-
-describe("SearchTestPage（PRD-03 §10）", () => {
-  const HIT_A = {
-    chunk_id: "ck-a",
-    document_id: "d1",
-    title: "客服规范",
-    section_title: "第三章",
-    page_start: 5,
-    page_end: 5,
-    version: "2.3",
-    content: "情感标签判定规则正文……",
-    score: 0.91,
-    rerank_score: 0.88,
-  };
-  const HIT_B = {
-    ...HIT_A,
-    chunk_id: "ck-b",
-    document_id: "d2",
-    title: "车载指南",
-    score: 0.8,
-    rerank_score: 0.95,
-  };
-
-  beforeEach(() => {
-    mockedGet.mockImplementation((path: string) => {
-      if (path === "/api/rag/documents")
-        return Promise.resolve({
-          items: [
-            makeDoc({ id: "d1", title: "客服规范" }),
-            makeDoc({ id: "d2", title: "车载指南" }),
-          ],
-          total: 2,
-        });
-      return Promise.reject(new Error(`未打桩的 GET ${path}`));
-    });
-    mockedPost.mockImplementation((path: string) => {
-      if (path === "/api/rag/search-test")
-        return Promise.resolve({
-          vector_results: [HIT_A, HIT_B],
-          reranked_results: [HIT_B, HIT_A],
-          rerank_note: null,
-          below_threshold: false,
-          notice: null,
-          diagnostics: {
-            latency_ms: 42,
-            embedding_model: "local-hash-512",
-            rerank_model: "provider-rerank",
-            filters: {
-              data_type: null,
-              published_only: true,
-              document_ids: null,
-            },
-            prompt_template_version: "v1",
-          },
-        });
-      if (path === "/api/rag/query")
-        return Promise.resolve({
-          answer: "这是答案草稿",
-          steps: [],
-          notes: [],
-          followups: [],
-          citations: [
-            {
-              document_id: "d1",
-              title: "客服规范",
-              section_title: "第三章",
-              page_start: 5,
-              page_end: 5,
-              version: "2.3",
-              score: 0.91,
-            },
-          ],
-          related_cap_ids: [],
-          refused: false,
-          notice: null,
-        });
-      if (path === "/api/rag/eval-cases") return Promise.resolve({ case: { id: "case-new" } });
-      return Promise.reject(new Error(`未打桩的 POST ${path}`));
-    });
-  });
-
-  it("双列展示原始召回与重排后 + 诊断信息 + 生成回答", async () => {
-    renderPage(<SearchTestPage />);
-    fireEvent.change(screen.getByPlaceholderText("例如：语音标注中情感标签的判定规则是什么？"), {
-      target: { value: "情感标签怎么判？" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "运行召回测试" }));
-    // 双列（§10 验收）
-    expect(await screen.findByText("原始召回（2）")).toBeInTheDocument();
-    expect(screen.getByText("重排后（2）")).toBeInTheDocument();
-    // 命中卡：相似度与来源位置
-    expect(screen.getAllByText("相似度 0.910").length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/第 5 页/).length).toBeGreaterThan(0);
-    // 诊断信息
-    expect(screen.getByText("42ms")).toBeInTheDocument();
-    expect(screen.getByText("provider-rerank")).toBeInTheDocument();
-    // 生成回答（与学生端同路径）
-    expect(await screen.findByText("这是答案草稿")).toBeInTheDocument();
-    expect(screen.getByText("引用来源")).toBeInTheDocument();
-  });
-
-  it("生成回答复用召回测试选中的资料集", async () => {
-    renderPage(<SearchTestPage />);
-    fireEvent.change(screen.getByPlaceholderText("例如：语音标注中情感标签的判定规则是什么？"), {
-      target: { value: "只查客服规范" },
-    });
-    fireEvent.click(screen.getByRole("combobox", { name: "召回资料集" }));
-    fireEvent.click(await screen.findByRole("option", { name: "客服规范" }));
-    fireEvent.click(screen.getByRole("button", { name: "运行召回测试" }));
-
-    expect(await screen.findByText("这是答案草稿")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(mockedPost).toHaveBeenCalledWith(
-        "/api/rag/query",
-        expect.objectContaining({ document_ids: ["d1"] }),
-      );
-    });
-  });
-
-  it("保存为评测用例：必须命中文档按召回预填", async () => {
-    renderPage(<SearchTestPage />);
-    fireEvent.change(screen.getByPlaceholderText("例如：语音标注中情感标签的判定规则是什么？"), {
-      target: { value: "情感标签怎么判？" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "运行召回测试" }));
-    fireEvent.click(await screen.findByRole("button", { name: "保存为评测用例" }));
-    fireEvent.change(screen.getByPlaceholderText("期望回答的要点…"), {
-      target: { value: "应引用客服规范第三章" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "保存用例" }));
-    await waitFor(() =>
-      expect(mockedPost).toHaveBeenCalledWith(
-        "/api/rag/eval-cases",
-        expect.objectContaining({
-          question: "情感标签怎么判？",
-          expected_answer: "应引用客服规范第三章",
-          must_hit_document_ids: ["d2", "d1"],
-        }),
-      ),
-    );
-    expect(document.querySelector(".toast-container")).not.toBeInTheDocument();
-  });
-});
-
-/* ---------------------------------------------------------------- 评测集 */
-
-describe("EvalCasesPage（PRD-03 §11）", () => {
-  const CASE = {
-    id: "case-1",
-    question: "情感标签判定规则？",
-    expected_answer: "见客服规范第三章",
-    must_hit_document_ids: ["d1"],
-    must_hit_chunk_ids: [],
-    filters: {},
-    created_by: "user-1",
-    created_at: "2026-07-01T00:00:00Z",
-  };
-
-  beforeEach(() => {
-    mockedGet.mockImplementation((path: string) => {
-      if (path === "/api/rag/eval-cases") return Promise.resolve({ items: [CASE], total: 1 });
-      if (path === "/api/rag/documents") return Promise.resolve({ items: [], total: 0 });
-      return Promise.reject(new Error(`未打桩的 GET ${path}`));
-    });
-    mockedPost.mockResolvedValue({
-      id: "run-1",
-      status: "completed",
-      metrics: {
-        recall_at_k: 1,
-        citation_accuracy: 0.5,
-        refusal_accuracy: null,
-        answer_faithfulness: 0.92,
-        latency_ms_avg: 120.4,
-        case_count: 1,
-      },
-      case_results: [
-        {
-          case_id: "case-1",
-          question: CASE.question,
-          refused: false,
-          hit_document_ids: ["d1"],
-          hit_chunk_ids: ["ck-a"],
-          recall_hit: true,
-          citation_ok: false,
-          refusal_ok: null,
-          faithfulness: 0.92,
-          latency_ms: 120,
-        },
-      ],
-      created_by: "user-1",
-      created_at: "2026-07-02T00:00:00Z",
-      finished_at: "2026-07-02T00:00:05Z",
-    });
-  });
-
-  it("运行全部评测 → 指标卡 + 逐用例结果（§11 五指标）", async () => {
-    renderPage(<EvalCasesPage />);
-    expect(await screen.findByText("情感标签判定规则？")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "运行全部评测" }));
-    await waitFor(() =>
-      expect(mockedPost).toHaveBeenCalledWith("/api/rag/eval-runs", { case_ids: null }),
-    );
-    // 五张指标卡（含中文说明；历史对比区也有同名指标标签，故用 getAllByText）
-    expect((await screen.findAllByText("Recall@K")).length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Citation Accuracy").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Answer Faithfulness").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Refusal Accuracy").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Latency").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("100%").length).toBeGreaterThan(0); // recall 1（卡片 + 趋势条）
-    expect(screen.getAllByText("50%").length).toBeGreaterThan(0); // citation 0.5
-    expect(screen.getAllByText("120ms").length).toBeGreaterThan(0); // 卡片与逐用例行
-    expect(screen.getByText(/本次无样本/)).toBeInTheDocument(); // refusal null 不显示 0
-    // 逐用例：命中 ✓ / 引用 ✗
-    expect(screen.getByText("逐用例结果")).toBeInTheDocument();
-    expect(screen.getByText("✓")).toBeInTheDocument();
-    expect(screen.getByText("✗")).toBeInTheDocument();
   });
 });
 

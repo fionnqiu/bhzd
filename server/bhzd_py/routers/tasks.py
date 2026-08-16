@@ -218,6 +218,27 @@ _PRACTICE_ANSWER_KEYS = {
     "solutions",
 }
 
+# Keep one canonical set of learner-facing question kinds.  Legacy practice
+# rows may contain aliases, so normalization happens at the API boundary while
+# the stored scoring fixture remains untouched for historical attempts.
+_EXERCISE_TYPES = {"open_ended", "multiple_choice", "true_false"}
+
+
+def _exercise_type(value: Any) -> str:
+    """Normalize authored question types without leaking answer metadata."""
+
+    normalized = str(value or "open_ended").strip().casefold().replace("-", "_")
+    aliases = {
+        "boolean": "true_false",
+        "truefalse": "true_false",
+        "判断": "true_false",
+        "判断题": "true_false",
+        "choice": "multiple_choice",
+        "single_choice": "multiple_choice",
+    }
+    normalized = aliases.get(normalized, normalized)
+    return normalized if normalized in _EXERCISE_TYPES else "open_ended"
+
 
 def _is_practice_answer_key(key: Any) -> bool:
     """Recognize common answer-key spellings despite case, spacing, or separators."""
@@ -253,15 +274,26 @@ def _student_practice(practice: Any) -> dict[str, Any] | None:
     visible: dict[str, Any] = {}
     raw_questions = practice.get("questions")
     if isinstance(raw_questions, list):
-        questions: list[dict[str, str]] = []
+        questions: list[dict[str, Any]] = []
         for raw_question in raw_questions:
             if not isinstance(raw_question, dict):
                 continue
-            question = {
+            question: dict[str, Any] = {
                 key: str(raw_question[key])
                 for key in ("key", "prompt", "question", "title", "hint")
                 if raw_question.get(key) is not None
             }
+            question_type = _exercise_type(raw_question.get("type"))
+            question["type"] = question_type
+            raw_options = raw_question.get("options")
+            if isinstance(raw_options, list):
+                options = [str(option).strip() for option in raw_options if str(option).strip()]
+                if question_type == "true_false" and not options:
+                    options = ["正确", "错误"]
+                if options:
+                    question["options"] = options[:20]
+            elif question_type == "true_false":
+                question["options"] = ["正确", "错误"]
             if question:
                 questions.append(question)
         visible["questions"] = questions
@@ -303,6 +335,9 @@ def _task_summary(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
         "id": row["id"],
         "title": row["title"],
         "goal": row["goal"],
+        # ``goal`` is the historical column; ``description`` is the active
+        # task-language contract used by new clients.
+        "description": row["goal"],
         "data_type": row["data_type"],
         "cap_ids": _task_json(row, "cap_ids_json", []),
         "source": row["source"],
@@ -344,8 +379,12 @@ def _exercise_dto(
     result: dict[str, Any] = {
         "id": row["id"],
         "question": row["question"],
-        "type": row["type"],
-        "options": options if isinstance(options, list) else None,
+        "type": _exercise_type(row["type"]),
+        "options": (
+            [str(option) for option in options if str(option).strip()]
+            if isinstance(options, list)
+            else (["正确", "错误"] if _exercise_type(row["type"]) == "true_false" else None)
+        ),
         "sort_order": row["sort_order"],
         "created_at": row["created_at"],
     }
@@ -421,7 +460,7 @@ async def _grade_submission_async(submission_id: str) -> None:
     conn = db_connect(get_config().resolved_database_path)
     try:
         submission = conn.execute(
-            "SELECT s.*, e.question, e.reference_answer FROM task_exercise_submissions s "
+            "SELECT s.*, e.question, e.type, e.reference_answer FROM task_exercise_submissions s "
             "JOIN task_exercises e ON e.id = s.exercise_id WHERE s.id = ?",
             (submission_id,),
         ).fetchone()
@@ -432,6 +471,21 @@ async def _grade_submission_async(submission_id: str) -> None:
             (submission_id,),
         )
         conn.commit()
+        # Closed-choice questions have an exact authored answer.  Grade them
+        # locally so a radio/select submission does not depend on an LLM
+        # provider and remains deterministic in offline deployments.
+        if _exercise_type(submission["type"]) in {"multiple_choice", "true_false"}:
+            expected = " ".join(str(submission["reference_answer"] or "").split()).casefold()
+            got = " ".join(str(submission["answer"] or "").split()).casefold()
+            score = 100 if expected and got == expected else 0
+            feedback = "答案正确" if score else "请对照学习内容重新判断"
+            conn.execute(
+                "UPDATE task_exercise_submissions SET grade_status = 'done', score = ?, "
+                "feedback = ?, graded_at = ? WHERE id = ?",
+                (score, feedback, dt.datetime.now(dt.timezone.utc).isoformat(), submission_id),
+            )
+            conn.commit()
+            return
         from ..agent import providers
 
         response = await providers.complete(
@@ -650,6 +704,7 @@ def _score_submission(task_row: sqlite3.Row, answers: dict[str, Any]) -> tuple[f
 class TaskCreateBody(BaseModel):
     title: str
     goal: str | None = None
+    description: str | None = None
     data_type: str | None = None
     cap_ids: list[str] = []
     steps: list[dict] = []
@@ -660,6 +715,7 @@ class TaskCreateBody(BaseModel):
 class TaskPatchBody(BaseModel):
     title: str | None = None
     goal: str | None = None
+    description: str | None = None
     steps: list[dict] | None = None
     status: str | None = None  # 仅接受目标状态：paused / in_progress / not_started
 
@@ -764,11 +820,13 @@ def create_task(
             task_id,
             current.user["id"],
             body.title.strip(),
-            body.goal,
+            body.description if body.description is not None else body.goal,
             body.data_type,
             json.dumps(body.cap_ids, ensure_ascii=False),
             source,
-            json.dumps(body.steps, ensure_ascii=False),
+            # Steps remain a read-only legacy column; newly created tasks no
+            # longer manufacture an operation checklist.
+            "[]",
             # New tasks keep the legacy resources column empty.  Historical
             # rows are still exposed by task_detail for backward compatibility.
             "[]",
@@ -921,9 +979,13 @@ def create_exercise(
     row = _get_own_task(conn, task_id, current.user["id"])
     if not body.question.strip():
         raise ApiError(400, "VALIDATION_ERROR", "练习题不能为空")
-    if body.type not in {"open_ended", "multiple_choice"}:
+    kind = _exercise_type(body.type)
+    if kind != body.type:
         raise ApiError(400, "VALIDATION_ERROR", "练习题类型不受支持")
-    if body.type == "multiple_choice" and not body.options:
+    options = [str(option).strip() for option in (body.options or []) if str(option).strip()]
+    if kind == "true_false" and not options:
+        options = ["正确", "错误"]
+    if kind == "multiple_choice" and not options:
         raise ApiError(400, "VALIDATION_ERROR", "选择题必须提供选项")
     exercise_id = uuid.uuid4().hex
     now = utc_now_iso()
@@ -935,9 +997,9 @@ def create_exercise(
             exercise_id,
             row["id"],
             body.question.strip(),
-            body.type,
-            json.dumps(body.options, ensure_ascii=False) if body.options is not None else None,
-            body.reference_answer,
+            kind,
+            json.dumps(options, ensure_ascii=False) if options else None,
+            body.reference_answer.strip() if body.reference_answer else None,
             body.sort_order,
             now,
         ),
@@ -1067,8 +1129,8 @@ def patch_task(
         if not body.title.strip():
             raise ApiError(400, "VALIDATION_ERROR", "任务标题不能为空")
         updates["title"] = body.title.strip()
-    if body.goal is not None:
-        updates["goal"] = body.goal
+    if body.description is not None or body.goal is not None:
+        updates["goal"] = body.description if body.description is not None else body.goal
     if body.steps is not None:
         # 已完成/已归档的任务内容定型，只允许查看（历史记录可信度）
         if row["status"] in ("completed", "archived"):

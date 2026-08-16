@@ -43,26 +43,26 @@ class Candidate:
     cosine: float
 
 
-def search(
+def _filtered_rows(
     db: sqlite3.Connection,
-    query_blob: bytes,
     *,
     embedding_model: str | None = None,
+    require_embedding: bool = True,
     published_only: bool = True,
     data_type: str | None = None,
     document_ids: list[str] | None = None,
     now: str | None = None,
-) -> list[Candidate]:
-    """SQL 预过滤 + Python 余弦打分，返回全部候选（截断/重排交给调用方）。
+) -> list[sqlite3.Row]:
+    """Return the shared metadata-filtered chunk rows for every retrieval mode.
 
-    预过滤规则（PRD-06 §4.4 学生召回边界）：
-    - published_only=True：status=published AND visibility=student AND
-      license_status=authorized AND 未过期 AND 关联台账未过期/未禁用；
-    - published_only=False（教师预览/测试台）：仅排除 archived/expired/failed，
-      让未发布资料可被管理端测试（PRD-06 §15 #7）。
+    Keyword-only recall must obey exactly the same publication, license, expiry,
+    and document-scope guards as vector recall; keeping the SQL in one helper
+    prevents a new mode from accidentally widening the student boundary.
     """
     now = now or utc_now_iso()
-    clauses: list[str] = ["c.status = 'active'", "c.embedding IS NOT NULL"]
+    clauses: list[str] = ["c.status = 'active'"]
+    if require_embedding:
+        clauses.append("c.embedding IS NOT NULL")
     params: list[object] = []
     if embedding_model:
         # Cosine distance only has semantic meaning within one embedding model.
@@ -109,11 +109,57 @@ def search(
         params,
     ).fetchall()
 
+    return rows
+
+
+def _candidate_from_row(row: sqlite3.Row, score: float) -> Candidate:
+    """Build the stable candidate DTO used by vector and lexical scoring."""
     import json
 
+    return Candidate(
+        chunk_id=row["chunk_id"],
+        document_id=row["document_id"],
+        content=row["content"],
+        section_title=row["section_title"],
+        page_start=row["page_start"],
+        page_end=row["page_end"],
+        title=row["title"],
+        version=row["version"],
+        cap_ids=json.loads(row["cap_ids_json"] or "[]"),
+        published_at=row["published_at"],
+        created_at=row["created_at"],
+        cosine=score,
+    )
+
+
+def search(
+    db: sqlite3.Connection,
+    query_blob: bytes,
+    *,
+    embedding_model: str | None = None,
+    published_only: bool = True,
+    data_type: str | None = None,
+    document_ids: list[str] | None = None,
+    now: str | None = None,
+) -> list[Candidate]:
+    """SQL 预过滤 + Python 余弦打分，返回全部候选（截断/重排交给调用方）。
+
+    预过滤规则（PRD-06 §4.4 学生召回边界）：
+    - published_only=True：status=published AND visibility=student AND
+      license_status=authorized AND 未过期 AND 关联台账未过期/未禁用；
+    - published_only=False（教师预览/测试台）：仅排除 archived/expired/failed，
+      让未发布资料可被管理端测试（PRD-06 §15 #7）。
+    """
     query_vec = _unpack(query_blob)
     candidates: list[Candidate] = []
-    for row in rows:
+    for row in _filtered_rows(
+        db,
+        embedding_model=embedding_model,
+        published_only=published_only,
+        data_type=data_type,
+        document_ids=document_ids,
+        now=now,
+    ):
         try:
             chunk_vec = _unpack(row["embedding"])
         except ValueError:
@@ -124,24 +170,38 @@ def search(
             # Direct callers may omit the model filter.  Retain a dimension
             # guard here as a second line of defense against mixed corpora.
             continue
-        score = cosine_similarity(query_vec, chunk_vec)
-        candidates.append(
-            Candidate(
-                chunk_id=row["chunk_id"],
-                document_id=row["document_id"],
-                content=row["content"],
-                section_title=row["section_title"],
-                page_start=row["page_start"],
-                page_end=row["page_end"],
-                title=row["title"],
-                version=row["version"],
-                cap_ids=json.loads(row["cap_ids_json"] or "[]"),
-                published_at=row["published_at"],
-                created_at=row["created_at"],
-                cosine=score,
-            )
-        )
+        candidates.append(_candidate_from_row(row, cosine_similarity(query_vec, chunk_vec)))
     return candidates
+
+
+def search_keyword(
+    db: sqlite3.Connection,
+    *,
+    embedding_model: str | None = None,
+    published_only: bool = True,
+    data_type: str | None = None,
+    document_ids: list[str] | None = None,
+    now: str | None = None,
+) -> list[Candidate]:
+    """Return metadata-filtered chunks for lexical scoring without embeddings.
+
+    The caller owns tokenization/scoring because the retriever's CJK bigram
+    implementation is intentionally dependency-free.  ``embedding_model`` is
+    accepted for API symmetry but ignored: keyword mode can inspect chunks that
+    have not yet received a vector.
+    """
+    return [
+        _candidate_from_row(row, 0.0)
+        for row in _filtered_rows(
+            db,
+            embedding_model=None,
+            require_embedding=False,
+            published_only=published_only,
+            data_type=data_type,
+            document_ids=document_ids,
+            now=now,
+        )
+    ]
 
 
 @dataclass

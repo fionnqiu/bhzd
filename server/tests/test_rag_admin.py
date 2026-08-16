@@ -359,6 +359,40 @@ def test_batch_import_selected_files_queues_and_auto_publishes(
     assert Path(rows[0]["storage_path"]).is_file()
 
 
+def test_file_only_uploads_receive_safe_default_metadata(client, system_admin):
+    """The simplified upload flow persists defaults without bypassing review gates."""
+
+    headers = as_user(client, system_admin)
+    single = client.post(
+        "/api/rag/documents",
+        files={"file": ("仅文件.md", "# 仅文件\n正文".encode("utf-8"), "text/markdown")},
+        headers=headers,
+    )
+    assert single.status_code == 202, single.text
+    single_id = single.json()["document"]["id"]
+
+    batch = client.post(
+        "/api/rag/documents/batch-import",
+        files=[("files", ("批量仅文件.md", "# 批量\n正文".encode("utf-8"), "text/markdown"))],
+        headers=headers,
+    )
+    assert batch.status_code == 202, batch.text
+    assert batch.json()["files"] == {"total": 1, "imported": 1, "failed": 0, "queued": 1}
+    batch_id = batch.json()["samples"]["imported"]["items"][0]["id"]
+
+    single_document = client.get(f"/api/rag/documents/{single_id}", headers=headers).json()["document"]
+    batch_document = client.get(f"/api/rag/documents/{batch_id}", headers=headers).json()["document"]
+    for document, title in ((single_document, "仅文件"), (batch_document, "批量仅文件")):
+        assert document["title"] == title
+        assert document["source_type"] == "other"
+        assert document["source_name"] == "用户上传资料"
+        assert document["version"] == "1.0"
+        assert document["license_status"] == "pending"
+        assert document["visibility"] == "student"
+        assert document["data_types"] == ["text"]
+        assert document["status"] != "published"
+
+
 def publish_sample(client: TestClient, headers: dict, doc_id: str) -> None:
     response = client.post(f"/api/rag/documents/{doc_id}/submit-review", headers=headers)
     assert response.status_code == 200, response.text
@@ -532,6 +566,56 @@ def test_student_forced_published_only(client, db_path, system_admin, student):
     assert response.json()["refused"] is True
 
 
+def test_management_answer_preview_forwards_the_retrieval_shape(client, system_admin, monkeypatch):
+    """The console answer must use its vector/TopK/nucleus choices, not the default mode."""
+    from bhzd_py.rag.retriever import RagAnswer
+    from bhzd_py.routers import rag_query
+
+    captured: dict[str, object] = {}
+
+    def fake_answer(_conn, _config, question, **kwargs):
+        captured["question"] = question
+        captured.update(kwargs)
+        return RagAnswer(answer="preview")
+
+    monkeypatch.setattr(rag_query, "answer_question", fake_answer)
+    headers = as_user(client, system_admin)
+    response = client.post(
+        "/api/rag/query",
+        json={
+            "question": "向量预览参数",
+            "data_type": "text",
+            "published_only": False,
+            "document_ids": ["doc-preview"],
+            "mode": "vector",
+            "top_k": 7,
+            "retrieval_top_p": 0.6,
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 200, response.text
+    assert captured == {
+        "question": "向量预览参数",
+        "data_type": "text",
+        "published_only": False,
+        "document_ids": ["doc-preview"],
+        "top_k": 7,
+        "mode": "vector",
+        "retrieval_top_p": 0.6,
+    }
+
+    # Nucleus filtering is defined only for pure cosine ranking, so a keyword
+    # preview must fail before a response can be generated with misleading data.
+    rejected = client.post(
+        "/api/rag/query",
+        json={"question": "关键词参数", "mode": "keyword", "retrieval_top_p": 0.6},
+        headers=headers,
+    )
+    assert rejected.status_code == 422
+    assert rejected.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
 def test_unverified_student_can_query(client, db_path):
     """历史未验证账号也可访问 RAG；学生仍只检索已发布资料。"""
     user_id = create_user(db_path, "unverified@test.local", "student", verified=False)
@@ -546,18 +630,20 @@ def test_unverified_student_can_query(client, db_path):
 
 def test_upload_validation_and_role_guard(client, db_path, system_admin, student):
     headers = as_user(client, system_admin)
-    # 缺来源 → 422（PRD-03 §5.2 未填来源不得上传）
+    # 文件是唯一必填项；空来源由系统补全，并保持待确认授权门禁。
     response = client.post(
         "/api/rag/documents",
         files={"file": ("a.md", "# x\n内容".encode("utf-8"), "text/markdown")},
-        data={
-            "title": "无来源资料", "source_type": "other", "source_name": "",
-            "version": "v1", "license_status": "authorized", "visibility": "teacher",
-            "data_types": ["text"],
-        },
         headers=headers,
     )
-    assert response.status_code == 422
+    assert response.status_code == 202, response.text
+    uploaded = response.json()["document"]
+    assert uploaded["source_name"] == "用户上传资料"
+    assert uploaded["license_status"] == "pending"
+    assert uploaded["source_type"] == "other"
+    assert uploaded["version"] == "1.0"
+    assert uploaded["visibility"] == "student"
+    assert uploaded["data_types"] == ["text"]
 
     # xlsx → PARSE_UNSUPPORTED（MVP 仅支持 pdf/docx/md/txt）
     response = client.post(
@@ -770,12 +856,36 @@ def test_search_test_diagnostics_fields(client, db_path, system_admin):
     assert response.status_code == 200, response.text
     payload = response.json()
     diagnostics = payload["diagnostics"]
-    for key in ("latency_ms", "embedding_model", "rerank_model", "filters", "prompt_template_version"):
+    for key in (
+        "latency_ms",
+        "embedding_model",
+        "rerank_model",
+        "retrieval_mode",
+        "filters",
+        "prompt_template_version",
+    ):
         assert key in diagnostics, f"诊断信息缺少 {key}"
     assert diagnostics["embedding_model"]  # 本地哈希嵌入（离线）
     assert diagnostics["rerank_model"] is None  # 未启用重排
     assert payload["reranked_results"] == payload["vector_results"]
     assert payload["rerank_note"]
+
+    # Each explicit console mode must survive validation and reach diagnostics.
+    for mode in ("hybrid", "vector", "keyword"):
+        mode_response = client.post(
+            "/api/rag/search-test",
+            json={
+                "query": "边界误差要求",
+                "mode": mode,
+                "filters": {"published_only": False},
+                "top_k": 3,
+            },
+            headers=headers,
+        )
+        assert mode_response.status_code == 200, mode_response.text
+        mode_payload = mode_response.json()
+        assert mode_payload["diagnostics"]["retrieval_mode"] == mode
+        assert mode_payload["vector_results"]
 
     # save=true → 创建评测用例（写操作）
     response = client.post(
@@ -790,6 +900,200 @@ def test_search_test_diagnostics_fields(client, db_path, system_admin):
     )
     assert response.status_code == 200
     assert response.json()["saved_case_id"]
+
+
+def test_search_test_persists_vector_retrieval_top_p_per_case(client, system_admin):
+    """A vector-run nucleus setting is validated and saved with that case only."""
+
+    headers = as_user(client, system_admin)
+    saved = client.post(
+        "/api/rag/search-test",
+        json={
+            "query": "仅验证单次向量召回参数",
+            "mode": "vector",
+            "retrieval_top_p": 0.6,
+            "filters": {"published_only": False},
+            "save": True,
+        },
+        headers=headers,
+    )
+    assert saved.status_code == 200, saved.text
+    case_id = saved.json()["saved_case_id"]
+    cases = client.get("/api/rag/eval-cases", headers=headers)
+    assert cases.status_code == 200, cases.text
+    case = next(item for item in cases.json()["items"] if item["id"] == case_id)
+    assert case["filters"]["mode"] == "vector"
+    assert case["filters"]["retrieval_top_p"] == 0.6
+
+    for invalid_value in (0, 1.01):
+        invalid = client.post(
+            "/api/rag/search-test",
+            json={
+                "query": "参数范围验证",
+                "mode": "vector",
+                "retrieval_top_p": invalid_value,
+            },
+            headers=headers,
+        )
+        assert invalid.status_code == 422
+
+    rejected_for_hybrid = client.post(
+        "/api/rag/search-test",
+        json={
+            "query": "混合模式不接受向量 nucleus",
+            "mode": "hybrid",
+            "retrieval_top_p": 0.6,
+        },
+        headers=headers,
+    )
+    assert rejected_for_hybrid.status_code == 422
+
+
+def test_eval_run_replays_vector_retrieval_top_p_and_discards_invalid_snapshots(
+    client, system_admin, monkeypatch
+):
+    """Saved console tuning affects its run only; malformed legacy values fall back to TopK."""
+
+    from bhzd_py.rag.retriever import RagAnswer, RetrievalResult
+    from bhzd_py.routers import rag_admin
+
+    headers = as_user(client, system_admin)
+    saved = client.post(
+        "/api/rag/search-test",
+        json={
+            "query": "有效参数重放",
+            "mode": "vector",
+            "retrieval_top_p": 0.6,
+            "filters": {"published_only": False},
+            "save": True,
+        },
+        headers=headers,
+    )
+    assert saved.status_code == 200, saved.text
+    valid_case_id = saved.json()["saved_case_id"]
+    invalid = client.post(
+        "/api/rag/eval-cases",
+        json={
+            "question": "无效参数回退",
+            "filters": {"published_only": False, "mode": "vector", "retrieval_top_p": 0},
+        },
+        headers=headers,
+    )
+    assert invalid.status_code == 201, invalid.text
+    invalid_case_id = invalid.json()["case"]["id"]
+
+    recalled_top_p: dict[str, float | None] = {}
+    answered_top_p: dict[str, float | None] = {}
+
+    def fake_retrieve(_conn, _config, question, filters, top_k=None):
+        recalled_top_p[question] = filters.retrieval_top_p
+        assert top_k is None
+        return RetrievalResult()
+
+    def fake_answer(_conn, _config, question, **kwargs):
+        answered_top_p[question] = kwargs["retrieval_top_p"]
+        return RagAnswer(answer="", refused=True)
+
+    monkeypatch.setattr(rag_admin, "retrieve", fake_retrieve)
+    monkeypatch.setattr(rag_admin, "answer_question", fake_answer)
+    replayed = client.post(
+        "/api/rag/eval-runs",
+        json={"case_ids": [valid_case_id, invalid_case_id]},
+        headers=headers,
+    )
+    assert replayed.status_code == 201, replayed.text
+    assert recalled_top_p == {"有效参数重放": 0.6, "无效参数回退": None}
+    assert answered_top_p == recalled_top_p
+
+
+def test_eval_sets_group_cases_runs_and_preserve_history_after_deletion(
+    client, db_path, system_admin
+):
+    """Deleting a named group only detaches its cases and completed-run records."""
+
+    headers = as_user(client, system_admin)
+    document = upload_sample(client, headers)["document"]
+    publish_sample(client, headers, document["id"])
+
+    first_response = client.post(
+        "/api/rag/eval-sets",
+        json={"name": "唤醒词回归", "description": "初始说明"},
+        headers=headers,
+    )
+    assert first_response.status_code == 201, first_response.text
+    first_set = first_response.json()["set"]
+    second_response = client.post(
+        "/api/rag/test-sets",
+        json={"name": "其他回归"},
+        headers=headers,
+    )
+    assert second_response.status_code == 201, second_response.text
+    second_set = second_response.json()["set"]
+
+    renamed = client.patch(
+        f"/api/rag/eval-sets/{first_set['id']}",
+        json={"name": "唤醒词已命名回归", "description": "更新说明"},
+        headers=headers,
+    )
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()["set"]["name"] == "唤醒词已命名回归"
+
+    first_case_response = client.post(
+        "/api/rag/eval-cases",
+        json={
+            "question": "唤醒词边界误差要求是多少",
+            "must_hit_document_ids": [document["id"]],
+            "filters": {"published_only": True},
+            # The compatibility field still attaches the case to the same set.
+            "test_set_id": first_set["id"],
+        },
+        headers=headers,
+    )
+    assert first_case_response.status_code == 201, first_case_response.text
+    first_case = first_case_response.json()["case"]
+    assert first_case["eval_set_id"] == first_set["id"]
+    assert first_case["test_set_id"] == first_set["id"]
+
+    second_case_response = client.post(
+        "/api/rag/eval-cases",
+        json={"question": "另一组的拒答用例", "eval_set_id": second_set["id"]},
+        headers=headers,
+    )
+    assert second_case_response.status_code == 201, second_case_response.text
+    second_case = second_case_response.json()["case"]
+
+    listed_sets = client.get("/api/rag/eval-sets", headers=headers)
+    assert listed_sets.status_code == 200
+    listed_by_id = {item["id"]: item for item in listed_sets.json()["items"]}
+    assert listed_by_id[first_set["id"]]["case_count"] == 1
+    assert listed_by_id[second_set["id"]]["case_count"] == 1
+
+    filtered_cases = client.get(
+        "/api/rag/eval-cases", params={"eval_set_id": first_set["id"]}, headers=headers
+    )
+    assert filtered_cases.status_code == 200, filtered_cases.text
+    assert [item["id"] for item in filtered_cases.json()["items"]] == [first_case["id"]]
+
+    run_response = client.post(
+        "/api/rag/eval-runs", json={"eval_set_id": first_set["id"]}, headers=headers
+    )
+    assert run_response.status_code == 201, run_response.text
+    run = run_response.json()
+    assert run["eval_set_id"] == first_set["id"]
+    assert run["metrics"]["case_count"] == 1
+    assert [item["case_id"] for item in run["case_results"]] == [first_case["id"]]
+
+    deleted = client.delete(f"/api/rag/eval-sets/{first_set['id']}", headers=headers)
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json() == {"deleted": True, "id": first_set["id"]}
+
+    all_cases = client.get("/api/rag/eval-cases", headers=headers).json()["items"]
+    detached = {item["id"]: item for item in all_cases}
+    assert detached[first_case["id"]]["eval_set_id"] is None
+    assert detached[second_case["id"]]["eval_set_id"] == second_set["id"]
+    run_detail = client.get(f"/api/rag/eval-runs/{run['id']}", headers=headers)
+    assert run_detail.status_code == 200, run_detail.text
+    assert run_detail.json()["eval_set_id"] is None
 
 
 def test_eval_run_metrics_keys(client, db_path, system_admin):

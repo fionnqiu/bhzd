@@ -257,7 +257,7 @@ describe("TasksPage", () => {
     expect(screen.getByText("上传标注诊断")).toBeInTheDocument();
   });
 
-  it("渲染任务卡（教师徽标/能力名）并归档需二次确认", async () => {
+  it("渲染任务卡（教师徽标/打开任务）并归档需二次确认", async () => {
     let items: unknown[] = [teacherTask];
     mockedGet.mockImplementation((path: string) => {
       if (path === "/api/tasks") return Promise.resolve({ items, total: items.length });
@@ -279,8 +279,9 @@ describe("TasksPage", () => {
 
     expect(await screen.findByText("客服情感标注练习")).toBeInTheDocument();
     expect(screen.getByText("教师")).toBeInTheDocument();
-    expect(screen.getByText("标注情感与副语言")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "继续学习" })).toBeInTheDocument();
+    // Capability labels are no longer part of the compact task-card surface.
+    expect(screen.queryByText("标注情感与副语言")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开任务" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "归档" }));
     expect(await screen.findByText("归档任务")).toBeInTheDocument();
@@ -357,15 +358,16 @@ describe("TaskDetailPage", () => {
     });
     renderPage(<TaskDetailPage />, "/tasks/t1", "/tasks/:id");
 
-    // 概览/步骤/练习区渲染（rubric 的 expected 不得提前泄露）
+    // 学习任务只展示名称、描述、学习内容和练习；评分答案不得提前泄露。
     expect(await screen.findByText("NER 边界练习")).toBeInTheDocument();
-    expect(screen.getByText("实体边界划分")).toBeInTheDocument();
-    expect(screen.getByText("常见错误：越界")).toBeInTheDocument();
+    expect(screen.getByText("掌握实体边界划分")).toBeInTheDocument();
+    expect(screen.queryByText("常见错误：越界")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "操作步骤" })).not.toBeInTheDocument();
     expect(screen.getByText("检查边界一致性")).toBeInTheDocument();
 
     // 作答并提交
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "正确" } });
-    fireEvent.click(screen.getByRole("button", { name: "提交答案" }));
+    fireEvent.click(screen.getByRole("button", { name: "完成并提交任务" }));
     expect(await screen.findByText("本次得分")).toBeInTheDocument();
     expect(screen.getAllByText("100 分")).not.toHaveLength(0);
     // 掌握度变化预览先于确认（PRD-06 §6.4 门口径）
@@ -427,7 +429,9 @@ describe("TaskDetailPage", () => {
     const returnLinks = await screen.findAllByRole("link", { name: "返回任务列表" });
     // The first link is in the page header, so learners can leave a long task before reaching its footer.
     expect(returnLinks[0]).toHaveAttribute("href", "/tasks?status=completed");
-    expect(returnLinks).toHaveLength(2);
+    // The task page has one header exit; the former footer recommendation link
+    // was intentionally removed from the simplified task surface.
+    expect(returnLinks).toHaveLength(1);
   });
 
   it("刷新后恢复最近提交、教师来源并隐藏历史任务资源", async () => {
@@ -510,10 +514,11 @@ describe("TaskDetailPage", () => {
     expect(screen.getByText("教师任务")).toBeInTheDocument();
     expect(screen.queryByText("teacher-private-id")).not.toBeInTheDocument();
     expect(screen.queryByText("class-private-id")).not.toBeInTheDocument();
-    expect(screen.getByText("图谱参考资源")).toBeInTheDocument();
-    expect(screen.getByText("实体边界图谱参考")).toBeInTheDocument();
+    expect(screen.queryByText("图谱参考资源")).not.toBeInTheDocument();
+    expect(screen.queryByText("实体边界图谱参考")).not.toBeInTheDocument();
     expect(screen.queryByText("教学单元")).not.toBeInTheDocument();
     expect(screen.queryByText(/BIO 标注规范/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "下一步推荐" })).not.toBeInTheDocument();
     expect(
       screen.getByText("本次作答已提交。你可以核对反馈后确认完成，也可以修改答案后再次提交。"),
     ).toBeInTheDocument();
@@ -552,7 +557,7 @@ describe("TaskDetailPage", () => {
     });
     expect(screen.getByText("进行中")).toBeInTheDocument();
     expect(screen.getAllByRole("progressbar")[0]).toHaveAttribute("aria-valuenow", "50");
-    expect(screen.getByRole("button", { name: "提交答案" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "完成并提交任务" })).toBeEnabled();
   });
 
   it("历史任务的 none 状态展示自动排队提示，不提供手动生成按钮", async () => {
@@ -645,16 +650,93 @@ describe("TaskDetailPage", () => {
     const practiceHeading = screen.getByRole("heading", { name: "练习区" });
     const practiceCard = practiceHeading.closest(".card");
     expect(practiceCard).not.toBeNull();
-    expect(
-      within(practiceCard as HTMLElement).getByRole("heading", { name: "AI 练习" }),
-    ).toBeInTheDocument();
+    expect(within(practiceCard as HTMLElement).getByRole("heading", { name: "练习" })).toBeInTheDocument();
     expect(within(practiceCard as HTMLElement).getByText(/标注一个连续实体/)).toBeInTheDocument();
     expect(within(practiceCard as HTMLElement).getByText(/说明一个常见边界错误/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        within(practiceCard as HTMLElement).getByRole("textbox", { name: "AI 练习 1 答案" }),
+      ).toHaveValue("北京");
+    });
     expect(within(practiceCard as HTMLElement).getByText(/得分：88\/100/)).toBeInTheDocument();
     expect(
       within(practiceCard as HTMLElement).getByText("AI 评阅暂不可用，请稍后重试。"),
     ).toBeInTheDocument();
-    expect(within(practiceCard as HTMLElement).getByText("越界")).toBeInTheDocument();
+    expect(within(practiceCard as HTMLElement).queryByText("越界")).not.toBeInTheDocument();
+  });
+
+  it("纯结构化练习恢复整体提交答案，并提供重新完成任务的操作", async () => {
+    const structuredTask = {
+      ...taskDetail,
+      status: "submitted",
+      progress: 0.9,
+      rubric: null,
+      practice: null,
+      content_status: "done",
+      knowledge_points: [],
+      exercises: [
+        {
+          id: "e-choice",
+          question: "请选择正确的实体边界。",
+          type: "multiple_choice",
+          options: ["A", "B"],
+          sort_order: 1,
+          created_at: "2026-08-01T00:00:00Z",
+          submission: null,
+        },
+        {
+          id: "e-boolean",
+          question: "判断该边界是否正确。",
+          type: "true_false",
+          options: null,
+          sort_order: 2,
+          created_at: "2026-08-01T00:00:00Z",
+          submission: null,
+        },
+      ],
+      latest_attempt: {
+        id: "a-structured",
+        attempt_number: 1,
+        score: 1,
+        mastery_applied: false,
+        created_at: "2026-08-01T00:01:00Z",
+        // Whole-task attempts do not generate task_exercise_submissions. The
+        // detail page must still restore these choice controls after a reload.
+        answers: { "e-choice": "B", "e-boolean": "错误" },
+        feedback: [],
+        mastery_preview: [],
+      },
+    };
+    mockedGet.mockImplementation((path: string) => {
+      if (path === "/api/tasks/t1") return Promise.resolve(structuredTask);
+      if (path === "/api/graph/overview") return Promise.resolve({ nodes: [], edges: [] });
+      return Promise.reject(new ApiRequestError(404, "NOT_FOUND", `未 mock 的 GET ${path}`));
+    });
+    mockedPost.mockImplementation((path: string, body?: unknown) => {
+      if (path === "/api/tasks/t1/submit") {
+        expect(body).toEqual({ answers: { "e-choice": "B", "e-boolean": "错误" } });
+        return Promise.resolve({
+          attempt_id: "a-structured-next",
+          score: 1,
+          feedback: [],
+          mastery_preview: [],
+          status: "submitted",
+        });
+      }
+      return Promise.reject(new ApiRequestError(500, "NOT_MOCKED", `未 mock 的 POST ${path}`));
+    });
+    renderPage(<TaskDetailPage />, "/tasks/t1", "/tasks/:id");
+
+    expect(await screen.findByRole("radio", { name: "B" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "错误" })).toBeChecked();
+    const completion = screen.getByRole("button", { name: "重新提交任务" });
+    expect(completion).toBeEnabled();
+    fireEvent.click(completion);
+    await waitFor(() => {
+      expect(mockedPost).toHaveBeenCalledWith("/api/tasks/t1/submit", {
+        answers: { "e-choice": "B", "e-boolean": "错误" },
+      });
+    });
   });
 });
 

@@ -367,7 +367,11 @@
 }
 
 .agent-current-action[type="button"]:hover {
-  border-color: color-mix(in srgb, var(--agent-execution-accent, var(--color-primary)) 34%, var(--color-border));
+  border-color: color-mix(
+    in srgb,
+    var(--agent-execution-accent, var(--color-primary)) 34%,
+    var(--color-border)
+  );
   background: color-mix(in srgb, var(--color-primary-soft) 34%, var(--color-surface));
 }
 
@@ -1878,9 +1882,12 @@
 
 .cockpit-workbench .bubble-user .bubble-content {
   padding: 12px 15px;
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
   border-radius: 14px 14px 4px 14px;
   background: var(--accent-soft);
   color: #235f9f;
+  /* 主流对话产品的轻量浮起感：用户气泡有极淡阴影，助手阅读流保持通透 */
+  box-shadow: 0 1px 3px rgba(35, 95, 159, 0.08);
 }
 
 .cockpit-workbench .bubble-user-body {
@@ -2070,8 +2077,14 @@
 
 @media (prefers-reduced-motion: reduce) {
   .agent-current-action-running .agent-current-action-icon svg,
-  .agent-activity-row-running .agent-activity-row-icon svg {
+  .agent-activity-row-running .agent-activity-row-icon svg,
+  .cockpit-workbench .bubble-cursor {
     animation: none;
+  }
+
+  /* 关闭动画后光标保持常显，否则流式中的用户会失去"还在生成"的锚点 */
+  .cockpit-workbench .bubble-cursor {
+    opacity: 1;
   }
 }
 
@@ -2400,6 +2413,17 @@
   background: var(--accent);
 }
 
+/* 可发送态的 hover 反馈：轻微上浮 + 加深，与主流对话产品的发送按钮一致 */
+.cockpit-workbench .composer-send-btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--accent) 88%, #10233a);
+  transform: translateY(-1px);
+}
+
+.cockpit-workbench .composer-send-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .cockpit-workbench .composer-send-btn:active:not(:disabled) {
   transform: scale(0.96);
 }
@@ -2644,12 +2668,103 @@ html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] .composer
   color: var(--ink-soft);
 }
 
+/* 流式光标：主流 agent 的柔和脉冲（非硬闪烁方块），颜色跟随工作台主色。
+   reduced-motion 下在下方媒体查询里退化为静态光标。 */
 .cockpit-workbench .bubble-cursor {
   width: 7px;
   height: 1.05em;
   margin-left: 3px;
-  background: var(--ink);
-  animation: none;
+  border-radius: 2px;
+  background: var(--accent);
+  animation: cockpit-cursor-pulse 1.1s var(--ease-standard) infinite;
+}
+
+@keyframes cockpit-cursor-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.25;
+  }
+}
+
+/* Markdown 阅读排版：助手回复是长文阅读面，标题/引用/代码/列表需要
+   与纯文本不同的层次（颜色全部走工作台令牌，暗色偏好自动跟随）。 */
+.cockpit-workbench .bubble-markdown {
+  color: var(--ink-soft);
+  line-height: 1.75;
+}
+
+.cockpit-workbench .bubble-markdown p,
+.cockpit-workbench .bubble-markdown ul,
+.cockpit-workbench .bubble-markdown ol,
+.cockpit-workbench .bubble-markdown blockquote,
+.cockpit-workbench .bubble-markdown pre,
+.cockpit-workbench .bubble-markdown table {
+  margin: 0 0 10px;
+}
+
+.cockpit-workbench .bubble-markdown h1,
+.cockpit-workbench .bubble-markdown h2,
+.cockpit-workbench .bubble-markdown h3,
+.cockpit-workbench .bubble-markdown h4,
+.cockpit-workbench .bubble-markdown h5,
+.cockpit-workbench .bubble-markdown h6 {
+  margin: 16px 0 6px;
+  color: var(--ink);
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.cockpit-workbench .bubble-markdown a {
+  color: var(--accent);
+  text-decoration-color: color-mix(in srgb, var(--accent) 42%, transparent);
+}
+
+.cockpit-workbench .bubble-markdown a:hover {
+  text-decoration-color: var(--accent);
+}
+
+.cockpit-workbench .bubble-markdown li::marker {
+  color: var(--ink-faint);
+}
+
+.cockpit-workbench .bubble-markdown blockquote {
+  margin-left: 0;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid color-mix(in srgb, var(--accent) 32%, var(--line));
+  color: var(--ink-faint);
+}
+
+.cockpit-workbench .bubble-markdown :not(pre) > code {
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface-soft);
+  color: var(--ink);
+  font-size: 0.88em;
+}
+
+.cockpit-workbench .bubble-markdown pre {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  /* 用工作台令牌而非硬编码色，暗色偏好（html[data-theme=dark]）自动跟随 */
+  background: var(--surface-soft);
+}
+
+.cockpit-workbench .bubble-markdown pre code {
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.cockpit-workbench .bubble-markdown hr {
+  margin: 14px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
 }
 
 /* The shared AIcss-inspired reasoning shell aligns with assistant content but
@@ -2768,6 +2883,45 @@ html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] .composer
   font-size: 14px;
   font-weight: 600;
   line-height: 1.35;
+}
+
+/* 主流 agent 的进行中扫光（shimmer）：只对运行中的摘要文案施加，
+   用 background-clip:text 实现，不引入额外 DOM；reduced-motion 不加载。 */
+@media (prefers-reduced-motion: no-preference) {
+  .cockpit-workbench .agent-current-action-running .agent-current-action-title {
+    background: linear-gradient(100deg, var(--ink) 38%, #92a7ba 50%, var(--ink) 62%);
+    background-size: 220% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: cockpit-title-shimmer 1.8s linear infinite;
+  }
+
+  /* 进行中的记录行呼吸强调：让读者一眼定位"正在发生"的那一行 */
+  .cockpit-workbench .agent-execution-record .agent-activity-row-running {
+    animation: cockpit-row-breathe 2.2s var(--ease-standard) infinite;
+  }
+}
+
+@keyframes cockpit-title-shimmer {
+  from {
+    background-position: 180% 0;
+  }
+
+  to {
+    background-position: -80% 0;
+  }
+}
+
+@keyframes cockpit-row-breathe {
+  0%,
+  100% {
+    background-color: transparent;
+  }
+
+  50% {
+    background-color: color-mix(in srgb, var(--accent-soft) 68%, transparent);
+  }
 }
 
 .cockpit-workbench .agent-execution-record .agent-current-action .agent-activity-status {

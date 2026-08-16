@@ -2,7 +2,7 @@
  * 确认门（PRD-06 §6.4 / PRD-01 §3.6：创建任务、保存诊断、更新掌握度必须出现）。
  *
  * 预览内容按 action_type 分派渲染（后端 preview 载荷形状见 tools/*_tools.py）：
- * - task.create → 任务卡摘要（名称/目标/步骤/关联能力）
+ * - task.create → 任务卡摘要（名称、描述、学习内容、练习）
  * - diagnostic.save_summary → 错误数/薄弱能力/掌握度 old→new
  * - mastery.update → 每项能力 old→new 对比条
  * 过期倒计时来自 expires_at（ISO）；过期后禁用按钮，引导重新生成预览。
@@ -10,16 +10,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ListPlus } from "lucide-react";
 import { Button, Card, ProgressBar } from "../../../components";
-import type { Confirmation, MasteryChange, TaskStep } from "../../../api/types";
-import { actionLabel, dataTypeLabel } from "./constants";
+import type { Confirmation, MasteryChange } from "../../../api/types";
+import { actionLabel } from "./constants";
 
 interface TaskCardPreview {
   title?: string;
   goal?: string;
-  data_type?: string | null;
-  est_minutes?: number;
-  steps?: TaskStep[];
-  cap_names?: { cap_id: string; name: string }[];
+  description?: string;
+  knowledge_points?: { title?: string; content?: string }[];
+  exercises?: { question?: string; type?: string }[];
 }
 
 interface DiagnosticSummaryPreview {
@@ -65,38 +64,33 @@ export function ConfirmationPreview({ confirmation }: { confirmation: Confirmati
   const action = confirmation.action_type;
 
   if (action === "task.create") {
-    const card = (preview.card ?? {}) as TaskCardPreview;
+    const stages = Array.isArray(preview.stages)
+      ? preview.stages.filter((stage): stage is TaskCardPreview => !!stage && typeof stage === "object")
+      : [];
+    const cards = stages.length > 0 ? stages : [(preview.card ?? {}) as TaskCardPreview];
     return (
       <div className="confirm-preview">
         {summaryText ? <p>{summaryText}</p> : null}
-        <dl className="confirm-fields">
-          <dt>任务名称</dt>
-          <dd>{card.title ?? "标注练习任务"}</dd>
-          <dt>学习目标</dt>
-          <dd>{card.goal ?? "—"}</dd>
-          <dt>数据类型</dt>
-          <dd>{dataTypeLabel(card.data_type)}</dd>
-          <dt>任务步骤</dt>
-          <dd>
-            <ol className="confirm-steps">
-              {(card.steps ?? []).map((s, i) => (
-                <li key={i}>{s.title}</li>
-              ))}
-            </ol>
-          </dd>
-          <dt>关联能力</dt>
-          <dd>
-            {card.cap_names?.length
-              ? card.cap_names.map((c) => c.name).join("、")
-              : "—"}
-          </dd>
-          {card.est_minutes ? (
-            <>
-              <dt>预计时长</dt>
-              <dd>约 {card.est_minutes} 分钟</dd>
-            </>
-          ) : null}
-        </dl>
+        {cards.map((card, index) => (
+          <dl className="confirm-fields" key={`${card.title ?? "task"}-${index}`}>
+            <dt>任务名称</dt>
+            <dd>{card.title ?? "标注练习任务"}</dd>
+            <dt>任务描述</dt>
+            <dd>{card.description ?? card.goal ?? "—"}</dd>
+            {card.knowledge_points?.length ? (
+              <>
+                <dt>学习内容</dt>
+                <dd>{card.knowledge_points.map((point) => point.title ?? point.content).filter(Boolean).join("、")}</dd>
+              </>
+            ) : null}
+            {card.exercises?.length ? (
+              <>
+                <dt>练习</dt>
+                <dd>{card.exercises.map((exercise) => exercise.question).filter(Boolean).join("、")}</dd>
+              </>
+            ) : null}
+          </dl>
+        ))}
       </div>
     );
   }

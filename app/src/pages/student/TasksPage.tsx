@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../api/client";
-import type { Paginated, TaskStatus, TaskSummary } from "../../api/types";
+import type { Paginated, TaskSummary } from "../../api/types";
 import {
   Button,
   Card,
@@ -25,15 +25,10 @@ import {
   Select,
   Spinner,
   StatusBadge,
-  Tag,
   useToast,
 } from "../../components";
 import {
-  capNameOf,
-  dataTypeLabel,
   errMsg,
-  taskSourceLabel,
-  useCapNames,
 } from "./shared";
 
 /** 状态筛选 chips（PRD-01 §6.1 全部/未开始/进行中/待提交/已完成 + 后端扩展态） */
@@ -56,17 +51,6 @@ const SOURCE_OPTIONS = [
   { value: "diagnostic", label: "诊断补强" },
 ];
 
-/** 状态 → 下一步操作文案（点击进详情页执行对应动作） */
-const NEXT_ACTION: Record<TaskStatus, string> = {
-  draft: "继续编辑",
-  not_started: "开始任务",
-  in_progress: "继续学习",
-  submitted: "查看反馈",
-  completed: "查看反馈",
-  paused: "继续学习",
-  archived: "查看",
-};
-
 /** POST /api/tasks/batch 的逐项结果（tasks.py batch_tasks；页内声明防并行改 types） */
 interface BatchResult {
   id: string;
@@ -85,7 +69,6 @@ export default function TasksPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
-  const capNames = useCapNames();
 
   const [status, setStatus] = useState("");
   const [source, setSource] = useState("");
@@ -334,20 +317,6 @@ export default function TasksPage() {
                     <StatusBadge status={task.status} />
                   </span>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Tag>{taskSourceLabel(task.source)}</Tag>
-                  <Tag>{dataTypeLabel(task.data_type)}</Tag>
-                </div>
-                {task.cap_ids.length > 0 ? (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {task.cap_ids.slice(0, 4).map((capId) => (
-                      <Tag key={capId}>{capNameOf(capNames, capId)}</Tag>
-                    ))}
-                    {task.cap_ids.length > 4 ? (
-                      <span className="text-xs text-muted">+{task.cap_ids.length - 4}</span>
-                    ) : null}
-                  </div>
-                ) : null}
                 <div className="flex items-center gap-3">
                   <div style={{ flex: 1 }}>
                     <ProgressBar value={task.progress} />
@@ -368,7 +337,7 @@ export default function TasksPage() {
                       })
                     }
                   >
-                    {NEXT_ACTION[task.status]}
+                    打开任务
                   </Button>
                   {task.status !== "archived" ? (
                     <Button variant="ghost" size="sm" onClick={() => setArchiveTarget(task)}>

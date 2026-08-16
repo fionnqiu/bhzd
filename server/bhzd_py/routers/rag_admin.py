@@ -77,6 +77,11 @@ _SOURCE_TYPES = ("textbook", "standard", "enterprise", "teacher", "competition",
 _LICENSE_STATUSES = ("authorized", "internal", "pending", "forbidden")
 _VISIBILITIES = ("admin", "teacher", "student")
 _DATA_TYPES = ("text", "image", "audio", "video")
+_DEFAULT_UPLOAD_SOURCE_TYPE = "other"
+_DEFAULT_UPLOAD_SOURCE_NAME = "用户上传资料"
+_DEFAULT_UPLOAD_VERSION = "1.0"
+_DEFAULT_UPLOAD_LICENSE_STATUS = "pending"
+_DEFAULT_UPLOAD_DATA_TYPES = ("text",)
 _EXT_TO_FILE_TYPE = {
     ".pdf": "pdf",
     ".docx": "docx",
@@ -563,30 +568,47 @@ def _run_auto_publish_import_pipeline(
         _run_upload_pipeline(document_id, database_path, auto_publish, actor_id, client_meta)
 
 
-def _validate_upload_metadata(
-    title: str,
-    source_type: str,
-    source_name: str,
-    version: str,
-    license_status: str,
-    visibility: str,
-    data_types: list[str],
-) -> None:
-    """Keep single and selected-file imports on one metadata validation contract."""
-    if not title.strip():
-        raise ApiError(422, "VALIDATION_ERROR", "请填写资料标题")
-    if source_type not in _SOURCE_TYPES:
+def _normalized_upload_metadata(
+    *,
+    filename: str | None,
+    title: str | None,
+    source_type: str | None,
+    source_name: str | None,
+    version: str | None,
+    license_status: str | None,
+    visibility: str | None,
+    data_types: list[str] | None,
+) -> dict[str, str | list[str]]:
+    """Supply safe metadata defaults while leaving historic rows untouched.
+
+    The upload screen only requires a file.  New records derive their title
+    from that file and use pending authorization, which preserves the existing
+    publication guard until an administrator supplies verified metadata later.
+    Explicit non-empty values still receive the original enum validation.
+    """
+    filename_stem = Path(filename or "").stem.strip() or "未命名资料"
+    normalized = {
+        "title": title.strip() if title and title.strip() else filename_stem,
+        "source_type": source_type.strip() if source_type and source_type.strip() else _DEFAULT_UPLOAD_SOURCE_TYPE,
+        "source_name": source_name.strip() if source_name and source_name.strip() else _DEFAULT_UPLOAD_SOURCE_NAME,
+        "version": version.strip() if version and version.strip() else _DEFAULT_UPLOAD_VERSION,
+        "license_status": (
+            license_status.strip()
+            if license_status and license_status.strip()
+            else _DEFAULT_UPLOAD_LICENSE_STATUS
+        ),
+        "visibility": visibility.strip() if visibility and visibility.strip() else "student",
+        "data_types": list(data_types) if data_types else list(_DEFAULT_UPLOAD_DATA_TYPES),
+    }
+    if normalized["source_type"] not in _SOURCE_TYPES:
         raise ApiError(422, "VALIDATION_ERROR", "来源类型不合法")
-    if not source_name.strip():
-        raise ApiError(422, "VALIDATION_ERROR", "请填写来源（未填来源不得上传）")
-    if license_status not in _LICENSE_STATUSES:
-        raise ApiError(422, "VALIDATION_ERROR", "请填写授权状态（未填授权状态不得上传）")
-    if visibility not in _VISIBILITIES:
+    if normalized["license_status"] not in _LICENSE_STATUSES:
+        raise ApiError(422, "VALIDATION_ERROR", "授权状态不合法")
+    if normalized["visibility"] not in _VISIBILITIES:
         raise ApiError(422, "VALIDATION_ERROR", "可见范围不合法")
-    if not version.strip():
-        raise ApiError(422, "VALIDATION_ERROR", "请填写版本号")
-    if not data_types or any(dt not in _DATA_TYPES for dt in data_types):
-        raise ApiError(422, "VALIDATION_ERROR", "请填写适用数据类型（text/image/audio/video）")
+    if any(data_type not in _DATA_TYPES for data_type in normalized["data_types"]):
+        raise ApiError(422, "VALIDATION_ERROR", "适用数据类型仅支持 text/image/audio/video")
+    return normalized
 
 
 def _store_uploaded_document(
@@ -740,17 +762,17 @@ def upload_document(
     request: Request,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    title: str = Form(...),
-    source_type: str = Form(...),
-    source_name: str = Form(...),
+    title: str | None = Form(None),
+    source_type: str | None = Form(None),
+    source_name: str | None = Form(None),
     source_url: str | None = Form(None),
     source_ledger_id: str | None = Form(None),
-    version: str = Form(...),
-    license_status: str = Form(...),
+    version: str | None = Form(None),
+    license_status: str | None = Form(None),
     # Student visibility is the new-flow default; accepting the old form field
     # keeps bookmarked/API integrations valid while the UI no longer exposes it.
-    visibility: str = Form("student"),
-    data_types: list[str] = Form(default=[]),
+    visibility: str | None = Form(None),
+    data_types: list[str] | None = Form(None),
     cap_ids: list[str] = Form(default=[]),
     # ``None`` distinguishes omitted new-flow requests (auto-publish) from an
     # explicit legacy ``false`` request that intentionally stays indexed.
@@ -765,22 +787,29 @@ def upload_document(
     """
     # The single-file endpoint keeps its cheap whole-request preflight; a batch
     # cannot use it because its multipart envelope legitimately contains many files.
-    _validate_upload_metadata(
-        title, source_type, source_name, version, license_status, visibility, data_types
+    metadata = _normalized_upload_metadata(
+        filename=file.filename,
+        title=title,
+        source_type=source_type,
+        source_name=source_name,
+        version=version,
+        license_status=license_status,
+        visibility=visibility,
+        data_types=data_types,
     )
     _reject_oversized_content_length(request)
     doc, jobs = _store_uploaded_document(
         conn,
         file,
-        title=title,
-        source_type=source_type,
-        source_name=source_name,
+        title=str(metadata["title"]),
+        source_type=str(metadata["source_type"]),
+        source_name=str(metadata["source_name"]),
         source_url=source_url,
         source_ledger_id=source_ledger_id,
-        version=version,
-        license_status=license_status,
-        visibility=visibility,
-        data_types=data_types,
+        version=str(metadata["version"]),
+        license_status=str(metadata["license_status"]),
+        visibility=str(metadata["visibility"]),
+        data_types=list(metadata["data_types"]),
         cap_ids=cap_ids,
         actor_id=current.user["id"],
     )
@@ -818,14 +847,14 @@ def batch_import_documents(
     request: Request,
     background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
-    source_type: str = Form(...),
-    source_name: str = Form(...),
+    source_type: str | None = Form(None),
+    source_name: str | None = Form(None),
     source_url: str | None = Form(None),
     source_ledger_id: str | None = Form(None),
-    version: str = Form(...),
-    license_status: str = Form(...),
-    visibility: str = Form("student"),
-    data_types: list[str] = Form(default=[]),
+    version: str | None = Form(None),
+    license_status: str | None = Form(None),
+    visibility: str | None = Form(None),
+    data_types: list[str] | None = Form(None),
     cap_ids: list[str] = Form(default=[]),
     # Omitted requests are the new automatic-publication flow.  Explicit
     # ``false`` remains accepted for old integrations that only want indexing.
@@ -839,11 +868,6 @@ def batch_import_documents(
     document/job chain.  Invalid siblings are reported rather than rolling back
     valid teaching material already safely queued for the normal guard pipeline.
     """
-    # A batch derives titles from filenames, so validate a non-empty sentinel
-    # while retaining the exact single-file metadata contract for all other fields.
-    _validate_upload_metadata(
-        "selected-file", source_type, source_name, version, license_status, visibility, data_types
-    )
     if not files:
         raise ApiError(422, "VALIDATION_ERROR", "请选择至少一个资料文件")
     if len(files) > _SELECTED_FILE_IMPORT_LIMIT:
@@ -856,9 +880,19 @@ def batch_import_documents(
     # Keep the raw optional value for the worker; ``None`` means the new
     # student-default mode while explicit false is the legacy indexed-only
     # escape hatch.  The response still exposes a stable boolean summary.
+    batch_metadata = _normalized_upload_metadata(
+        filename="selected-file",
+        title="selected-file",
+        source_type=source_type,
+        source_name=source_name,
+        version=version,
+        license_status=license_status,
+        visibility=visibility,
+        data_types=data_types,
+    )
     should_auto_publish = True if auto_publish is None else auto_publish
     auto_publish_student_flow = auto_publish is True or (
-        auto_publish is None and visibility == "student"
+        auto_publish is None and batch_metadata["visibility"] == "student"
     )
     imported: list[dict] = []
     failed: list[dict] = []
@@ -871,15 +905,15 @@ def batch_import_documents(
             document, _jobs = _store_uploaded_document(
                 conn,
                 file,
-                title=Path(filename).stem or "未命名资料",
-                source_type=source_type,
-                source_name=source_name,
+                title=Path(filename).stem or str(batch_metadata["title"]),
+                source_type=str(batch_metadata["source_type"]),
+                source_name=str(batch_metadata["source_name"]),
                 source_url=source_url,
                 source_ledger_id=source_ledger_id,
-                version=version,
-                license_status=license_status,
-                visibility=visibility,
-                data_types=data_types,
+                version=str(batch_metadata["version"]),
+                license_status=str(batch_metadata["license_status"]),
+                visibility=str(batch_metadata["visibility"]),
+                data_types=list(batch_metadata["data_types"]),
                 cap_ids=cap_ids,
                 actor_id=current.user["id"],
             )
@@ -903,7 +937,7 @@ def batch_import_documents(
             "imported": len(imported),
             "failed": len(failed),
             "auto_publish": should_auto_publish,
-            "visibility": "student" if auto_publish_student_flow else visibility,
+            "visibility": str(batch_metadata["visibility"]),
         },
         **_client_meta(request),
     )
@@ -2264,6 +2298,8 @@ class SearchTestFilters(BaseModel):
     data_type: str | None = None
     published_only: bool = True
     document_ids: list[str] | None = None
+    # The console can override the configured hybrid default for a single run.
+    mode: str | None = None
 
 
 class SearchTestBody(BaseModel):
@@ -2274,10 +2310,47 @@ class SearchTestBody(BaseModel):
     # Keep direct API callers within the same bounded range as the console UI
     # and persisted evaluation snapshots, preventing an oversized debug result.
     top_k: int | None = Field(default=None, ge=1, le=20)
+    # This is deliberately per-run rather than a global RAG setting. It only
+    # has meaning for pure vector cosine ranking and is snapshotted on save.
+    retrieval_top_p: float | None = Field(default=None, gt=0.0, le=1.0)
+    mode: str | None = None
+    eval_set_id: str | None = None
+    # ``test_set_id`` is accepted as a readable alias by older console builds.
+    test_set_id: str | None = None
     save: bool = False
     expected_answer: str | None = None
     must_hit_document_ids: list[str] = []
     must_hit_chunk_ids: list[str] = []
+
+
+_RETRIEVAL_MODES = frozenset({"hybrid", "vector", "keyword"})
+
+
+def _validated_retrieval_mode(mode: str | None) -> str | None:
+    """Validate the explicit console mode without changing the stored default."""
+    if mode is None:
+        return None
+    normalized = mode.strip().lower()
+    if normalized not in _RETRIEVAL_MODES:
+        raise ApiError(422, "VALIDATION_ERROR", "检索方式仅支持 hybrid / vector / keyword")
+    return normalized
+
+
+def _resolved_eval_set_id(*values: str | None) -> str | None:
+    """Normalize compatible set identifiers and reject conflicting client fields."""
+    selected = [value.strip() for value in values if isinstance(value, str) and value.strip()]
+    if not selected:
+        return None
+    if len(set(selected)) > 1:
+        raise ApiError(422, "VALIDATION_ERROR", "一次只能选择一个测试集")
+    return selected[0]
+
+
+def _get_eval_set_or_404(conn: sqlite3.Connection, set_id: str) -> sqlite3.Row:
+    row = conn.execute("SELECT * FROM eval_sets WHERE id = ?", (set_id,)).fetchone()
+    if row is None:
+        raise ApiError(422, "VALIDATION_ERROR", "测试集不存在")
+    return row
 
 
 def _hit_debug_dict(hit) -> dict:
@@ -2307,10 +2380,22 @@ def search_test(
     query = body.query.strip()
     if not query:
         raise ApiError(422, "VALIDATION_ERROR", "查询不能为空")
+    mode = _validated_retrieval_mode(body.mode or body.filters.mode)
+    eval_set_id = _resolved_eval_set_id(body.eval_set_id, body.test_set_id)
+    if eval_set_id is not None:
+        _get_eval_set_or_404(conn, eval_set_id)
+    settings = load_settings(conn)
+    # Resolve an omitted console override once so retrieval, diagnostics, and
+    # saved cases all describe the same configured default mode.
+    effective_mode = mode or ("hybrid" if settings.hybrid_search else "vector")
+    if body.retrieval_top_p is not None and effective_mode != "vector":
+        raise ApiError(422, "VALIDATION_ERROR", "检索 top-p 仅支持 vector 检索方式")
     filters = RagFilters(
         data_type=body.filters.data_type,
         published_only=body.filters.published_only,
         document_ids=body.filters.document_ids,
+        mode=effective_mode,
+        retrieval_top_p=body.retrieval_top_p,
     )
     result = retrieve(conn, get_config(), query, filters, top_k=body.top_k)
     # 向量序 = 按 score 重排（rerank 未跑时本来就是这个顺序）
@@ -2331,6 +2416,13 @@ def search_test(
         ]
         embedding_model = ", ".join(m for m in models if m)
     rerank_model: str | None = result.rerank_model if reranked else None
+    # Use one snapshot for diagnostics and optional persistence so a saved
+    # test always reproduces the exact override and mode that just ran.
+    snapshot_filters = {**body.filters.model_dump(), "mode": effective_mode}
+    if body.top_k is not None:
+        snapshot_filters["top_k"] = body.top_k
+    if body.retrieval_top_p is not None:
+        snapshot_filters["retrieval_top_p"] = body.retrieval_top_p
 
     # 召回记录（渠道 search_test）：资料详情页"召回记录"的数据来源之一；
     # 写库失败不影响测试台主流程（record_recall_logs 内部已兜底）
@@ -2345,7 +2437,6 @@ def search_test(
         ],
     )
 
-    settings = load_settings(conn)
     response: dict = {
         "vector_results": [_hit_debug_dict(h) for h in vector_order],
         "reranked_results": [_hit_debug_dict(h) for h in result.hits],
@@ -2356,7 +2447,10 @@ def search_test(
             "latency_ms": result.latency_ms,
             "embedding_model": embedding_model,
             "rerank_model": rerank_model,
-            "filters": body.filters.model_dump(),
+            "retrieval_mode": effective_mode,
+            "filters": snapshot_filters,
+            "retrieval_top_p": body.retrieval_top_p,
+            "eval_set_id": eval_set_id,
             "prompt_template_version": settings.prompt_template_version,
         },
     }
@@ -2366,8 +2460,8 @@ def search_test(
         conn.execute(
             """
             INSERT INTO eval_cases (id, question, expected_answer, must_hit_document_ids_json,
-              must_hit_chunk_ids_json, filters_json, created_by, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              must_hit_chunk_ids_json, filters_json, eval_set_id, created_by, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 case_id,
@@ -2375,7 +2469,8 @@ def search_test(
                 body.expected_answer,
                 json.dumps(body.must_hit_document_ids, ensure_ascii=False),
                 json.dumps(body.must_hit_chunk_ids, ensure_ascii=False),
-                json.dumps(body.filters.model_dump(), ensure_ascii=False),
+                json.dumps(snapshot_filters, ensure_ascii=False),
+                eval_set_id,
                 current.user["id"],
                 utc_now_iso(),
             ),
@@ -2387,7 +2482,7 @@ def search_test(
             "rag.save_eval_case",
             target_type="eval_case",
             target_id=case_id,
-            after={"question": query},
+            after={"question": query, "eval_set_id": eval_set_id},
             **_client_meta(request),
         )
         response["saved_case_id"] = case_id
@@ -2396,18 +2491,197 @@ def search_test(
 
 # ---------------------------------------------------------------- 评测集与评测运行
 
+class EvalSetBody(BaseModel):
+    """Named collection for regression cases in the recall console."""
+
+    name: str
+    description: str | None = None
+
+
+class EvalSetPatchBody(BaseModel):
+    """Allow operators to rename or describe a set without moving its cases."""
+
+    name: str | None = None
+    description: str | None = None
+
+
+def _eval_set_dto(row: sqlite3.Row, case_count: int | None = None) -> dict:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "description": row["description"],
+        "created_by": row["created_by"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "case_count": case_count if case_count is not None else 0,
+    }
+
+
+def _validated_eval_set_name(name: str | None) -> str:
+    """Keep set labels useful in selectors and avoid whitespace-only groups."""
+    normalized = (name or "").strip()
+    if not normalized:
+        raise ApiError(422, "VALIDATION_ERROR", "测试集名称不能为空")
+    if len(normalized) > 100:
+        raise ApiError(422, "VALIDATION_ERROR", "测试集名称不能超过 100 个字符")
+    return normalized
+
+
+@router.get("/api/rag/eval-sets")
+@router.get("/api/rag/test-sets", include_in_schema=False)
+def list_eval_sets(
+    current: CurrentUser = Depends(rag_staff),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """List named sets with their current case count for the console selector."""
+    rows = conn.execute(
+        """
+        SELECT s.*, COUNT(c.id) AS case_count
+        FROM eval_sets s
+        LEFT JOIN eval_cases c ON c.eval_set_id = s.id
+        GROUP BY s.id
+        ORDER BY s.updated_at DESC, s.rowid DESC
+        """
+    ).fetchall()
+    return {"items": [_eval_set_dto(row, row["case_count"]) for row in rows], "total": len(rows)}
+
+
+@router.post("/api/rag/eval-sets", status_code=201)
+@router.post("/api/rag/test-sets", status_code=201, include_in_schema=False)
+def create_eval_set(
+    body: EvalSetBody,
+    request: Request,
+    current: CurrentUser = Depends(rag_staff_mutation),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """Create an empty named set; cases are attached through the normal CRUD API."""
+    name = _validated_eval_set_name(body.name)
+    set_id = uuid.uuid4().hex
+    now = utc_now_iso()
+    try:
+        conn.execute(
+            """
+            INSERT INTO eval_sets (id, name, description, created_by, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (set_id, name, body.description.strip() if body.description else None, current.user["id"], now, now),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError as exc:
+        raise ApiError(409, "DUPLICATE", "测试集名称已存在") from exc
+    row = _get_eval_set_or_404(conn, set_id)
+    dto = _eval_set_dto(row, 0)
+    audit(
+        conn,
+        current.user,
+        "rag.create_eval_set",
+        target_type="eval_set",
+        target_id=set_id,
+        after={"name": name},
+        **_client_meta(request),
+    )
+    return {"set": dto, "test_set": dto}
+
+
+@router.patch("/api/rag/eval-sets/{set_id}")
+@router.patch("/api/rag/test-sets/{set_id}", include_in_schema=False)
+def patch_eval_set(
+    set_id: str,
+    body: EvalSetPatchBody,
+    request: Request,
+    current: CurrentUser = Depends(rag_staff_mutation),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """Update a set label or description while preserving attached cases."""
+    row = _get_eval_set_or_404(conn, set_id)
+    if not body.model_fields_set:
+        raise ApiError(422, "VALIDATION_ERROR", "至少修改一个字段")
+    name = row["name"] if "name" not in body.model_fields_set else _validated_eval_set_name(body.name)
+    description = row["description"]
+    if "description" in body.model_fields_set:
+        description = body.description.strip() if body.description else None
+    try:
+        conn.execute(
+            "UPDATE eval_sets SET name = ?, description = ?, updated_at = ? WHERE id = ?",
+            (name, description, utc_now_iso(), set_id),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError as exc:
+        raise ApiError(409, "DUPLICATE", "测试集名称已存在") from exc
+    updated = _get_eval_set_or_404(conn, set_id)
+    case_count = conn.execute(
+        "SELECT COUNT(*) AS n FROM eval_cases WHERE eval_set_id = ?", (set_id,)
+    ).fetchone()["n"]
+    dto = _eval_set_dto(updated, case_count)
+    audit(
+        conn,
+        current.user,
+        "rag.update_eval_set",
+        target_type="eval_set",
+        target_id=set_id,
+        before={"name": row["name"], "description": row["description"]},
+        after={"name": name, "description": description},
+        **_client_meta(request),
+    )
+    return {"set": dto, "test_set": dto}
+
+
+@router.delete("/api/rag/eval-sets/{set_id}")
+@router.delete("/api/rag/test-sets/{set_id}", include_in_schema=False)
+def delete_eval_set(
+    set_id: str,
+    request: Request,
+    current: CurrentUser = Depends(rag_staff_mutation),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """Remove only the group; cases and completed-run snapshots remain intact."""
+    row = _get_eval_set_or_404(conn, set_id)
+    case_count = conn.execute(
+        "SELECT COUNT(*) AS n FROM eval_cases WHERE eval_set_id = ?", (set_id,)
+    ).fetchone()["n"]
+    # Explicitly clear relations before deletion so the compatibility behavior
+    # is deterministic even if a legacy SQLite connection missed foreign_keys.
+    conn.execute("UPDATE eval_cases SET eval_set_id = NULL WHERE eval_set_id = ?", (set_id,))
+    conn.execute("UPDATE eval_runs SET eval_set_id = NULL WHERE eval_set_id = ?", (set_id,))
+    conn.execute("DELETE FROM eval_sets WHERE id = ?", (set_id,))
+    conn.commit()
+    audit(
+        conn,
+        current.user,
+        "rag.delete_eval_set",
+        target_type="eval_set",
+        target_id=set_id,
+        before={"name": row["name"], "case_count": case_count},
+        **_client_meta(request),
+    )
+    return {"deleted": True, "id": set_id}
+
 @router.get("/api/rag/eval-cases")
 def list_eval_cases(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0, le=10_000),
+    eval_set_id: str | None = Query(default=None),
+    test_set_id: str | None = Query(default=None),
     current: CurrentUser = Depends(rag_staff),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
-    total = conn.execute("SELECT COUNT(*) AS n FROM eval_cases").fetchone()["n"]
-    rows = conn.execute(
-        "SELECT * FROM eval_cases ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?",
-        (limit, offset),
-    ).fetchall()
+    selected_set_id = _resolved_eval_set_id(eval_set_id, test_set_id)
+    if selected_set_id is None:
+        total = conn.execute("SELECT COUNT(*) AS n FROM eval_cases").fetchone()["n"]
+        rows = conn.execute(
+            "SELECT * FROM eval_cases ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ).fetchall()
+    else:
+        _get_eval_set_or_404(conn, selected_set_id)
+        total = conn.execute(
+            "SELECT COUNT(*) AS n FROM eval_cases WHERE eval_set_id = ?", (selected_set_id,)
+        ).fetchone()["n"]
+        rows = conn.execute(
+            """SELECT * FROM eval_cases WHERE eval_set_id = ?
+               ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?""",
+            (selected_set_id, limit, offset),
+        ).fetchall()
     return {"items": [_eval_case_dto(r) for r in rows], "total": total}
 
 
@@ -2419,6 +2693,8 @@ def _eval_case_dto(row: sqlite3.Row) -> dict:
         "must_hit_document_ids": _json_list(row["must_hit_document_ids_json"]),
         "must_hit_chunk_ids": _json_list(row["must_hit_chunk_ids_json"]),
         "filters": _scenario_free_filters(json.loads(row["filters_json"] or "{}")),
+        "eval_set_id": row["eval_set_id"] if "eval_set_id" in row.keys() else None,
+        "test_set_id": row["eval_set_id"] if "eval_set_id" in row.keys() else None,
         "created_by": row["created_by"],
         "created_at": row["created_at"],
     }
@@ -2447,6 +2723,8 @@ class EvalCaseBody(BaseModel):
     must_hit_document_ids: list[str] = []
     must_hit_chunk_ids: list[str] = []
     filters: dict = {}
+    eval_set_id: str | None = None
+    test_set_id: str | None = None
 
 
 class EvalCasePatchBody(BaseModel):
@@ -2457,6 +2735,8 @@ class EvalCasePatchBody(BaseModel):
     must_hit_document_ids: list[str] | None = None
     must_hit_chunk_ids: list[str] | None = None
     filters: dict | None = None
+    eval_set_id: str | None = None
+    test_set_id: str | None = None
 
 
 def _validated_eval_document_ids(conn: sqlite3.Connection, document_ids: list[str]) -> list[str]:
@@ -2486,20 +2766,24 @@ def create_eval_case(
     if not body.question.strip():
         raise ApiError(422, "VALIDATION_ERROR", "问题不能为空")
     document_ids = _validated_eval_document_ids(conn, body.must_hit_document_ids)
+    eval_set_id = _resolved_eval_set_id(body.eval_set_id, body.test_set_id)
+    if eval_set_id is not None:
+        _get_eval_set_or_404(conn, eval_set_id)
     case_id = uuid.uuid4().hex
     conn.execute(
         """
         INSERT INTO eval_cases (id, question, expected_answer, must_hit_document_ids_json,
-          must_hit_chunk_ids_json, filters_json, created_by, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          must_hit_chunk_ids_json, filters_json, eval_set_id, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             case_id,
             body.question.strip(),
             body.expected_answer,
             json.dumps(document_ids, ensure_ascii=False),
-            json.dumps(body.must_hit_chunk_ids, ensure_ascii=False),
-                json.dumps(_scenario_free_filters(body.filters), ensure_ascii=False),
+                json.dumps(body.must_hit_chunk_ids, ensure_ascii=False),
+            json.dumps(_scenario_free_filters(body.filters), ensure_ascii=False),
+            eval_set_id,
             current.user["id"],
             utc_now_iso(),
         ),
@@ -2511,7 +2795,7 @@ def create_eval_case(
         "rag.save_eval_case",
         target_type="eval_case",
         target_id=case_id,
-        after={"question": body.question.strip()},
+        after={"question": body.question.strip(), "eval_set_id": eval_set_id},
         **_client_meta(request),
     )
     row = conn.execute("SELECT * FROM eval_cases WHERE id = ?", (case_id,)).fetchone()
@@ -2550,11 +2834,17 @@ def patch_eval_case(
     filters = _scenario_free_filters(
         json.loads(row["filters_json"] or "{}") if body.filters is None else body.filters
     )
+    set_fields_changed = bool({"eval_set_id", "test_set_id"} & body.model_fields_set)
+    eval_set_id = row["eval_set_id"] if "eval_set_id" in row.keys() else None
+    if set_fields_changed:
+        eval_set_id = _resolved_eval_set_id(body.eval_set_id, body.test_set_id)
+        if eval_set_id is not None:
+            _get_eval_set_or_404(conn, eval_set_id)
     expected_answer = row["expected_answer"] if "expected_answer" not in body.model_fields_set else body.expected_answer
     conn.execute(
         """UPDATE eval_cases
            SET question = ?, expected_answer = ?, must_hit_document_ids_json = ?,
-               must_hit_chunk_ids_json = ?, filters_json = ?
+               must_hit_chunk_ids_json = ?, filters_json = ?, eval_set_id = ?
          WHERE id = ?""",
         (
             question,
@@ -2562,6 +2852,7 @@ def patch_eval_case(
             json.dumps(document_ids, ensure_ascii=False),
             json.dumps(chunk_ids, ensure_ascii=False),
             json.dumps(filters, ensure_ascii=False),
+            eval_set_id,
             case_id,
         ),
     )
@@ -2572,7 +2863,11 @@ def patch_eval_case(
         "rag.update_eval_case",
         target_type="eval_case",
         target_id=case_id,
-        after={"question": question, "must_hit_document_ids": document_ids},
+        after={
+            "question": question,
+            "must_hit_document_ids": document_ids,
+            "eval_set_id": eval_set_id,
+        },
         **_client_meta(request),
     )
     updated = conn.execute("SELECT * FROM eval_cases WHERE id = ?", (case_id,)).fetchone()
@@ -2609,6 +2904,8 @@ class EvalRunBody(BaseModel):
     """评测运行：不给 case_ids 即跑全部用例。"""
 
     case_ids: list[str] | None = None
+    eval_set_id: str | None = None
+    test_set_id: str | None = None
 
 
 def _eval_recall_hit(case: sqlite3.Row, hits) -> bool | None:
@@ -2664,10 +2961,21 @@ def run_eval(
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
     """跑评测：Recall@K / CitationAccuracy / RefusalAccuracy / Faithfulness / Latency。"""
+    selected_set_id = _resolved_eval_set_id(
+        body.eval_set_id if body else None,
+        body.test_set_id if body else None,
+    )
+    if selected_set_id is not None:
+        _get_eval_set_or_404(conn, selected_set_id)
     if body and body.case_ids:
         placeholders = ",".join("?" for _ in body.case_ids)
         cases = conn.execute(
             f"SELECT * FROM eval_cases WHERE id IN ({placeholders})", body.case_ids
+        ).fetchall()
+    elif selected_set_id is not None:
+        cases = conn.execute(
+            "SELECT * FROM eval_cases WHERE eval_set_id = ? ORDER BY created_at, rowid",
+            (selected_set_id,),
         ).fetchall()
     else:
         cases = conn.execute("SELECT * FROM eval_cases ORDER BY created_at, rowid").fetchall()
@@ -2676,8 +2984,9 @@ def run_eval(
 
     run_id = uuid.uuid4().hex
     conn.execute(
-        "INSERT INTO eval_runs (id, status, created_by, created_at) VALUES (?, 'running', ?, ?)",
-        (run_id, current.user["id"], utc_now_iso()),
+        """INSERT INTO eval_runs (id, status, eval_set_id, created_by, created_at)
+           VALUES (?, 'running', ?, ?, ?)""",
+        (run_id, selected_set_id, current.user["id"], utc_now_iso()),
     )
     conn.commit()
 
@@ -2701,10 +3010,32 @@ def run_eval(
             and 1 <= saved_top_k <= 20
             else None
         )
+        saved_retrieval_top_p = raw_filters.get("retrieval_top_p")
+        retrieval_top_p = (
+            float(saved_retrieval_top_p)
+            if isinstance(saved_retrieval_top_p, (int, float))
+            and not isinstance(saved_retrieval_top_p, bool)
+            and 0.0 < float(saved_retrieval_top_p) <= 1.0
+            else None
+        )
+        raw_mode = raw_filters.get("mode")
+        # Persisted cases may predate the console mode control. Treat unknown
+        # historical values as the configured default instead of leaving a
+        # newly-created eval run stuck in ``running`` with a validation error.
+        mode = (
+            raw_mode.strip().lower()
+            if isinstance(raw_mode, str)
+            and raw_mode.strip().lower() in _RETRIEVAL_MODES
+            else None
+        )
         filters = RagFilters(
             data_type=raw_filters.get("data_type"),
             published_only=raw_filters.get("published_only", True),
             document_ids=raw_filters.get("document_ids"),
+            mode=mode,
+            # Invalid or non-vector legacy values degrade to regular TopK;
+            # new console submissions are rejected before reaching this path.
+            retrieval_top_p=retrieval_top_p if mode == "vector" else None,
         )
         started = time.perf_counter()
         result = retrieve(conn, config, case["question"], filters, top_k=top_k)
@@ -2716,8 +3047,10 @@ def run_eval(
             published_only=filters.published_only,
             document_ids=filters.document_ids,
             # Keep answer/citation metrics on the exact same retrieval shape
-            # as Recall@K, otherwise a saved TopK comparison is misleading.
+            # as Recall@K, including the vector-only nucleus override.
             top_k=top_k,
+            mode=filters.mode,
+            retrieval_top_p=filters.retrieval_top_p,
         )
         latency_ms = int((time.perf_counter() - started) * 1000)
         latencies.append(latency_ms)
@@ -2783,13 +3116,20 @@ def run_eval(
         "rag.run_eval",
         target_type="eval_run",
         target_id=run_id,
-        after=metrics,
+        after={**metrics, "eval_set_id": selected_set_id},
         **_client_meta(request),
     )
     from .rag_query import emit_telemetry
 
     emit_telemetry("rag_eval_run_completed", {"run_id": run_id, "case_count": len(cases)})
-    return {"id": run_id, "status": "completed", "metrics": metrics, "case_results": case_results}
+    return {
+        "id": run_id,
+        "status": "completed",
+        "eval_set_id": selected_set_id,
+        "test_set_id": selected_set_id,
+        "metrics": metrics,
+        "case_results": case_results,
+    }
 
 
 @router.get("/api/rag/eval-runs")
@@ -2812,6 +3152,8 @@ def list_eval_runs(
                 "id": row["id"],
                 "status": row["status"],
                 "metrics": json.loads(row["metrics_json"] or "null"),
+                "eval_set_id": row["eval_set_id"] if "eval_set_id" in row.keys() else None,
+                "test_set_id": row["eval_set_id"] if "eval_set_id" in row.keys() else None,
                 "created_by": row["created_by"],
                 "created_at": row["created_at"],
                 "finished_at": row["finished_at"],
@@ -2835,6 +3177,8 @@ def get_eval_run(
         "id": row["id"],
         "status": row["status"],
         "metrics": json.loads(row["metrics_json"] or "null"),
+        "eval_set_id": row["eval_set_id"] if "eval_set_id" in row.keys() else None,
+        "test_set_id": row["eval_set_id"] if "eval_set_id" in row.keys() else None,
         "case_results": json.loads(row["case_results_json"] or "[]"),
         "created_by": row["created_by"],
         "created_at": row["created_at"],

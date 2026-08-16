@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { Database, SearchCheck } from "lucide-react";
+import { Database } from "lucide-react";
 import { PageHeader } from "../src/components";
 import AdminLayout from "../src/layouts/AdminLayout";
 import ShellLayout from "../src/layouts/ShellLayout";
@@ -91,7 +91,7 @@ function renderWorkbenchShell(child = <></>) {
 function renderOperationsShell(compact = false) {
   stubViewport(compact);
   return render(
-    <MemoryRouter initialEntries={["/admin/rag/search-test"]}>
+    <MemoryRouter initialEntries={["/admin/rag"]}>
       <Routes>
         <Route
           element={
@@ -101,20 +101,10 @@ function renderOperationsShell(compact = false) {
               variant="operations-workbench"
               navItems={[
                 { to: "/admin/rag", label: "资料库", icon: Database, end: true, section: "RAG 知识库" },
-                {
-                  to: "/admin/rag/search-test",
-                  label: "召回测试",
-                  icon: SearchCheck,
-                  section: "RAG 知识库",
-                },
               ]}
             />
           }
         >
-          <Route
-            path="/admin/rag/search-test"
-            element={<PageHeader title="召回测试" sub="验证知识库召回结果与排序质量" />}
-          />
           <Route
             path="/admin/rag"
             element={<PageHeader title="资料库" sub="管理资料与发布状态" />}
@@ -216,6 +206,8 @@ describe("ShellLayout operations workbench navigation", () => {
       "/admin/users",
     );
     expect(within(navigation).queryByRole("link", { name: "用户权限" })).not.toBeInTheDocument();
+    // The recall console was removed from the product navigation, not merely hidden by CSS.
+    expect(within(navigation).queryByRole("link", { name: "召回测试" })).not.toBeInTheDocument();
     // Obsolete group names must not leak into the unified system navigation.
     expect(within(navigation).queryByText("核心配置")).not.toBeInTheDocument();
     expect(within(navigation).queryByText("运维监控")).not.toBeInTheDocument();
@@ -235,7 +227,7 @@ describe("ShellLayout operations workbench navigation", () => {
     expect(screen.getByText("RAG 知识库")).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "当前位置" })).not.toBeInTheDocument();
     expect(screen.queryByRole("banner")).not.toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: "系统管理" })).toHaveTextContent("召回测试");
+    expect(screen.queryByRole("link", { name: "召回测试" })).not.toBeInTheDocument();
 
     fireEvent.click(collapseButton);
 

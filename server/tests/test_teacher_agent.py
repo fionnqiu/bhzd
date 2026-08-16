@@ -10,6 +10,7 @@ import pytest
 from bhzd_py.agent import composer
 from bhzd_py.agent import events as agent_events
 from bhzd_py.agent import media
+from bhzd_py.tools import task_tools
 
 from _agent_helpers import fetch_events, wait_run_status
 
@@ -130,6 +131,14 @@ def test_teacher_agent_uses_aggregate_only_data_and_publishes_task(api, tmp_db_p
 
     teacher, student, clazz, resource_id = _setup_class_with_analytics(api)
     received_messages: list[list[dict]] = []
+    scheduled_content: list[tuple[str, str | None]] = []
+
+    def capture_content_queue(task_id: str, *, database_path: str | None = None) -> None:
+        # Keep fan-out deterministic: the assertion below explicitly runs the
+        # worker after checking that the reviewed source content is preserved.
+        scheduled_content.append((task_id, database_path))
+
+    monkeypatch.setattr(task_tools, "schedule_task_content", capture_content_queue)
 
     class FakeProviders:
         @staticmethod
@@ -162,12 +171,21 @@ def test_teacher_agent_uses_aggregate_only_data_and_publishes_task(api, tmp_db_p
         for item in payload["tool_calls"]
         if item["tool"] == "teacher.task_draft_preview"
     )
-    # Agent previews may cite retrieval context, but the task contract no
-    # longer exposes resource attachments for teacher/student assignment.
-    assert "resources" not in preview["draft"]
+    # The safe run payload exposes exactly the active four-field task card.
+    # Routing metadata remains private to the confirmation/persistence path.
+    assert set(preview["draft"]) == {
+        "title",
+        "description",
+        "knowledge_points",
+        "exercises",
+    }
+    assert {"goal", "steps", "rubric", "data_type", "cap_ids", "resources"}.isdisjoint(
+        preview["draft"]
+    )
     assert preview["insights"]["weak_capabilities"][0]["avg_score"] == pytest.approx(0.35)
     confirmation = payload["confirmations"][0]
     assert confirmation["action_type"] == "teacher.task_publish"
+    assert confirmation["preview"]["draft"] == preview["draft"]
     assert confirmation["preview"]["insights"]["weak_capabilities"][0]["affected_student_count"] == 1
 
     # The test fixture contains names, an email, a submission, feedback, and a
@@ -207,36 +225,53 @@ def test_teacher_agent_uses_aggregate_only_data_and_publishes_task(api, tmp_db_p
     assert task["status"] == "draft"
     assert task["class_id"] == clazz["id"]
     assert task["user_id"] == teacher["user_id"]
+    assert task["steps_json"] == "[]"
     assert task["resources_json"] == "[]"
+    assert task["rubric_json"] is None
+    assert task["content_status"] == "done"
 
-    # Agent previews use reader-friendly description/criterion field names,
-    # while the teacher task editor persists its canonical notes/key contract.
-    # Keep this mapping at the save boundary so a handoff cannot later fail
-    # when the teacher edits or publishes the generated draft.
-    expected_steps = [
-        {"title": step["title"], "notes": step["description"]}
-        for step in preview["draft"]["steps"]
-    ]
-    expected_rubric = [
+    expected_points = preview["draft"]["knowledge_points"]
+    expected_exercises = preview["draft"]["exercises"]
+    point_rows = api.conn.execute(
+        "SELECT title, content FROM task_knowledge_points WHERE task_id = ? ORDER BY sort_order, id",
+        (task["id"],),
+    ).fetchall()
+    assert [dict(row) for row in point_rows] == expected_points
+    exercise_rows = api.conn.execute(
+        "SELECT question, type, options_json, reference_answer FROM task_exercises "
+        "WHERE task_id = ? ORDER BY sort_order, id",
+        (task["id"],),
+    ).fetchall()
+    assert [
         {
-            "key": item["criterion"],
-            "expected": item["description"],
-            "weight": item["points"],
+            "question": row["question"],
+            "type": row["type"],
+            "options": json.loads(row["options_json"]) if row["options_json"] else None,
+            "reference_answer": row["reference_answer"],
         }
-        for item in preview["draft"]["rubric"]
-    ]
-    assert json.loads(task["steps_json"]) == expected_steps
-    assert json.loads(task["rubric_json"]) == expected_rubric
+        for row in exercise_rows
+    ] == expected_exercises
 
-    # The task DTO is the route used by the publish page after an Agent handoff;
-    # it must retain the bound class and the canonical shapes on a reload.
+    # The teacher task endpoint is the post-confirmation handoff. Its active
+    # fields must load from the content tables rather than legacy columns.
     detail = api.client.get(f"/api/teacher/tasks/{task['id']}", headers=teacher["headers"])
     assert detail.status_code == 200, detail.text
     detail_body = detail.json()
     assert detail_body["class_id"] == clazz["id"]
-    assert detail_body["steps"] == expected_steps
-    assert detail_body["rubric"] == expected_rubric
-    assert detail_body["resources"] == []
+    assert detail_body["description"] == preview["draft"]["description"]
+    assert [
+        {"title": point["title"], "content": point["content"]}
+        for point in detail_body["knowledge_points"]
+    ] == expected_points
+    assert [
+        {
+            "question": exercise["question"],
+            "type": exercise["type"],
+            "options": exercise["options"],
+            "reference_answer": exercise["reference_answer"],
+        }
+        for exercise in detail_body["exercises"]
+    ] == expected_exercises
     assert api.conn.execute(
         "SELECT COUNT(*) AS count FROM learning_tasks WHERE parent_task_id = ?",
         (task["id"],),
@@ -256,9 +291,32 @@ def test_teacher_agent_uses_aggregate_only_data_and_publishes_task(api, tmp_db_p
     assert student_copy is not None
     assert student_copy["user_id"] == student["user_id"]
     assert student_copy["class_id"] == clazz["id"]
+    assert student_copy["steps_json"] == "[]"
     assert student_copy["resources_json"] == "[]"
-    assert json.loads(student_copy["steps_json"]) == expected_steps
-    assert json.loads(student_copy["rubric_json"]) == expected_rubric
+    assert student_copy["rubric_json"] is None
+    # The publisher reuses the reviewed rows in its transaction, so the
+    # student never sees an empty task or a background-generated replacement.
+    assert scheduled_content == []
+    assert student_copy["content_status"] == "done"
+    student_points = api.conn.execute(
+        "SELECT title, content FROM task_knowledge_points WHERE task_id = ? ORDER BY sort_order, id",
+        (student_copy["id"],),
+    ).fetchall()
+    student_exercises = api.conn.execute(
+        "SELECT question, type, options_json, reference_answer FROM task_exercises "
+        "WHERE task_id = ? ORDER BY sort_order, id",
+        (student_copy["id"],),
+    ).fetchall()
+    assert [dict(row) for row in student_points] == expected_points
+    assert [
+        {
+            "question": row["question"],
+            "type": row["type"],
+            "options": json.loads(row["options_json"]) if row["options_json"] else None,
+            "reference_answer": row["reference_answer"],
+        }
+        for row in student_exercises
+    ] == expected_exercises
 
     # The database copy alone is not sufficient for this workflow: the
     # student-facing learning-task list is the destination the teacher expects

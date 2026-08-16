@@ -204,10 +204,61 @@ def test_stream_text_empty_without_providers():
 
 
 def test_template_tool_summary_renders_task_card():
-    card = {"title": "语音标注练习任务", "goal": "掌握唤醒词标注",
-            "steps": [{"title": "学习规范"}, {"title": "完成练习"}], "est_minutes": 45}
+    card = {
+        "title": "语音标注练习任务",
+        "description": "掌握唤醒词标注",
+        "knowledge_points": [{"title": "规则"}],
+        "exercises": [{"question": "判断边界"}],
+    }
     text = composer.template_tool_summary("task.preview", {"card": card})
-    assert "语音标注练习任务" in text and "学习规范" in text and "45" in text
+    assert "语音标注练习任务" in text
+    assert "掌握唤醒词标注" in text
+    assert "学习内容：1 项" in text
+    assert "练习：1 题" in text
+
+
+def test_template_summaries_list_the_actual_staged_preview_and_creation_results():
+    """A batch confirmation must not be summarized as a single unnamed task."""
+
+    stages = [
+        {"title": "文本标注练习·阶段1", "description": "学习实体边界"},
+        {"title": "文本标注练习·阶段2", "description": "完成实体练习"},
+    ]
+    preview = composer.template_tool_summary("task.preview", {"stages": stages})
+    created = composer.template_tool_summary(
+        "task.create",
+        {
+            "count": 2,
+            "tasks": [
+                {"task_id": "t1", "title": stages[0]["title"], "card": stages[0]},
+                {"task_id": "t2", "title": stages[1]["title"], "card": stages[1]},
+            ],
+        },
+    )
+
+    assert "2 个分阶段学习任务预览" in preview
+    assert "学习实体边界" in preview
+    assert "2 个分阶段学习任务" in created
+    assert "文本标注练习·阶段1" in created
+    assert "文本标注练习·阶段2" in created
+    assert composer.template_compact_tool_summary(
+        "task.create", {"count": 2, "tasks": [{"card": stage} for stage in stages]}
+    ) == "已创建 2 个分阶段学习任务。"
+
+
+def test_explicit_stage_markers_produce_independent_descriptions():
+    """Only explicit markers fan a learner request out into several tasks."""
+
+    stages = orchestrator._extract_task_stages(
+        "第一阶段：学习实体边界；第二阶段：完成实体边界练习",
+        base_title="文本标注练习任务",
+        data_type="text",
+    )
+
+    assert [(stage["title"], stage["description"]) for stage in stages] == [
+        ("文本标注练习任务·阶段1", "学习实体边界"),
+        ("文本标注练习任务·阶段2", "完成实体边界练习"),
+    ]
 
 
 def test_template_plan_summary_lists_steps():

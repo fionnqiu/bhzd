@@ -19,8 +19,6 @@ import { Link, useLocation, useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import type {
   ApplyMasteryResponse,
-  MasteryRecord,
-  Paginated,
   SubmitTaskResponse,
   TaskDetail,
   TaskSummary,
@@ -31,8 +29,6 @@ import {
   DataTable,
   EmptyState,
   ErrorState,
-  Input,
-  MasteryBadge,
   PageHeader,
   ProgressBar,
   Spinner,
@@ -57,6 +53,8 @@ interface PracticeQuestion {
   key: string;
   prompt: string;
   hint?: string;
+  type: "open_ended" | "multiple_choice" | "true_false";
+  options: string[];
 }
 
 /**
@@ -74,6 +72,12 @@ function extractQuestions(detail: TaskDetail): PracticeQuestion[] {
         key: String(item.key ?? `q${index + 1}`),
         prompt: String(item.prompt ?? item.question ?? item.title ?? `题目 ${index + 1}`),
         hint: item.hint == null ? undefined : String(item.hint),
+        type: normalizeQuestionType(item.type),
+        options: Array.isArray(item.options)
+          ? item.options.map(String).filter(Boolean).slice(0, 20)
+          : normalizeQuestionType(item.type) === "true_false"
+            ? ["正确", "错误"]
+            : [],
       };
     });
   }
@@ -84,7 +88,19 @@ function extractQuestions(detail: TaskDetail): PracticeQuestion[] {
   return rubric.map((item) => ({
     key: item.key,
     prompt: `请作答：${item.key}`,
+    type: "open_ended",
+    options: [],
   }));
+}
+
+/** Keep question rendering stable across legacy aliases and generated content. */
+function normalizeQuestionType(value: unknown): PracticeQuestion["type"] {
+  const kind = String(value ?? "open_ended").trim().toLowerCase().replace(/-/g, "_");
+  if (["multiple_choice", "choice", "single_choice"].includes(kind)) return "multiple_choice";
+  if (["true_false", "truefalse", "boolean", "判断", "判断题"].includes(kind)) {
+    return "true_false";
+  }
+  return "open_ended";
 }
 
 /** 自检清单（practice.checklist: string[]；勾选状态仅本地，不参与评分） */
@@ -188,8 +204,6 @@ export default function TaskDetailPage() {
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // cap → score，用于能力 chips 的 MasteryBadge。
-  const [masteryMap, setMasteryMap] = useState<Map<string, number>>(new Map());
 
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [checks, setChecks] = useState<Record<string, boolean>>({});
@@ -214,8 +228,19 @@ export default function TaskDetailPage() {
         // and could overwrite an in-page edit after unrelated detail changes.
         const normalized = normalizeTaskDetail(res);
         const restored = feedbackFromLatestAttempt(normalized);
+        const restoredAnswers = restored ? answersFromLatestAttempt(normalized) : {};
         setDetail(normalized);
-        setAnswers(restored ? answersFromLatestAttempt(normalized) : {});
+        setAnswers(restoredAnswers);
+        // Populate structured controls before the first detail render. Waiting
+        // for the hydration effect below briefly showed a submitted task as blank.
+        setExerciseAnswers(
+          Object.fromEntries(
+            normalized.exercises.map((exercise) => [
+              exercise.id,
+              exercise.submission?.answer ?? restoredAnswers[exercise.id] ?? "",
+            ]),
+          ),
+        );
         setFeedback(restored);
         setApplied(res.latest_attempt?.mastery_applied ?? false);
       } catch (err) {
@@ -233,20 +258,6 @@ export default function TaskDetailPage() {
     return () => controller.abort();
   }, [load]);
 
-  // 掌握度记录：能力 chips 着色用；失败降级空映射（chips 显示"暂无数据"）
-  useEffect(() => {
-    const controller = new AbortController();
-    api
-      .get<Paginated<MasteryRecord>>("/api/profile/mastery", undefined, {
-        signal: controller.signal,
-      })
-      .then((res) => {
-        if (controller.signal.aborted) return;
-        setMasteryMap(new Map(res.items.map((r) => [r.cap_id, r.score])));
-      })
-      .catch(() => {});
-    return () => controller.abort();
-  }, []);
 
   useEffect(() => {
     if (!id || detail?.content_status !== "generating") return;
@@ -260,6 +271,26 @@ export default function TaskDetailPage() {
       window.clearInterval(timer);
     };
   }, [detail?.content_status, id]);
+
+  useEffect(() => {
+    if (!detail) return;
+    // Exercise submissions are durable server state.  Rehydrate them after a
+    // refresh so choice controls and text answers do not look blank. A whole
+    // task submission does not create per-exercise rows, so its stored answer
+    // is the fallback when the learner completed all structured practice at once.
+    const latestAnswers = answersFromLatestAttempt(detail);
+    setExerciseAnswers((previous) =>
+      Object.fromEntries(
+        detail.exercises.map((exercise) => [
+          exercise.id,
+          previous[exercise.id] ??
+            exercise.submission?.answer ??
+            latestAnswers[exercise.id] ??
+            "",
+        ]),
+      ),
+    );
+  }, [detail]);
 
   const questions = useMemo(() => (detail ? extractQuestions(detail) : []), [detail]);
   const checklist = useMemo(() => (detail ? extractChecklist(detail) : []), [detail]);
@@ -299,7 +330,14 @@ export default function TaskDetailPage() {
 
   // Feedback and attempt rows stay single-line; the shared table viewport handles narrow screens.
   const feedbackColumns: Column<SubmitTaskResponse["feedback"][number]>[] = [
-    { key: "key", title: "题目", width: "10rem" },
+    {
+      key: "key",
+      title: "题目",
+      width: "10rem",
+      // Structured exercises use their stable row ID in the overall attempt;
+      // resolve it back to the learner-facing question in the feedback table.
+      render: (item) => detail?.exercises.find((exercise) => exercise.id === item.key)?.question ?? item.key,
+    },
     {
       key: "expected",
       title: "期望值",
@@ -352,11 +390,6 @@ export default function TaskDetailPage() {
     },
   ];
 
-  /** 能力掌握度查询使用统一能力记录。 */
-  const capScore = (capId: string): number | null => {
-    return masteryMap.get(capId) ?? null;
-  };
-
   /** 开始/继续任务（not_started|paused → in_progress） */
   const startTask = async () => {
     if (!id) return;
@@ -375,9 +408,23 @@ export default function TaskDetailPage() {
   /** 提交答案 → 确定性评分反馈（掌握度只给预览不落库） */
   const submitAnswers = async () => {
     if (!id) return;
+    // The overall task attempt records every visible practice response.  The
+    // per-exercise endpoint still provides detailed grading, while this map
+    // makes a structured-only task progress through the normal submit flow.
+    const taskAnswers = {
+      ...answers,
+      ...(detail
+        ? Object.fromEntries(
+            detail.exercises.map((exercise) => [
+              exercise.id,
+              exerciseAnswers[exercise.id] ?? exercise.submission?.answer ?? "",
+            ]),
+          )
+        : {}),
+    };
     setSubmitting(true);
     try {
-      const res = await api.post<SubmitTaskResponse>(`/api/tasks/${id}/submit`, { answers });
+      const res = await api.post<SubmitTaskResponse>(`/api/tasks/${id}/submit`, { answers: taskAnswers });
       setFeedback(res);
       setApplied(false);
       setDetail((prev) => {
@@ -393,7 +440,7 @@ export default function TaskDetailPage() {
           score: res.score,
           mastery_applied: false,
           created_at: createdAt,
-          answers: { ...answers },
+          answers: taskAnswers,
           feedback: res.feedback,
           mastery_preview: res.mastery_preview,
         };
@@ -440,15 +487,6 @@ export default function TaskDetailPage() {
             : "任务已确认",
       );
       setApplied(true);
-      setMasteryMap((prev) => {
-        const next = new Map(prev);
-        for (const change of res.applied) {
-          if (change.new_score != null) {
-            next.set(change.cap_id, change.new_score);
-          }
-        }
-        return next;
-      });
       setDetail((prev) => {
         if (!prev) return prev;
         // The confirmation response is authoritative. Updating only its attempt
@@ -522,7 +560,7 @@ export default function TaskDetailPage() {
         }
       />
 
-      {/* 任务概览（名称、目标、关联岗位与证书、版本）。 */}
+      {/* 任务概览只保留状态和发布信息；正文内容在下方四字段区域呈现。 */}
       <Card title={<TaskSectionTitle>任务概览</TaskSectionTitle>} className="mb-4">
         <div className="flex flex-col gap-3">
           <div className="task-detail-meta flex items-center gap-2 flex-wrap">
@@ -556,44 +594,6 @@ export default function TaskDetailPage() {
               <span>最近更新 {formatDateTime(detail.updated_at)}</span>
             </div>
           </div>
-          {detail.caps.length > 0 ? (
-            <div className="flex flex-col gap-2">
-              <span className="text-sm text-secondary">关联能力</span>
-              {detail.caps.map((cap) => (
-                <span key={cap.cap_id} className="flex items-center justify-between gap-2">
-                  <Link to={`/graph?node=${cap.cap_id}`} className="text-sm">
-                    {cap.cap_name}
-                  </Link>
-                  <MasteryBadge score={capScore(cap.cap_id)} />
-                </span>
-              ))}
-            </div>
-          ) : null}
-          {detail.linked.certificates.length > 0 ? (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm text-secondary">关联证书</span>
-              {detail.linked.certificates.map((cert) => (
-                <Tag key={cert.id}>{cert.name}</Tag>
-              ))}
-            </div>
-          ) : null}
-          {detail.linked.knowledge.length > 0 ? (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm text-secondary">关联岗位/知识</span>
-              {detail.linked.knowledge.map((kng) => (
-                <Tag key={kng.id}>{kng.name}</Tag>
-              ))}
-            </div>
-          ) : null}
-          {detail.linked.graph_resources.length > 0 ? (
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* These tags are graph reference aids, not substitutes for task resources. */}
-              <span className="text-sm text-secondary">图谱参考资源</span>
-              {detail.linked.graph_resources.map((resource) => (
-                <Tag key={resource.id}>{resource.name}</Tag>
-              ))}
-            </div>
-          ) : null}
         </div>
       </Card>
 
@@ -642,35 +642,6 @@ export default function TaskDetailPage() {
         )}
       </Card>
 
-      {/* 操作步骤（含注意事项/常见错误，v3.0 §7.5.2） */}
-      {detail.steps.length > 0 ? (
-        <Card title={<TaskSectionTitle>操作步骤</TaskSectionTitle>} className="mb-4">
-          <ol className="flex flex-col gap-4">
-            {detail.steps.map((step, index) => (
-              <li key={index}>
-                <div className="flex items-center gap-2">
-                  <span className="badge badge-primary">{index + 1}</span>
-                  <strong className="text-sm">{step.title}</strong>
-                </div>
-                {step.description ? (
-                  <p className="text-sm text-secondary mt-2">{step.description}</p>
-                ) : null}
-                {step.notes ? (
-                  <p className="text-xs mt-2" style={{ color: "var(--color-warning)" }}>
-                    注意事项：{step.notes}
-                  </p>
-                ) : null}
-                {step.common_errors ? (
-                  <p className="text-xs mt-2" style={{ color: "var(--color-danger)" }}>
-                    常见错误：{step.common_errors}
-                  </p>
-                ) : null}
-              </li>
-            ))}
-          </ol>
-        </Card>
-      ) : null}
-
       {/* 练习区：样本对照 + 作答 + 自检清单 + 提交 */}
       <Card title={<TaskSectionTitle>练习区</TaskSectionTitle>} className="mb-4">
         <div className="flex flex-col gap-4">
@@ -699,7 +670,7 @@ export default function TaskDetailPage() {
           {detail.exercises.length > 0 ? (
             <div>
               <h3 className="mb-2" style={{ fontSize: "var(--font-size-base)" }}>
-                AI 练习
+                练习
               </h3>
               <div className="flex flex-col gap-4">
                 {detail.exercises.map((exercise, index) => (
@@ -709,24 +680,45 @@ export default function TaskDetailPage() {
                         {index + 1}. {exercise.question}
                       </strong>
                     </p>
-                    {exercise.options?.length ? (
-                      <ul className="text-sm text-secondary mt-2">
-                        {exercise.options.map((option) => (
-                          <li key={option}>{option}</li>
-                        ))}
-                      </ul>
-                    ) : null}
-                    <Textarea
-                      aria-label={`AI 练习 ${index + 1} 答案`}
-                      value={exerciseAnswers[exercise.id] ?? ""}
-                      disabled={!canPractice}
-                      onChange={(event) =>
-                        setExerciseAnswers((previous) => ({
-                          ...previous,
-                          [exercise.id]: event.target.value,
-                        }))
+                    {(() => {
+                      const kind = normalizeQuestionType(exercise.type);
+                      const options =
+                        exercise.options?.length
+                          ? exercise.options
+                          : kind === "true_false"
+                            ? ["正确", "错误"]
+                            : [];
+                      const value = exerciseAnswers[exercise.id] ?? "";
+                      const setValue = (next: string) =>
+                        setExerciseAnswers((previous) => ({ ...previous, [exercise.id]: next }));
+                      if (kind === "multiple_choice" || kind === "true_false") {
+                        return (
+                          <div className="flex flex-col gap-2 mt-2" role="radiogroup" aria-label={`AI 练习 ${index + 1} 选项`}>
+                            {options.map((option) => (
+                              <label key={option} className="flex items-center gap-2 text-sm">
+                                <input
+                                  type="radio"
+                                  name={`exercise-${exercise.id}`}
+                                  value={option}
+                                  checked={value === option}
+                                  disabled={!canPractice}
+                                  onChange={() => setValue(option)}
+                                />
+                                {option}
+                              </label>
+                            ))}
+                          </div>
+                        );
                       }
-                    />
+                      return (
+                        <Textarea
+                          aria-label={`AI 练习 ${index + 1} 答案`}
+                          value={value}
+                          disabled={!canPractice}
+                          onChange={(event) => setValue(event.target.value)}
+                        />
+                      );
+                    })()}
                     <Button
                       size="sm"
                       className="mt-2"
@@ -734,7 +726,7 @@ export default function TaskDetailPage() {
                       disabled={!canPractice || !exerciseAnswers[exercise.id]?.trim()}
                       onClick={() => void submitGeneratedExercise(exercise.id)}
                     >
-                      提交 AI 练习
+                      提交练习
                     </Button>
                     {exercise.submission?.grade_status === "done" ? (
                       <p className="text-sm mt-2" role="status">
@@ -775,18 +767,31 @@ export default function TaskDetailPage() {
                       {question.hint}
                     </p>
                   ) : null}
-                  {question.prompt.length > 40 ? (
-                    <Textarea
-                      id={inputId}
-                      aria-describedby={question.hint ? hintId : undefined}
-                      value={answers[question.key] ?? ""}
-                      disabled={!canPractice}
-                      onChange={(e) =>
-                        setAnswers((prev) => ({ ...prev, [question.key]: e.target.value }))
-                      }
-                    />
+                  {question.type === "multiple_choice" || question.type === "true_false" ? (
+                    <div className="flex flex-col gap-2" role="radiogroup" aria-labelledby={inputId}>
+                      {(question.options.length > 0
+                        ? question.options
+                        : question.type === "true_false"
+                          ? ["正确", "错误"]
+                          : []
+                      ).map((option) => (
+                        <label key={option} className="flex items-center gap-2 text-sm">
+                          <input
+                            type="radio"
+                            name={inputId}
+                            value={option}
+                            checked={answers[question.key] === option}
+                            disabled={!canPractice}
+                            onChange={() =>
+                              setAnswers((prev) => ({ ...prev, [question.key]: option }))
+                            }
+                          />
+                          {option}
+                        </label>
+                      ))}
+                    </div>
                   ) : (
-                    <Input
+                    <Textarea
                       id={inputId}
                       aria-describedby={question.hint ? hintId : undefined}
                       value={answers[question.key] ?? ""}
@@ -823,10 +828,10 @@ export default function TaskDetailPage() {
               </div>
             </div>
           ) : null}
-          {questions.length > 0 || checklist.length > 0 ? (
+          {questions.length > 0 || checklist.length > 0 || detail.exercises.length > 0 ? (
             <div>
               <Button loading={submitting} disabled={!canPractice} onClick={submitAnswers}>
-                {detail.status === "submitted" ? "重新提交" : "提交答案"}
+                {detail.status === "submitted" ? "重新提交任务" : "完成并提交任务"}
               </Button>
             </div>
           ) : null}
@@ -897,22 +902,6 @@ export default function TaskDetailPage() {
         </Card>
       ) : null}
 
-      {/* 下一步推荐：回图谱看前置、回预设继续路径（PRD-01 §6.2 反馈区） */}
-      <Card title={<TaskSectionTitle>下一步推荐</TaskSectionTitle>}>
-        <div className="flex items-center gap-2 flex-wrap">
-          {detail.caps[0] ? (
-            <Link to={`/graph?node=${detail.caps[0].cap_id}`} className="btn btn-secondary btn-sm">
-              在图谱中查看「{detail.caps[0].cap_name}」
-            </Link>
-          ) : null}
-          <Link to="/presets" className="btn btn-secondary btn-sm">
-            继续预设学习
-          </Link>
-          <Link to={returnTo} className="btn btn-ghost btn-sm">
-            返回任务列表
-          </Link>
-        </div>
-      </Card>
     </div>
   );
 }

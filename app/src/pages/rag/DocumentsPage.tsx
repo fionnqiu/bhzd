@@ -462,14 +462,9 @@ export default function DocumentsPage() {
         title="RAG 资料库"
         sub="管理知识库资料的全生命周期：上传、解析、切片、索引、归档"
         actions={
-          <>
-            <Link to="/admin/rag/upload" className="btn btn-primary">
-              上传资料
-            </Link>
-            <Link to="/admin/rag/search-test" className="btn btn-secondary">
-              召回测试
-            </Link>
-          </>
+          <Link to="/admin/rag/upload" className="btn btn-primary">
+            上传资料
+          </Link>
         }
       />
 

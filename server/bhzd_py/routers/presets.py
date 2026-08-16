@@ -207,31 +207,21 @@ def start_preset(
     units = _unit_index()
     first_unit = units.get(preset["unit_ids"][0]) if preset["unit_ids"] else None
 
-    # 首个任务卡：步骤取自首个教学单元的学习目标（没有则保底一步）
+    # 首个任务卡只保留任务正文四字段；历史单元目标作为描述素材，
+    # 不再转换成操作步骤或资源绑定。
     if first_unit:
-        steps = [
-            {"title": goal_text, "description": ""}
-            for goal_text in (first_unit.get("goals") or [])
-        ] or [{"title": first_unit.get("title", "开始学习"), "description": ""}]
         title = f"{preset['title']}·第1课：{first_unit.get('title', preset['title'])}"
+        description = "；".join(first_unit.get("goals") or []) or first_unit.get("title", "开始学习")
     else:
-        steps = [{"title": preset["title"], "description": preset["description"]}]
         title = preset["title"]
+        description = preset["description"]
     # 预览载荷必须带齐 task.create 所需的全部字段（Agent 确认端点原样落库）
     preview = {
         "title": title,
-        "goal": preset["goal"],
+        "goal": preset["goal"] or description,
+        "description": description,
         "data_type": preset["data_type"] if preset["data_type"] != "general" else None,
         "cap_ids": preset["cap_ids"],
-        "steps": steps,
-        "resources": [
-            {
-                "type": "teaching_unit",
-                "ref_id": uid,
-                "title": units.get(uid, {}).get("title", uid),
-            }
-            for uid in preset["unit_ids"]
-        ],
         "source": "preset",
         "preset_id": preset["id"],
         "counts_toward_mastery": 1,

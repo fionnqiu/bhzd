@@ -18,6 +18,7 @@ import type {
   ToolCall,
 } from "../../../api/types";
 import { attachRunStream } from "./runStream";
+import { createSmoothTyper, type SmoothTyper } from "./smoothTyper";
 import { actionLabel, toolLabel } from "./constants";
 import { nextId } from "./types";
 import type {
@@ -79,6 +80,18 @@ function safeActivityText(value: string | null | undefined): string | undefined 
   return redacted.length > ACTIVITY_TEXT_LIMIT
     ? `${redacted.slice(0, ACTIVITY_TEXT_LIMIT - 1)}…`
     : redacted;
+}
+
+/**
+ * 模块级的即时查询（非响应式）：smoothTyper 只需在建流那一刻判断一次，
+ * 与 usePresence 的 useReducedMotion 同一媒体查询，但不需要订阅变化。
+ */
+function systemPrefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
 }
 
 const SENSITIVE_RESULT_KEY =
@@ -309,7 +322,8 @@ function mergePersistedMessageAttachments(
     // Keep the transferred URL long enough for CockpitPage to revoke it. The
     // renderer always prefers thumbnailUrl, while a missing safe thumbnail can
     // still use this live image preview until the next history projection.
-    previewUrl: attachment.kind === "image" ? (localAttachments?.[index]?.previewUrl ?? null) : null,
+    previewUrl:
+      attachment.kind === "image" ? (localAttachments?.[index]?.previewUrl ?? null) : null,
   }));
 }
 
@@ -336,6 +350,12 @@ export function useCockpitRun() {
 
   const streamRef = useRef<RunEventStream | null>(null);
   const runIdRef = useRef<string | null>(null);
+  /**
+   * 流式回复的平滑打字机（见 smoothTyper.ts）：SSE delta 先进缓冲，按帧匀速
+   * 渲染到助手气泡；终态由 sealStreamingMessages 先 flush 再封口，一字不丢。
+   * 测试与 prefers-reduced-motion 走 instant 直通（delta 到达即整块渲染）。
+   */
+  const typerRef = useRef<SmoothTyper | null>(null);
   // Terminal events do not always carry a reply body. Track whether this run
   // actually produced one so `run.completed` never invents an answer step.
   const assistantResponseObservedRef = useRef(false);
@@ -409,10 +429,11 @@ export function useCockpitRun() {
     }, 1_000);
   }, []);
 
-  // 卸载时关闭 SSE（契约：主动 close 幂等，不再重连）
+  // 卸载时关闭 SSE（契约：主动 close 幂等，不再重连）并停掉打字机定时器
   useEffect(
     () => () => {
       closeStream();
+      typerRef.current?.dispose();
       clearExpiryRetry();
       clearReconcileRetry();
     },
@@ -427,26 +448,51 @@ export function useCockpitRun() {
     }
   }, [status]);
 
-  const appendDelta = useCallback((delta: string) => {
-    assistantResponseObservedRef.current = true;
+  /**
+   * 打字机帧回调：把当前应显示的全文写入助手气泡。气泡不存在时按 runId
+   * 固定 id 新建（streaming: true 驱动打字光标），存在则原地更新内容；
+   * 用 findIndex 而非只看末尾，避免工具卡插入顺序变化时漏更新。
+   */
+  const renderTyperFrame = useCallback((text: string) => {
     const bubbleId = `asst-${runIdRef.current ?? "draft"}`;
     setMessages((prev) => {
-      const last = prev[prev.length - 1];
-      if (last && last.id === bubbleId) {
-        return [...prev.slice(0, -1), { ...last, content: last.content + delta }];
+      const index = prev.findIndex((message) => message.id === bubbleId);
+      if (index < 0) {
+        return [
+          ...prev,
+          {
+            id: bubbleId,
+            runId: runIdRef.current,
+            role: "assistant" as const,
+            content: text,
+            streaming: true,
+          },
+        ];
       }
-      return [
-        ...prev,
-        {
-          id: bubbleId,
-          runId: runIdRef.current,
-          role: "assistant" as const,
-          content: delta,
-          streaming: true,
-        },
-      ];
+      const existing = prev[index];
+      if (existing.content === text) return prev;
+      return [...prev.slice(0, index), { ...existing, content: text }, ...prev.slice(index + 1)];
     });
   }, []);
+
+  const getTyper = useCallback(() => {
+    if (!typerRef.current) {
+      typerRef.current = createSmoothTyper({
+        // 测试环境断言同步文本、reduced-motion 用户减少动态变化：两者都直通
+        instant: import.meta.env.MODE === "test" || systemPrefersReducedMotion(),
+        onRender: renderTyperFrame,
+      });
+    }
+    return typerRef.current;
+  }, [renderTyperFrame]);
+
+  const appendDelta = useCallback(
+    (delta: string) => {
+      assistantResponseObservedRef.current = true;
+      getTyper().push(delta);
+    },
+    [getTyper],
+  );
 
   const advanceActivitySequence = useCallback((seq: number) => {
     activitySequenceRef.current = Math.max(activitySequenceRef.current, seq);
@@ -628,6 +674,9 @@ export function useCockpitRun() {
   );
 
   const sealStreamingMessages = useCallback(() => {
+    // 封面前先冲刷打字机缓冲：任何终态路径（完成/失败/断流/等待确认）
+    // 都不允许丢字或留下半句残文。
+    typerRef.current?.flush();
     setMessages((prev) =>
       prev.map((message) => (message.streaming ? { ...message, streaming: false } : message)),
     );
@@ -636,6 +685,9 @@ export function useCockpitRun() {
   const restoreAssistantMessage = useCallback((id: string, detail: RunDetail) => {
     const assistantMessage = detail.assistant_message;
     if (!assistantMessage?.content) return;
+    // 恢复回填拿到的是服务端权威全文：丢弃打字机残余，防止晚到的帧
+    // 把完整回复覆盖成旧的局部文本。
+    typerRef.current?.dispose();
     assistantResponseObservedRef.current = true;
 
     setMessages((prev) => {
@@ -1006,6 +1058,8 @@ export function useCockpitRun() {
   const clearRunState = useCallback(() => {
     reconciliationRequestRef.current += 1;
     clearExpiryRetry();
+    // 打字机随 run 生命周期归零：已渲染计数与缓冲都属于上一轮
+    typerRef.current?.dispose();
     activitySequenceRef.current = 0;
     assistantResponseObservedRef.current = false;
     setPlanSteps([]);

@@ -100,9 +100,7 @@ const REPORT = {
   ],
   severity_counts: { major: 1, minor: 2 },
   weak_cap_ids: ["CAP-IMG-001"],
-  mastery_preview: [
-    { cap_id: "CAP-IMG-001", delta: -0.2, old_score: 0.6, new_score: 0.4 },
-  ],
+  mastery_preview: [{ cap_id: "CAP-IMG-001", delta: -0.2, old_score: 0.6, new_score: 0.4 }],
   plan: {
     weak_caps: [{ cap_id: "CAP-IMG-001", cap_name: "框选边界控制" }],
     pre_path: [],
@@ -343,7 +341,8 @@ describe("指挥舱 · SSE 恢复", () => {
     expect(await screen.findByText("确认后的续跑回复。")).toBeInTheDocument();
     expect(screen.queryByText("确认后的续跑摘要。")).not.toBeInTheDocument();
     expect(screen.getByTestId("agent-activity-timeline")).toBeInTheDocument();
-    expect(screen.getByTestId("agent-current-action")).toHaveAttribute("aria-expanded", "true");
+    // 成功终态自动折叠为单行摘要（主流 agent 行为），展开详情仍可点击获取
+    expect(screen.getByTestId("agent-current-action")).toHaveAttribute("aria-expanded", "false");
   });
 });
 

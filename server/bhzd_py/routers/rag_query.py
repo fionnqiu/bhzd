@@ -12,7 +12,7 @@ import sqlite3
 from dataclasses import asdict
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..config import get_config
 from ..deps import (
@@ -23,13 +23,26 @@ from ..deps import (
     require_student_portal_user,
 )
 from ..rag.recall_logs import record_recall_logs
-from ..rag.retriever import answer_question
+from ..rag.retriever import answer_question, load_settings
+from ..errors import ApiError
 
 logger = logging.getLogger(__name__)
 
 # This is the learner Q&A surface.  Management preview remains isolated to the
 # system-admin RAG APIs instead of granting teachers a student-portal bypass.
 router = APIRouter(dependencies=[Depends(require_student_portal_user)])
+
+_RETRIEVAL_MODES = frozenset({"hybrid", "vector", "keyword"})
+
+
+def _normalize_retrieval_mode(mode: str | None) -> str | None:
+    """Normalize the optional preview override while rejecting typos early."""
+    if mode is None:
+        return None
+    normalized = mode.strip().lower()
+    if normalized not in _RETRIEVAL_MODES:
+        raise ApiError(422, "VALIDATION_ERROR", "检索方式仅支持 hybrid / vector / keyword")
+    return normalized
 
 
 class RagQueryBody(BaseModel):
@@ -41,6 +54,12 @@ class RagQueryBody(BaseModel):
     # Optional management-preview scope; student callers remain constrained by
     # the published-only guard while the selected document set narrows recall.
     document_ids: list[str] | None = None
+    # The management preview sends its exact retrieval shape so the answer and
+    # citation view cannot silently fall back to a different default strategy.
+    mode: str | None = None
+    top_k: int | None = Field(default=None, ge=1, le=20)
+    # This is a per-request vector-only override, distinct from the LLM top_p.
+    retrieval_top_p: float | None = Field(default=None, gt=0.0, le=1.0)
 
 
 def emit_telemetry(event_name: str, props: dict) -> None:
@@ -63,9 +82,12 @@ def rag_query(
     """知识问答：召回 + 合成 + 引用；无可靠依据时拒答不编造（AC6）。"""
     question = body.question.strip()
     if not question:
-        from ..errors import ApiError
-
         raise ApiError(422, "VALIDATION_ERROR", "问题不能为空")
+    mode = _normalize_retrieval_mode(body.mode)
+    settings = load_settings(db)
+    effective_mode = mode or ("hybrid" if settings.hybrid_search else "vector")
+    if body.retrieval_top_p is not None and effective_mode != "vector":
+        raise ApiError(422, "VALIDATION_ERROR", "检索 top-p 仅支持 vector 检索方式")
     # Content admins retain learner access, but only system administrators can
     # opt into unpublished material because that is a RAG-management preview.
     published_only = (
@@ -76,6 +98,8 @@ def rag_query(
         {
             "user_id": current.user["id"],
             "data_type": body.data_type,
+            "retrieval_mode": effective_mode,
+            "top_k": body.top_k,
         },
     )
     answer = answer_question(
@@ -85,6 +109,9 @@ def rag_query(
         data_type=body.data_type,
         published_only=published_only,
         document_ids=body.document_ids,
+        top_k=body.top_k,
+        mode=effective_mode,
+        retrieval_top_p=body.retrieval_top_p,
     )
     # 召回记录（渠道 student_query）：引用即本次实际呈现给用户的命中，
     # 拒答时引用为空自然不落记录；写库失败不影响问答（helper 内部已兜底）

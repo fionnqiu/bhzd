@@ -153,11 +153,24 @@ describe("路由守卫", () => {
     expect(legacyRagAdminTarget("/rag-admin/documents/doc-1/chunks")).toBe(
       "/admin/rag/documents/doc-1",
     );
+    expect(legacyRagAdminTarget("/rag-admin/search-test")).toBe("/admin/rag");
     expect(legacyRagAdminTarget("/rag-admin/eval-cases")).toBe(
-      "/admin/rag/search-test",
+      "/admin/rag",
     );
     expect(legacyRagAdminTarget("/rag-admin/jobs")).toBe("/admin/rag");
     expect(legacyRagAdminTarget("/rag-admin/unknown")).toBe("/admin/rag");
+  });
+
+  it("已删除的召回测试地址重定向到资料库", async () => {
+    mockedGet.mockImplementation(async (path: string) => {
+      if (path === "/api/auth/session") {
+        return { user: makeUser("system_admin"), csrf_token: "tok" };
+      }
+      return { items: [], total: 0 };
+    });
+
+    const { router } = renderAt("/admin/rag/search-test");
+    await waitFor(() => expect(router.state.location.pathname).toBe("/admin/rag"));
   });
 
   it("学生访问旧 /rag-qa 书签时回到 Agent 工作台", async () => {

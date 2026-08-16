@@ -23,7 +23,7 @@ from bhzd_py.rag.retriever import (
     answer_question,
     retrieve,
 )
-from bhzd_py.rag.vectorstore import search as vector_search
+from bhzd_py.rag.vectorstore import Candidate, search as vector_search
 from bhzd_py.security import hash_password
 
 
@@ -415,3 +415,144 @@ def test_document_ids_filter_restricts_candidates(db_path, uploader_id):
     insert_chunk(db_path, doc_b, WAKE_CONTENT)
     result = _retrieve(db_path, "唤醒词边界误差", document_ids=[doc_a])
     assert {h.document_id for h in result.hits} == {doc_a}
+
+
+def test_keyword_mode_finds_unembedded_chunks_without_calling_embedding_provider(
+    db_path, uploader_id, monkeypatch
+):
+    """Keyword recall remains available while a newly uploaded chunk lacks a vector."""
+
+    document_id = insert_doc(db_path, uploader_id, title="无向量关键词资料")
+    chunk_id = insert_chunk(db_path, document_id, "独特关键词命中只应由词法检索找到")
+    conn = connect(db_path)
+    conn.execute("UPDATE rag_chunks SET embedding = NULL, embedding_model = NULL WHERE id = ?", (chunk_id,))
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(
+        retriever_module,
+        "embed_chunks",
+        lambda *_args, **_kwargs: pytest.fail("keyword mode must not request an embedding"),
+    )
+    result = _retrieve(db_path, "独特关键词命中", mode="keyword")
+
+    assert [hit.chunk_id for hit in result.hits] == [chunk_id]
+
+
+def test_vector_retrieval_top_p_filters_before_rerank_and_leaves_other_modes_on_top_k(
+    db_path, monkeypatch
+):
+    """Only one vector run applies its requested cosine-mass nucleus filter."""
+
+    candidates = [
+        Candidate(
+            chunk_id="strong",
+            document_id="doc-strong",
+            content="unrelated evidence one",
+            section_title=None,
+            page_start=None,
+            page_end=None,
+            title="strong evidence",
+            version="v1",
+            cap_ids=[],
+            published_at="2026-01-01T00:00:00+00:00",
+            created_at="2026-01-01T00:00:00+00:00",
+            cosine=0.6,
+        ),
+        Candidate(
+            chunk_id="middle",
+            document_id="doc-middle",
+            content="unrelated evidence two",
+            section_title=None,
+            page_start=None,
+            page_end=None,
+            title="middle evidence",
+            version="v1",
+            cap_ids=[],
+            published_at="2026-01-01T00:00:00+00:00",
+            created_at="2026-01-01T00:00:00+00:00",
+            cosine=0.3,
+        ),
+        Candidate(
+            chunk_id="weak",
+            document_id="doc-weak",
+            content="unrelated evidence three",
+            section_title=None,
+            page_start=None,
+            page_end=None,
+            title="weak evidence",
+            version="v1",
+            cap_ids=[],
+            published_at="2026-01-01T00:00:00+00:00",
+            created_at="2026-01-01T00:00:00+00:00",
+            cosine=0.1,
+        ),
+    ]
+    calls: list[str] = []
+    rerank_inputs: list[list[str]] = []
+
+    def fake_embed(_db, _texts):
+        calls.append("embed")
+        return [embed_text("query")], EMBEDDING_MODEL
+
+    def fake_vector(*_args, **_kwargs):
+        calls.append("vector")
+        return list(candidates)
+
+    def fake_keyword(*_args, **_kwargs):
+        calls.append("keyword")
+        return list(candidates)
+
+    def fake_rerank(_db, _query, hits):
+        rerank_inputs.append([hit.chunk_id for hit in hits])
+        # Keep score order stable so the test can isolate the pre-rerank filter.
+        return [float(len(hits) - index) for index in range(len(hits))], "test-rerank"
+
+    monkeypatch.setattr(retriever_module, "embed_chunks", fake_embed)
+    monkeypatch.setattr(retriever_module, "vector_search", fake_vector)
+    monkeypatch.setattr(retriever_module, "keyword_search", fake_keyword)
+    monkeypatch.setattr(retriever_module, "_try_rerank", fake_rerank)
+
+    conn = connect(db_path)
+    try:
+        # A different answer sampling value proves the retrieval value is not global LLM top-p.
+        conn.execute("UPDATE rag_settings SET rerank_enabled = 1, top_p = 0.42 WHERE id = 1")
+        conn.commit()
+        vector_result = retrieve(
+            conn,
+            get_config(),
+            "query",
+            RagFilters(mode="vector", retrieval_top_p=0.75),
+            top_k=3,
+        )
+        hybrid_result = retrieve(
+            conn,
+            get_config(),
+            "query",
+            RagFilters(mode="hybrid", retrieval_top_p=0.75),
+            top_k=3,
+        )
+        keyword_result = retrieve(
+            conn,
+            get_config(),
+            "query",
+            RagFilters(mode="keyword", retrieval_top_p=0.75),
+            top_k=3,
+        )
+        unfiltered_vector = retrieve(
+            conn, get_config(), "query", RagFilters(mode="vector"), top_k=3
+        )
+    finally:
+        conn.close()
+
+    assert [hit.chunk_id for hit in vector_result.hits] == ["strong", "middle"]
+    assert [hit.chunk_id for hit in hybrid_result.hits] == ["strong", "middle", "weak"]
+    assert [hit.chunk_id for hit in keyword_result.hits] == ["strong", "middle", "weak"]
+    assert [hit.chunk_id for hit in unfiltered_vector.hits] == ["strong", "middle", "weak"]
+    assert rerank_inputs == [
+        ["strong", "middle"],
+        ["strong", "middle", "weak"],
+        ["strong", "middle", "weak"],
+        ["strong", "middle", "weak"],
+    ]
+    assert calls == ["embed", "vector", "embed", "vector", "keyword", "embed", "vector"]

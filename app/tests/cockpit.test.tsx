@@ -279,7 +279,7 @@ describe("指挥舱 · 运行事件流", () => {
     expect(screen.queryByText("top-secret")).not.toBeInTheDocument();
   });
 
-  it("终态默认展开安全处理过程面板", async () => {
+  it("终态自动折叠为紧凑摘要，点击可展开安全处理过程", async () => {
     await startRun();
     emit("run.started", { seq: 1 });
     emit("run.progress", {
@@ -293,13 +293,14 @@ describe("指挥舱 · 运行事件流", () => {
 
     expect(screen.getByTestId("agent-activity-timeline")).toBeInTheDocument();
     const summary = screen.getByTestId("agent-current-action");
-    expect(summary).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByTestId("agent-activity-history")).toBeInTheDocument();
+    // 主流 agent 行为：成功终态自动收成单行摘要，让答案成为视觉主体
+    expect(summary).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByTestId("agent-activity-history")).not.toBeInTheDocument();
     expect(summary).toHaveTextContent("处理完成");
 
     fireEvent.click(summary);
-    expect(summary).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByTestId("agent-activity-history")).not.toBeInTheDocument();
+    expect(summary).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("agent-activity-history")).toBeInTheDocument();
   });
 
   it("RAG 生命周期显示安全检索摘要，不显示思考原文", async () => {
@@ -473,7 +474,11 @@ describe("指挥舱 · 运行事件流", () => {
     });
     emit("run.completed", { seq: 3, summary: "已完成" });
     expect(screen.getByTestId("agent-activity-timeline")).toBeInTheDocument();
-    expect(screen.getByTestId("agent-current-action")).toHaveAttribute("aria-expanded", "true");
+    // 成功终态自动折叠为单行摘要；展开后详情依旧完整且不泄露载荷
+    const summaryToggle = screen.getByTestId("agent-current-action");
+    expect(summaryToggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(summaryToggle);
+    expect(summaryToggle).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByTestId("agent-activity-history")).toBeInTheDocument();
     expect(screen.queryByText("执行检查 · 参数 2 项，具体值已隐藏")).not.toBeInTheDocument();
     expect(screen.queryByText("执行完成，返回 1 项")).not.toBeInTheDocument();
@@ -523,7 +528,9 @@ describe("指挥舱 · 运行事件流", () => {
     emit("run.completed", { seq: 7, summary: "已完成" });
 
     expect(screen.getByTestId("agent-activity-timeline")).toBeInTheDocument();
-    expect(screen.getByTestId("agent-current-action")).toHaveAttribute("aria-expanded", "true");
+    // 成功终态自动折叠为单行摘要；敏感参数在折叠与展开态都不渲染
+    expect(screen.getByTestId("agent-current-action")).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(screen.getByTestId("agent-current-action"));
     expect(screen.queryByText("token=never-rendered")).not.toBeInTheDocument();
   });
 
@@ -671,18 +678,17 @@ describe("指挥舱 · 运行事件流", () => {
       result: {
         card: {
           title: "NER 标注练习任务",
-          goal: "掌握 BIO 边界划分",
-          data_type: "text",
-          cap_names: [{ cap_id: "CAP-1", name: "实体识别" }],
-          steps: [{ title: "学习规范" }, { title: "完成练习" }],
-          resources: [],
-          est_minutes: 45,
+          description: "掌握 BIO 边界划分",
+          knowledge_points: [{ title: "实体边界", content: "识别完整实体范围" }],
+          exercises: [{ question: "判断给定边界是否正确", type: "true_false" }],
         },
       },
     });
     const card = await screen.findByTestId("embedded-task.preview");
     expect(within(card).getByText("NER 标注练习任务")).toBeInTheDocument();
-    expect(within(card).getByText("实体识别")).toBeInTheDocument();
+    expect(within(card).getByText("掌握 BIO 边界划分")).toBeInTheDocument();
+    expect(within(card).getByText("实体边界")).toBeInTheDocument();
+    expect(within(card).getByText("判断给定边界是否正确")).toBeInTheDocument();
     // A read-only preview never receives a write CTA until task.create has
     // emitted its own confirmation, which prevents tool-call ID mismatches.
     expect(screen.queryByTestId("task-sync-button")).not.toBeInTheDocument();
@@ -725,9 +731,9 @@ describe("指挥舱 · 运行事件流", () => {
           summary: "将创建学习任务「NER 标注练习任务」",
           card: {
             title: "NER 标注练习任务",
-            goal: "掌握 BIO 边界划分",
-            steps: [{ title: "学习规范" }, { title: "完成练习" }],
-            cap_names: [{ cap_id: "CAP-1", name: "实体识别" }],
+            description: "掌握 BIO 边界划分",
+            knowledge_points: [{ title: "实体边界", content: "识别完整实体范围" }],
+            exercises: [{ question: "判断给定边界是否正确", type: "true_false" }],
           },
         },
       },
