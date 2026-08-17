@@ -1,4 +1,4 @@
-import { Cpu, Database, ScrollText, ShieldCheck, SlidersHorizontal, Upload, UserCog } from "lucide-react";
+import { Cpu, Database, FileText, ScrollText, ShieldCheck, SlidersHorizontal, Upload, UserCog } from "lucide-react";
 import ShellLayout, { type NavItem } from "./ShellLayout";
 
 /**
@@ -14,6 +14,8 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/admin/audit-logs", label: "审计日志", icon: ScrollText },
   { to: "/admin/rag", label: "资料库", icon: Database, end: true },
   { to: "/admin/rag/upload", label: "上传资料", icon: Upload },
+  // Keep the ledger next to document intake because it governs provenance and authorization.
+  { to: "/admin/rag/ledgers", label: "来源台账", icon: FileText },
 ];
 
 /** 系统管理端壳（仅 system_admin；/api/admin/* 服务端另校验管理端会话）。 */

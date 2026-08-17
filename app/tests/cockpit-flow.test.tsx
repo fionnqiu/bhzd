@@ -595,6 +595,15 @@ describe("指挥舱 · 会话管理", () => {
     mockConversationApis();
     renderCockpit();
 
+    const scrollRegion = await screen.findByTestId("cockpit-scroll-region");
+    // jsdom has no layout engine, so provide a scrollable transcript surface
+    // and assert the direct positioning contract rather than browser geometry.
+    Object.defineProperties(scrollRegion, {
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, value: 1_000 },
+      scrollTop: { configurable: true, writable: true, value: 0 },
+    });
+
     expect(screen.getByTestId("workbench-close-request")).toHaveTextContent("0");
     fireEvent.click(await screen.findByText("旧会话"));
     expect(await screen.findByText("我想学 NER")).toBeInTheDocument();
@@ -611,6 +620,7 @@ describe("指挥舱 · 会话管理", () => {
     // Legacy conversations have no persisted learner-visible event projection.
     // Keep the transcript honest instead of manufacturing a completed activity.
     expect(screen.queryByTestId("agent-activity-timeline")).not.toBeInTheDocument();
+    await waitFor(() => expect(scrollRegion.scrollTop).toBe(scrollRegion.scrollHeight));
 
     fireEvent.click(screen.getByRole("button", { name: /新建会话/ }));
     expect(await screen.findByTestId("cockpit-welcome")).toBeInTheDocument();

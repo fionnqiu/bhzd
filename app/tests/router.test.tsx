@@ -147,6 +147,7 @@ describe("路由守卫", () => {
     expect(legacyRoute?.children).toBeUndefined();
     expect(legacyRagAdminTarget("/rag-admin")).toBe("/admin/rag");
     expect(legacyRagAdminTarget("/rag-admin/upload")).toBe("/admin/rag/upload");
+    expect(legacyRagAdminTarget("/rag-admin/ledgers")).toBe("/admin/rag/ledgers");
     expect(legacyRagAdminTarget("/rag-admin/documents/doc-1")).toBe(
       "/admin/rag/documents/doc-1",
     );
@@ -159,6 +160,14 @@ describe("路由守卫", () => {
     );
     expect(legacyRagAdminTarget("/rag-admin/jobs")).toBe("/admin/rag");
     expect(legacyRagAdminTarget("/rag-admin/unknown")).toBe("/admin/rag");
+  });
+
+  it("系统管理端为来源台账保留受守卫的活动路由", () => {
+    const adminRoute = routes.find((route) => route.path === "/admin");
+    const ledgerRoute = adminRoute?.children?.find((route) => route.path === "rag/ledgers");
+
+    // Assert the production route tree so the visible shell entry cannot lead to a missing page.
+    expect(ledgerRoute?.element).toBeDefined();
   });
 
   it("已删除的召回测试地址重定向到资料库", async () => {

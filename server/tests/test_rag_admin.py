@@ -242,10 +242,10 @@ def _write_local_ragdata_package(root):
     )
 
 
-def test_import_local_ragdata_is_admin_only_idempotent_and_teacher_draft(
+def test_import_local_ragdata_is_admin_only_idempotent_and_site_wide(
     client, db_path, system_admin, student, tmp_path, monkeypatch
 ):
-    """The package import must preserve traceability without exposing student content."""
+    """The package import preserves traceability and publishes completed materials."""
     from bhzd_py.routers import rag_admin
 
     package_root = tmp_path / "ragData"
@@ -279,8 +279,8 @@ def test_import_local_ragdata_is_admin_only_idempotent_and_teacher_draft(
     conn.close()
     assert [row["source_code"] for row in ledgers] == ["SRC-ONE", "SRC-TBK-WANGHAOFEN-2020"]
     assert len(documents) == 2
-    assert all(row["visibility"] == "teacher" for row in documents)
-    assert all(row["status"] == "indexed" for row in documents)
+    assert all(row["visibility"] == "student" for row in documents)
+    assert all(row["status"] == "published" for row in documents)
     assert all(row["license_status"] == "authorized" for row in documents)
     assert any(row["source_name"] == "知识图谱教材" for row in documents)
     assert all(row["storage_path"] and Path(row["storage_path"]).is_file() for row in documents)
@@ -359,8 +359,8 @@ def test_batch_import_selected_files_queues_and_auto_publishes(
     assert Path(rows[0]["storage_path"]).is_file()
 
 
-def test_file_only_uploads_receive_safe_default_metadata(client, system_admin):
-    """The simplified upload flow persists defaults without bypassing review gates."""
+def test_file_only_uploads_publish_with_pending_license(client, system_admin):
+    """Default metadata keeps pending provenance while allowing student access."""
 
     headers = as_user(client, system_admin)
     single = client.post(
@@ -390,10 +390,15 @@ def test_file_only_uploads_receive_safe_default_metadata(client, system_admin):
         assert document["license_status"] == "pending"
         assert document["visibility"] == "student"
         assert document["data_types"] == ["text"]
-        assert document["status"] != "published"
+        assert document["status"] == "published"
+        assert document["published_at"]
 
 
 def publish_sample(client: TestClient, headers: dict, doc_id: str) -> None:
+    current = client.get(f"/api/rag/documents/{doc_id}", headers=headers)
+    assert current.status_code == 200, current.text
+    if current.json()["document"]["status"] == "published":
+        return
     response = client.post(f"/api/rag/documents/{doc_id}/submit-review", headers=headers)
     assert response.status_code == 200, response.text
     response = client.post(
@@ -404,28 +409,25 @@ def publish_sample(client: TestClient, headers: dict, doc_id: str) -> None:
 
 # ---------------------------------------------------------------- 完整旅程（AC3/AC4/AC5/AC6）
 
-def test_full_journey_upload_publish_query(client, db_path, system_admin, student):
+def test_full_journey_upload_is_immediately_queryable(client, db_path, system_admin, student):
     headers = as_user(client, system_admin)
     body = upload_sample(client, headers)
     doc = body["document"]
-    assert doc["status"] == "indexed", body  # TestClient 后台任务完成后的详情快照
+    assert doc["status"] == "published", body
+    assert doc["visibility"] == "student"
     assert all(job["status"] == "succeeded" for job in body["jobs"])
     assert doc["chunk_count"] >= 3  # 三个章节至少三个切片
 
-    # AC4/AC6：发布前学生查询 → 拒答（未发布资料不进入学生召回）
+    # A completed upload is immediately queryable by students.
     student_headers = as_user(client, student)
     response = client.post(
         "/api/rag/query", json={"question": "唤醒词边界误差要求是多少"}, headers=student_headers
     )
     assert response.status_code == 200, response.text
-    assert response.json()["refused"] is True
-    assert response.json()["citations"] == []
+    assert response.json()["refused"] is False
+    assert response.json()["citations"]
 
-    # 送审 → 发布（学生范围）
-    as_user(client, system_admin)
-    publish_sample(client, headers, doc["id"])
-
-    # AC3/AC5：发布后学生查询 → 命中且带引用，引用不含 chunk_id
+    # AC3/AC5：学生查询命中且带引用，引用不含 chunk_id
     as_user(client, student)  # 切回学生会话（cookie 与 csrf 必须同属一个会话）
     response = client.post(
         "/api/rag/query", json={"question": "唤醒词边界误差要求是多少"}, headers=student_headers
@@ -450,26 +452,10 @@ def test_full_journey_upload_publish_query(client, db_path, system_admin, studen
     assert response.json()["refused"] is True
 
 
-def test_batch_publish_student_reuses_document_guards(client, db_path, system_admin):
-    """Batch publishing must use the same review and release boundary as one document."""
+def test_upload_publishes_without_batch_review(client, db_path, system_admin):
+    """A completed upload reaches the student scope without a review round trip."""
     headers = as_user(client, system_admin)
     doc_id = upload_sample(client, headers)["document"]["id"]
-
-    submitted = client.post(
-        "/api/rag/documents/batch",
-        json={"ids": [doc_id], "action": "submit_review"},
-        headers=headers,
-    )
-    assert submitted.status_code == 200, submitted.text
-    assert submitted.json()["results"] == [{"id": doc_id, "ok": True}]
-
-    published = client.post(
-        "/api/rag/documents/batch",
-        json={"ids": [doc_id], "action": "publish_student"},
-        headers=headers,
-    )
-    assert published.status_code == 200, published.text
-    assert published.json()["results"] == [{"id": doc_id, "ok": True}]
 
     conn = connect(db_path)
     row = conn.execute("SELECT status, visibility FROM rag_documents WHERE id = ?", (doc_id,)).fetchone()
@@ -484,12 +470,12 @@ def test_upload_returns_queued_snapshot_before_background_pipeline(client, db_pa
 
     assert queued["document"]["status"] == "draft"
     assert all(job["status"] == "queued" for job in queued["jobs"])
-    assert body["document"]["status"] == "indexed"
+    assert body["document"]["status"] == "published"
 
 
-def test_student_upload_without_legacy_switch_auto_publishes(client, db_path, system_admin):
-    """The new student-visible upload flow publishes after indexing when the old switch is omitted."""
-    body = upload_sample(client, as_user(client, system_admin), visibility="student")
+def test_pending_license_upload_is_queryable_by_students(client, db_path, system_admin, student):
+    """Pending license status no longer prevents automatic student publication."""
+    body = upload_sample(client, as_user(client, system_admin), license_status="pending")
 
     assert body["document"]["status"] == "published"
     assert body["document"]["visibility"] == "student"
@@ -502,10 +488,17 @@ def test_student_upload_without_legacy_switch_auto_publishes(client, db_path, sy
     ).fetchone()["n"]
     conn.close()
     assert review_count == 0
+    response = client.post(
+        "/api/rag/query",
+        json={"question": "唤醒词边界误差要求是多少"},
+        headers=as_user(client, student),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["refused"] is False
 
 
-def test_explicit_auto_submit_false_keeps_legacy_indexed_state(client, system_admin):
-    """An explicit false remains a narrow compatibility escape hatch for old API callers."""
+def test_explicit_auto_submit_false_cannot_hide_uploaded_material(client, system_admin):
+    """The compatibility field cannot override the site-wide upload policy."""
     body = upload_sample(
         client,
         as_user(client, system_admin),
@@ -513,7 +506,7 @@ def test_explicit_auto_submit_false_keeps_legacy_indexed_state(client, system_ad
         auto_submit="false",
     )
 
-    assert body["document"]["status"] == "indexed"
+    assert body["document"]["status"] == "published"
     assert body["document"]["visibility"] == "student"
 
 
@@ -556,7 +549,9 @@ def test_student_auto_publish_still_honors_sensitive_content_guard(
 def test_student_forced_published_only(client, db_path, system_admin, student):
     """学生即使显式传 published_only=false 也被强制为 true（蓝图 §6.4）。"""
     headers = as_user(client, system_admin)
-    upload_sample(client, headers)
+    # A forbidden upload remains indexed for administrator remediation and is
+    # therefore a stable unpublished fixture for this role-boundary assertion.
+    upload_sample(client, headers, license_status="forbidden")
     student_headers = as_user(client, student)
     response = client.post(
         "/api/rag/query",
@@ -712,7 +707,9 @@ def test_publish_guards(client, db_path, system_admin):
     assert response.json()["error"]["code"] == "LICENSE_BLOCKED"
 
     # 缺来源 → 送审 400 REVIEW_REQUIRED（先上传再 PATCH 清空来源）
-    body = upload_sample(client, headers, title="无来源送审")
+    body = upload_sample(
+        client, headers, title="无来源送审", license_status="forbidden"
+    )
     doc_id = body["document"]["id"]
     response = client.patch(
         f"/api/rag/documents/{doc_id}", json={"source_name": ""}, headers=headers
@@ -745,7 +742,7 @@ def test_publish_guards(client, db_path, system_admin):
     assert response.json()["error"]["code"] == "SENSITIVE_INFO_BLOCKED"
 
     # 未送审直接发布 → 409 REVIEW_REQUIRED
-    body = upload_sample(client, headers, title="未送审资料")
+    body = upload_sample(client, headers, title="未送审资料", license_status="forbidden")
     response = client.post(
         f"/api/rag/documents/{body['document']['id']}/publish",
         json={"scope": "student"},

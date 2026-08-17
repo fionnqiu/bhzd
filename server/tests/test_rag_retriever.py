@@ -229,26 +229,33 @@ WAKE_CONTENT = "车载唤醒词边界误差必须控制在正负五十毫秒以�
 CS_CONTENT = "客服语音情感标注以语音表现为准，客户语速加快音调升高并叹气时应标焦虑标签。"
 
 
-def test_student_recall_excludes_unpublished_and_unauthorized(db_path, uploader_id):
-    """AC4：未发布/不可见/未授权/过期资料一律不进入学生召回。"""
+def test_student_recall_excludes_unpublished_and_forbidden(db_path, uploader_id):
+    """Student recall admits pending licenses but still excludes unsafe document states."""
     good = insert_doc(db_path, uploader_id, title="车载唤醒词标注指南")
     insert_chunk(db_path, good, WAKE_CONTENT)
     cases = {
         "draft": {"status": "draft"},
         "teacher_only": {"visibility": "teacher"},
         "forbidden": {"license_status": "forbidden"},
-        "pending_license": {"license_status": "pending"},
         "expired": {"expires_at": "2020-01-01T00:00:00+00:00"},
         "archived": {"status": "archived"},
     }
     for suffix, overrides in cases.items():
         doc_id = insert_doc(db_path, uploader_id, title=f"车载唤醒词标注指南-{suffix}", **overrides)
         insert_chunk(db_path, doc_id, WAKE_CONTENT + suffix)
+    pending = insert_doc(
+        db_path,
+        uploader_id,
+        title="车载唤醒词标注指南-pending-license",
+        license_status="pending",
+    )
+    insert_chunk(db_path, pending, WAKE_CONTENT + "pending")
 
     result = _retrieve(db_path, "唤醒词边界误差要求是多少")
     hit_doc_ids = {h.document_id for h in result.hits}
     assert good in hit_doc_ids
-    assert len(hit_doc_ids) == 1  # 其余全部被硬过滤
+    assert pending in hit_doc_ids
+    assert len(hit_doc_ids) == 2  # Only the pending-license document is newly admitted.
 
     # 教师预览（published_only=False）可以看到未发布资料，但仍排除归档
     preview = _retrieve(db_path, "唤醒词边界误差要求是多少", published_only=False)

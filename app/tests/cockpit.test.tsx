@@ -741,12 +741,17 @@ describe("指挥舱 · 运行事件流", () => {
 
     const gate = await screen.findByTestId("confirmation-gate");
     const syncButton = within(gate).getByTestId("task-sync-button");
+    const confirmationStream = latestStream();
     expect(syncButton).toHaveTextContent("同步到学习任务");
     expect(screen.getByTestId("agent-activity-timeline")).toBeInTheDocument();
 
     fireEvent.click(syncButton);
     await waitFor(() => expect(screen.queryByTestId("confirmation-gate")).not.toBeInTheDocument());
     expect(mockedPost).toHaveBeenCalledWith("/api/confirmations/conf-1/confirm", {});
+    // The waiting SSE remains the authoritative continuation channel. Replacing
+    // it after confirmation can miss the resumed tool result and terminal reply.
+    expect(FakeRunEventStream.instances).toHaveLength(1);
+    expect(confirmationStream.closed).toBe(false);
 
     emit("tool.call.completed", {
       seq: 4,
@@ -763,6 +768,16 @@ describe("指挥舱 · 运行事件流", () => {
       "href",
       "/tasks",
     );
+    // Persisting the task is not the run terminal. The composer may accept the
+    // next draft, but sending stays locked until the resumed Agent completes.
+    fireEvent.change(screen.getByLabelText("对话输入"), { target: { value: "继续" } });
+    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+
+    emit("run.completed", {
+      seq: 5,
+      summary: "学习任务已同步，后续学习安排已就绪。",
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "发送" })).toBeEnabled());
   });
 
   it("待确认任务收到“同步到学习任务中”时复用确认端点，而不是发送普通聊天", async () => {

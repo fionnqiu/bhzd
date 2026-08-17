@@ -321,6 +321,7 @@ export default function CockpitPage() {
               <ChatStream
                 run={run}
                 onFocusComposer={() => composerRef.current?.focus()}
+                conversationId={conversationId}
               />
             )}
 

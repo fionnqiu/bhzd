@@ -63,6 +63,7 @@ const StudentAnalyticsPage = lazyRoute(() => import("../pages/teacher/StudentAna
 const DocumentsPage = lazyRoute(() => import("../pages/rag/DocumentsPage"));
 const UploadPage = lazyRoute(() => import("../pages/rag/UploadPage"));
 const DocumentDetailPage = lazyRoute(() => import("../pages/rag/DocumentDetailPage"));
+const LedgersPage = lazyRoute(() => import("../pages/rag/LedgersPage"));
 const ProvidersPage = lazyRoute(() => import("../pages/admin/ProvidersPage"));
 const RagSettingsPage = lazyRoute(() => import("../pages/admin/RagSettingsPage"));
 const UsersPage = lazyRoute(() => import("../pages/admin/UsersPage"));
@@ -233,6 +234,9 @@ export const routes: RouteObject[] = [
       { path: "rag", element: <DocumentsPage /> },
       { path: "rag/upload", element: <UploadPage /> },
       { path: "rag/documents/:id", element: <DocumentDetailPage /> },
+      // Source provenance needs a first-class management destination so staff can
+      // resolve authorization risks before they affect knowledge-base governance.
+      { path: "rag/ledgers", element: <LedgersPage /> },
       // Keep previously shared console URLs usable without retaining a hidden page.
       { path: "rag/search-test", element: <Navigate to="/admin/rag" replace /> },
       // The legacy /rag-admin wildcard handles old document/chunk bookmarks.

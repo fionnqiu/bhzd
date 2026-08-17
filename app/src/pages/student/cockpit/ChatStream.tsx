@@ -20,6 +20,8 @@ export interface ChatStreamProps {
   run: CockpitRun;
   /** 下一步建议“继续提问”→ 聚焦输入框 */
   onFocusComposer: () => void;
+  /** Identifies the loaded transcript so each opened history starts at its newest turn. */
+  conversationId: string | null;
 }
 
 export interface ConversationInfoBarProps {
@@ -58,6 +60,7 @@ function pageScrollRegion(anchor: HTMLElement | null): HTMLElement | null {
 export default function ChatStream({
   run,
   onFocusComposer,
+  conversationId,
 }: ChatStreamProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const followBottomRef = useRef(true);
@@ -78,6 +81,18 @@ export default function ChatStream({
     scrollRegion.addEventListener("scroll", updateFollowPreference, { passive: true });
     return () => scrollRegion.removeEventListener("scroll", updateFollowPreference);
   }, []);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    const scrollRegion = pageScrollRegion(bottomRef.current);
+    if (!scrollRegion) return;
+
+    // A selected history is a deliberate context switch, not a live update to
+    // the previous transcript. Reset the follow preference and place its newest
+    // turn in view once; later manual upward reading remains protected below.
+    followBottomRef.current = true;
+    scrollRegion.scrollTop = scrollRegion.scrollHeight;
+  }, [conversationId]);
 
   // Safe activity and plan updates can increase the transcript before any
   // assistant token arrives. Include them in the same guarded follow rule so a

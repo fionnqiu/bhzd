@@ -349,6 +349,10 @@ export function useCockpitRun() {
   const [streamRecovery, setStreamRecovery] = useState<StreamRecoveryState | null>(null);
 
   const streamRef = useRef<RunEventStream | null>(null);
+  // Confirmation pauses the backend run but keeps its SSE subscription alive.
+  // Track transport liveness separately from the object reference because an
+  // exhausted or stream-ended instance still retains the durable replay cursor.
+  const streamActiveRef = useRef(false);
   const runIdRef = useRef<string | null>(null);
   /**
    * 流式回复的平滑打字机（见 smoothTyper.ts）：SSE delta 先进缓冲，按帧匀速
@@ -397,6 +401,7 @@ export function useCockpitRun() {
   const closeStream = useCallback(() => {
     streamRef.current?.close();
     streamRef.current = null;
+    streamActiveRef.current = false;
   }, []);
 
   const clearExpiryRetry = useCallback(() => {
@@ -891,7 +896,10 @@ export function useCockpitRun() {
             );
             appendDelta(delta);
           },
-          onConnected: () => setStreamRecovery(null),
+          onConnected: () => {
+            streamActiveRef.current = true;
+            setStreamRecovery(null);
+          },
           onToolRequested: (entry, seq) => {
             setStatus("tool_running");
             setTrace((prev) => [...prev.filter((t) => t.id !== entry.id), entry]);
@@ -1024,6 +1032,7 @@ export function useCockpitRun() {
             void reconcileRun(id, "interrupted");
           },
           onExhausted: () => {
+            streamActiveRef.current = false;
             setStreamRecovery({
               kind: "disconnected",
               message: "实时连接已中断，正在从服务器确认任务状态。",
@@ -1032,6 +1041,7 @@ export function useCockpitRun() {
             void reconcileRun(id, "exhausted");
           },
           onEnd: () => {
+            streamActiveRef.current = false;
             sealStreamingMessages();
             clearReconcileRetry();
             void reconcileRun(id, "stream_end");
@@ -1039,6 +1049,7 @@ export function useCockpitRun() {
         },
         { afterSeq },
       );
+      streamActiveRef.current = true;
     },
     [
       appendDelta,
@@ -1211,10 +1222,11 @@ export function useCockpitRun() {
       setConfirmation(null);
       setStatus("tool_running");
       // A recovered confirmation may have exhausted its original EventSource.
-      // Reopen from its durable cursor so resumed work reaches this tab without
-      // replaying prior activity into the visible timeline.
+      // Reopen only that inactive transport from its durable cursor. A healthy
+      // confirmation stream must remain attached while the backend resumes the
+      // same run; closing it here creates a gap exactly when final events arrive.
       const id = runIdRef.current;
-      if (id) {
+      if (id && !streamActiveRef.current) {
         const afterSeq = streamRef.current?.lastSeq ?? 0;
         attachStream(id, afterSeq);
       }

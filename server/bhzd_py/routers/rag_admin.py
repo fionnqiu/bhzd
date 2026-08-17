@@ -221,19 +221,14 @@ def _run_upload_pipeline(
                 )
                 time.sleep(delay)
 
-        # Loop completion means the queue work has either run or been claimed
-        # by another worker.  ``None`` means a new request omitted the legacy
-        # switch: auto-publish only the new student-visible flow.  Keeping an
-        # explicitly requested teacher document indexed preserves old API
-        # integrations that still use the review compatibility endpoints.
+        # Every successful upload is public learning material.  The legacy
+        # auto-submit field remains accepted at the HTTP boundary, but cannot
+        # leave a successfully indexed document hidden from student retrieval.
         assert background_conn is not None
         doc = background_conn.execute(
             "SELECT id, title, file_type, status, visibility FROM rag_documents WHERE id = ?", (document_id,)
         ).fetchone()
-        should_auto_publish = (
-            auto_submit is True
-            or (auto_submit is None and doc is not None and doc["visibility"] == "student")
-        )
+        should_auto_publish = True
         if should_auto_publish and doc is not None and doc["status"] == "indexed":
             full_doc = background_conn.execute(
                 "SELECT * FROM rag_documents WHERE id = ?", (document_id,)
@@ -877,9 +872,9 @@ def batch_import_documents(
             f"一次最多导入 {_SELECTED_FILE_IMPORT_LIMIT} 个文件，请分批导入",
         )
 
-    # Keep the raw optional value for the worker; ``None`` means the new
-    # student-default mode while explicit false is the legacy indexed-only
-    # escape hatch.  The response still exposes a stable boolean summary.
+    # Uploads are site-wide by policy.  Retain the optional field only for
+    # request compatibility; neither an omitted nor false value may create a
+    # hidden indexed document.
     batch_metadata = _normalized_upload_metadata(
         filename="selected-file",
         title="selected-file",
@@ -890,10 +885,7 @@ def batch_import_documents(
         visibility=visibility,
         data_types=data_types,
     )
-    should_auto_publish = True if auto_publish is None else auto_publish
-    auto_publish_student_flow = auto_publish is True or (
-        auto_publish is None and batch_metadata["visibility"] == "student"
-    )
+    should_auto_publish = True
     imported: list[dict] = []
     failed: list[dict] = []
     document_ids: list[str] = []
@@ -970,8 +962,8 @@ def batch_import_documents(
 class LocalRagdataImportBody(BaseModel):
     """Compatibility body for the server-package importer.
 
-    New callers omit the body and receive the same automatic publication as a
-    browser upload; an explicit ``false`` preserves the old indexing-only mode.
+    New callers and historical clients receive the same automatic publication
+    as browser uploads; the optional field is retained only for compatibility.
     """
 
     auto_publish: bool | None = None
@@ -1022,11 +1014,9 @@ def import_local_ragdata(
             builtin_student_import = False
     legacy_ledger_mode = not builtin_student_import
     reindex_existing = bool(body and body.reindex_existing)
-    # Expose the effective batch mode in the response/audit while retaining
-    # the optional value passed to the worker for legacy teacher packages.
-    auto_publish_enabled = auto_publish is True or (
-        auto_publish is None and builtin_student_import
-    )
+    # Package metadata remains useful provenance, but it no longer decides
+    # whether a successfully indexed upload is visible to students.
+    auto_publish_enabled = True
     source_created: list[dict] = []
     source_skipped: list[dict] = []
     source_failed: list[dict] = []
@@ -1170,12 +1160,9 @@ def import_local_ragdata(
             existing = conn.execute(
                 "SELECT id, status, visibility, process_version FROM rag_documents WHERE file_hash = ?", (file_hash,)
             ).fetchone()
-            # An omitted switch opts into automatic publication only when the
-            # package itself declares student visibility; explicit true keeps
-            # the historical force-student behavior for operator integrations.
-            wants_auto_publish = auto_publish is True or (
-                auto_publish is None and visibility == "student"
-            )
+            # The site-wide upload policy overrides legacy package visibility
+            # after indexing, while still retaining it in the source metadata.
+            wants_auto_publish = True
             if existing is not None:
                 if reindex_existing and existing["status"] != "archived":
                     # A parser or chunking fix must travel through the normal
@@ -1826,7 +1813,9 @@ def _publish_document_with_guards(
     allowed_states = ("review_pending", "indexed", "chunked") if allow_indexed else ("review_pending",)
     if doc["status"] not in allowed_states:
         raise ApiError(409, REVIEW_REQUIRED, "资料需要审核后才能发布（当前不在待审核状态）")
-    if doc["license_status"] in ("forbidden", "pending"):
+    # Pending licenses no longer block site-wide learning access.  An explicit
+    # forbidden state remains an operator safety decision and still fails closed.
+    if doc["license_status"] == "forbidden":
         message = (
             "资料授权状态为禁止，不允许发布"
             if doc["license_status"] == "forbidden"
@@ -1838,8 +1827,10 @@ def _publish_document_with_guards(
             "SELECT * FROM source_ledgers WHERE id = ?", (doc["source_ledger_id"],)
         ).fetchone()
         if ledger is not None:
-            if ledger["authorization_status"] != "approved":
-                raise ApiError(403, LICENSE_BLOCKED, "关联来源台账未获授权批准，不允许发布")
+            # Pending ledger review is informative under the site-wide upload
+            # policy.  Expired and forbidden sources retain their safety boundary.
+            if ledger["authorization_status"] in ("forbidden", "expired"):
+                raise ApiError(403, LICENSE_BLOCKED, "关联来源台账已禁用或过期，不允许发布")
             if ledger["valid_to"] and ledger["valid_to"] < utc_now_iso():
                 raise ApiError(403, LICENSE_BLOCKED, "关联来源台账已过有效期，不允许发布")
     if _chunk_count(conn, doc["id"]) == 0:

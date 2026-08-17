@@ -20,7 +20,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import io
-import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -233,6 +232,10 @@ def upload_sample(client: TestClient, headers: dict, **overrides) -> dict:
 
 
 def publish_sample(client: TestClient, headers: dict, doc_id: str) -> None:
+    current = client.get(f"/api/rag/documents/{doc_id}", headers=headers)
+    assert current.status_code == 200, current.text
+    if current.json()["document"]["status"] == "published":
+        return
     response = client.post(f"/api/rag/documents/{doc_id}/submit-review", headers=headers)
     assert response.status_code == 200, response.text
     response = client.post(
@@ -519,8 +522,8 @@ def test_parse_xlsx_per_sheet_blocks():
     assert "规则 通过率" in doc.blocks[1].text and "阈值 95%" in doc.blocks[1].text
 
 
-def test_upload_xlsx_accepted_and_indexed(client, db_path, system_admin):
-    """真实 xlsx 入队后由后台管线完成索引，响应本身不等待处理。"""
+def test_upload_xlsx_accepted_and_published(client, db_path, system_admin):
+    """A valid xlsx becomes student-visible after the background pipeline."""
     headers = as_user(client, system_admin)
     response = client.post(
         "/api/rag/documents",
@@ -541,7 +544,8 @@ def test_upload_xlsx_accepted_and_indexed(client, db_path, system_admin):
     detail = client.get(f"/api/rag/documents/{queued['document']['id']}", headers=headers)
     assert detail.status_code == 200, detail.text
     doc = detail.json()["document"]
-    assert doc["status"] == "indexed"
+    assert doc["status"] == "published"
+    assert doc["visibility"] == "student"
     assert doc["chunk_count"] >= 1
 
 
@@ -550,8 +554,10 @@ def test_upload_xlsx_accepted_and_indexed(client, db_path, system_admin):
 def test_batch_submit_review_partial_success(client, db_path, system_admin):
     """批量送审：已索引的成功、缺来源的失败（REVIEW_REQUIRED）、不存在的 NOT_FOUND。"""
     headers = as_user(client, system_admin)
-    good = upload_sample(client, headers, title="批量送审-好")["document"]["id"]
-    bad = upload_sample(client, headers, title="批量送审-缺来源")["document"]["id"]
+    # Forbidden uploads remain indexed so the batch review endpoint still has
+    # a deliberate unpublished fixture after the global auto-publish change.
+    good = upload_sample(client, headers, title="批量送审-好", license_status="forbidden")["document"]["id"]
+    bad = upload_sample(client, headers, title="批量送审-缺来源", license_status="forbidden")["document"]["id"]
     response = client.patch(f"/api/rag/documents/{bad}", json={"source_name": ""}, headers=headers)
     assert response.status_code == 200
     missing = "0" * 32
@@ -582,8 +588,9 @@ def test_batch_archive_guard_and_repeat(client, db_path, system_admin):
     """批量归档：已发布/已索引均可归档；重复归档第二遍得到 INVALID_STATE。"""
     headers = as_user(client, system_admin)
     published = upload_sample(client, headers, title="批量归档-发布")["document"]["id"]
-    publish_sample(client, headers, published)
-    indexed = upload_sample(client, headers, title="批量归档-索引")["document"]["id"]
+    indexed = upload_sample(
+        client, headers, title="批量归档-索引", license_status="forbidden"
+    )["document"]["id"]
 
     response = client.post(
         "/api/rag/documents/batch",
@@ -611,7 +618,7 @@ def test_batch_reindex_and_archived_guard(client, db_path, system_admin):
     )
     assert response.status_code == 200, response.text
     assert response.json()["results"][0]["ok"] is True
-    assert client.get(f"/api/rag/documents/{doc_id}", headers=headers).json()["document"]["status"] == "indexed"
+    assert client.get(f"/api/rag/documents/{doc_id}", headers=headers).json()["document"]["status"] == "published"
 
     client.post(f"/api/rag/documents/{doc_id}/archive", headers=headers)
     response = client.post(

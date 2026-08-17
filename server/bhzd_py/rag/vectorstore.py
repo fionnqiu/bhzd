@@ -73,7 +73,10 @@ def _filtered_rows(
     if published_only:
         clauses.append("d.status = 'published'")
         clauses.append("d.visibility = 'student'")
-        clauses.append("d.license_status = 'authorized'")
+        # Pending licenses are operational metadata, not a learner-access gate:
+        # every successfully uploaded document is now published site-wide.  A
+        # deliberately forbidden document remains excluded even when indexed.
+        clauses.append("d.license_status != 'forbidden'")
         clauses.append("(d.expires_at IS NULL OR d.expires_at > ?)")
         params.append(now)
         # 台账联动：绑定台账的资料，台账过期/禁用即移出学生召回

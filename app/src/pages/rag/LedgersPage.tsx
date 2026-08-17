@@ -1,7 +1,9 @@
 /**
- * 已下线的来源台账组件；生产知识库入口已统一到 /admin/rag。
+ * 系统管理端来源台账（/admin/rag/ledgers）。
  *
  * 关键决策（为什么）：
+ * - 台账恢复为资料库旁的治理入口：管理员需要在资料入库后持续处理授权、有效期与关联缺口，
+ *   而不是把这些风险隐藏在上传表单的单次选择中。
  * - 风险提示直接消费后端 _ledger_dto 的 risk_* 计算（过期/未授权/缺少关联资料），
  *   前端不重复实现日期与授权判断，保证与发布守卫（publish 时校验台账）口径一致。
  * - 新建/编辑共用一个抽屉表单：source_code 是业务主键（DUPLICATE 409），
@@ -26,7 +28,6 @@ import {
   PageHeader,
   Pagination,
   Select,
-  Tag,
   Textarea,
   useToast,
   type Column,
@@ -382,7 +383,7 @@ export default function LedgersPage() {
               <p className="text-sm mb-2">
                 有效期：{detail.valid_from || detail.valid_to ? `${detail.valid_from ?? "—"} ~ ${detail.valid_to ?? "—"}` : "长期"}
               </p>
-              <p className="text-sm mb-2">创建：{fmtTime(detail.created_at)}　更新：{fmtTime(detail.updated_at)}</p>
+              <p className="text-sm mb-2">创建：{fmtTime(detail.created_at)} 更新：{fmtTime(detail.updated_at)}</p>
             </Card>
             <Card title={`关联资料（${detail.related_document_ids.length}）`} className="mb-4">
               {detail.related_document_ids.length === 0 ? (
