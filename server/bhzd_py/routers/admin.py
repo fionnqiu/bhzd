@@ -44,6 +44,7 @@ from ..security import (
     validate_provider_base_url,
 )
 from ..config import get_config
+from ..rag import pipeline
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -797,11 +798,51 @@ def patch_rag_settings(
     if effective_overlap >= effective_chunk_size:
         raise ApiError(400, "INVALID_SETTING", "chunk_overlap 必须小于 chunk_size")
 
+    slice_changed = any(key in updates for key in ("chunk_size", "chunk_overlap", "title_inherit"))
     updates["updated_at"] = utc_now_iso()
     updates["updated_by"] = admin.user["id"]
     assignments = ", ".join(f"{column} = ?" for column in updates)
     conn.execute(f"UPDATE rag_settings SET {assignments} WHERE id = 1", tuple(updates.values()))
     after = _rag_settings_dto(_rag_settings_row(conn))
+    batch_id: str | None = None
+    affected = 0
+    if slice_changed:
+        # Queue only currently published, usable documents.  The active version
+        # remains untouched until the versioned index job succeeds.
+        docs = conn.execute(
+            "SELECT id, process_version FROM rag_documents "
+            "WHERE status = 'published' AND COALESCE(active_process_version, process_version) = process_version "
+            "AND (expires_at IS NULL OR expires_at > ?)",
+            (utc_now_iso(),),
+        ).fetchall()
+        affected = len(docs)
+        batch_id = uuid.uuid4().hex
+        next_settings_version = conn.execute(
+            "SELECT COALESCE(MAX(settings_version), 0) + 1 AS n FROM rag_reprocess_batches"
+        ).fetchone()["n"]
+        conn.execute(
+            "INSERT INTO rag_reprocess_batches (id, settings_version, affected_count, created_at) VALUES (?, ?, ?, ?)",
+            (batch_id, next_settings_version, affected, utc_now_iso()),
+        )
+        effective = {
+            "chunk_size": after["chunk_size"],
+            "chunk_overlap": after["chunk_overlap"],
+            "title_inherit": after["title_inherit"],
+        }
+        for doc in docs:
+            version = int(doc["process_version"]) + 1
+            conn.execute("UPDATE rag_documents SET process_version = ? WHERE id = ?", (version, doc["id"]))
+            params = {
+                "parse": {"batch_id": batch_id},
+                "chunk": {**effective, "batch_id": batch_id},
+                "index": {"batch_id": batch_id},
+            }
+            job_ids = pipeline.enqueue(conn, doc["id"], list(pipeline.STAGE_ORDER), params, version)
+            conn.execute(
+                f"UPDATE rag_jobs SET batch_id = ? WHERE id IN ({','.join('?' for _ in job_ids)})",
+                (batch_id, *job_ids),
+            )
+        conn.commit()
     # 参数修改必须写审计（PRD-04 §4.2），before/after 全量快照便于回溯
     audit(
         conn,
@@ -814,7 +855,25 @@ def patch_rag_settings(
         ip=_ip(request),
         user_agent=request.headers.get("user-agent"),
     )
+    if batch_id:
+        after["reprocess_batch"] = {"id": batch_id, "affected": affected, "status": "queued"}
     return after
+
+
+@router.get("/api/admin/rag-reprocess-batches")
+def list_rag_reprocess_batches(
+    admin: CurrentUser = Depends(get_admin_user),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Expose durable batch progress in the existing RAG settings workflow."""
+    rows = conn.execute(
+        "SELECT b.*, "
+        "SUM(j.status = 'queued') AS queued, SUM(j.status = 'running') AS running, "
+        "SUM(j.status = 'succeeded') AS succeeded, SUM(j.status IN ('failed','cancelled')) AS failed "
+        "FROM rag_reprocess_batches b LEFT JOIN rag_jobs j ON j.batch_id = b.id "
+        "GROUP BY b.id ORDER BY b.created_at DESC LIMIT 20"
+    ).fetchall()
+    return {"items": [dict(row) for row in rows]}
 
 
 # ================================================================ 用户与权限

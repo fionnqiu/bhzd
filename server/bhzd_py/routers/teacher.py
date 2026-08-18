@@ -31,7 +31,7 @@ from ..config import get_config
 from ..db import transaction, utc_now_iso
 from ..deps import CurrentUser, csrf_protect, get_db, require_role
 from ..errors import ApiError
-from ..notify import notify_many
+from ..notify import notify
 
 router = APIRouter()
 
@@ -1238,7 +1238,7 @@ def patch_teacher_task(
     _require_teacher_role(current)
     row = _get_own_teacher_task(conn, task_id, current.user["id"])
     children = conn.execute(
-        "SELECT user_id, due_at FROM learning_tasks WHERE parent_task_id = ?", (task_id,)
+        "SELECT id, user_id, due_at FROM learning_tasks WHERE parent_task_id = ?", (task_id,)
     ).fetchall()
     has_children = len(children) > 0
     now = utc_now_iso()
@@ -1252,15 +1252,18 @@ def patch_teacher_task(
                 "UPDATE learning_tasks SET due_at = ?, updated_at = ? WHERE parent_task_id = ?",
                 (body.due_at, now, task_id),
             )
-            notify_many(
-                conn,
-                [c["user_id"] for c in children],
-                "task_due_changed",
-                row["title"],
-                body=f"任务「{row['title']}」的截止时间已调整为 {body.due_at}，请按新时间完成",
-                ref_type="task",
-                ref_id=task_id,
-            )
+            for child in children:
+                # Notices must open the recipient's copied task, never the
+                # teacher template which is outside the student boundary.
+                notify(
+                    conn,
+                    child["user_id"],
+                    "task_due_changed",
+                    row["title"],
+                    body=f"任务「{row['title']}」的截止时间已调整为 {body.due_at}，请按新时间完成",
+                    ref_type="task",
+                    ref_id=child["id"],
+                )
             due_change = {"old": old_due, "new": body.due_at}
 
     content_changed = any(
@@ -1405,8 +1408,10 @@ def publish_teacher_task_rows(
     student_ids = _class_student_ids(conn, [class_id])
     now = utc_now_iso()
     content_task_ids: list[str] = []
+    student_task_ids: dict[str, str] = {}
     for student_id in student_ids:
         student_task_id = uuid.uuid4().hex
+        student_task_ids[student_id] = student_task_id
         conn.execute(
             """
             INSERT INTO learning_tasks
@@ -1453,15 +1458,18 @@ def publish_teacher_task_rows(
     # Notifications share the transaction with task copies, so students never
     # see a publish notice for a task row that was rolled back.
     due_note = f"，截止时间 {due_at}" if due_at else ""
-    notify_many(
-        conn,
-        student_ids,
-        "task_published",
-        row["title"],
-        body=f"教师发布了新任务「{row['title']}」{due_note}，请到学习任务中查看",
-        ref_type="task",
-        ref_id=task_id,
-    )
+    for student_id in student_ids:
+        # The notice and copied task share one transaction, so the link is
+        # valid whenever the notice itself is visible.
+        notify(
+            conn,
+            student_id,
+            "task_published",
+            row["title"],
+            body=f"教师发布了新任务「{row['title']}」{due_note}，请到学习任务中查看",
+            ref_type="task",
+            ref_id=student_task_ids[student_id],
+        )
     return {
         "published": len(student_ids),
         "class_id": class_id,
@@ -1949,10 +1957,10 @@ def student_analytics_detail(
         SELECT t.id, t.title, t.status, t.source, t.updated_at,
                (SELECT a.score FROM task_attempts a WHERE a.task_id = t.id
                 ORDER BY a.created_at DESC LIMIT 1) AS score
-        FROM learning_tasks t WHERE t.user_id = ?
+        FROM learning_tasks t WHERE t.user_id = ? AND t.class_id = ?
         ORDER BY t.updated_at DESC, t.id DESC LIMIT 20
         """,
-        (student_id,),
+        (student_id, class_id),
     ).fetchall()
     tasks = [
         {

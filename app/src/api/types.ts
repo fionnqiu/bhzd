@@ -630,7 +630,7 @@ export interface TaskLatestAttempt extends TaskAttempt {
 /** POST /api/tasks/{id}/submit（tasks.py） */
 export interface SubmitTaskResponse {
   attempt_id: string;
-  score: number;
+  score: number | null;
   feedback: FeedbackItem[];
   mastery_preview: MasteryChange[];
   status: TaskStatus;

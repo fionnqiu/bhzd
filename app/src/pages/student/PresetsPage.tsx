@@ -2,12 +2,12 @@
  * 预设学习页（PRD-01 §4）。
  *
  * 交互闭环（验收：≤3 次点击开始任务）：
- *   路径卡（点击1）→ 抽屉「开始学习」（点击2）→ 确认门「确认创建」（点击3）
+ *   推荐卡（点击1）→ 抽屉「生成任务」（点击2）→ 确认门「确认创建」（点击3）
  *   → POST /api/confirmations/{id}/confirm → 任务落库 → 跳转任务列表。
  *
  * 两个刻意取舍（为什么）：
  * - 分组在前端做：API 返回平铺列表（无分组字段），按 PRD-01 §4.2 的
- *   新手/岗位胜任/证书备考/薄弱补强四区在前端归类；薄弱区依赖
+ *   入门/岗位/薄弱能力三区在前端归类；薄弱区依赖
  *   weak_count 个性化字段（presets.py 按薄弱数倒序返回）。
  * - 筛选只暴露数据类型；目标和难度仍服务于内部分组，避免把
  *   内部教学分组规则变成额外的用户决策负担。
@@ -44,23 +44,21 @@ import {
 
 /* ---------------------------------------------------------------- 分组与筛选 */
 
-type PresetGroupKey = "newbie" | "job" | "cert" | "weak";
+type PresetGroupKey = "newbie" | "job" | "weak";
 
 /** 分组展示顺序与 PRD-01 §4.2 一致 */
 const GROUPS: { key: PresetGroupKey; title: string; sub: string }[] = [
-  { key: "newbie", title: "新手路径", sub: "零基础与低难度入门" },
-  { key: "job", title: "岗位胜任路径", sub: "面向岗位目标的能力组合" },
-  { key: "cert", title: "证书备考路径", sub: "对标 1+X 等证书考点" },
-  { key: "weak", title: "薄弱补强路径", sub: "根据你的掌握度个性化推荐" },
+  { key: "newbie", title: "入门推荐", sub: "零基础与低难度练习" },
+  { key: "job", title: "岗位推荐", sub: "面向岗位目标的技能练习" },
+  { key: "weak", title: "薄弱能力推荐", sub: "根据你的掌握度个性化推荐" },
 ];
 
 /**
- * 预设 → 分组。优先级：薄弱补强（个性化）> 证书 > 新手（低难度）> 岗位。
+ * 预设 → 分组。优先级：薄弱能力（个性化）> 入门（低难度）> 岗位。
  * 每条路径只进入一个分组，避免同卡重复出现造成选择困惑。
  */
 function groupOf(preset: Preset): PresetGroupKey {
   if (preset.weak_count > 0) return "weak";
-  if (/证书|考证|1\+X/i.test(`${preset.title}${preset.goal}`)) return "cert";
   return preset.difficulty <= 2 ? "newbie" : "job";
 }
 
@@ -131,7 +129,7 @@ export default function PresetsPage() {
   const resetFilters = () =>
     setFilters({ dataType: "" });
 
-  /** 打开路径详情抽屉（点击1）；mastered 折叠态每次重置，保证"已掌握默认折叠" */
+  /** 打开推荐详情抽屉；mastered 折叠态每次重置。 */
   const openPreset = async (presetId: string) => {
     setDrawerId(presetId);
     setDetail(null);
@@ -193,8 +191,8 @@ export default function PresetsPage() {
   return (
     <div>
       <PageHeader
-        title="预设学习"
-        sub="围绕数据类型与证书目标组织的学习路径，薄弱能力优先推荐"
+        title="学习推荐"
+        sub="按数据类型和薄弱能力推荐一次性练习任务"
       />
 
       {/* 顶部筛选（PRD-01 §4.2）：只保留数据类型 */}
@@ -213,13 +211,13 @@ export default function PresetsPage() {
         <ErrorState message={error} onRetry={resetFilters} />
       ) : loading ? (
         <div className="loading-block">
-          <Spinner large /> 正在加载学习路径…
+          <Spinner large /> 正在加载学习推荐…
         </div>
       ) : visible.length === 0 ? (
         // 空筛选结果（PRD-06 §7.2 空态必须有引导动作）
         <EmptyState
-          title="没有符合条件的预设路径"
-          hint="试试放宽筛选条件，或从全部路径中重新选择"
+          title="没有符合条件的学习推荐"
+          hint="试试放宽筛选条件，或从全部推荐中重新选择"
           action={
             <Button variant="secondary" onClick={resetFilters}>
               清除筛选
@@ -265,10 +263,10 @@ export default function PresetsPage() {
         ))
       )}
 
-      {/* 路径详情抽屉（点击卡片后；含开始学习入口） */}
+      {/* 推荐详情抽屉：每次确认只创建一个任务，不承诺后续路径。 */}
       <Drawer
         open={drawerId !== null}
-        title={detail?.title ?? "路径详情"}
+        title={detail?.title ?? "推荐详情"}
         onClose={() => setDrawerId(null)}
       >
         {detail === null ? (
@@ -335,7 +333,7 @@ export default function PresetsPage() {
               </ol>
             </div>
             <Button block loading={starting} onClick={startPreset}>
-              开始学习
+              生成任务
             </Button>
           </div>
         )}

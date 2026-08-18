@@ -158,7 +158,12 @@ def test_notifications_read_flow(api):
     item = listed.json()["items"][0]
     assert item["type"] == "task_published"
     assert item["title"] == task["title"]
-    assert item["ref_type"] == "task" and item["ref_id"] == task["id"]
+    copied_task = api.conn.execute(
+        "SELECT id FROM learning_tasks WHERE parent_task_id = ? AND user_id = ?",
+        (task["id"], student["user_id"]),
+    ).fetchone()
+    # A learner notice must link to its own task copy, not the teacher template.
+    assert item["ref_type"] == "task" and item["ref_id"] == copied_task["id"]
 
     # 未带 CSRF 的变更请求一律 403
     no_csrf = api.client.post(f"/api/notifications/{item['id']}/read")
@@ -211,7 +216,11 @@ def test_publish_notifies_each_enrolled_student(api):
         assert len(notes) == 1
         assert notes[0]["type"] == "task_published"
         assert notes[0]["title"] == task["title"]
-        assert notes[0]["ref_type"] == "task" and notes[0]["ref_id"] == task["id"]
+        copied_task = api.conn.execute(
+            "SELECT id FROM learning_tasks WHERE parent_task_id = ? AND user_id = ?",
+            (task["id"], sid),
+        ).fetchone()
+        assert notes[0]["ref_type"] == "task" and notes[0]["ref_id"] == copied_task["id"]
         assert notes[0]["read_at"] is None
     # 未入班的学生不收到通知
     assert _notifications_of(api, outsider["user_id"]) == []
@@ -240,14 +249,14 @@ def test_due_change_on_published_task_notifies(api):
 
     # 学生副本的截止时间已更新
     copy = api.conn.execute(
-        "SELECT due_at FROM learning_tasks WHERE parent_task_id = ?", (task["id"],)
+        "SELECT id, due_at FROM learning_tasks WHERE parent_task_id = ?", (task["id"],)
     ).fetchone()
     assert copy["due_at"] == "2026-08-15T12:00:00+00:00"
 
     notes = [n for n in _notifications_of(api, s1["user_id"]) if n["type"] == "task_due_changed"]
     assert len(notes) == 1
     assert "2026-08-15" in notes[0]["body"]
-    assert notes[0]["ref_id"] == task["id"]
+    assert notes[0]["ref_id"] == copy["id"]
 
     audits = api.conn.execute(
         "SELECT * FROM audit_logs WHERE action = 'teacher_task.due_change' AND target_id = ?",
@@ -430,7 +439,7 @@ def test_generate_task_card_offline(api):
 # ---------------------------------------------------------------- 4. 逐学生学情明细（PRD-02 §6）
 
 
-def _seed_student_learning(api, student_id: str) -> None:
+def _seed_student_learning(api, student_id: str, class_id: str) -> None:
     now = db_module.utc_now_iso()
     api.conn.execute(
         "INSERT INTO mastery (user_id, cap_id, score, source, updated_at) "
@@ -440,9 +449,9 @@ def _seed_student_learning(api, student_id: str) -> None:
     task_id = uuid.uuid4().hex
     api.conn.execute(
         "INSERT INTO learning_tasks "
-        "(id, user_id, title, source, status, created_by, created_at, updated_at) "
-        "VALUES (?, ?, '客服语音练习', 'agent', 'completed', ?, ?, ?)",
-        (task_id, student_id, student_id, now, now),
+        "(id, user_id, class_id, title, source, status, created_by, created_at, updated_at) "
+        "VALUES (?, ?, ?, '客服语音练习', 'agent', 'completed', ?, ?, ?)",
+        (task_id, student_id, class_id, student_id, now, now),
     )
     api.conn.execute(
         "INSERT INTO task_attempts (id, task_id, user_id, attempt_number, submission_json, score, created_at) "
@@ -462,7 +471,7 @@ def test_student_analytics_detail(api):
     clazz = _create_class(api, teacher)
     s1 = api.login_as("s-ana@test.local")
     _enroll(api, clazz["id"], s1["user_id"])
-    _seed_student_learning(api, s1["user_id"])
+    _seed_student_learning(api, s1["user_id"], clazz["id"])
     _seed_diagnostic_summary(api, s1["user_id"])
     api.act_as(teacher)
     url = f"/api/teacher/analytics/students/{s1['user_id']}"

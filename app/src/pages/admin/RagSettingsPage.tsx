@@ -111,6 +111,8 @@ export default function RagSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [batchNotice, setBatchNotice] = useState<{ id: string; affected: number } | null>(null);
+  const [batches, setBatches] = useState<Array<Record<string, string | number | null>>>([]);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -122,6 +124,19 @@ export default function RagSettingsPage() {
       setInitial(next);
       setForm(next);
       setUpdatedAt(settings.updated_at);
+      // Batch history is supplemental to the settings form. Older deployments
+      // and read-only test clients may not expose it, so a malformed or failed
+      // history response must not turn a usable settings page into an error state.
+      try {
+        const batchResponse = await api.get<{
+          items?: Array<Record<string, string | number | null>>;
+        }>("/api/admin/rag-reprocess-batches", undefined, { signal });
+        if (!signal?.aborted) {
+          setBatches(Array.isArray(batchResponse.items) ? batchResponse.items : []);
+        }
+      } catch {
+        if (!signal?.aborted) setBatches([]);
+      }
     } catch (cause) {
       if (!signal?.aborted) setError(errText(cause, "RAG 参数加载失败"));
     } finally {
@@ -154,11 +169,15 @@ export default function RagSettingsPage() {
     try {
       // Send only changed fields so audit records describe the actual tuning operation.
       const patch = Object.fromEntries(dirtyKeys.map((key) => [key, form[key]]));
-      const settings = await api.patch<RagSettings>("/api/admin/rag-settings", patch);
+      const settings = await api.patch<RagSettings & { reprocess_batch?: { id: string; affected: number } }>(
+        "/api/admin/rag-settings",
+        patch,
+      );
       const next = toForm(settings);
       setInitial(next);
       setForm(next);
       setUpdatedAt(settings.updated_at);
+      setBatchNotice(settings.reprocess_batch ?? null);
       toast.success("RAG 参数已保存");
     } catch (cause) {
       setSaveError(errText(cause, "RAG 参数保存失败"));
@@ -261,6 +280,24 @@ export default function RagSettingsPage() {
         <p className="form-alert form-alert-error" role="alert">
           存在校验失败的参数，请修正后再保存。
         </p>
+      ) : null}
+      {batchNotice ? (
+        <p className="form-alert form-alert-success" role="status">
+          已创建重处理批次 {batchNotice.id}，将处理 {batchNotice.affected} 份已发布资料；处理期间继续使用旧索引。
+        </p>
+      ) : null}
+      {batches.length > 0 ? (
+        <Card title="最近的重处理批次" className="mb-4">
+          <div className="flex flex-col gap-2">
+            {batches.slice(0, 5).map((batch) => (
+              <div key={String(batch.id)} className="flex items-center justify-between gap-3 text-sm">
+                <span className="font-mono">{String(batch.id).slice(0, 12)}…</span>
+                <span>{String(batch.status)}</span>
+                <span>排队 {Number(batch.queued ?? 0)} · 成功 {Number(batch.succeeded ?? 0)} · 失败 {Number(batch.failed ?? 0)}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
       ) : null}
 
       <div className="grid grid-cols-2">

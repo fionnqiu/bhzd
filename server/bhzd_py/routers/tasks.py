@@ -629,73 +629,60 @@ def _matches(expected: Any, got: Any) -> bool:
     return norm(expected) == norm(got)
 
 
-def _score_submission(task_row: sqlite3.Row, answers: dict[str, Any]) -> tuple[float, list[dict]]:
-    """确定性评分，返回 (score, feedback)。
+def _score_submitted_exercises(
+    conn: sqlite3.Connection, task_id: str, student_id: str
+) -> tuple[float | None, list[dict], str | None]:
+    """Build the only task score from durable, per-exercise grading records.
 
-    有 rubric（[{key,expected,weight,hint?}]）按权重加权；无 rubric 退化为
-    完整性分 = 非空答案数 / 期望键数（期望键取 practice_json 的 answers/
-    expected 字段，都没有则以提交键为全集，即"有答即有分"的下限口径）。
+    Legacy task-level rubrics once treated a non-empty response as progress.
+    A final score now exists only after every authored exercise has a successful
+    grade; old tasks without exercise rows remain readable without a fabricated
+    score or mastery update.
     """
-    raw_rubric = _task_json(task_row, "rubric_json", None)
-    # A few early Agent cards stored a rubric object. Filter to actual rows so
-    # those records safely use completeness scoring instead of crashing on .get.
-    rubric = [item for item in raw_rubric if isinstance(item, dict)] if isinstance(raw_rubric, list) else []
-    if rubric:
-        total_weight = 0.0
-        earned = 0.0
-        feedback: list[dict] = []
-        for item in rubric:
-            key = str(item.get("key"))
-            expected = item.get("expected")
-            try:
-                weight = float(item.get("weight", 1.0))
-            except (TypeError, ValueError):
-                weight = 1.0
-            got = answers.get(key)
-            ok = _matches(expected, got)
-            total_weight += weight
-            earned += weight if ok else 0.0
-            feedback.append(
-                {
-                    "key": key,
-                    "expected": expected,
-                    "got": got,
-                    "ok": ok,
-                    # hint 是给答错者的指引，答对时不应把"纠错提示"塞回去
-                    "hint": "回答正确" if ok else (item.get("hint") or "请对照期望值检查该项"),
-                }
-            )
-        score = earned / total_weight if total_weight > 0 else 0.0
-        return round(score, 6), feedback
-
-    # 无 rubric：完整性分（口径见 docstring）
-    practice = _task_json(task_row, "practice_json", {}) or {}
-    if not isinstance(practice, dict):
-        practice = {}
-    expected_keys: list[str] = []
-    for field in ("answers", "expected"):
-        if isinstance(practice.get(field), dict):
-            expected_keys = [str(k) for k in practice[field]]
-            break
-    keys = expected_keys or list(answers.keys())
-    if not keys:
-        return 0.0, []
-    feedback = []
-    filled = 0
-    for key in keys:
-        got = answers.get(key)
-        ok = got is not None and str(got).strip() != ""
-        filled += 1 if ok else 0
+    exercises = conn.execute(
+        "SELECT id, question FROM task_exercises WHERE task_id = ? ORDER BY sort_order, id", (task_id,)
+    ).fetchall()
+    if not exercises:
+        return None, [], "该历史任务没有可核验的单题评分"
+    # Weights remain a task-level compatibility field, but are consumed only
+    # once here so the visible per-question grades and final average agree.
+    task_rubric_row = conn.execute("SELECT rubric_json FROM learning_tasks WHERE id = ?", (task_id,)).fetchone()
+    try:
+        raw_rubric = json.loads(task_rubric_row["rubric_json"] or "[]") if task_rubric_row else []
+    except (TypeError, json.JSONDecodeError):
+        raw_rubric = []
+    weights = {str(item.get("key")): max(0.0001, float(item.get("weight", 1)))
+               for item in raw_rubric if isinstance(item, dict)}
+    feedback: list[dict] = []
+    earned = 0.0
+    total_weight = 0.0
+    for exercise in exercises:
+        submission = conn.execute(
+            "SELECT answer, grade_status, score, feedback FROM task_exercise_submissions "
+            "WHERE exercise_id = ? AND student_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            (exercise["id"], student_id),
+        ).fetchone()
+        if submission is None:
+            return None, feedback, "请先提交全部练习题"
+        if submission["grade_status"] == "failed":
+            return None, feedback, "存在评分失败的题目，请重试后再提交任务"
+        if submission["grade_status"] != "done" or submission["score"] is None:
+            return None, feedback, "题目仍在评分中，请等待评分完成"
+        score = max(0.0, min(1.0, float(submission["score"]) / 100.0))
+        weight = weights.get(exercise["question"], 1.0)
+        earned += score * weight
+        total_weight += weight
         feedback.append(
             {
-                "key": key,
+                "key": exercise["id"],
                 "expected": None,
-                "got": got,
-                "ok": ok,
-                "hint": "已作答" if ok else "该项未作答",
+                "got": submission["answer"],
+                "ok": score >= 0.6,
+                "hint": submission["feedback"] or "已完成评分",
+                "score": score,
             }
         )
-    return round(filled / len(keys), 6), feedback
+    return round(earned / total_weight, 4), feedback, None
 
 
 # ---------------------------------------------------------------- 请求体
@@ -1186,11 +1173,13 @@ def submit_task(
     current: CurrentUser = Depends(csrf_protect),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
-    """提交答案 → 确定性评分 + mastery_preview（不落掌握度，等 apply-mastery 确认）。"""
+    """汇总已完成的单题评分；未评分题目绝不按填写内容计入总分。"""
     row = _get_own_task(conn, task_id, current.user["id"])
     new_status = _do_transition(row, "submit")
     answers = _answers_to_dict(body.answers)
-    score, feedback = _score_submission(row, answers)
+    score, feedback, pending_reason = _score_submitted_exercises(conn, task_id, current.user["id"])
+    if pending_reason:
+        raise ApiError(409, "TASK_GRADING_INCOMPLETE", pending_reason)
     last = conn.execute(
         "SELECT MAX(attempt_number) AS n FROM task_attempts WHERE task_id = ?", (task_id,)
     ).fetchone()["n"]

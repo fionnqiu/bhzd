@@ -2,24 +2,21 @@
  * 个人中心页（PRD-01 §9）。
  *
  * 聚合数据：/api/profile（任务统计/诊断摘要/成长记录/设置）、
- * /api/profile/mastery（能力地图）、/api/tasks（最近任务记录）、
- * /api/profile/favorites（收藏资料，008 迁移起为真实数据）。
+ * /api/profile/mastery（能力地图）与 /api/tasks（最近任务记录）。
  *
  * 关键决策（为什么）：
  * - 能力地图统一按薄弱优先排序：学生第一眼应看到"最该补的"
  *   （与预设页薄弱优先同口径）；点击能力行开抽屉看近 30 天掌握度趋势
  *   （GET mastery/trend），趋势是学生判断"学习方法是否有效"的直接证据。
- * - 收藏资料按 item_type 分流跳转（文档/引用→问答、教学单元→预设、节点→图谱），
- *   删除用收藏行 id（后端按 id 删，item_id 不具备全局唯一性）。
  * - share_diagnostics 默认关闭（PRD-06 待确认项 #2 的产品决策）：关闭时教师
  *   只能看班级聚合统计，开启后才可查看本人诊断详情；开关改动即 PATCH 生效。
  * - 修改密码在站内校验原密码；成功后当前会话保留，其他设备会话由服务端吊销。
  *
- * 类型说明：api/types.ts 由其他任务并行维护，新增 DTO（收藏/趋势/设置）
+ * 类型说明：api/types.ts 由其他任务并行维护，新增 DTO（趋势/设置）。
  * 一律页内声明，与后端 profile.py 响应逐字段对齐。
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { api } from "../../api/client";
 import type {
   JoinClassResponse,
@@ -61,16 +58,6 @@ const RECENT_TASK_LIMIT = 10;
 
 /* ---------------------------------------------------------------- 页内 DTO（对齐 profile.py） */
 
-/** GET /api/profile/favorites 列表项（_favorite_dto） */
-interface FavoriteItem {
-  id: string;
-  item_type: string;
-  item_id: string;
-  title: string;
-  meta: Record<string, unknown>;
-  created_at: string;
-}
-
 /** GET /api/profile 新增的 settings 段（类型文件并行维护，这里本地扩展） */
 interface ProfileSettings {
   share_diagnostics: boolean;
@@ -84,18 +71,6 @@ interface MasteryTrendPoint {
   new_score: number;
   source: string;
   created_at: string;
-}
-
-/** 收藏类型 → 中文名（008 迁移 CHECK 约束四值） */
-const FAVORITE_TYPE_LABELS: Record<string, string> = {
-  rag_document: "资料文档",
-  citation: "问答引用",
-  teaching_unit: "教学单元",
-  graph_node: "图谱节点",
-};
-
-function favoriteTypeLabel(itemType: string): string {
-  return FAVORITE_TYPE_LABELS[itemType] ?? itemType;
 }
 
 /**
@@ -134,12 +109,10 @@ function TrendSparkline({ points }: { points: number[] }) {
 
 export default function ProfilePage() {
   const toast = useToast();
-  const navigate = useNavigate();
 
   const [profile, setProfile] = useState<(ProfileOverview & { settings?: ProfileSettings }) | null>(null);
   const [mastery, setMastery] = useState<MasteryRecord[] | null>(null);
   const [recentTasks, setRecentTasks] = useState<TaskSummary[]>([]);
-  const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -162,17 +135,15 @@ export default function ProfilePage() {
     setError(null);
     try {
       // 四路并发：任一失败整体进错误态（个人中心是聚合页，缺一角会误导）
-      const [profileRes, masteryRes, tasksRes, favoritesRes] = await Promise.all([
+      const [profileRes, masteryRes, tasksRes] = await Promise.all([
         api.get<ProfileOverview & { settings?: ProfileSettings }>("/api/profile", undefined, { signal }),
         api.get<Paginated<MasteryRecord>>("/api/profile/mastery", undefined, { signal }),
         api.get<Paginated<TaskSummary>>("/api/tasks", undefined, { signal }),
-        api.get<{ items: FavoriteItem[] }>("/api/profile/favorites", undefined, { signal }),
       ]);
       if (signal?.aborted) return;
       setProfile(profileRes);
       setMastery(masteryRes.items);
       setRecentTasks(tasksRes.items.slice(0, RECENT_TASK_LIMIT));
-      setFavorites(favoritesRes.items);
     } catch (err) {
       if (!signal?.aborted) setError(errMsg(err));
     } finally {
@@ -302,27 +273,6 @@ export default function ProfilePage() {
     }
   };
 
-  /** 收藏点击：知识问答入口已移除，旧资料收藏安全回到 Agent 工作台。 */
-  const openFavorite = (favorite: FavoriteItem) => {
-    if (favorite.item_type === "rag_document" || favorite.item_type === "citation") {
-      navigate("/");
-    } else if (favorite.item_type === "graph_node") {
-      navigate(`/graph?node=${encodeURIComponent(favorite.item_id)}`);
-    } else if (favorite.item_type === "teaching_unit") {
-      navigate("/presets");
-    }
-  };
-
-  /** 取消收藏：按收藏行 id 删除（后端口径），成功后本地剔除 */
-  const removeFavorite = async (favorite: FavoriteItem) => {
-    try {
-      await api.delete(`/api/profile/favorites/${favorite.id}`);
-      setFavorites((prev) => prev.filter((f) => f.id !== favorite.id));
-      toast.success("已取消收藏");
-    } catch (err) {
-      toast.error(errMsg(err));
-    }
-  };
 
   /**
    * 诊断分享开关（PRD-06：默认关闭，教师只能看班级聚合统计）。
@@ -504,48 +454,6 @@ export default function ProfilePage() {
           )}
         </Card>
 
-        {/* 收藏资料（真实数据：008 起 favorites 表；按类型跳转 + 可删除） */}
-        <Card title="收藏资料">
-          {favorites.length === 0 ? (
-            <EmptyState
-              title="还没有收藏"
-              hint="收藏常用学习资料后会显示在这里"
-            />
-          ) : (
-            <div className="flex flex-col gap-2">
-              {favorites.map((favorite) => (
-                <div key={favorite.id} className="flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    className="flex items-center gap-2 text-sm"
-                    style={{
-                      background: "none",
-                      border: "none",
-                      padding: 0,
-                      cursor: "pointer",
-                      textAlign: "left",
-                    }}
-                    onClick={() => openFavorite(favorite)}
-                  >
-                    <Tag>{favoriteTypeLabel(favorite.item_type)}</Tag>
-                    <span style={{ color: "var(--color-primary)" }}>{favorite.title}</span>
-                  </button>
-                  <span className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-xs text-muted">{formatDateTime(favorite.created_at)}</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label={`删除收藏 ${favorite.title}`}
-                      onClick={() => removeFavorite(favorite)}
-                    >
-                      删除
-                    </Button>
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
       </div>
 
       {/* 账号设置 */}

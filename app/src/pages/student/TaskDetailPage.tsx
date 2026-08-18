@@ -124,7 +124,7 @@ function feedbackFromLatestAttempt(detail: TaskDetail): SubmitTaskResponse | nul
   if (!attempt) return null;
   return {
     attempt_id: attempt.id,
-    score: attempt.score ?? 0,
+    score: attempt.score,
     feedback: attempt.feedback,
     mastery_preview: attempt.mastery_preview,
     status: detail.status,
@@ -462,7 +462,7 @@ export default function TaskDetailPage() {
           ],
         };
       });
-      toast.success(`已提交，得分 ${Math.round(res.score * 100)} 分`);
+      toast.success(res.score == null ? "已提交，等待可靠评分" : `已提交，得分 ${Math.round(res.score * 100)} 分`);
     } catch (err) {
       toast.error(errMsg(err));
     } finally {
@@ -852,9 +852,13 @@ export default function TaskDetailPage() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-secondary">本次得分</span>
-                <strong>{Math.round(feedback.score * 100)} 分</strong>
+                <strong>{feedback.score == null ? "暂无可靠评分" : `${Math.round(feedback.score * 100)} 分`}</strong>
               </div>
-              <ProgressBar value={feedback.score} tone={scoreTone(feedback.score)} />
+              {feedback.score == null ? (
+                <p className="text-sm text-secondary">历史任务缺少完整单题评分，系统不会据此更新掌握度。</p>
+              ) : (
+                <ProgressBar value={feedback.score} tone={scoreTone(feedback.score)} />
+              )}
             </div>
             {feedback.feedback.length > 0 ? (
               <DataTable

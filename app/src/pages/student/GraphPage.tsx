@@ -9,7 +9,7 @@
  * - 布局稳定一次后关闭物理引擎：持续力导向模拟既耗 CPU 又让节点飘移，
  *   读图体验差；后续 setData 用同步 stabilize 补一次布局即可。
  * - CAP 节点颜色只由 mastery_status 决定（绿实心=已掌握/橙描边=待加强/
- *   红描边=初学），其余类型走中性色板——与 MasteryBadge 同一口径，
+ *   红描边=初学），与 MasteryBadge 同一口径，
  *   学生跨页看到的颜色语义必须一致。
  * - 支持 ?node= 深链（指挥舱/诊断页跳转）：图数据就绪后自动打开节点抽屉。
  */
@@ -42,18 +42,7 @@ import { dataTypeLabel, errMsg, nodeLabel } from "./shared";
 
 type ViewMode = "full" | "local" | "path";
 
-/** 非能力节点的中性色板（图例同步展示）；CAP 由掌握度三色接管 */
-const TYPE_STYLE: Record<string, { background: string; border: string; label: string }> = {
-  KNG: { background: "#e0f2fe", border: "#0284c7", label: "知识" },
-  TSK: { background: "#f1f5f9", border: "#64748b", label: "任务" },
-  RES: { background: "#f8fafc", border: "#94a3b8", label: "资源" },
-  CERT: { background: "#fef3c7", border: "#d97706", label: "证书" },
-};
-
-const TYPE_LABELS: Record<string, string> = {
-  CAP: "能力",
-  ...Object.fromEntries(Object.entries(TYPE_STYLE).map(([k, v]) => [k, v.label])),
-};
+const TYPE_LABELS: Record<string, string> = { CAP: "能力" };
 
 /** CAP 节点掌握度配色（v3.0 §7.3.3：已掌握=绿实心，待加强=橙描边，初学=红描边） */
 function masteryNodeStyle(node: GraphNode): {
@@ -91,16 +80,17 @@ interface VisEdgeShape {
 }
 
 /**
- * Keep retained SCN/INSCN records lazy: server graph data stays intact while
- * learner-facing graph views omit scenario nodes and membership edges.
+ * Server graph data stays compatible while learner-facing views omit every
+ * non-CAP record and relation without a reachable student workflow.
  */
 function hideLazyScenarioData(graph: GraphOverview): GraphOverview {
-  const nodes = graph.nodes.filter((node) => node.type !== "SCN");
+  // The student graph keeps only actionable capabilities and prerequisite links.
+  const nodes = graph.nodes.filter((node) => node.type === "CAP");
   const ids = new Set(nodes.map((node) => node.id));
   return {
     nodes,
     edges: graph.edges.filter(
-      (edge) => edge.relation !== "INSCN" && ids.has(edge.source) && ids.has(edge.target),
+      (edge) => edge.relation === "PRE" && ids.has(edge.source) && ids.has(edge.target),
     ),
   };
 }
@@ -116,8 +106,8 @@ function toVisData(
       node.type === "CAP"
         ? masteryNodeStyle(node)
         : {
-            background: TYPE_STYLE[node.type]?.background ?? "#ffffff",
-            border: TYPE_STYLE[node.type]?.border ?? "#94a3b8",
+            background: "#ffffff",
+            border: "#94a3b8",
             borderWidth: 2,
             fontColor: "#0f172a",
           };
@@ -404,7 +394,7 @@ export default function GraphPage() {
     [overview],
   );
 
-  /** 节点抽屉「开始学习」：以该能力快速建任务（学生手动动作，无需确认门） */
+  /** 节点抽屉「生成练习」：以该能力快速建任务（学生手动动作，无需确认门） */
   const quickCreateTask = async () => {
     if (!detail) return;
     setCreating(true);
@@ -510,11 +500,6 @@ export default function GraphPage() {
         <span className="flex items-center gap-1">
           <i style={dotStyle("#ffffff", "#94a3b8")} /> 能力
         </span>
-        {Object.values(TYPE_STYLE).map((style) => (
-          <span key={style.label} className="flex items-center gap-1">
-            <i style={dotStyle(style.background, style.border)} /> {style.label}
-          </span>
-        ))}
         <span className="text-muted">|</span>
         <span style={{ color: "#f59e0b" }}>→ 前置关系</span>
       </div>
@@ -592,7 +577,7 @@ export default function GraphPage() {
         </Card>
       ) : null}
 
-      {/* 节点详情抽屉（PRD-01 §5.1：说明/前置/资源/任务/证书/掌握度/开始学习） */}
+      {/* 能力详情只保留说明、掌握度、前置关系和可达的练习入口。 */}
       <Drawer
         open={drawerNodeId !== null}
         title={detail ? nodeLabel(detail) : "节点详情"}
@@ -657,30 +642,9 @@ export default function GraphPage() {
                 </div>
               </div>
             ) : null}
-            {(
-              [
-                ["关联知识", detail.knowledge],
-                ["关联资源", detail.resources],
-                ["典型任务", detail.tasks],
-                ["相关证书", detail.certificates],
-              ] as const
-            ).map(([title, nodes]) =>
-              nodes.length > 0 ? (
-                <div key={title}>
-                  <h3 className="mb-2" style={{ fontSize: "var(--font-size-base)" }}>
-                    {title}
-                  </h3>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {nodes.map((node) => (
-                      <Tag key={node.id}>{nodeLabel(node)}</Tag>
-                    ))}
-                  </div>
-                </div>
-              ) : null,
-            )}
             {detail.type === "CAP" ? (
               <Button block loading={creating} onClick={quickCreateTask}>
-                开始学习
+                生成练习
               </Button>
             ) : null}
           </div>

@@ -131,9 +131,21 @@ function RequireRole({ roles, children }: { roles: Role[]; children: ReactNode }
   return <>{children}</>;
 }
 
+/**
+ * Render the student shell for the student portal path. Administrator default
+ * landing is handled by LoginPage (`/admin`); once a signed-in administrator
+ * explicitly chooses the student portal, `/` must not redirect back to admin.
+ */
+function RoleHome() {
+  const { user, bootstrapping } = useAuth();
+  if (bootstrapping) return <BootLoading />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role === "teacher") return <Navigate to="/teacher" replace />;
+  return <StudentLayout />;
+}
+
 const STAFF_ROLES: Role[] = ["teacher", "content_admin", "system_admin"];
 // Teachers must use the teacher portal; administrators retain student-portal support access.
-const STUDENT_PORTAL_ROLES: Role[] = ["student", "content_admin", "system_admin"];
 // RAG management changes shared knowledge data, so only the system administrator may enter it.
 const RAG_ADMIN_ROLES: Role[] = ["system_admin"];
 
@@ -151,11 +163,7 @@ export const routes: RouteObject[] = [
   // ---- 学生壳（教师禁止进入；管理员保留支持与验收能力）
   {
     path: "/",
-    element: (
-      <RequireRole roles={STUDENT_PORTAL_ROLES}>
-        <StudentLayout />
-      </RequireRole>
-    ),
+    element: <RoleHome />,
     children: [
       { index: true, element: <CockpitPage /> },
       // 入学引导（v3.0 §11.1）：已登录学生可访问；门禁由 CockpitPage 的 useOnboardingGate 触发

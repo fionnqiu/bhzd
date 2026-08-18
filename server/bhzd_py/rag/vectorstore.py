@@ -72,6 +72,8 @@ def _filtered_rows(
         params.append(embedding_model)
     if published_only:
         clauses.append("d.status = 'published'")
+        # During reprocessing, keep serving the last atomically activated index.
+        clauses.append("c.process_version = COALESCE(d.active_process_version, d.process_version)")
         clauses.append("d.visibility = 'student'")
         # Pending licenses are operational metadata, not a learner-access gate:
         # every successfully uploaded document is now published site-wide.  A
@@ -236,7 +238,12 @@ def index_chunks(
     import json
 
     with transaction(db):
-        db.execute("DELETE FROM rag_chunks WHERE document_id = ?", (document_id,))
+        # Versioned batches retain the active index until the caller switches
+        # active_process_version after successful indexing.
+        db.execute(
+            "DELETE FROM rag_chunks WHERE document_id = ? AND process_version = ?",
+            (document_id, process_version),
+        )
         for index, record in enumerate(records):
             db.execute(
                 """

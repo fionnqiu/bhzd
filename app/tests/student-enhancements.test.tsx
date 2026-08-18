@@ -736,13 +736,13 @@ function installProfileGet(shareDiagnostics: boolean) {
 }
 
 describe("ProfilePage 增强", () => {
-  it("收藏资料真实列表渲染（类型中文 Tag + 标题）", async () => {
+  it("能力地图真实列表渲染并隐藏收藏入口", async () => {
     installProfileGet(false);
     renderPage(<Route path="/profile" element={<ProfilePage />} />, "/profile");
 
-    expect(await screen.findByText("规范文档A")).toBeInTheDocument();
-    expect(screen.getByText("资料文档")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "删除收藏 规范文档A" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "能力甲" })).toBeInTheDocument();
+    expect(screen.queryByText("规范文档A")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "删除收藏 规范文档A" })).not.toBeInTheDocument();
   });
 
   it("诊断分享开关：勾选即 PATCH share_diagnostics", async () => {

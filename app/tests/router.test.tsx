@@ -107,13 +107,42 @@ describe("路由守卫", () => {
     expect(await screen.findByRole("heading", { name: "模型供应商" })).toBeInTheDocument();
   });
 
-  it("教师访问学生端、RAG 管理和旧资源审核地址均看到 403 页", async () => {
-    mockedGet.mockResolvedValue({
-      user: makeUser("teacher"),
-      csrf_token: "tok",
+  it("system_admin 从门户切换到根路径后进入学生端", async () => {
+    mockedGet.mockImplementation(async (path: string) => {
+      if (path === "/api/auth/session") {
+        return { user: makeUser("system_admin"), csrf_token: "tok" };
+      }
+      if (path === "/api/onboarding/assessment") return { status: "completed" };
+      if (path === "/api/notifications/unread-count") return { unread: 0 };
+      return { items: [], total: 0 };
     });
 
-    const restrictedPaths = ["/", "/rag-admin", "/teacher/review"];
+    renderAt("/");
+
+    expect(await screen.findByRole("navigation", { name: "学生端" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "模型供应商" })).not.toBeInTheDocument();
+  });
+
+  it("教师根路径进入教师工作台，RAG 管理和旧资源审核地址仍受限", async () => {
+    mockedGet.mockImplementation(async (path: string) => {
+      if (path === "/api/auth/session") {
+        return { user: makeUser("teacher"), csrf_token: "tok" };
+      }
+      // The teacher root redirects to the real dashboard before the guard
+      // settles; provide its empty aggregate DTO so the test stays focused on
+      // authorization rather than an incidental undefined-array render error.
+      if (path === "/api/teacher/dashboard") {
+        return { classes: [], weak_caps_top5: [], todos: { unpublished_teacher_tasks: 0 } };
+      }
+      if (path === "/api/teacher/tasks") return { items: [] };
+      return { items: [], total: 0 };
+    });
+
+    const rootView = renderAt("/");
+    expect(await screen.findByRole("heading", { name: "教师工作台" })).toBeInTheDocument();
+    rootView.unmount();
+
+    const restrictedPaths = ["/rag-admin", "/teacher/review"];
     for (const path of restrictedPaths) {
       const view = renderAt(path);
       expect(await screen.findByText("没有访问权限")).toBeInTheDocument();

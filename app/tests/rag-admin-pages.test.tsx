@@ -247,11 +247,9 @@ describe("UploadPage（PRD-03 §5）", () => {
 
   it("仅选择文件即可提交，并将空高级元数据交给服务端默认", async () => {
     renderPage(<UploadPage />);
-    // The simplified upload keeps the default license pending; indexing alone
-    // must never be presented as permission to expose a document to students.
-    expect(
-      screen.getByText(/完成授权确认并通过发布门禁后才可发布到学生端/),
-    ).toBeInTheDocument();
+    // The simplified flow makes publication depend on a successful index,
+    // rather than exposing a separate approval surface to administrators.
+    expect(screen.getAllByText(/成功后自动发布到学生端/).length).toBeGreaterThan(0);
     const selected = new File(["# 规范内容"], "spec.md", { type: "text/markdown" });
     fireEvent.change(screen.getByLabelText("选择文件"), {
       target: { files: [selected] },
@@ -295,10 +293,7 @@ describe("UploadPage（PRD-03 §5）", () => {
     expect(form.get("visibility")).toBeNull();
     expect(form.getAll("data_types")).toEqual(["text"]);
     expect(form.get("auto_submit")).toBeNull();
-    // The success state keeps the pending-license boundary visible as well.
-    expect(
-      await screen.findByText(/授权确认并通过发布门禁后才可提供学生召回/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/索引成功后将提供学生召回/)).toBeInTheDocument();
   });
 
   it("选择多个文件后批量导入并自动处理", async () => {

@@ -5,6 +5,9 @@ import { Button, Field, Input } from "../components";
 import { useAuth } from "./AuthContext";
 
 function loginDestination(role: string, requestedPath?: string): string {
+  // Administrators have an explicit management portal. Keep that as their
+  // default landing page while allowing the portal switcher to visit `/`.
+  if (role === "system_admin") return requestedPath ?? "/admin";
   if (role !== "teacher") return requestedPath ?? "/";
 
   // A saved student/RAG URL must not bounce a teacher into a page their role may not open.

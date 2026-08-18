@@ -147,8 +147,8 @@ describe("PresetsPage", () => {
     renderPage(<PresetsPage />, "/presets", "/presets");
 
     expect(await screen.findByText("数据标注零基础入门")).toBeInTheDocument();
-    // 薄弱 1 项 → 归入"薄弱补强路径"分组
-    expect(screen.getByText("薄弱补强路径")).toBeInTheDocument();
+    // 薄弱 1 项 → 归入当前推荐分组
+    expect(screen.getByText("薄弱能力推荐")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("combobox", { name: "数据类型筛选" }));
     fireEvent.click(screen.getByRole("option", { name: "语音" }));
@@ -198,8 +198,8 @@ describe("PresetsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /已掌握 1 项/ }));
     expect(screen.getByText("能力二")).toBeInTheDocument();
 
-    // 点击2：开始学习 → 确认门预览任务卡
-    fireEvent.click(screen.getByRole("button", { name: "开始学习" }));
+    // 点击2：生成任务 → 确认门预览任务卡
+    fireEvent.click(screen.getByRole("button", { name: "生成任务" }));
     expect(await screen.findByText("确认创建学习任务")).toBeInTheDocument();
     expect(screen.getByText("数据标注零基础入门·第1课：标注词汇入门")).toBeInTheDocument();
 
@@ -218,7 +218,7 @@ describe("PresetsPage", () => {
       return Promise.reject(new ApiRequestError(404, "NOT_FOUND", `未 mock 的 GET ${path}`));
     });
     renderPage(<PresetsPage />, "/presets", "/presets");
-    expect(await screen.findByText("没有符合条件的预设路径")).toBeInTheDocument();
+    expect(await screen.findByText("没有符合条件的学习推荐")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "清除筛选" })).toBeInTheDocument();
   });
 });
@@ -1007,8 +1007,8 @@ describe("ProfilePage", () => {
     // 能力地图：薄弱记录 + 分数
     expect(await screen.findByText("标注情感与副语言")).toBeInTheDocument();
     expect(screen.getByText("30%")).toBeInTheDocument();
-    // 收藏区（真实数据）：空列表 → 引导空态
-    expect(screen.getByText("还没有收藏")).toBeInTheDocument();
+    // 个人中心不再承载收藏入口，避免把资料收藏误认为学习主流程。
+    expect(screen.queryByText("还没有收藏")).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("班级邀请码"), { target: { value: "BAD-CODE" } });
     fireEvent.click(screen.getByRole("button", { name: "加入班级" }));
@@ -1111,10 +1111,11 @@ describe("GraphPage", () => {
     });
     expect(await screen.findByText("节点说明")).toBeInTheDocument();
     expect(screen.getByText("我的掌握度")).toBeInTheDocument();
-    expect(screen.getByText("副语言知识")).toBeInTheDocument();
+    // 学生图谱只展示能力节点与前置关系，不再暴露知识节点。
+    expect(screen.queryByText("副语言知识")).not.toBeInTheDocument();
 
-    // 开始学习 → 快速建任务 → 跳详情
-    fireEvent.click(screen.getByRole("button", { name: "开始学习" }));
+    // 生成练习 → 快速建任务 → 跳详情
+    fireEvent.click(screen.getByRole("button", { name: "生成练习" }));
     await waitFor(() => {
       expect(mockedPost).toHaveBeenCalledWith("/api/tasks/start-learning", {
         cap_node_id: "CAP-1",

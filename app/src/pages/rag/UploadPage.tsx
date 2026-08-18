@@ -239,7 +239,7 @@ export default function UploadPage() {
       setBatchImportResult(imported);
       // Pending-license imports can be processed now, but remain blocked from
       // student publication until an authorized reviewer confirms the source.
-      toast.success(`已排入 ${imported.files.queued} 份资料的处理队列；授权确认后才会发布`);
+      toast.success(`已排入 ${imported.files.queued} 份资料的处理队列；索引成功后自动发布`);
     } catch (err) {
       toast.error(errText(err, "批量导入失败，请稍后重试"));
     } finally {
@@ -255,7 +255,7 @@ export default function UploadPage() {
         <Card title="上传成功">
           <div className="flex flex-col gap-3">
             <p>
-              「{result.document.title}」已进入解析、切片、索引流程；授权确认并通过发布门禁后才可提供学生召回。
+            「{result.document.title}」已进入解析、切片、索引流程；索引成功后将提供学生召回。
             </p>
             <p className="flex items-center gap-2">
               当前状态：<StatusBadge status={result.document.status} />
@@ -293,7 +293,7 @@ export default function UploadPage() {
         <div className="flex flex-col gap-3">
           <p className="text-sm text-secondary">
             可选择多个文件或整个目录（每批最多 1000 个）；系统只上传你明确选择的文件，不会扫描固定的 docs/ragData。
-            每份资料会逐一解析、切片、索引；只有完成授权确认并通过发布门禁后，才会自动发布到学生端。
+            每份资料会逐一解析、切片、索引；成功后自动发布到学生端。
           </p>
           <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
             <Button variant="secondary" onClick={() => batchFilesInputRef.current?.click()}>
@@ -499,7 +499,7 @@ export default function UploadPage() {
         </Field>
 
         <div className="grid grid-cols-2">
-          <Field label="授权状态" hint="留空时为待确认，不会自动发布给学生">
+          <Field label="授权状态（兼容字段）" hint="仅保留历史元数据，不影响成功索引后的发布">
             <Select
               aria-label="授权状态"
               value={licenseStatus}
@@ -511,12 +511,12 @@ export default function UploadPage() {
         </div>
         {licenseStatus === "forbidden" ? (
           <p className="form-alert form-alert-error" role="alert">
-            授权状态为"禁止"的资料将不能发布，仅可作为内部存档。
+            授权状态为“禁止”的资料仍会被安全校验拦截并归档。
           </p>
         ) : null}
         {licenseStatus === "pending" ? (
           <p className="form-alert form-alert-error" role="alert" style={{ background: "var(--color-warning-soft)", color: "var(--color-warning)" }}>
-            授权状态为"待确认"的资料可解析入库，但完成授权确认前不能发布。
+            授权状态为“待确认”仅作为历史元数据保留。
           </p>
         ) : null}
       </Card>
@@ -527,8 +527,7 @@ export default function UploadPage() {
       <Card title="自动处理" className="mb-4">
         <p className="text-sm text-secondary mb-3">
           切片策略使用系统默认切片参数（chunk_size / overlap 由系统管理端 RAG 参数统一配置），
-          上传后自动完成解析、切片与索引；未填写授权状态的资料保留“待确认”记录，
-          完成授权确认并通过发布门禁后才可发布到学生端，不会绕过发布门禁。
+            上传后自动完成解析、切片与索引；成功后自动发布到学生端。
         </p>
       </Card>
 

@@ -168,10 +168,19 @@ def _fail_job(db: sqlite3.Connection, job: sqlite3.Row, doc_id: str, code: str, 
         "UPDATE rag_jobs SET status='failed', error_code=?, error_message=?, finished_at=? WHERE id=?",
         (code, message, now, job["id"]),
     )
-    db.execute(
-        "UPDATE rag_documents SET status='failed', error_code=?, error_message=?, updated_at=? WHERE id=?",
-        (code, message, now, doc_id),
-    )
+    # A batch reprocess must not hide the currently active index when its new
+    # version fails; the old version remains the learner-facing source.
+    job_params = json.loads(job["params_json"] or "{}")
+    if job_params.get("batch_id"):
+        db.execute(
+            "UPDATE rag_documents SET error_code=?, error_message=?, updated_at=? WHERE id=?",
+            (code, message, now, doc_id),
+        )
+    else:
+        db.execute(
+            "UPDATE rag_documents SET status='failed', error_code=?, error_message=?, updated_at=? WHERE id=?",
+            (code, message, now, doc_id),
+        )
     _, version = _parse_job_key(job)
     stage_idx = STAGE_ORDER.index(job["stage"])
     for downstream in STAGE_ORDER[stage_idx + 1 :]:
@@ -336,10 +345,12 @@ def _run_job(db: sqlite3.Connection, config: AppConfig, job: sqlite3.Row) -> boo
     if doc is None:
         _fail_job(db, job, job["document_id"], "DOC_MISSING", "文档不存在或已删除")
         return False
-    db.execute(
-        "UPDATE rag_documents SET status=?, updated_at=? WHERE id=?",
-        (_STAGE_RUNNING_STATUS[job["stage"]], now, doc["id"]),
-    )
+    job_params = json.loads(job["params_json"] or "{}")
+    if not job_params.get("batch_id"):
+        db.execute(
+            "UPDATE rag_documents SET status=?, updated_at=? WHERE id=?",
+            (_STAGE_RUNNING_STATUS[job["stage"]], now, doc["id"]),
+        )
     db.commit()
     try:
         _STAGE_HANDLERS[job["stage"]](db, config, job, doc)
@@ -356,10 +367,18 @@ def _run_job(db: sqlite3.Connection, config: AppConfig, job: sqlite3.Row) -> boo
         "UPDATE rag_jobs SET status='succeeded', progress=1, finished_at=? WHERE id=?",
         (done, job["id"]),
     )
-    db.execute(
-        "UPDATE rag_documents SET status=?, error_code=NULL, error_message=NULL, updated_at=? WHERE id=?",
-        (_STAGE_SUCCESS_STATUS[job["stage"]], done, doc["id"]),
-    )
+    if job_params.get("batch_id"):
+        if job["stage"] == "index":
+            db.execute(
+                "UPDATE rag_documents SET active_process_version = ?, process_version = ?, "
+                "error_code = NULL, error_message = NULL, updated_at = ? WHERE id = ?",
+                (_parse_job_key(job)[1], _parse_job_key(job)[1], done, doc["id"]),
+            )
+    else:
+        db.execute(
+            "UPDATE rag_documents SET status=?, error_code=NULL, error_message=NULL, updated_at=? WHERE id=?",
+            (_STAGE_SUCCESS_STATUS[job["stage"]], done, doc["id"]),
+        )
     db.commit()
     return True
 
@@ -392,6 +411,27 @@ def run_pending(
             summary["executed"] += 1
         elif outcome is False:
             summary["failed"] += 1
+    # Recompute durable batch progress after each worker pass so the existing
+    # RAG jobs page can expose accurate queued/running/succeeded/failed counts.
+    batches = db.execute(
+        "SELECT DISTINCT batch_id FROM rag_jobs WHERE batch_id IS NOT NULL AND status IN ('queued','running','succeeded','failed')"
+    ).fetchall()
+    for batch in batches:
+        batch_id = batch["batch_id"]
+        counts = db.execute(
+            "SELECT SUM(status IN ('failed','cancelled')) AS failed, "
+            "SUM(status IN ('queued','running')) AS active, COUNT(*) AS total "
+            "FROM rag_jobs WHERE batch_id = ?",
+            (batch_id,),
+        ).fetchone()
+        if counts["active"] == 0:
+            db.execute(
+                "UPDATE rag_reprocess_batches SET status = ?, failed_count = ?, finished_at = COALESCE(finished_at, ?) WHERE id = ?",
+                ("completed_with_failures" if counts["failed"] else "completed", counts["failed"] or 0, utc_now_iso(), batch_id),
+            )
+        else:
+            db.execute("UPDATE rag_reprocess_batches SET status = 'running', failed_count = ? WHERE id = ?", (counts["failed"] or 0, batch_id))
+    db.commit()
     return summary
 
 

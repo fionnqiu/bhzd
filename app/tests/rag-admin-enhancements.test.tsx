@@ -311,8 +311,8 @@ describe("SecurityPage 系统告警（PRD-06 §13.2）", () => {
     expect(screen.getByText(/80\.0%/)).toBeInTheDocument();
     expect(screen.getByText(/统计窗口起点：/)).toBeInTheDocument();
     expect(screen.getByText(/评估时间：/)).toBeInTheDocument();
-    // 既有策略卡不受影响
-    expect(screen.getByText("登录限流")).toBeInTheDocument();
+    // 系统状态页只保留可由后端实时证明的运行信息。
+    expect(screen.getByText("运行时指标")).toBeInTheDocument();
   });
 
   it("无告警时显示绿色「当前无告警」卡片", async () => {
@@ -323,7 +323,7 @@ describe("SecurityPage 系统告警（PRD-06 §13.2）", () => {
     });
     renderPage(<SecurityPage />);
     expect(await screen.findByText(/当前无告警/)).toBeInTheDocument();
-    expect(screen.getByText("审计覆盖")).toBeInTheDocument(); // 第 11 张策略卡仍在
+    expect(screen.getByText("运行时指标")).toBeInTheDocument();
   });
 
   it("按管理员忽略告警并从当前列表移除", async () => {

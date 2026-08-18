@@ -1,14 +1,12 @@
 /**
- * 安全配置（/admin/security）——系统告警 + 安全策略只读视图（PRD-04 §6 / PRD-06 §13.2）。
+ * 系统状态（/admin/security）——当前告警与可观测运行指标。
  *
  * 为什么告警置顶：失败率/超时率类告警是"正在发生"的运行时风险，优先级高于
  * 静态策略说明；告警由 GET /api/admin/alerts 实时评估，忽略状态按管理员保存，
  * 管理端打开本页或手动刷新即完成一次评估闭环。
  *
- * 下半部分仍是纯静态策略页：首期安全策略全部内置于后端常量（security.py /
- * deps.py / 蓝图 §4），没有配置端点；页面如实展示"已启用"状态与机制说明，
- * 不虚构开关让管理员误以为可以在此修改。数值（5 次/分钟、10 次锁 15 分钟）
- * 与 security.py 常量逐一核对过。
+ * 运行时指标也保持只读：页面展示后端实际返回的登录、会话、API 与供应商数据，
+ * 不把无法在线修改的安全策略伪装成可配置板块。
  */
 
 import { EyeOff } from "lucide-react";
@@ -53,70 +51,6 @@ function fmtLatency(value: number | null): string {
   return value === null ? "暂无样本" : `${value.toFixed(2)} ms`;
 }
 
-interface Policy {
-  name: string;
-  nf: string;
-  desc: string;
-}
-
-/** 策略清单（事实来源：security.py / deps.py / admin.py / 蓝图 §4） */
-const POLICIES: Policy[] = [
-  {
-    name: "登录限流",
-    nf: "NF5",
-    desc: "同一 IP 每分钟最多 5 次登录尝试（成功失败都计数），超出返回限流提示。",
-  },
-  {
-    name: "失败锁定",
-    nf: "NF5",
-    desc: "同一账号连续失败 10 次锁定 15 分钟，锁定期间即使密码正确也拒绝登录。",
-  },
-  {
-    name: "CSRF 防护",
-    nf: "NF5",
-    desc: "全部变更类请求必须携带 x-csrf-token（登录后由会话签发并轮换），缺失或失效即 403。",
-  },
-  {
-    name: "会话隔离",
-    nf: "NF4",
-    desc: "学生/教师端与系统管理端使用两套独立 Cookie（bhzd_session / bhzd_admin_session），/api/admin/* 仅认管理端会话。",
-  },
-  {
-    name: "密码存储",
-    nf: "NF1",
-    desc: "密码使用 Argon2id 哈希存储，任何接口与日志不输出明文或哈希。",
-  },
-  {
-    name: "API Key 加密",
-    nf: "NF2",
-    desc: "供应商 API Key 使用 AES-256-GCM 加密落库；编辑时仅显示固定掩码，可留空复用已保存密钥；明文不进日志与审计快照。",
-  },
-  {
-    name: "诊断原文件不持久化",
-    nf: "NF3",
-    desc: "学生上传的诊断文件仅在请求内存中解析，不写入磁盘；只保存用户确认后的诊断摘要。",
-  },
-  {
-    name: "base_url 安全校验",
-    nf: "NF9",
-    desc: "供应商 base_url 拒绝本机、内网与云元数据地址，防止 API Key 被转发到内网服务（SSRF 防线）。",
-  },
-  {
-    name: "资料授权强制登记",
-    nf: "NF6",
-    desc: "RAG 上传必须填写授权状态与来源，未填不得上传；禁止/待确认状态不能发布。",
-  },
-  {
-    name: "未发布资料隔离",
-    nf: "NF7",
-    desc: "学生端召回强制 published_only：未发布、已归档、已过期资料永不进入学生召回。",
-  },
-  {
-    name: "审计覆盖",
-    nf: "NF8",
-    desc: "审核、发布、归档、删除、权限变更、模型配置变更、RAG 参数修改全部写入审计日志，且不允许删除。",
-  },
-];
 
 export default function SecurityPage() {
   // 系统告警：null 表示尚未加载完成（区分"加载中"与"无告警"两种空白）
@@ -200,8 +134,8 @@ export default function SecurityPage() {
   return (
     <div>
       <PageHeader
-        title="安全配置"
-        sub="系统告警实时评估置顶展示；每位管理员可单独忽略活动告警，恢复后重新显示"
+        title="系统状态"
+        sub="仅展示后端当前可证明的告警、登录、会话和服务指标"
       />
 
       {/* 系统告警（PRD-06 §13.2）：触发中的告警逐条展示，健康时为绿色"当前无告警" */}
@@ -331,23 +265,6 @@ export default function SecurityPage() {
         )}
       </Card>
 
-      <p className="form-alert form-alert-success mb-4">
-        以下策略均为系统内置常量（PRD-04 §6 / NF1-NF9），随服务启动生效，无需也无法在页面修改。
-      </p>
-      <div className="grid grid-cols-3">
-        {POLICIES.map((policy) => (
-          <Card key={policy.name}>
-            <div className="flex items-center justify-between mb-2">
-              <strong>{policy.name}</strong>
-              <span className="flex gap-1 items-center">
-                <Tag>{policy.nf}</Tag>
-                <span className="badge badge-success">已启用</span>
-              </span>
-            </div>
-            <p className="text-sm text-secondary">{policy.desc}</p>
-          </Card>
-        ))}
-      </div>
     </div>
   );
 }

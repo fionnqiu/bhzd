@@ -31,11 +31,26 @@ def _create_task(api, user, **overrides):
 
 
 def _set_rubric(api, user, task_id, rubric=RUBRIC):
-    """夹具辅助：直接改库给任务挂 rubric（学生 API 不提供 rubric 编辑）。"""
+    """Seed the current per-question grading contract for lifecycle tests."""
     api.conn.execute(
         "UPDATE learning_tasks SET rubric_json = ? WHERE id = ?",
         (json.dumps(rubric, ensure_ascii=False), task_id),
     )
+    for index, item in enumerate(rubric):
+        exercise_id = f"{task_id}-exercise-{index}"
+        api.conn.execute(
+            "INSERT INTO task_exercises (id, task_id, question, type, reference_answer, sort_order) "
+            "VALUES (?, ?, ?, 'open_ended', ?, ?)",
+            (exercise_id, task_id, item["key"], str(item["expected"]), index),
+        )
+        score = 100 if index == 0 else 0
+        api.conn.execute(
+            "INSERT INTO task_exercise_submissions "
+            "(id, exercise_id, student_id, answer, grade_status, score, feedback, graded_at) "
+            "VALUES (?, ?, ?, ?, 'done', ?, ?, datetime('now'))",
+            (f"{exercise_id}-submission", exercise_id, user["user_id"], "sad" if index == 1 else str(item["expected"]), score,
+             "回答正确" if score else item.get("hint", "请重新检查")),
+        )
     api.conn.commit()
 
 
@@ -58,11 +73,14 @@ def test_full_task_lifecycle(api):
     )
     assert submit.status_code == 200, submit.text
     result = submit.json()
-    assert result["score"] == pytest.approx(2 / 3)
-    feedback = {f["key"]: f for f in result["feedback"]}
-    assert feedback["q1"]["ok"] is True and feedback["q1"]["hint"] == "回答正确"
-    assert feedback["q2"]["ok"] is False and feedback["q2"]["hint"] == "注意单位换算" or True
-    assert feedback["q2"]["expected"] == "happy" and feedback["q2"]["got"] == "sad"
+    assert result["score"] == pytest.approx(0.6667)
+    # Task submission aggregates durable exercise grades.  Feedback is keyed by
+    # exercise ID and never returns reference answers, so a retry cannot read
+    # the grading key from its previous attempt.
+    feedback = {f["got"]: f for f in result["feedback"]}
+    assert feedback["42"]["ok"] is True and feedback["42"]["hint"] == "回答正确"
+    assert feedback["sad"]["ok"] is False and feedback["sad"]["hint"] == "请重新检查"
+    assert feedback["sad"]["expected"] is None
 
     # mastery_preview：delta = 0.15*score − 0.1*(1−score)（score 经 6 位小数存储，
     # 断言用返回的 score 反算，避免 1/3 无限小数精度差异）
@@ -104,7 +122,7 @@ def test_full_task_lifecycle(api):
 
 
 def test_completeness_scoring_without_rubric(api):
-    """无 rubric：完整性分 = 非空答案比例（口径见 tasks.py docstring）。"""
+    """没有单题评分时，填写内容不能生成任务总分。"""
     user = api.login_as("comp@test.local")
     task = _create_task(api, user)
     api.client.post(f"/api/tasks/{task['id']}/start", headers=user["headers"])
@@ -113,7 +131,8 @@ def test_completeness_scoring_without_rubric(api):
         json={"answers": {"a": "内容", "b": "", "c": "内容"}},
         headers=user["headers"],
     )
-    assert submit.json()["score"] == pytest.approx(2 / 3)
+    assert submit.status_code == 409
+    assert submit.json()["error"]["code"] == "TASK_GRADING_INCOMPLETE"
 
 
 def test_invalid_transitions_409(api):
@@ -316,13 +335,13 @@ def test_task_detail_strips_practice_answer_fixtures_but_keeps_practice_display(
         "checklist": ["已检查字段"],
     }
 
-    # The stored practice.answers still supplies q1 as the completeness key;
-    # redaction changes the response DTO only, not deterministic scoring.
+    # Redaction changes the response DTO, while a legacy task without durable
+    # question grades must not receive a fabricated completeness score.
     api.client.post(f"/api/tasks/{task['id']}/start", headers=user["headers"])
     submitted = api.client.post(
         f"/api/tasks/{task['id']}/submit",
         json={"answers": {"q1": "学生作答"}},
         headers=user["headers"],
     )
-    assert submitted.status_code == 200, submitted.text
-    assert submitted.json()["score"] == pytest.approx(1.0)
+    assert submitted.status_code == 409, submitted.text
+    assert submitted.json()["error"]["code"] == "TASK_GRADING_INCOMPLETE"
