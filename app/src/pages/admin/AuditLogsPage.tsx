@@ -314,7 +314,6 @@ export default function AuditLogsPage() {
     <div>
       <PageHeader
         title="审计日志"
-        sub="登录、配置变更、资料发布、权限变更等关键操作全量留痕；审计日志不允许删除"
       />
 
       {/* 筛选区（PRD-04 §7：操作人/动作/目标/时间） */}
@@ -371,7 +370,6 @@ export default function AuditLogsPage() {
           </div>
         </Card>
       )}
-      <p className="text-xs text-muted mt-2">审计日志不允许删除（PRD-06 §12.1）；动作清单为系统内置动作的常用子集。</p>
       <Drawer
         open={selectedLog !== null}
         title={selectedLog ? `审计详情：${selectedLog.action}` : "审计详情"}

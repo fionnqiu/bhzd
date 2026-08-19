@@ -75,7 +75,6 @@ export default function RegisterPage() {
       <div className="auth-card">
         <div className="auth-brand">
           <div className="auth-brand-name">标航智导</div>
-          <div className="auth-brand-slogan">数据标注能力成长平台</div>
         </div>
         <h1 className="auth-title">注册账号</h1>
         {error ? <div className="form-alert form-alert-error">{error}</div> : null}

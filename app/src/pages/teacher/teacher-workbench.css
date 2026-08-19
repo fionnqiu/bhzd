@@ -265,15 +265,6 @@
   text-decoration: underline;
 }
 
-.teacher-task-manage-hint {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-top: var(--space-4);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-}
-
 @media (max-width: 900px) {
   .teacher-dashboard-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));

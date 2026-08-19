@@ -19,7 +19,7 @@ function loginDestination(role: string, requestedPath?: string): string {
 
 /**
  * 登录页（POST /api/auth/login）。
- * 成功后回到守卫拦下来的原路径（location.state.from），缺省进指挥舱。
+ * 成功后回到守卫拦下来的原路径（location.state.from），缺省进首页。
  */
 export default function LoginPage() {
   const { login } = useAuth();
@@ -54,7 +54,6 @@ export default function LoginPage() {
       <div className="auth-card">
         <div className="auth-brand">
           <div className="auth-brand-name">标航智导</div>
-          <div className="auth-brand-slogan">数据标注能力成长平台</div>
         </div>
         <h1 className="auth-title">登录</h1>
         {error ? <div className="form-alert form-alert-error">{error}</div> : null}

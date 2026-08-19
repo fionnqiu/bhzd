@@ -274,8 +274,7 @@ export default function LedgersPage() {
   return (
     <div>
       <PageHeader
-        title="来源台账"
-        sub="每条面向学生的专业规则必须绑定来源台账；过期或未授权来源不得发布"
+        title="来源台账"
         actions={
           <Button onClick={() => openEditor("new")}>新建台账</Button>
         }

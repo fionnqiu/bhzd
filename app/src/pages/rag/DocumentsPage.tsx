@@ -460,7 +460,6 @@ export default function DocumentsPage() {
     <div>
       <PageHeader
         title="RAG 资料库"
-        sub="管理知识库资料的全生命周期：上传、解析、切片、索引、归档"
         actions={
           <Link to="/admin/rag/upload" className="btn btn-primary">
             上传资料
@@ -524,10 +523,6 @@ export default function DocumentsPage() {
                   清除选择
                 </Button>
               </div>
-              <p className="text-xs text-muted mt-2">
-                状态提示：上传资料会自动完成解析、切片、索引并发布；「已归档」不可重建索引。
-                不满足条件的项不会使整单失败——后端逐项返回原因（允许部分成功）。
-              </p>
             </div>
           ) : null}
           <DataTable

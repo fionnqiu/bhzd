@@ -309,7 +309,7 @@ export default function ProfilePage() {
 
   return (
     <div>
-      <PageHeader title="个人中心" sub="能力地图、学习记录与账号设置" />
+      <PageHeader title="个人中心" />
 
       <div className="grid grid-cols-2 mb-4">
         {/* 能力地图（薄弱优先；点击能力行看 30 天趋势） */}
@@ -317,7 +317,6 @@ export default function ProfilePage() {
           {mastery.length === 0 ? (
             <EmptyState
               title="还没有掌握度记录"
-              hint="完成一次练习或诊断后，这里会生成你的能力地图"
               action={
                 <Link to="/presets" className="btn btn-primary btn-sm">
                   去预设学习
@@ -432,7 +431,7 @@ export default function ProfilePage() {
         {/* 成长记录（mastery_events 时间线；来源中文化） */}
         <Card title="成长记录">
           {profile.growth.length === 0 ? (
-            <EmptyState title="还没有成长记录" hint="掌握度每次变化都会记录在这里" />
+            <EmptyState title="还没有成长记录" />
           ) : (
             <div className="flex flex-col gap-2">
               {profile.growth.map((event, index) => (

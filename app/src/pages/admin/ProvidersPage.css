@@ -9,8 +9,9 @@
   justify-content: flex-end;
   gap: var(--space-2);
   padding: var(--space-4) var(--space-5);
-  border-top: 1px solid var(--color-border);
-  background: var(--color-surface);
+  border-top: 1px solid var(--material-edge-hairline);
+  /* 抽屉已是玻璃材质，页脚不再盖一层实色，保持材质连续 */
+  background: transparent;
 }
 
 .provider-timeout-test-row {
@@ -40,9 +41,10 @@
   min-height: 40px;
   gap: var(--space-2);
   padding: 8px var(--space-3);
-  border: 1px solid var(--color-border-strong);
+  /* 填充式触发器，与全局输入控件同一语言 */
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
-  background: var(--color-surface);
+  background: color-mix(in srgb, var(--color-surface-muted) 78%, transparent);
   color: var(--color-text);
   cursor: pointer;
   text-align: left;
@@ -69,9 +71,12 @@
   left: 0;
   display: grid;
   padding: var(--space-1);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--material-edge-hairline);
   border-radius: var(--radius-md);
-  background: var(--color-surface);
+  /* 浮层列表统一走 overlay 玻璃材质 */
+  background: var(--material-overlay);
+  backdrop-filter: var(--material-blur-overlay);
+  -webkit-backdrop-filter: var(--material-blur-overlay);
   box-shadow: var(--shadow-md);
 }
 

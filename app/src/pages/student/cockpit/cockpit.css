@@ -1,5 +1,5 @@
 /**
- * 指挥舱页级样式（F1 自有文件，不改 F0 的 index.css）。
+ * 对话页页级样式（F1 自有文件，不改 F0 的 index.css）。
  *
  * 布局（方案 A 三栏精修 + 视口固定高度，docs/dev/cockpit-layout-options.html）：
  * 左栏 200px / 中栏自适应（上限 920px 居中）/ 右栏 250px；
@@ -99,10 +99,14 @@
 }
 
 .rail-section {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  /* 左右栏分区卡：承载层玻璃，透出壳层环境光 */
+  background: var(--material-panel);
+  backdrop-filter: var(--material-blur-panel);
+  -webkit-backdrop-filter: var(--material-blur-panel);
+  border: 1px solid var(--material-edge-hairline);
   border-radius: var(--radius-lg);
   padding: var(--space-3);
+  box-shadow: inset 0 1px 0 var(--material-edge-light);
 }
 
 .rail-section-title {
@@ -138,6 +142,15 @@
   cursor: pointer;
   color: var(--color-text);
   text-decoration: none;
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    scale var(--motion-press) var(--ease-out);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rail-item:active {
+    scale: 0.98;
+  }
 }
 
 .rail-item:hover {
@@ -193,19 +206,24 @@
 .rail-scroll-box {
   max-height: 260px;
   overflow-y: auto;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--material-edge-hairline);
   border-radius: var(--radius-md);
   padding: var(--space-1);
-  background: var(--color-surface-muted, #f4f5f9);
+  /* 半透的凹陷感：比玻璃卡更“深”一层，color-mix 让暗色自动跟随 */
+  background: color-mix(in srgb, var(--color-surface-muted) 55%, transparent);
 }
 
 /* ------------------------------------------------------------- 欢迎态 */
 
 .welcome {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  /* 欢迎态主卡：承载层玻璃 + 顶边高光 */
+  background: var(--material-panel);
+  backdrop-filter: var(--material-blur-panel);
+  -webkit-backdrop-filter: var(--material-blur-panel);
+  border: 1px solid var(--material-edge-hairline);
   border-radius: var(--radius-lg);
   padding: var(--space-6);
+  box-shadow: inset 0 1px 0 var(--material-edge-light);
 }
 
 .welcome-title {
@@ -241,25 +259,32 @@
   align-items: flex-start;
   gap: var(--space-1);
   padding: var(--space-3);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  /* 快捷卡：承载层玻璃，hover 时边缘与投影浮现 */
+  background: var(--material-panel);
+  backdrop-filter: var(--material-blur-panel);
+  -webkit-backdrop-filter: var(--material-blur-panel);
+  border: 1px solid var(--material-edge-hairline);
   border-radius: var(--radius-lg);
   cursor: pointer;
   text-align: left;
+  /* 用独立 scale/translate 属性：hover 抬升与按压缩放可叠加互不覆盖 */
   transition:
     border-color var(--motion-fast) var(--ease-standard),
     box-shadow var(--motion-fast) var(--ease-standard),
-    transform var(--motion-press) var(--ease-out);
+    scale var(--motion-press) var(--ease-out),
+    translate var(--motion-fast) var(--ease-out);
 }
 
+/* macOS 卡片手感：hover 轻微抬升 + 投影加深 */
 .quick-card:hover {
+  translate: 0 -1px;
   border-color: var(--color-primary-border);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .quick-card:active {
-    transform: scale(0.98);
+    scale: 0.98;
   }
 }
 
@@ -291,13 +316,24 @@
   display: inline-flex;
   align-items: center;
   padding: 4px var(--space-3);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--material-edge-hairline);
   border-radius: var(--radius-full);
-  background: var(--color-surface);
+  /* 小胶囊只取半透底色，不加模糊（小面积模糊性价比低） */
+  background: var(--material-panel);
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
   cursor: pointer;
   text-decoration: none;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    scale var(--motion-press) var(--ease-out);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .chip:active {
+    scale: 0.97;
+  }
 }
 
 .chip:hover {
@@ -315,265 +351,131 @@
   min-height: 240px;
 }
 
-/* The execution record borrows an AI-agent activity language, but every value
-   remains a verified lifecycle summary. The compact header folds the detailed
-   plan and operation log until the reader explicitly requests it. */
-.agent-execution-record {
+/* --------------------------------------------------------- 执行过程步骤流 */
+
+/* 步骤流只投影服务端下发的计划与受控生命周期摘要：状态图标 + 步骤标题，
+   不回流模型推理、提示词或原始工具载荷。左缩进与助手正文（头像之后）对齐。 */
+.agent-steps-record {
   display: grid;
   min-width: 0;
-  gap: 6px;
-  max-width: 43rem;
+  max-width: min(calc(100% - 40px), 46rem);
+  margin-left: 40px;
+  gap: 4px;
   color: var(--color-text-muted);
 }
 
-.agent-activity-row-primary,
-.agent-tool-group-toggle {
-  display: flex;
-  align-items: center;
-}
-
-.agent-execution-record-completed {
-  --agent-execution-accent: var(--color-success);
-}
-
-.agent-execution-record-waiting {
-  --agent-execution-accent: var(--color-warning);
-}
-
-.agent-execution-record-failed {
-  --agent-execution-accent: var(--color-danger);
-}
-
-.agent-current-action {
+.agent-steps-summary {
   display: flex;
   width: 100%;
   min-width: 0;
   align-items: center;
   gap: 8px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  padding: 2px 4px 2px 0;
   color: var(--color-text-secondary);
   font: inherit;
+  font-size: var(--font-size-sm);
   text-align: left;
-  transition:
-    border-color var(--motion-fast) var(--ease-standard),
-    background var(--motion-fast) var(--ease-standard);
-}
-
-.agent-current-action[type="button"] {
   cursor: pointer;
 }
 
-.agent-current-action[type="button"]:hover {
-  border-color: color-mix(
-    in srgb,
-    var(--agent-execution-accent, var(--color-primary)) 34%,
-    var(--color-border)
-  );
-  background: color-mix(in srgb, var(--color-primary-soft) 34%, var(--color-surface));
-}
-
-.agent-current-action-copy {
-  min-width: 0;
-  flex: 1;
-}
-
-.agent-current-action-icon,
-.agent-activity-row-icon {
+.agent-steps-summary-icon,
+.agent-step-icon {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
+  width: 16px;
+  height: 16px;
   color: var(--color-text-muted);
 }
 
-.agent-current-action-icon {
-  width: 16px;
-  height: 16px;
-  color: var(--agent-execution-accent, var(--color-primary));
-}
-
-.agent-current-action-icon .agent-orb {
-  width: 16px;
-  height: 16px;
-}
-
-.agent-current-action-icon .agent-orb-glyph {
-  width: 16px;
-  height: 16px;
-  padding: 2px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--color-primary-soft) 84%, transparent);
-}
-
-/* Keep the expanded trace visually subordinate to the answer bubble. */
-.agent-activity-row-icon svg,
-.agent-execution-plan-heading svg {
-  width: 16px;
-  height: 16px;
-}
-
-.agent-current-action-running .agent-current-action-icon svg,
-.agent-activity-row-running .agent-activity-row-icon svg {
-  animation: cockpit-spin 1s linear infinite;
-}
-
-.agent-current-action-title {
-  display: block;
+.agent-steps-summary-text {
+  min-width: 0;
+  flex: 1;
   overflow: hidden;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* The eyebrow identifies an observable record type, never hidden model intent. */
-.agent-current-action-stage {
-  display: block;
-  color: var(--color-text-muted);
-  font-size: 11px;
-  line-height: 1.2;
-}
-
-.agent-activity-detail,
-.agent-activity-meta {
-  margin: 1px 0 0;
-  color: var(--color-text-muted);
-  font-size: 11px;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-
-.agent-activity-summaries {
-  display: grid;
-  gap: 1px;
-  margin-top: 1px;
-}
-
-.agent-activity-status {
-  display: inline-flex;
+.agent-steps-summary-chevron {
   flex: 0 0 auto;
-  align-items: center;
-  padding: 2px 6px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-full);
-  background: var(--color-surface-muted);
-  color: var(--color-text-secondary);
-  font-size: 11px;
-  line-height: 1.35;
-}
-
-.agent-activity-status-running {
-  background: var(--color-surface-muted);
   color: var(--color-text-muted);
 }
 
-.agent-activity-status-completed {
-  border-color: color-mix(in srgb, var(--color-success) 25%, transparent);
-  background: var(--color-success-soft);
-  color: var(--color-success);
+.agent-steps-summary-running .agent-steps-summary-icon {
+  color: var(--color-primary);
 }
 
-.agent-activity-status-waiting {
-  background: var(--color-warning-soft);
+.agent-steps-summary-waiting .agent-steps-summary-icon {
   color: var(--color-warning);
 }
 
-.agent-activity-status-failed {
-  background: var(--color-danger-soft);
+.agent-steps-summary-completed .agent-steps-summary-icon {
+  color: var(--color-success);
+}
+
+.agent-steps-summary-failed .agent-steps-summary-icon {
   color: var(--color-danger);
 }
 
-.agent-activity-summary-count {
-  flex: 0 0 auto;
-  color: var(--color-text-muted);
-  font-size: 11px;
-  white-space: nowrap;
+.agent-steps-summary-running .agent-steps-summary-icon svg,
+.agent-step-running .agent-step-icon svg {
+  animation: cockpit-spin 1s linear infinite;
 }
 
-.agent-current-action-chevron {
-  flex: 0 0 auto;
-  color: var(--color-text-muted);
-}
-
-.agent-activity-expanded {
-  display: grid;
-  gap: 8px;
-  margin: 0 0 0 10px;
+/* 步骤列表：左侧细竖线串联各步，阅读顺序即执行顺序。 */
+.agent-steps {
+  list-style: none;
+  margin: 0 0 2px 7px;
+  padding: 4px 0 4px 13px;
   border-left: 1px solid var(--color-border);
-  padding: 2px 0 2px 12px;
-}
-
-.agent-activity-history {
   display: grid;
-  gap: 2px;
+  gap: 6px;
 }
 
-.agent-activity-history-heading {
+.agent-step {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: var(--color-text-muted);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.agent-execution-plan {
-  display: grid;
-  gap: 4px;
-  padding-bottom: 4px;
-  border-bottom: 1px dashed var(--color-border);
-}
-
-.agent-execution-plan-heading {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-}
-
-.agent-execution-plan-count {
-  margin-left: auto;
-  color: var(--color-text-muted);
-  font-size: 11px;
-  font-weight: 400;
-}
-
-.agent-tool-group-count {
-  color: var(--color-text-muted);
-  font-weight: 400;
-}
-
-.agent-activity-history-list {
-  display: grid;
-  gap: 2px;
-}
-
-.agent-activity-row {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: flex-start;
   gap: 8px;
   min-width: 0;
-  padding: 6px 8px;
-  border: 1px solid transparent;
   border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
 }
 
-/* Retrieval rows use the search-result rhythm from the reference while the
-   label remains truthful: this is governed RAG retrieval, not public web use. */
-.agent-activity-row-retrieval {
-  border-color: color-mix(in srgb, var(--color-primary) 16%, var(--color-border));
-  background: color-mix(in srgb, var(--color-primary-soft) 32%, var(--color-surface));
+.agent-step-body {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
 }
 
-.agent-activity-row-operation {
-  border-bottom-color: var(--color-border);
+.agent-step-title {
+  overflow-wrap: anywhere;
+}
+
+.agent-step-sub {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.agent-step-pending {
+  color: var(--color-text-muted);
+}
+
+.agent-step-completed .agent-step-icon {
+  color: var(--color-success);
+}
+
+.agent-step-waiting .agent-step-icon {
+  color: var(--color-warning);
+}
+
+.agent-step-failed .agent-step-icon {
+  color: var(--color-danger);
 }
 
 @keyframes cockpit-activity-arrive {
@@ -588,81 +490,58 @@
   }
 }
 
-/* Only fresh, live activity rows receive this class; historical work stays still. */
-.agent-activity-row-arriving {
+/* 只有 live 新增的行带到达动画；历史记录保持静止。 */
+.agent-step-arriving {
   animation: cockpit-activity-arrive var(--motion-standard) var(--ease-out) both;
 }
 
-.agent-activity-row-content {
-  min-width: 0;
+/* 进行中扫光与行级呼吸强调只在用户未要求减少动态时加载。 */
+@media (prefers-reduced-motion: no-preference) {
+  .agent-steps-summary-running .agent-steps-summary-text {
+    background: linear-gradient(
+      100deg,
+      var(--color-text-secondary) 38%,
+      var(--color-text-muted) 50%,
+      var(--color-text-secondary) 62%
+    );
+    background-size: 220% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: cockpit-title-shimmer 1.8s linear infinite;
+  }
+
+  .agent-step-running {
+    animation: cockpit-row-breathe 2.2s var(--ease-standard) infinite;
+  }
 }
 
-.agent-activity-row-primary {
-  flex-wrap: wrap;
-  gap: 4px;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-xs);
-  line-height: 1.35;
-  overflow-wrap: anywhere;
+@keyframes cockpit-title-shimmer {
+  from {
+    background-position: 180% 0;
+  }
+
+  to {
+    background-position: -80% 0;
+  }
 }
 
-.agent-activity-stage {
-  color: var(--color-text-muted);
-  font-size: 11px;
+@keyframes cockpit-row-breathe {
+  0%,
+  100% {
+    background-color: transparent;
+  }
+
+  50% {
+    background-color: color-mix(in srgb, var(--color-primary-soft) 55%, transparent);
+  }
 }
 
-.agent-activity-row-completed .agent-activity-row-icon {
-  color: var(--color-text-muted);
-}
-
-.agent-activity-row-waiting .agent-activity-row-icon {
-  color: var(--color-warning);
-}
-
-.agent-activity-row-failed .agent-activity-row-icon {
-  color: var(--color-danger);
-}
-
-.agent-tool-group {
-  border-left: 1px solid var(--color-border);
-  background: transparent;
-}
-
-.agent-tool-group-toggle {
-  width: 100%;
-  justify-content: flex-start;
-  gap: 4px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  padding: 2px 4px;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-  text-align: left;
-  cursor: pointer;
-}
-
-.agent-tool-group-toggle:hover {
-  background: var(--color-surface-muted);
-}
-
-.agent-tool-group-summary {
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.agent-tool-group-details {
-  display: grid;
-  gap: 2px;
-  border-top: 1px dashed var(--color-border);
-  padding: 2px 4px;
-}
-
-.agent-tool-group-details .agent-activity-row {
-  padding: 2px 0;
+@media (max-width: 560px) {
+  .agent-steps-record {
+    max-width: calc(100% - 34px);
+    margin-left: 34px;
+  }
 }
 
 .bubble {
@@ -690,8 +569,12 @@
 }
 
 .bubble-assistant .bubble-content {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  /* 助手气泡：承载层玻璃浮在对话流上；用户气泡保持实色主色
+     （Apple：颜色放在实色层，不放透明前景） */
+  background: var(--material-panel);
+  backdrop-filter: var(--material-blur-panel);
+  -webkit-backdrop-filter: var(--material-blur-panel);
+  border: 1px solid var(--material-edge-hairline);
   border-bottom-left-radius: var(--radius-sm);
 }
 
@@ -855,92 +738,84 @@
   align-self: center;
 }
 
+/* 流式光标：柔和呼吸竖条，替代硬闪烁的块状光标。 */
 .bubble-cursor {
   display: inline-block;
-  width: 8px;
+  width: 3px;
   height: 1em;
-  margin-left: 2px;
+  margin-left: 3px;
   vertical-align: text-bottom;
-  background: var(--color-primary);
-  animation: cockpit-blink 0.9s step-end infinite;
+  border-radius: 2px;
+  background: linear-gradient(
+    to bottom,
+    var(--color-primary),
+    color-mix(in srgb, var(--color-primary) 45%, transparent)
+  );
+  animation: cockpit-cursor-pulse 1.1s var(--ease-standard) infinite;
 }
 
-@keyframes cockpit-blink {
+@keyframes cockpit-cursor-pulse {
+  0%,
+  100% {
+    opacity: 0.9;
+  }
+
   50% {
-    opacity: 0;
+    opacity: 0.25;
   }
 }
 
-/* ------------------------------------------------------------- 计划/轨迹 */
-
-.plan-steps {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.plan-step {
-  display: flex;
+/* 首个 token 到达前的打字指示（三点跳动）。 */
+.bubble-typing {
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  font-size: var(--font-size-sm);
+  gap: 4px;
+  padding: 4px 2px;
 }
 
-.plan-step-running svg {
-  animation: cockpit-spin 1s linear infinite;
-  color: var(--color-primary);
+.bubble-typing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-text-muted);
+  animation: cockpit-typing-bounce 1.2s var(--ease-standard) infinite;
 }
 
-.plan-step-done {
-  color: var(--color-success);
+.bubble-typing span:nth-child(2) {
+  animation-delay: 0.15s;
 }
 
-.plan-step-failed {
-  color: var(--color-danger);
+.bubble-typing span:nth-child(3) {
+  animation-delay: 0.3s;
 }
 
-.plan-step-waiting {
-  color: var(--color-warning);
+@keyframes cockpit-typing-bounce {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
 }
 
-.plan-step-pending {
-  color: var(--color-text-muted);
+@media (prefers-reduced-motion: reduce) {
+  .bubble-cursor,
+  .bubble-typing span {
+    animation: none;
+  }
 }
+
+/* --------------------------------------------------------- 共享动画 */
 
 @keyframes cockpit-spin {
   to {
     transform: rotate(360deg);
   }
-}
-
-.trace-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.trace-row-main {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.trace-tool {
-  font-size: var(--font-size-sm);
-}
-
-.trace-row-meta {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-top: 2px;
 }
 
 /* ------------------------------------------------------------- 确认门 */
@@ -1231,25 +1106,6 @@
     display: none;
   }
 
-  .agent-current-action {
-    align-items: flex-start;
-  }
-
-  .agent-current-action-title {
-    white-space: normal;
-  }
-
-  .agent-activity-summary-count {
-    display: none;
-  }
-
-  .agent-tool-group-toggle {
-    align-items: flex-start;
-  }
-
-  .agent-tool-group-summary {
-    white-space: normal;
-  }
 }
 
 /* -------------------------------------------------------------------------
@@ -1532,11 +1388,6 @@
   border-color: var(--color-border);
 }
 
-.cockpit-workbench .agent-execution-record {
-  max-width: 43rem;
-  margin: 0;
-}
-
 .cockpit-workbench .embedded-card,
 .cockpit-workbench .stream-recovery,
 .cockpit-workbench .run-failed {
@@ -1573,12 +1424,19 @@
   resize: vertical;
   border: 0;
   box-shadow: none;
+  /* 覆盖全局 .textarea 的 Apple 填充式灰底：composer 本身就是玻璃浮层输入栏
+     （iOS 输入栏质感），内层 textarea 再自成一块灰底凹槽会与白色卡片脱节，
+     因此这里回归透明，让容器承担全部“输入框”视觉。 */
+  background: transparent;
+  border-radius: 0;
   padding: var(--space-2) var(--space-2) calc(var(--space-2) + 42px);
 }
 
 .cockpit-workbench .composer-textarea:focus {
   border-color: transparent;
   box-shadow: none;
+  /* 聚焦光环由外层 .composer:focus-within 承担，内层保持透明不变底 */
+  background: transparent;
 }
 
 .cockpit-workbench .composer-hero .composer-textarea {
@@ -1764,14 +1622,6 @@
   line-height: 1.15;
 }
 
-.welcome-hero p {
-  max-width: 560px;
-  margin: 15px auto 30px;
-  color: var(--ink-soft);
-  font-size: 15px;
-  line-height: 1.7;
-}
-
 .welcome-quick-actions {
   justify-content: center;
   gap: 8px;
@@ -1783,9 +1633,9 @@
 .welcome-quick-action {
   min-height: 36px;
   padding: 0 13px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--material-edge-hairline);
   border-radius: 999px;
-  background: var(--surface);
+  background: var(--material-panel);
   color: var(--ink-soft);
   font-size: 14px;
   text-align: center;
@@ -1818,9 +1668,10 @@
   gap: 10px;
   margin-bottom: 28px;
   padding: 12px 14px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--material-edge-hairline);
   border-radius: var(--radius-control);
-  background: var(--surface-soft);
+  /* 会话头半透：对话流从下方经过时保持材质连续 */
+  background: color-mix(in srgb, var(--surface-soft) 62%, transparent);
   color: var(--ink-soft);
   font-size: 14px;
 }
@@ -1920,9 +1771,9 @@
   gap: 8px;
   overflow: hidden;
   padding: 5px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--material-edge-hairline);
   border-radius: 8px;
-  background: var(--surface);
+  background: var(--material-panel);
   color: var(--ink);
 }
 
@@ -1983,109 +1834,12 @@
   text-transform: uppercase;
 }
 
-.cockpit-workbench .agent-execution-record {
-  max-width: min(100%, 43rem);
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-
-.cockpit-workbench .agent-current-action {
-  min-height: 42px;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--ink-soft);
-  font-size: 12px;
-}
-
-.cockpit-workbench .agent-current-action:hover {
-  border-color: #a9d5cd;
-  background: #f5fbf9;
-  color: var(--ink);
-}
-
-.cockpit-workbench .agent-current-action-icon {
-  width: 16px;
-  height: 16px;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--teal);
-}
-
-.cockpit-workbench .agent-current-action-icon .agent-orb-glyph {
-  background: #e8f6f2;
-}
-
-.cockpit-workbench .agent-current-action-copy {
-  overflow: hidden;
-}
-
-.cockpit-workbench .agent-current-action-title {
-  color: var(--ink);
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.cockpit-workbench .agent-current-action-stage,
-.cockpit-workbench .agent-activity-status,
-.cockpit-workbench .agent-activity-summary-count,
-.cockpit-workbench .agent-current-action-chevron {
-  color: var(--ink-faint);
-}
-
-.cockpit-workbench .agent-activity-expanded {
-  margin: 8px 0 0 10px;
-  padding: 0 0 0 12px;
-  border-left: 1px solid var(--line);
-}
-
-.cockpit-workbench .agent-activity-history,
-.cockpit-workbench .agent-execution-plan {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface-soft);
-}
-
-.cockpit-workbench .agent-execution-plan {
-  margin: 13px 0 0;
-  padding: 15px 16px;
-}
-
-.cockpit-workbench .agent-execution-plan-heading {
-  color: var(--ink);
-  font-size: 13px;
-}
-
-.cockpit-workbench .agent-activity-history {
-  margin-top: 10px;
-  padding: 10px 12px;
-}
-
-.cockpit-workbench .agent-activity-history-heading,
-.cockpit-workbench .agent-tool-group-count {
-  color: var(--ink-faint);
-  font-size: 11px;
-}
-
-.cockpit-workbench .agent-activity-row,
-.cockpit-workbench .agent-tool-group-toggle {
-  color: var(--ink-soft);
-  font-size: 12px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .agent-current-action-running .agent-current-action-icon svg,
-  .agent-activity-row-running .agent-activity-row-icon svg,
-  .cockpit-workbench .bubble-cursor {
-    animation: none;
-  }
-
-  /* 关闭动画后光标保持常显，否则流式中的用户会失去"还在生成"的锚点 */
-  .cockpit-workbench .bubble-cursor {
-    opacity: 1;
-  }
+/* 任务流分组：步骤流 → 工具结果卡 → 确认卡 同属一条执行流水线，
+   让"生成 → 预览 → 确认 → 同步"的过程在对话流中连续可见。 */
+.cockpit-workbench .run-flow {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-3);
 }
 
 .cockpit-workbench .cockpit-runtime-context {
@@ -2093,7 +1847,7 @@
 }
 
 .cockpit-workbench .runtime-context-section {
-  border-top-color: var(--line);
+  border-top-color: var(--material-edge-hairline);
 }
 
 /* --------------------------------------------------------------- Composer */
@@ -2102,10 +1856,16 @@
   min-height: 144px;
   margin: 0 auto;
   padding: 18px 18px 12px;
-  border: 1px solid var(--line-strong);
+  /* 输入舱是驾驶舱里最高的常驻浮层：overlay 玻璃材质，对话流从它
+     下方滚过时会被模糊——这是 iOS 输入栏的标志性质感 */
+  border: 1px solid var(--material-edge-hairline);
   border-radius: var(--radius-input);
-  background: var(--surface);
-  box-shadow: var(--shadow-input);
+  background: var(--material-overlay);
+  backdrop-filter: var(--material-blur-overlay);
+  -webkit-backdrop-filter: var(--material-blur-overlay);
+  box-shadow:
+    var(--shadow-input),
+    inset 0 1px 0 var(--material-edge-light);
   transition:
     border-color 160ms var(--ease-out),
     box-shadow 160ms var(--ease-out);
@@ -2471,11 +2231,6 @@
     font-size: 32px;
   }
 
-  .welcome-hero p {
-    margin-bottom: 22px;
-    font-size: 14px;
-  }
-
   .cockpit-workbench .composer {
     min-height: 140px;
     padding: 14px 12px 10px;
@@ -2767,16 +2522,6 @@ html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] .composer
   border-top: 1px solid var(--line);
 }
 
-/* The shared AIcss-inspired reasoning shell aligns with assistant content but
-   remains a safe lifecycle label rather than a hidden-thought transcript. */
-.cockpit-workbench .agent-thinking-reasoning {
-  margin: -4px 0 2px 40px;
-}
-
-.cockpit-workbench .agent-task-list {
-  max-width: min(100%, 43rem);
-}
-
 .cockpit-workbench .bubble-markdown table {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -2800,394 +2545,5 @@ html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] .composer
     width: 28px;
     height: 28px;
     flex-basis: 28px;
-  }
-
-  .cockpit-workbench .agent-thinking-reasoning {
-    margin-left: 38px;
-  }
-}
-
-/* Present the reviewed execution summary as one reading surface like the
-   reference panel. The record remains a lifecycle projection: this visual
-   treatment must never turn private model reasoning into transcript content. */
-.cockpit-workbench .agent-execution-record {
-  --agent-record-indent: 40px;
-  width: min(calc(100% - var(--agent-record-indent)), 46rem);
-  max-width: min(calc(100% - var(--agent-record-indent)), 46rem);
-  margin: 0 0 0 var(--agent-record-indent);
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #f7f8fa;
-  color: var(--ink-soft);
-}
-
-.cockpit-workbench .agent-execution-record .agent-current-action {
-  min-height: 52px;
-  align-items: center;
-  padding: 10px 14px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--ink);
-}
-
-.cockpit-workbench .agent-execution-record .agent-current-action:hover {
-  border-color: transparent;
-  background: #eef3f8;
-}
-
-.cockpit-workbench .agent-execution-record .agent-current-action-icon {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
-  place-items: center;
-  border-radius: 50%;
-  background: #e3efff;
-  color: #3286ed;
-}
-
-.cockpit-workbench .agent-execution-record .agent-current-action-icon .agent-orb,
-.cockpit-workbench .agent-execution-record .agent-current-action-icon .agent-orb-glyph {
-  width: 22px;
-  height: 22px;
-  flex-basis: 22px;
-  border-radius: 50%;
-}
-
-.cockpit-workbench .agent-execution-record .agent-current-action-icon .agent-orb-glyph {
-  gap: 2px;
-  padding: 5px;
-  background: #5d9ff4;
-  color: #fff;
-}
-
-.cockpit-workbench .agent-execution-record .agent-current-action-icon .agent-orb-dot {
-  opacity: 0.88;
-}
-
-.cockpit-workbench .agent-execution-record .agent-current-action-copy {
-  display: grid;
-  gap: 2px;
-}
-
-.cockpit-workbench .agent-execution-record .agent-current-action-stage {
-  color: var(--ink-faint);
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.cockpit-workbench .agent-execution-record .agent-current-action-title {
-  color: var(--ink);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.35;
-}
-
-/* 主流 agent 的进行中扫光（shimmer）：只对运行中的摘要文案施加，
-   用 background-clip:text 实现，不引入额外 DOM；reduced-motion 不加载。 */
-@media (prefers-reduced-motion: no-preference) {
-  .cockpit-workbench .agent-current-action-running .agent-current-action-title {
-    background: linear-gradient(100deg, var(--ink) 38%, #92a7ba 50%, var(--ink) 62%);
-    background-size: 220% 100%;
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    animation: cockpit-title-shimmer 1.8s linear infinite;
-  }
-
-  /* 进行中的记录行呼吸强调：让读者一眼定位"正在发生"的那一行 */
-  .cockpit-workbench .agent-execution-record .agent-activity-row-running {
-    animation: cockpit-row-breathe 2.2s var(--ease-standard) infinite;
-  }
-}
-
-@keyframes cockpit-title-shimmer {
-  from {
-    background-position: 180% 0;
-  }
-
-  to {
-    background-position: -80% 0;
-  }
-}
-
-@keyframes cockpit-row-breathe {
-  0%,
-  100% {
-    background-color: transparent;
-  }
-
-  50% {
-    background-color: color-mix(in srgb, var(--accent-soft) 68%, transparent);
-  }
-}
-
-.cockpit-workbench .agent-execution-record .agent-current-action .agent-activity-status {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--ink-faint);
-  font-size: 12px;
-}
-
-.cockpit-workbench .agent-execution-record .agent-current-action-chevron {
-  color: var(--ink-faint);
-}
-
-/* The body shares the header surface instead of nesting a second card. The
-   inset keeps safe activity text aligned with the header copy on wide screens. */
-.cockpit-workbench .agent-execution-record .agent-activity-expanded {
-  display: grid;
-  gap: 12px;
-  margin: 0;
-  border: 0;
-  padding: 0 16px 16px 58px;
-  background: transparent;
-}
-
-.cockpit-workbench .agent-execution-record .agent-task-list,
-.cockpit-workbench .agent-execution-record .agent-activity-history {
-  margin: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-
-.cockpit-workbench .agent-execution-record .agent-task-list-head {
-  padding: 0 0 8px;
-  border-bottom: 1px solid var(--line);
-  border-radius: 0;
-}
-
-.cockpit-workbench .agent-execution-record .agent-task-list-items {
-  gap: 8px;
-  padding: 8px 0 0;
-}
-
-.cockpit-workbench .agent-execution-record .agent-activity-history {
-  padding: 0;
-}
-
-.cockpit-workbench .agent-execution-record .agent-activity-history-heading {
-  margin-bottom: 4px;
-  color: var(--ink-faint);
-}
-
-.cockpit-workbench .agent-execution-record .agent-activity-row,
-.cockpit-workbench .agent-execution-record .agent-tool-group {
-  border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
-  border-radius: 0;
-  background: transparent;
-}
-
-.cockpit-workbench .agent-execution-record .agent-activity-row {
-  padding: 7px 0;
-}
-
-.cockpit-workbench .agent-execution-record .agent-activity-row-primary {
-  gap: 6px;
-  color: var(--ink-soft);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.cockpit-workbench .agent-execution-record .agent-activity-detail,
-.cockpit-workbench .agent-execution-record .agent-activity-meta {
-  color: var(--ink-faint);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.cockpit-workbench .agent-execution-record .agent-tool-group-toggle {
-  padding: 7px 0;
-  color: var(--ink-soft);
-}
-
-@media (max-width: 560px) {
-  .cockpit-workbench .agent-execution-record {
-    --agent-record-indent: 38px;
-  }
-
-  .cockpit-workbench .agent-execution-record .agent-current-action {
-    min-height: 48px;
-    padding: 9px 11px;
-  }
-
-  .cockpit-workbench .agent-execution-record .agent-activity-expanded {
-    padding: 0 12px 12px;
-  }
-
-  .cockpit-workbench .agent-execution-record .agent-current-action-title {
-    white-space: normal;
-  }
-}
-
-/* Keep the summary row invariant while its details open below it. A single
-   compact line lets both states share the same 33px geometry without clipping
-   the status or relying on a second, taller mobile rule. */
-.cockpit-workbench .agent-execution-record .agent-activity-expanded[hidden] {
-  /* The generic expanded layout uses display:grid; restore the native hidden
-     contract so a folded record does not reserve an empty detail strip. */
-  display: none;
-}
-
-.cockpit-workbench .agent-execution-record .agent-current-action[aria-expanded] {
-  box-sizing: border-box;
-  width: 100%;
-  height: 33px;
-  min-height: 33px;
-  gap: 4px;
-  overflow: hidden;
-  padding: 2px 8px;
-}
-
-.cockpit-workbench
-  .agent-execution-record
-  .agent-current-action[aria-expanded]
-  .agent-current-action-icon {
-  width: 22px;
-  height: 22px;
-  flex: 0 0 22px;
-}
-
-.cockpit-workbench
-  .agent-execution-record
-  .agent-current-action[aria-expanded]
-  .agent-current-action-icon
-  .agent-orb,
-.cockpit-workbench
-  .agent-execution-record
-  .agent-current-action[aria-expanded]
-  .agent-current-action-icon
-  .agent-orb-glyph {
-  width: 16px;
-  height: 16px;
-  flex-basis: 16px;
-}
-
-.cockpit-workbench
-  .agent-execution-record
-  .agent-current-action[aria-expanded]
-  .agent-current-action-icon
-  .agent-orb-glyph {
-  padding: 3px;
-}
-
-.cockpit-workbench
-  .agent-execution-record
-  .agent-current-action[aria-expanded]
-  .agent-current-action-copy {
-  display: flex;
-  min-width: 0;
-  flex: 1 1 auto;
-  align-items: baseline;
-  gap: 4px;
-  overflow: hidden;
-}
-
-.cockpit-workbench
-  .agent-execution-record
-  .agent-current-action[aria-expanded]
-  .agent-current-action-stage {
-  flex: 0 0 auto;
-  font-size: 9px;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.cockpit-workbench
-  .agent-execution-record
-  .agent-current-action[aria-expanded]
-  .agent-current-action-title {
-  min-width: 0;
-  flex: 1 1 auto;
-  font-size: 12px;
-  line-height: 1.15;
-  white-space: nowrap;
-}
-
-.cockpit-workbench
-  .agent-execution-record
-  .agent-current-action[aria-expanded]
-  .agent-activity-status,
-.cockpit-workbench
-  .agent-execution-record
-  .agent-current-action[aria-expanded]
-  .agent-activity-summary-count {
-  font-size: 10px;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.cockpit-workbench
-  .agent-execution-record
-  .agent-current-action[aria-expanded]
-  .agent-current-action-chevron {
-  width: 12px;
-  height: 12px;
-}
-
-/* Expanded controls use the same compact rhythm as the fixed summary row, so
-   opening a record adds only its content and does not introduce oversized rows. */
-.cockpit-workbench .agent-execution-record .agent-activity-expanded {
-  gap: 8px;
-  padding: 0 12px 10px 46px;
-}
-
-.cockpit-workbench .agent-execution-record .agent-task-list-head {
-  padding-bottom: 6px;
-}
-
-.cockpit-workbench .agent-execution-record .agent-task-list-items {
-  gap: 6px;
-  padding-top: 6px;
-}
-
-.cockpit-workbench .agent-execution-record .agent-activity-history-heading {
-  margin-bottom: 2px;
-  font-size: 10px;
-}
-
-.cockpit-workbench .agent-execution-record .agent-activity-row {
-  grid-template-columns: 14px minmax(0, 1fr);
-  gap: 6px;
-  padding: 5px 0;
-}
-
-.cockpit-workbench .agent-execution-record .agent-activity-row-icon svg,
-.cockpit-workbench .agent-execution-record .agent-execution-plan-heading svg {
-  width: 14px;
-  height: 14px;
-}
-
-.cockpit-workbench .agent-execution-record .agent-activity-row-primary {
-  gap: 4px;
-  font-size: 12px;
-  line-height: 1.35;
-}
-
-.cockpit-workbench .agent-execution-record .agent-activity-detail,
-.cockpit-workbench .agent-execution-record .agent-activity-meta {
-  font-size: 11px;
-  line-height: 1.35;
-}
-
-.cockpit-workbench .agent-execution-record .agent-tool-group-toggle {
-  gap: 3px;
-  padding: 5px 0;
-  font-size: 12px;
-}
-
-.cockpit-workbench .agent-execution-record .agent-tool-group-toggle svg {
-  width: 13px;
-  height: 13px;
-}
-
-@media (max-width: 560px) {
-  .cockpit-workbench .agent-execution-record .agent-activity-expanded {
-    padding: 0 8px 8px 34px;
   }
 }

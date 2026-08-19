@@ -1,3 +1,11 @@
+/**
+ * 执行过程步骤流（PRD-01 §3.2/§3.5）。
+ *
+ * 以 plan.updated 下发的服务端计划为骨架，把工具调用生命周期归并成单一
+ * 步骤列表：每步只呈现状态图标 + 服务端步骤标题，辅助信息（检索命中数、
+ * 等待确认提示）作为次级行；没有计划的 run 退回扁平活动行。
+ * 该组件是学生安全的生命周期投影：模型推理、提示词、原始工具载荷绝不进入。
+ */
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
@@ -6,41 +14,24 @@ import {
   CircleAlert,
   CircleDashed,
   Loader2,
-  MessageSquareText,
-  Search,
   ShieldCheck,
-  Wrench,
 } from "lucide-react";
-import { AgentOrb } from "../../../components";
 import type { PlanStep } from "../../../api/types";
-import { toolLabel } from "./constants";
-import ExecutionPlan from "./PlanCard";
-import type { ActivityEntry, ActivityStage, ActivityStatus, ExecutionKind } from "./types";
+import type { ActivityEntry, ActivityStage, ActivityStatus } from "./types";
 
-const STAGE_LABELS: Partial<Record<ActivityStage, string>> = {
-  planning: "执行计划",
-  retrieval: "资料检索",
-  tool: "实际操作",
-  responding: "回答生成",
-  confirmation: "待确认",
-};
+/** 步骤可见状态：pending 仅存在于尚未启动的计划步，其余与活动生命周期一致。 */
+type StepStatus = "pending" | ActivityStatus;
 
-const EXECUTION_KIND_LABELS: Record<ExecutionKind, string> = {
-  tool: "工具调用",
-  command: "命令执行",
-  file: "文件操作",
-};
+interface StepRow {
+  key: string;
+  title: string;
+  status: StepStatus;
+  /** 次级说明（如检索命中数、等待确认提示），保持一句以内。 */
+  sub?: string;
+}
 
-const STATUS_LABELS: Record<ActivityStatus, string> = {
-  running: "进行中",
-  completed: "已完成",
-  waiting: "等待确认",
-  failed: "未完成",
-};
-
-// The event store can retain legacy or future provider stages. Rendering only
-// this explicit set ensures the student record never turns an internal phase
-// such as understanding, thinking, or analysis into visible progress copy.
+// 事件存储里可能留有历史/未来 provider 阶段。只渲染这个显式集合，确保
+// understanding/thinking 等内部阶段永远不会变成学生可见的进度文案。
 const STUDENT_VISIBLE_STAGES = new Set<ActivityStage>([
   "planning",
   "retrieval",
@@ -49,35 +40,8 @@ const STUDENT_VISIBLE_STAGES = new Set<ActivityStage>([
   "confirmation",
 ]);
 
-type ActivityBlock =
-  { kind: "entry"; entry: ActivityEntry } | { kind: "tools"; entries: ActivityEntry[] };
-
-function executionKindLabel(kind: ExecutionKind | undefined): string {
-  return EXECUTION_KIND_LABELS[kind ?? "tool"];
-}
-
-function ActivityIcon({
-  stage,
-  status,
-  size = 16,
-}: Pick<ActivityEntry, "stage" | "status"> & { size?: number }) {
-  const Icon =
-    status === "failed"
-      ? CircleAlert
-      : status === "completed"
-        ? CheckCircle2
-        : stage === "responding"
-          ? MessageSquareText
-          : stage === "retrieval"
-            ? Search
-            : stage === "confirmation"
-              ? ShieldCheck
-              : stage === "tool"
-                ? Wrench
-                : status === "running"
-                  ? Loader2
-                  : CircleDashed;
-  return <Icon aria-hidden="true" size={size} />;
+function isStudentHiddenActivity(activity: ActivityEntry): boolean {
+  return !STUDENT_VISIBLE_STAGES.has(activity.stage);
 }
 
 function activityKey(entry: ActivityEntry): string {
@@ -86,157 +50,18 @@ function activityKey(entry: ActivityEntry): string {
   return `event:${entry.stage}:${entry.seq}`;
 }
 
-function groupActivityBlocks(entries: ActivityEntry[]): ActivityBlock[] {
-  const blocks: ActivityBlock[] = [];
-  for (const entry of entries) {
-    const previous = blocks[blocks.length - 1];
-    if (entry.stage === "tool" && previous?.kind === "tools") {
-      previous.entries.push(entry);
-    } else if (entry.stage === "tool") {
-      blocks.push({ kind: "tools", entries: [entry] });
-    } else {
-      blocks.push({ kind: "entry", entry });
-    }
-  }
-  return blocks;
+/** plan.updated 的步骤状态词汇跨版本不固定，统一折叠到五种可见状态。 */
+function normalizePlanStatus(status: string): StepStatus {
+  if (status === "running" || status === "in_progress" || status === "active") return "running";
+  if (status === "waiting" || status === "waiting_confirmation") return "waiting";
+  if (status === "completed" || status === "done" || status === "success") return "completed";
+  if (status === "failed" || status === "error") return "failed";
+  return "pending";
 }
 
-/**
- * The activity type retains legacy values so old persisted events can still be
- * decoded, but only observable operations are allowed into the student record.
- */
-function isStudentHiddenActivity(activity: ActivityEntry): boolean {
-  return !STUDENT_VISIBLE_STAGES.has(activity.stage);
-}
-
-function toolGroupLabel(entries: ActivityEntry[]): string {
-  const names = [...new Set(entries.map((entry) => toolLabel(entry.tool ?? "受控操作")))];
-  const nameSummary = names.slice(0, 3).join("、");
-  const suffix = names.length > 3 ? `等 ${names.length} 项` : nameSummary;
-  const hasRunning = entries.some((entry) => entry.status === "running");
-  const hasWaiting = entries.some((entry) => entry.status === "waiting");
-  const hasFailed = entries.some((entry) => entry.status === "failed");
-  if (hasWaiting) return `等待确认：${suffix}`;
-  if (hasFailed) return `有未完成操作：${suffix}`;
-  if (hasRunning) return `正在执行：${suffix}`;
-  return `已完成 ${entries.length} 项操作${suffix ? ` · ${suffix}` : ""}`;
-}
-
-function ActivityRow({
-  activity,
-  detailSeqAttribute = "data-activity-seq",
-  animateArrival = false,
-}: {
-  activity: ActivityEntry;
-  detailSeqAttribute?: "data-activity-seq" | "data-activity-detail-seq";
-  animateArrival?: boolean;
-}) {
-  const stageLabel =
-    activity.stage === "tool"
-      ? executionKindLabel(activity.executionKind)
-      : STAGE_LABELS[activity.stage];
-  // Input and output summaries are intentionally absent from this presentation.
-  // Even a bounded summary can drift toward prompts, arguments, or raw results;
-  // the lifecycle label and duration are sufficient learner-facing progress.
-  return (
-    <div
-      className={[
-        "agent-activity-row",
-        `agent-activity-row-${activity.status}`,
-        activity.stage === "retrieval" ? "agent-activity-row-retrieval" : "",
-        activity.stage === "tool" ? "agent-activity-row-operation" : "",
-        animateArrival ? "agent-activity-row-arriving" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      {...{ [detailSeqAttribute]: activity.eventSeq ?? activity.seq }}
-    >
-      <span className="agent-activity-row-icon">
-        <ActivityIcon stage={activity.stage} status={activity.status} />
-      </span>
-      <div className="agent-activity-row-content">
-        <div className="agent-activity-row-primary">
-          {stageLabel ? <span className="agent-activity-stage">{stageLabel}</span> : null}
-          {/* Keep each lifecycle state beside the operation it describes so
-              completed rows do not form a detached status column. */}
-          <span className={`agent-activity-status agent-activity-status-${activity.status}`}>
-            {STATUS_LABELS[activity.status]}
-          </span>
-          <span>{activity.message}</span>
-        </div>
-        {activity.detail ? <p className="agent-activity-detail">{activity.detail}</p> : null}
-        {activity.tool ? (
-          <p className="agent-activity-meta">
-            {toolLabel(activity.tool)}
-            {activity.isWrite ? " · 写操作" : " · 只读"}
-            {activity.durationMs != null ? ` · ${activity.durationMs}ms` : ""}
-          </p>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function ToolGroup({
-  entries,
-  live,
-  arrivingActivityKeys,
-}: {
-  entries: ActivityEntry[];
-  live: boolean;
-  arrivingActivityKeys: ReadonlySet<string>;
-}) {
-  const groupKey = `tools-${entries[0]?.seq ?? "empty"}`;
-  const hasAttentionState = entries.some(
-    (entry) =>
-      entry.status === "running" || entry.status === "waiting" || entry.status === "failed",
-  );
-  const [openOverride, setOpenOverride] = useState<boolean | null>(null);
-  // A live trace should read like a continuous terminal log; completed and
-  // historical groups compact only after the run becomes terminal.
-  const open = openOverride ?? (live || hasAttentionState);
-  const summary = toolGroupLabel(entries);
-
-  if (entries.length === 1) {
-    return (
-      <ActivityRow
-        activity={entries[0]}
-        animateArrival={arrivingActivityKeys.has(activityKey(entries[0]))}
-      />
-    );
-  }
-
-  return (
-    <div className="agent-tool-group" data-tool-group={groupKey}>
-      <button
-        type="button"
-        className="agent-tool-group-toggle"
-        aria-expanded={open}
-        aria-controls={`${groupKey}-details`}
-        onClick={() => setOpenOverride(!open)}
-      >
-        {open ? (
-          <ChevronDown aria-hidden="true" size={15} />
-        ) : (
-          <ChevronRight aria-hidden="true" size={15} />
-        )}
-        <span className="agent-tool-group-summary">{summary}</span>
-        <span className="agent-tool-group-count">{entries.length} 条</span>
-      </button>
-      {open ? (
-        <div id={`${groupKey}-details`} className="agent-tool-group-details">
-          {entries.map((entry) => (
-            <ActivityRow
-              key={`${entry.seq}-${entry.toolCallId ?? entry.tool ?? "tool"}`}
-              activity={entry}
-              detailSeqAttribute="data-activity-detail-seq"
-              animateArrival={arrivingActivityKeys.has(activityKey(entry))}
-            />
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
+/** 检索 detail 形如"命中 N 条资料，耗时 X ms"：耗时属开发向信息，只保留前半句。 */
+function firstSegment(detail: string | undefined): string | undefined {
+  return detail?.split("，")[0]?.trim() || undefined;
 }
 
 function mergeVisibleActivities(
@@ -255,45 +80,71 @@ function mergeVisibleActivities(
   return [...byKey.values()].sort((left, right) => left.seq - right.seq);
 }
 
-function recordSummary(
-  current: ActivityEntry | null,
-  live: boolean,
-  hasPlan: boolean,
-  processingLabel?: string,
-): string {
-  const terminal = !live && (current?.status === "completed" || current?.status === "failed");
-  if (terminal) {
-    if (current?.status === "failed") {
-      return "处理未完成";
-    }
-    return "处理完成";
+/**
+ * 计划步骤与活动事件合并成步骤行。已启动的步骤以匹配工具活动的生命周期为准
+ * （确认门打开/终态收口都先在工具活动上落地），未启动的以 plan.updated 状态
+ * 为准；rag.search 步骤下挂检索命中数；不匹配任何计划步骤的工具活动追加在
+ * 末尾，不隐藏任何真实工作。
+ */
+function buildStepRows(planSteps: PlanStep[], visibleActivities: ActivityEntry[]): StepRow[] {
+  if (planSteps.length === 0) {
+    return visibleActivities.map((activity) => ({
+      key: activityKey(activity),
+      title: activity.message,
+      status: activity.status,
+      sub: firstSegment(activity.detail),
+    }));
   }
-  if (current) return current.message;
-  if (processingLabel) return processingLabel;
-  return hasPlan ? "执行清单已就绪" : "等待可见执行事件";
+  const claimed = new Set<string>();
+  const rows: StepRow[] = [];
+  for (const step of planSteps) {
+    const toolActivities = visibleActivities.filter(
+      (activity) => activity.toolCallId && activity.tool === step.tool,
+    );
+    toolActivities.forEach((activity) => claimed.add(activityKey(activity)));
+    const latest = toolActivities[toolActivities.length - 1];
+    const status: StepStatus = latest ? latest.status : normalizePlanStatus(step.status);
+    let sub: string | undefined;
+    if (status === "waiting") {
+      sub = "等待你的确认";
+    } else if (step.tool === "rag.search") {
+      const retrieval = visibleActivities.find(
+        (activity) => activity.stage === "retrieval" && activity.status === "completed",
+      );
+      sub = firstSegment(retrieval?.detail);
+    }
+    rows.push({ key: `plan:${step.id}`, title: step.title, status, sub });
+  }
+  for (const activity of visibleActivities) {
+    if (!activity.toolCallId || claimed.has(activityKey(activity))) continue;
+    rows.push({
+      key: activityKey(activity),
+      title: activity.message,
+      status: activity.status,
+      sub: firstSegment(activity.detail),
+    });
+  }
+  return rows;
 }
 
-function recordStageLabel(
-  current: ActivityEntry | null,
-  live: boolean,
-  hasPlan: boolean,
-  processingLabel?: string,
-): string {
-  if (!live && current?.status === "completed") return "处理过程";
-  if (!live && current?.status === "failed") return "处理过程";
-  if (!current && processingLabel) return "处理中";
-  if (!current) return hasPlan ? "执行清单" : "处理过程";
-  if (current.stage === "tool") return executionKindLabel(current.executionKind);
-  return STAGE_LABELS[current.stage] ?? "处理过程";
+function StepIcon({ status, size = 15 }: { status: StepStatus; size?: number }) {
+  const Icon =
+    status === "failed"
+      ? CircleAlert
+      : status === "completed"
+        ? CheckCircle2
+        : status === "waiting"
+          ? ShieldCheck
+          : status === "running"
+            ? Loader2
+            : CircleDashed;
+  return <Icon aria-hidden="true" size={size} />;
 }
 
 /**
- * The single student-facing source for verified Agent work. It intentionally
- * projects plans, tool lifecycles, confirmations, and answer generation only;
- * raw reasoning, payloads, and fabricated progress never reach this component.
- * Planning and retrieval use only bounded server-issued progress summaries. A live
- * processing label is accepted as a fallback so the same record can replace the
- * former standalone thinking/status widget before the first visible event arrives.
+ * 学生可见的唯一执行过程出口。有意只投影计划、工具生命周期、确认与回答
+ * 生成这些可观测阶段。运行成功结束后自动收成单行摘要（答案成为视觉主体），
+ * 失败保持展开便于定位；每组只自动折叠一次，用户手动展开/收起优先。
  */
 export default function ActivityTimeline({
   activities,
@@ -304,28 +155,26 @@ export default function ActivityTimeline({
   live = true,
 }: {
   activities: ActivityEntry[];
-  /** A server-issued plan belongs to the same execution record, never a second card. */
+  /** 服务端计划即步骤流骨架，绝不渲染第二个"计划卡"。 */
   planSteps?: PlanStep[];
-  /** A recovery status can be newer than the last locally received SSE frame. */
+  /** 断流恢复态可能新于本地最后一帧 SSE。 */
   currentActivity?: ActivityEntry | null;
-  /** Distinguishes historical controls from adjacent runs with matching sequence values. */
+  /** 区分相邻 run 的历史控件，避免 seq 撞车。 */
   activityGroupId?: string;
-  /** A safe run-state label shown in the same record before an event arrives. */
+  /** 首个可见事件到达前的安全运行标签。 */
   processingLabel?: string | null;
-  /** New live records start expanded; historical records stay compact. */
+  /** 新的 live 记录初始展开；历史记录保持折叠。 */
   live?: boolean;
 }) {
   const [open, setOpen] = useState(live);
   const recordStateRef = useRef({ activityGroupId, live });
   // 每个记录组只自动折叠一次：之后用户手动展开/收起的选择优先于任何重渲染。
   const settledGroupRef = useRef<string | null>(null);
-  const seenActivityKeysRef = useRef<Set<string> | null>(null);
+  const seenRowKeysRef = useRef<Set<string> | null>(null);
   const generatedId = useId();
   useLayoutEffect(() => {
     const previous = recordStateRef.current;
-    // 新一轮运行（组 id 变化或从历史态回到 live）始终展开；运行结束后是否
-    // 自动折叠由下面的 settle 效果决定——主流 agent 让答案成为视觉主体，
-    // 处理记录在成功时收成单行摘要、失败时保持展开便于定位问题。
+    // 新一轮运行（组 id 变化或从历史态回到 live）始终展开。
     if (previous.activityGroupId !== activityGroupId || (!previous.live && live)) {
       setOpen(true);
     }
@@ -335,59 +184,65 @@ export default function ActivityTimeline({
     () => mergeVisibleActivities(activities, currentActivity),
     [activities, currentActivity],
   );
-  const activityKeys = useMemo(() => visibleActivities.map(activityKey), [visibleActivities]);
-  const arrivingActivityKeys = useMemo(() => {
-    const seenActivityKeys = seenActivityKeysRef.current;
-    if (!live || !seenActivityKeys) return new Set<string>();
-    return new Set(activityKeys.filter((key) => !seenActivityKeys.has(key)));
-  }, [activityKeys, live]);
+  const rows = useMemo(
+    () => buildStepRows(planSteps, visibleActivities),
+    [planSteps, visibleActivities],
+  );
+  const rowKeys = useMemo(() => rows.map((row) => row.key), [rows]);
+  const arrivingRowKeys = useMemo(() => {
+    const seenRowKeys = seenRowKeysRef.current;
+    if (!live || !seenRowKeys) return new Set<string>();
+    return new Set(rowKeys.filter((key) => !seenRowKeys.has(key)));
+  }, [rowKeys, live]);
   useEffect(() => {
-    // Stable lifecycle identities prevent status updates from replaying an
-    // arrival animation; only a genuinely new visible activity gets one.
-    seenActivityKeysRef.current = new Set(activityKeys);
-  }, [activityKeys]);
-  const blocks = useMemo(() => groupActivityBlocks(visibleActivities), [visibleActivities]);
-  const current = visibleActivities[visibleActivities.length - 1] ?? null;
-  const toolCount = visibleActivities.filter((activity) => activity.stage === "tool").length;
-  const hasPlan = planSteps.length > 0;
+    // 稳定的行身份防止状态更新重播到达动画；只有真正新增的行才有动画。
+    seenRowKeysRef.current = new Set(rowKeys);
+  }, [rowKeys]);
+
+  const hasFailure = rows.some((row) => row.status === "failed");
+  const currentRow = rows.find((row) => row.status === "running" || row.status === "waiting");
+  const summaryStatus: ActivityStatus = hasFailure
+    ? "failed"
+    : !live
+      ? "completed"
+      : rows.some((row) => row.status === "waiting")
+        ? "waiting"
+        : "running";
 
   useEffect(() => {
-    // 主流 agent 行为：运行成功结束后自动收成单行摘要，答案成为视觉主体；
-    // 失败（status==="failed"）保持展开便于定位问题。每个记录组只自动折叠
-    // 一次，此后用户的手动展开/收起优先。历史记录初始即折叠，幂等无影响。
-    if (live || current?.status !== "completed") return;
+    // 主流 agent 行为：运行成功结束后自动收成单行摘要；失败保持展开。
+    // 历史记录初始即折叠，幂等无影响。
+    if (live || summaryStatus !== "completed") return;
     const groupKey = activityGroupId ?? generatedId;
     if (settledGroupRef.current === groupKey) return;
     settledGroupRef.current = groupKey;
     setOpen(false);
-  }, [activityGroupId, current?.status, generatedId, live]);
+  }, [activityGroupId, generatedId, live, summaryStatus]);
 
-  if (!current && !hasPlan && !processingLabel) return null;
+  if (rows.length === 0 && !processingLabel) return null;
 
-  const summaryStatus: ActivityStatus =
-    !live && current?.status === "failed"
-      ? "failed"
-      : !live && current?.status === "completed"
-        ? "completed"
-        : (current?.status ?? "running");
-  const detailsId = `agent-execution-details-${activityGroupId ?? generatedId}`;
-  const summary = recordSummary(current, live, hasPlan, processingLabel ?? undefined);
-  const stageLabel = recordStageLabel(current, live, hasPlan, processingLabel ?? undefined);
-  // The orb communicates the currently safe, observable lifecycle phase. It
-  // deliberately never represents or reveals private model reasoning.
-  const orbPhase =
-    summaryStatus === "completed"
-      ? "finalizing"
-      : current?.stage === "retrieval"
-        ? "retrieving"
-        : current?.stage === "responding"
-          ? "generating"
-          : "preparing";
+  const summaryText = (() => {
+    if (!live) {
+      return summaryStatus === "failed" ? "执行未完成" : `已完成 ${rows.length} 步`;
+    }
+    if (currentRow) {
+      return currentRow.status === "waiting"
+        ? `等待确认：${currentRow.title}`
+        : `正在${currentRow.title}`;
+    }
+    if (processingLabel) return processingLabel;
+    // 计划步骤全部完成、回复仍在流式输出中的间隙。
+    if (rows.length > 0) return "正在生成回答";
+    return "正在处理";
+  })();
+
+  const detailsId = `agent-steps-${activityGroupId ?? generatedId}`;
+  const summaryTitle = `${summaryText}，${open ? "收起" : "展开"}执行过程`;
 
   return (
     <section
-      className={`agent-execution-record agent-execution-record-${summaryStatus}`}
-      aria-label="智能体执行记录"
+      className={`agent-steps-record agent-steps-record-${summaryStatus}`}
+      aria-label="执行过程"
       aria-live={live ? "polite" : undefined}
       aria-relevant={live ? "additions text" : undefined}
       data-activity-group={activityGroupId}
@@ -395,81 +250,49 @@ export default function ActivityTimeline({
     >
       <button
         type="button"
-        className={`agent-current-action agent-execution-summary agent-current-action-${summaryStatus}`}
+        className={`agent-steps-summary agent-steps-summary-${summaryStatus}`}
         data-testid="agent-current-action"
-        data-activity-seq={current?.eventSeq ?? current?.seq}
         aria-expanded={open}
         aria-controls={detailsId}
-        aria-label={`${summary}，${open ? "收起" : "展开"}执行记录`}
-        title={`${open ? "收起" : "展开"}执行记录`}
+        aria-label={summaryTitle}
+        title={summaryTitle}
         onClick={() => setOpen((value) => !value)}
       >
-        <span className="agent-current-action-icon">
-          {summaryStatus === "running" || summaryStatus === "completed" ? (
-            <AgentOrb phase={orbPhase} />
-          ) : current ? (
-            <ActivityIcon stage={current.stage} status={summaryStatus} size={16} />
-          ) : (
-            <Wrench aria-hidden="true" size={16} />
-          )}
+        <span className="agent-steps-summary-icon">
+          <StepIcon status={summaryStatus} size={16} />
         </span>
-        <span className="agent-current-action-copy">
-          <span className="agent-current-action-stage">{stageLabel}</span>
-          <span className="agent-current-action-title" title={summary}>
-            {summary}
-          </span>
-        </span>
-        <span className={`agent-activity-status agent-activity-status-${summaryStatus}`}>
-          {STATUS_LABELS[summaryStatus]}
-        </span>
-        {toolCount > 0 ? (
-          <span className="agent-activity-summary-count">{toolCount} 项操作</span>
-        ) : null}
+        <span className="agent-steps-summary-text">{summaryText}</span>
         {open ? (
-          <ChevronDown className="agent-current-action-chevron" aria-hidden="true" size={15} />
+          <ChevronDown className="agent-steps-summary-chevron" aria-hidden="true" size={15} />
         ) : (
-          <ChevronRight className="agent-current-action-chevron" aria-hidden="true" size={15} />
+          <ChevronRight className="agent-steps-summary-chevron" aria-hidden="true" size={15} />
         )}
       </button>
 
-      <div
-        id={detailsId}
-        className="agent-activity-expanded agent-execution-spine"
-        hidden={!open}
-        aria-hidden={!open}
-      >
-        {open ? (
-          <>
-            {hasPlan ? <ExecutionPlan steps={planSteps} /> : null}
-            {blocks.length > 0 ? (
-              <div className="agent-activity-history" data-testid="agent-activity-history">
-                <div className="agent-activity-history-heading">
-                  <span>实际执行</span>
-                  <span>{visibleActivities.length} 条记录</span>
-                </div>
-                <div className="agent-activity-history-list">
-                  {blocks.map((block) =>
-                    block.kind === "tools" ? (
-                      <ToolGroup
-                        key={`tools-${block.entries[0]?.seq ?? "empty"}`}
-                        entries={block.entries}
-                        live={live}
-                        arrivingActivityKeys={arrivingActivityKeys}
-                      />
-                    ) : (
-                      <ActivityRow
-                        key={activityKey(block.entry)}
-                        activity={block.entry}
-                        animateArrival={arrivingActivityKeys.has(activityKey(block.entry))}
-                      />
-                    ),
-                  )}
-                </div>
-              </div>
-            ) : null}
-          </>
-        ) : null}
-      </div>
+      {open && rows.length > 0 ? (
+        <ol className="agent-steps" id={detailsId} data-testid="agent-steps">
+          {rows.map((row) => (
+            <li
+              key={row.key}
+              className={[
+                "agent-step",
+                `agent-step-${row.status}`,
+                arrivingRowKeys.has(row.key) ? "agent-step-arriving" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            >
+              <span className="agent-step-icon">
+                <StepIcon status={row.status} />
+              </span>
+              <span className="agent-step-body">
+                <span className="agent-step-title">{row.title}</span>
+                {row.sub ? <span className="agent-step-sub">{row.sub}</span> : null}
+              </span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
     </section>
   );
 }

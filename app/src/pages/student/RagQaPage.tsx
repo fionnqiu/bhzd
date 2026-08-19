@@ -194,7 +194,6 @@ export default function RagQaPage() {
     <div>
       <PageHeader
         title="知识问答"
-        sub="基于已发布规范资料的可靠问答，回答均附引用来源"
       />
 
       {/* 问答输入区：问题、数据类型与固定的已发布资料范围。 */}
@@ -366,9 +365,6 @@ export default function RagQaPage() {
                   </button>
                 </div>
               ))}
-              <p className="text-xs text-muted">
-                引用均来自已发布且授权有效的资料；相关度分数越高越可信。
-              </p>
             </Card>
           ) : null}
 
@@ -427,9 +423,6 @@ export default function RagQaPage() {
             </div>
             <p className="text-sm text-secondary">
               相关度分数：{citationDetail.score.toFixed(2)}（越高表示该资料与问题的匹配越可靠）
-            </p>
-            <p className="text-xs text-muted">
-              学生端引用不含切片编号与上传人信息（PRD-06 §4.5 展示口径）。
             </p>
           </div>
         ) : null}

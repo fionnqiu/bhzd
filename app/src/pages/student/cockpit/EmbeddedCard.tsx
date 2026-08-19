@@ -3,7 +3,7 @@
  *
  * tool.call.completed 的 result 按工具名分派渲染：
  * - task.preview → 任务卡（任务名称/描述/学习内容/练习）
- * - task.create → 创建成功卡（确认门落地后的回执，链到任务列表）
+ * - task.create → 同步回执卡（确认门落地后的回执，链到任务列表）
  * - course.search → 课程单元列表
  * - graph.reason → 节点 chips + PRE 路径 + "在图谱中查看"
  * - rag.answer → 答案 + 引用（rag.search 只是召回计数，细节合并进此卡）
@@ -260,7 +260,7 @@ function CardBody({ card }: { card: EmbeddedCardData }) {
 
 const CARD_TITLES: Record<string, string> = {
   "task.preview": "任务卡预览",
-  "task.create": "任务已创建",
+  "task.create": "已同步到学习任务",
   "course.search": "推荐教学单元",
   "graph.reason": "图谱定位",
   "rag.answer": "规范解答",

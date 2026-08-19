@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ClipboardList, Pencil, Plus, Send } from "lucide-react";
+import { Pencil, Plus, Send } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../api/client";
 import type { Paginated, TeacherTask } from "../../api/types";
@@ -176,7 +176,6 @@ export default function TasksManagePage() {
     <div className="teacher-workbench-page teacher-task-manage-page">
       <PageHeader
         title="任务管理"
-        sub="集中查看草稿与已发布任务，继续编辑或进入发布设置"
         actions={
           <Button onClick={() => navigate("/teacher/tasks/new")}>
             <Plus size={16} aria-hidden />
@@ -202,11 +201,6 @@ export default function TasksManagePage() {
       >
         {listContent}
       </Card>
-
-      <div className="teacher-task-manage-hint" role="note">
-        <ClipboardList size={16} aria-hidden />
-        <span>草稿可继续编辑；发布后仍可调整截止时间或创建新版本。</span>
-      </div>
     </div>
   );
 }

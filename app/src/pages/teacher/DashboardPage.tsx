@@ -95,7 +95,7 @@ export default function DashboardPage() {
 
   return (
     <div className="teacher-workbench-page teacher-dashboard-page">
-      <PageHeader title="教师工作台" sub="班级学习概览、薄弱能力排行与待办事项一览" />
+      <PageHeader title="教师工作台" />
 
       {/* 班级概览统计卡（PRD-02 §3.1） */}
       <div className="grid teacher-dashboard-stats mb-4">
@@ -113,7 +113,6 @@ export default function DashboardPage() {
           {data.weak_caps_top5.length === 0 ? (
             <EmptyState
               title="暂无薄弱能力数据"
-              hint="学生完成练习或诊断后，低于薄弱线的能力将在此呈现"
             />
           ) : (
             <ul className="flex flex-col gap-3">

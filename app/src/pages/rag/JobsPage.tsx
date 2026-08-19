@@ -255,7 +255,7 @@ export default function JobsPage() {
 
   return (
     <div>
-      <PageHeader title="解析与切片任务" sub="上传/重处理产生的解析、切片、索引任务队列；失败任务可从失败阶段重试" />
+      <PageHeader title="解析与切片任务" />
 
       {/* 队列概览（PRD-03 §7） */}
       <div className="grid grid-cols-4 mb-4">

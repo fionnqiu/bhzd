@@ -179,7 +179,7 @@ export interface ConfirmationGateProps {
   onExpire?: () => void;
 }
 
-/** 右栏确认门：高亮卡片 + 预览 + 倒计时 + 确认/取消 */
+/** 内联确认门（对话流主线）：高亮卡片 + 预览 + 倒计时 + 确认/取消 */
 export default function ConfirmationGate({
   confirmation,
   confirming,
@@ -236,23 +236,6 @@ export default function ConfirmationGate({
       {countdown.expired ? (
         <p className="text-xs text-danger mt-2">预览已过期，请重新发起操作。</p>
       ) : null}
-    </Card>
-  );
-}
-
-/** 对话区内联确认卡：提示去右栏完成确认（PRD-01 §3.5 等待确认态） */
-export function ConfirmationInlineHint({
-  confirmation,
-}: {
-  confirmation: Confirmation;
-}) {
-  return (
-    <Card
-      title={`等待确认：${actionLabel(confirmation.action_type)}`}
-      className="confirm-inline"
-    >
-      <ConfirmationPreview confirmation={confirmation} />
-      <p className="text-sm text-muted mt-2">请在右侧确认门中确认或取消。</p>
     </Card>
   );
 }

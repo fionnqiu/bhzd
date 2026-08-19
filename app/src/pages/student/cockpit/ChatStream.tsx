@@ -12,6 +12,7 @@ import { Button, Card } from "../../../components";
 import MessageBubble from "./MessageBubble";
 import EmbeddedCard from "./EmbeddedCard";
 import ActivityTimeline from "./ActivityTimeline";
+import ConfirmationGate from "./ConfirmationGate";
 import { isStudentHiddenEmbeddedTool } from "./constants";
 import type { CockpitRun } from "./useCockpitRun";
 import RightRail from "./RightRail";
@@ -160,14 +161,29 @@ export default function ChatStream({
         ))}
 
         {run.runId ? (
-          <ActivityTimeline
-            activities={run.activities}
-            planSteps={run.planSteps}
-            currentActivity={run.reconciledActivity}
-            activityGroupId={`live-${run.runId}`}
-            processingLabel={processingLabel}
-            live={isLive}
-          />
+          // 任务流分组：步骤流 → 工具结果卡 → 确认卡 同属一条执行流水线，
+          // 让"生成 → 预览 → 确认 → 同步到学习任务"的全过程对用户可见。
+          <div className="run-flow" data-testid="run-flow">
+            <ActivityTimeline
+              activities={run.activities}
+              planSteps={run.planSteps}
+              currentActivity={run.reconciledActivity}
+              activityGroupId={`live-${run.runId}`}
+              processingLabel={processingLabel}
+              live={isLive}
+            />
+            {visibleCards.map((card) => (
+              <EmbeddedCard key={card.id} card={card} />
+            ))}
+            {run.confirmation ? (
+              <ConfirmationGate
+                confirmation={run.confirmation}
+                confirming={run.confirming}
+                onConfirm={run.confirm}
+                onCancel={run.cancel}
+              />
+            ) : null}
+          </div>
         ) : null}
 
         {run.streamRecovery ? (
@@ -196,14 +212,9 @@ export default function ChatStream({
           </Card>
         ) : null}
 
-        {visibleCards.map((card) => (
-          <EmbeddedCard key={card.id} card={card} />
-        ))}
-
         {liveReply ? <MessageBubble message={liveReply} /> : null}
 
-        {/* Keep confirmation and citations before the anchor so new runtime
-            context is included in the same bottom-following scroll transaction. */}
+        {/* 引用来源保持在锚点之前，纳入同一次跟随滚动。 */}
         <RightRail run={run} />
 
         {run.status === "failed" ? (

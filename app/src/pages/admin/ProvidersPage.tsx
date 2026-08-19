@@ -656,7 +656,6 @@ export default function ProvidersPage() {
     <div>
       <PageHeader
         title="模型供应商"
-        sub="接入主/回退/嵌入/重排模型；API Key 加密存储，编辑时显示固定掩码；同角色全局至多一个供应商"
         actions={<Button onClick={() => openEditor("new")}>新建供应商</Button>}
       />
 
@@ -673,7 +672,6 @@ export default function ProvidersPage() {
               empty={
                 <EmptyState
                   title="暂无供应商"
-                  hint="配置主模型后 Agent 才能合成自然语言回答；未配置时系统使用内置降级策略"
                 />
               }
             />

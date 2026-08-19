@@ -170,7 +170,6 @@ export default function DiagnosticsPage() {
     <div>
       <PageHeader
         title="标注诊断"
-        sub="上传标注结果文件，获取确定性诊断与个性化补强计划"
       />
 
       <div className="grid grid-cols-2 mb-4">

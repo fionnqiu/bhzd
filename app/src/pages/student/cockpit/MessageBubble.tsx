@@ -122,15 +122,26 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
         <div className="assistant-reply-body">
           <span className="message-label">标航智导</span>
           <div className="bubble-content bubble-markdown">
-            <ReactMarkdown
-              remarkPlugins={markdownPlugins}
-              skipHtml
-              urlTransform={safeMarkdownUrl}
-              components={markdownComponents}
-            >
-              {message.content}
-            </ReactMarkdown>
-            {message.streaming ? <span className="bubble-cursor" aria-hidden /> : null}
+            {message.streaming && !message.content ? (
+              // 首个 token 渲染前的打字指示：避免流式起始时出现空气泡
+              <span className="bubble-typing" role="status" aria-label="正在输入">
+                <span />
+                <span />
+                <span />
+              </span>
+            ) : (
+              <>
+                <ReactMarkdown
+                  remarkPlugins={markdownPlugins}
+                  skipHtml
+                  urlTransform={safeMarkdownUrl}
+                  components={markdownComponents}
+                >
+                  {message.content}
+                </ReactMarkdown>
+                {message.streaming ? <span className="bubble-cursor" aria-hidden /> : null}
+              </>
+            )}
           </div>
         </div>
       ) : (

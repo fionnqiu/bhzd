@@ -268,7 +268,6 @@ export default function ChunkEditorPage() {
     <div>
       <PageHeader
         title={`切片编辑器${doc ? `：${doc.title}` : ""}`}
-        sub="修改内容保存后立即重新嵌入；拆分/合并会重排切片序号"
         actions={
           <Link
             to={`/admin/rag/documents/${id}?returnTo=${encodeURIComponent(returnTo)}`}

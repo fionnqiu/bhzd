@@ -7,7 +7,7 @@
  * - 归档是软删除（PRD-06 §8.2/§12.2：不回滚已确认掌握度），因此教师发布
  *   任务也允许归档但展示「教师」徽标；列表默认不含已归档（后端口径），
  *   显式切到「已归档」筛选可见。
- * - 空态按 PRD-06 §7.2 给三条学习入口（预设/指挥舱/诊断），不展示空白页。
+ * - 空态按 PRD-06 §7.2 给三条学习入口（预设/对话页/诊断），不展示空白页。
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -181,7 +181,7 @@ export default function TasksPage() {
 
   return (
     <div>
-      <PageHeader title="学习任务" sub="目标、预设、教师与诊断来源任务的统一闭环" />
+      <PageHeader title="学习任务" />
 
       {/* 筛选区：状态 chips + 来源下拉 + 关键词（PRD-01 §6.1） */}
       <Card className="mb-4">
@@ -275,14 +275,13 @@ export default function TasksPage() {
           // PRD-06 §7.2 空态：给三条可执行入口而非空白页
           <EmptyState
             title="还没有学习任务"
-            hint="从预设学习、教师任务或 Agent 指挥舱开始你的第一个学习任务"
             action={
               <div className="flex items-center gap-2 flex-wrap justify-center">
                 <Link to="/presets" className="btn btn-primary">
                   去预设学习
                 </Link>
                 <Link to="/" className="btn btn-secondary">
-                  打开 Agent 指挥舱
+                  开始对话
                 </Link>
                 <Link to="/" className="btn btn-secondary">
                   上传标注诊断

@@ -8,7 +8,7 @@
  *
  * 为什么把 useOnboardingGate 放在本文件：门禁的数据源（GET assessment 的
  * status）与向导本页是同一端点，放一起保证"什么时候该来这页"只有一个事实
- * 来源；指挥舱等学生页只需一行 hook 调用即可接入强制测评。
+ * 来源；对话页等学生页只需一行 hook 调用即可接入强制测评。
  *
  * 类型说明：api/types.ts 由其他任务并行维护，本页 DTO 一律页内声明
  * （与后端 profile.py 的响应逐字段对齐）。
@@ -221,7 +221,6 @@ export default function OnboardingPage() {
     <div>
       <PageHeader
         title="入学引导"
-        sub="两步完成初始能力定位，让推荐从第一天起就适合你"
       />
 
       {/* 步骤指示（纯展示：步骤推进由按钮驱动，防跳步漏答） */}
@@ -359,9 +358,6 @@ export default function OnboardingPage() {
                   <h3 className="mb-2" style={{ fontSize: "var(--font-size-base)" }}>
                     初始能力地图
                   </h3>
-                  <p className="text-xs text-muted mb-3">
-                    根据你的作答生成的基础掌握度，后续练习与诊断会持续更新。
-                  </p>
                   <ul className="flex flex-col gap-3">
                     {submitResult.mastery_applied.map((row) => (
                       <li key={row.cap_id}>
@@ -389,7 +385,7 @@ export default function OnboardingPage() {
               <Button variant="secondary" onClick={() => navigate("/profile")}>
                 查看能力地图
               </Button>
-              <Button onClick={() => navigate("/")}>进入指挥舱</Button>
+              <Button onClick={() => navigate("/")}>开始学习</Button>
             </div>
           </div>
         </Card>

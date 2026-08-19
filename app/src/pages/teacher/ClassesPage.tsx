@@ -148,7 +148,6 @@ export default function ClassesPage() {
     <div className="teacher-workbench-page teacher-classes-page">
       <PageHeader
         title="班级管理"
-        sub="管理你带的班级与学生，邀请码分享给学生即可加入"
         actions={<Button onClick={openModal}>新建班级</Button>}
       />
 

@@ -55,17 +55,21 @@
   --space-8: 32px;
   --space-10: 40px;
 
-  /* 圆角 */
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  /* 圆角（Apple 连续大圆角是第一眼特征：比常规 Web 更饱满） */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
   --radius-full: 9999px;
 
-  /* 阴影（浅色主题下保持克制，避免脏边） */
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
-  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
-  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.14);
+  /* 阴影（浅色主题下保持克制，避免脏边；分层柔和投影仿 macOS） */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-md:
+    0 2px 6px rgba(15, 23, 42, 0.05),
+    0 8px 20px rgba(15, 23, 42, 0.07);
+  --shadow-lg:
+    0 4px 12px rgba(15, 23, 42, 0.06),
+    0 20px 44px rgba(15, 23, 42, 0.13);
 
   /* 字体：中文优先 PingFang/YaHei，回退 system-ui；等宽用于数据 */
   --font-sans:
@@ -97,9 +101,41 @@
   --motion-fast: 140ms;
   --motion-standard: 180ms;
   --motion-surface: 200ms;
+  /* 浮层进场：iOS 弹簧曲线需要更长的时间窗才能读出“回弹感” */
+  --motion-sheet: 320ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  /* iOS spring 的 CSS 近似：前段极快建立响应，后段长柔收尾。
+     进场用 spring-out；退场要短促（用户已决策离开），用 spring-in。 */
+  --ease-spring-out: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-spring-in: cubic-bezier(0.64, 0, 0.78, 0);
+
+  /* ----------------------------------------------------------------
+   * 材质令牌（Apple 流体界面：半透明层 + 背景模糊表达层级）。
+   * 为什么用令牌而不是散落的字面值：降级路径（不支持的浏览器、
+   * prefers-reduced-transparency）只需在底部统一改写这几个令牌，
+   * 各组件表面不用各自写 @supports。
+   * 层级约定：越“浮”的表面越透、模糊越强——
+   *   chrome   = 侧栏/顶栏等结构层（最贴背景，轻微透出环境色）
+   *   panel    = 卡片/输入框等内容承载层（近实色，只取一点环境光）
+   *   overlay  = 模态/抽屉/下拉等浮层（最厚模糊，压在内容之上）
+   * 高光上缘：模拟光线打在材质顶边，是“玻璃感”的关键细节。
+   * ---------------------------------------------------------------- */
+  --material-blur-chrome: blur(20px) saturate(180%);
+  --material-blur-panel: blur(12px) saturate(160%);
+  --material-blur-overlay: blur(28px) saturate(180%);
+  --material-chrome: rgba(255, 255, 255, 0.68);
+  --material-panel: rgba(255, 255, 255, 0.78);
+  --material-overlay: rgba(255, 255, 255, 0.86);
+  --material-edge-light: rgba(255, 255, 255, 0.55); /* 顶边高光 */
+  --material-edge-hairline: rgba(15, 23, 42, 0.07); /* 极淡分隔发丝线 */
+  /* 环境背景：极淡的蓝/青径向光斑，让通透材质有“东西”可折射。
+   * 刻意压到近乎不可察觉（alpha ≤ 0.06），避免影响内容可读性。 */
+  --ambient-background:
+    radial-gradient(58% 46% at 12% -4%, rgba(79, 70, 229, 0.06), transparent 62%),
+    radial-gradient(46% 40% at 92% 6%, rgba(2, 132, 199, 0.05), transparent 60%),
+    radial-gradient(42% 38% at 55% 104%, rgba(21, 155, 145, 0.04), transparent 62%);
 }
 
 @keyframes motion-page-enter {
@@ -137,7 +173,8 @@
 @keyframes motion-surface-enter {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(0.99);
+    /* 模态“材质化”进场：更远的起点交给 spring 曲线收敛，读出回弹 */
+    transform: translateY(10px) scale(0.94);
   }
 
   to {
@@ -154,14 +191,14 @@
 
   to {
     opacity: 0;
-    transform: translateY(4px) scale(0.995);
+    transform: translateY(6px) scale(0.97);
   }
 }
 
 @keyframes motion-drawer-enter {
   from {
     opacity: 0;
-    transform: translateX(28px);
+    transform: translateX(64px);
   }
 
   to {
@@ -178,14 +215,14 @@
 
   to {
     opacity: 0;
-    transform: translateX(20px);
+    transform: translateX(48px);
   }
 }
 
 @keyframes motion-popover-enter {
   from {
     opacity: 0;
-    transform: translateY(-4px) scale(0.99);
+    transform: translateY(-6px) scale(0.95);
   }
 
   to {
@@ -202,14 +239,14 @@
 
   to {
     opacity: 0;
-    transform: translateY(-2px) scale(0.99);
+    transform: translateY(-3px) scale(0.97);
   }
 }
 
 @keyframes motion-popover-enter-up {
   from {
     opacity: 0;
-    transform: translateY(4px) scale(0.99);
+    transform: translateY(6px) scale(0.95);
   }
 
   to {
@@ -226,7 +263,7 @@
 
   to {
     opacity: 0;
-    transform: translateY(2px) scale(0.99);
+    transform: translateY(3px) scale(0.97);
   }
 }
 
@@ -248,7 +285,11 @@ body {
   font-size: var(--font-size-base);
   line-height: 1.6;
   color: var(--color-text);
-  background: var(--color-bg);
+  /* 底色 + 固定的环境光斑：fixed 附着让内容滚动时光斑不动，
+     通透的顶栏/侧栏才能持续折射出环境色（Apple 式“活的材质”）。 */
+  background-color: var(--color-bg);
+  background-image: var(--ambient-background);
+  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -316,8 +357,11 @@ img {
 .sidebar {
   width: var(--sidebar-width);
   flex-shrink: 0;
-  background: var(--color-surface);
-  border-right: 1px solid var(--color-border);
+  /* 结构层材质：半透明 + 模糊，环境光斑常量透出，表达“贴在背景上的一层” */
+  background: var(--material-chrome);
+  backdrop-filter: var(--material-blur-chrome);
+  -webkit-backdrop-filter: var(--material-blur-chrome);
+  border-right: 1px solid var(--material-edge-hairline);
   display: flex;
   flex-direction: column;
   position: sticky;
@@ -332,11 +376,13 @@ img {
   gap: var(--space-2);
   padding: 0 var(--space-4);
   height: var(--topbar-height);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--material-edge-hairline);
   font-size: var(--font-size-lg);
   font-weight: 700;
   color: var(--color-primary);
   white-space: nowrap;
+  /* 大字号收紧字距（Apple 排版：tracking 随字号变化，标题用负字距） */
+  letter-spacing: -0.01em;
 }
 
 .sidebar-brand-mark {
@@ -393,7 +439,7 @@ img {
 
 .sidebar-footer {
   padding: var(--space-3) var(--space-4);
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--material-edge-hairline);
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
 }
@@ -413,8 +459,12 @@ img {
   align-items: center;
   gap: var(--space-4);
   padding: 0 var(--space-6);
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
+  /* 顶栏是浮在滚动内容上的玻璃层：内容从其下方穿过时被模糊，
+     取代过去的实色条 + 硬边框（Apple：chrome 浮于内容之上） */
+  background: var(--material-chrome);
+  backdrop-filter: var(--material-blur-chrome);
+  -webkit-backdrop-filter: var(--material-blur-chrome);
+  border-bottom: 1px solid var(--material-edge-hairline);
   position: sticky;
   top: 0;
   z-index: var(--z-dropdown);
@@ -424,6 +474,7 @@ img {
   font-size: var(--font-size-lg);
   font-weight: 600;
   white-space: nowrap;
+  letter-spacing: -0.01em; /* 标题级字号统一负字距，视觉更紧致 */
 }
 
 .topbar-spacer {
@@ -578,7 +629,8 @@ img {
 }
 
 .shell[data-shell-variant="student-workbench"] .sidebar-nav a.active {
-  box-shadow: inset 2px 0 0 var(--color-primary);
+  /* 选中态由 v3 皮肤统一为 macOS 圆角块，这里不再叠加左色条 */
+  font-weight: 600;
 }
 
 .shell[data-shell-variant="student-workbench"] .sidebar-footer {
@@ -587,7 +639,8 @@ img {
 
 .shell[data-shell-variant="student-workbench"] .topbar {
   padding: 0 var(--space-5);
-  background: var(--color-surface);
+  /* 沿用基类的玻璃材质，只改底色令牌值；实色会把 backdrop-filter 废掉 */
+  background: var(--material-chrome);
 }
 
 .shell[data-shell-variant="student-workbench"] .topbar-center,
@@ -663,6 +716,10 @@ img {
 .btn-primary {
   background: var(--color-primary);
   color: #fff;
+  /* 实色主按钮：顶部内高光模拟光照，细投影抬离表面（macOS 按钮质感） */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 1px 2px rgba(15, 23, 42, 0.14);
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -670,7 +727,9 @@ img {
 }
 
 .btn-secondary {
-  background: var(--color-surface);
+  /* 次级按钮用承载层材质：比主按钮“轻”，恰是 Apple 用材质重量
+     区分交互层级的做法；不透明实色反而会在玻璃面板上显得死沉 */
+  background: var(--material-panel);
   border-color: var(--color-border-strong);
   color: var(--color-text);
 }
@@ -692,6 +751,9 @@ img {
 .btn-danger {
   background: var(--color-danger);
   color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 1px 2px rgba(15, 23, 42, 0.14);
 }
 
 .btn-danger:hover:not(:disabled) {
@@ -742,8 +804,17 @@ img {
 @media (prefers-reduced-motion: no-preference) {
   .btn:not(:disabled):active,
   .icon-btn:not(:disabled):active {
-    transform: scale(0.98);
+    transform: scale(0.97); /* 按下即时缩放反馈：pointer-down 瞬间给响应 */
   }
+
+  /* 可点卡片/条目同样给按压反馈（用独立 scale 属性，不与 hover 位移冲突） */
+  .citation-card:active {
+    scale: 0.98;
+  }
+}
+
+.citation-card {
+  transition: scale var(--motion-press) var(--ease-out);
 }
 
 /* -------------------------------------------------------------- 表单 */
@@ -769,10 +840,12 @@ img {
 .textarea {
   width: 100%;
   padding: 8px var(--space-3);
-  border: 1px solid var(--color-border-strong);
+  /* Apple 填充式输入框：无硬边框的灰底“凹槽”，聚焦时才亮起 */
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
-  background: var(--color-surface);
+  background: color-mix(in srgb, var(--color-surface-muted) 78%, transparent);
   transition:
+    background var(--motion-fast) var(--ease-standard),
     border-color var(--motion-fast) var(--ease-standard),
     box-shadow var(--motion-fast) var(--ease-standard);
 }
@@ -786,6 +859,8 @@ img {
 .input:focus,
 .textarea:focus {
   outline: none;
+  /* 聚焦：凹槽“亮”成实面 + 主色光环（macOS focus ring 手感） */
+  background: var(--color-surface);
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px var(--color-primary-soft);
 }
@@ -798,7 +873,7 @@ img {
 
 .input:disabled,
 .textarea:disabled {
-  background: var(--color-surface-muted);
+  background: color-mix(in srgb, var(--color-surface-muted) 50%, transparent);
   cursor: not-allowed;
 }
 
@@ -829,9 +904,10 @@ img {
   width: 100%;
   min-height: 36px;
   padding: 8px var(--space-3);
-  border: 1px solid var(--color-border-strong);
+  /* 与输入框同一填充式语言 */
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
-  background: var(--color-surface);
+  background: color-mix(in srgb, var(--color-surface-muted) 78%, transparent);
   color: var(--color-text);
   font: inherit;
   line-height: 1.4;
@@ -844,8 +920,7 @@ img {
 }
 
 .select-trigger:hover:not(:disabled) {
-  background: var(--color-surface-muted);
-  border-color: var(--color-border-strong);
+  background: color-mix(in srgb, var(--color-surface-muted) 95%, transparent);
 }
 
 /* Pagination controls share the compact action height so the toolbar stays aligned. */
@@ -892,9 +967,12 @@ img {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: var(--space-1);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--material-edge-hairline);
   border-radius: var(--radius-md);
-  background: var(--color-surface);
+  /* 浮层材质：最厚的模糊，压在内容之上时仍可读 */
+  background: var(--material-overlay);
+  backdrop-filter: var(--material-blur-overlay);
+  -webkit-backdrop-filter: var(--material-blur-overlay);
   box-shadow: var(--shadow-lg);
   transform-origin: top left;
 }
@@ -904,20 +982,20 @@ img {
 }
 
 .select-listbox[data-placement="below"][data-motion-state="open"] {
-  animation: motion-popover-enter var(--motion-fast) var(--ease-out) both;
+  animation: motion-popover-enter var(--motion-surface) var(--ease-spring-out) both;
 }
 
 .select-listbox[data-placement="below"][data-motion-state="closing"] {
-  animation: motion-popover-exit var(--motion-fast) var(--ease-in) both;
+  animation: motion-popover-exit var(--motion-fast) var(--ease-spring-in) both;
   pointer-events: none;
 }
 
 .select-listbox[data-placement="above"][data-motion-state="open"] {
-  animation: motion-popover-enter-up var(--motion-fast) var(--ease-out) both;
+  animation: motion-popover-enter-up var(--motion-surface) var(--ease-spring-out) both;
 }
 
 .select-listbox[data-placement="above"][data-motion-state="closing"] {
-  animation: motion-popover-exit-up var(--motion-fast) var(--ease-in) both;
+  animation: motion-popover-exit-up var(--motion-fast) var(--ease-spring-in) both;
   pointer-events: none;
 }
 
@@ -976,8 +1054,9 @@ img {
    tokens instead of falling back to the root portal palette. */
 .select-listbox[data-workbench-variant="student-workbench"],
 .select-listbox[data-workbench-variant="operations-workbench"] {
-  border-color: #e5e8ec;
-  background: #ffffff;
+  border-color: rgba(23, 33, 43, 0.08);
+  /* 工作台配色的浮层同样走半透明，基类的 backdrop-filter 依然生效 */
+  background: rgba(255, 255, 255, 0.88);
   color: #17212b;
 }
 
@@ -1001,8 +1080,8 @@ img {
 
 html[data-theme="dark"] .select-listbox[data-workbench-variant="student-workbench"],
 html[data-theme="dark"] .select-listbox[data-workbench-variant="operations-workbench"] {
-  border-color: #2a3640;
-  background: #162027;
+  border-color: rgba(237, 243, 247, 0.1);
+  background: rgba(22, 32, 39, 0.88); /* 深色玻璃：暗底高不透明度保可读 */
   color: #edf3f7;
 }
 
@@ -1053,10 +1132,16 @@ html[data-theme="dark"]
 
 /* -------------------------------------------------------------- 卡片 */
 .card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  /* 内容承载层：近实色的轻微通透 + 小模糊，让固定环境光斑淡淡透出；
+     顶边内阴影高光模拟光打在材质上缘，是玻璃感的关键一笔 */
+  background: var(--material-panel);
+  backdrop-filter: var(--material-blur-panel);
+  -webkit-backdrop-filter: var(--material-blur-panel);
+  border: 1px solid var(--material-edge-hairline);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  box-shadow:
+    var(--shadow-sm),
+    inset 0 1px 0 var(--material-edge-light);
 }
 
 .card-padded {
@@ -1069,12 +1154,13 @@ html[data-theme="dark"]
   justify-content: space-between;
   gap: var(--space-3);
   padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--material-edge-hairline);
 }
 
 .card-title {
   font-size: var(--font-size-lg);
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .card-body {
@@ -1083,7 +1169,7 @@ html[data-theme="dark"]
 
 .card-footer {
   padding: var(--space-3) var(--space-5);
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--material-edge-hairline);
 }
 
 /* -------------------------------------------------------------- 页头 */
@@ -1099,6 +1185,8 @@ html[data-theme="dark"]
 .page-header-title {
   font-size: var(--font-size-2xl);
   font-weight: 700;
+  letter-spacing: -0.02em; /* 24px 展示级字号：负字距避免字面“散开” */
+  line-height: 1.2;
 }
 
 .page-header-sub {
@@ -1131,8 +1219,11 @@ html[data-theme="dark"]
   width: 36px;
   height: 36px;
   place-items: center;
-  border-color: var(--color-border);
-  background: var(--color-surface);
+  border-color: var(--material-edge-hairline);
+  /* 悬浮恢复按钮是浮层控件，用 overlay 材质与顶栏/下拉同一语言 */
+  background: var(--material-overlay);
+  backdrop-filter: var(--material-blur-overlay);
+  -webkit-backdrop-filter: var(--material-blur-overlay);
   color: var(--color-text-secondary);
   box-shadow: 0 4px 14px rgba(23, 33, 43, 0.1);
 }
@@ -1152,9 +1243,12 @@ html[data-theme="dark"]
   /* Tables own horizontal overflow; a stable vertical gutter would render a
      trailing blank strip when no vertical scrollbar is present. */
   scrollbar-gutter: auto;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--material-edge-hairline);
   border-radius: var(--radius-lg);
-  background: var(--color-surface);
+  /* 与卡片同级的承载层材质，避免表格容器在玻璃卡片上再叠一层实白 */
+  background: var(--material-panel);
+  backdrop-filter: var(--material-blur-panel);
+  -webkit-backdrop-filter: var(--material-blur-panel);
 }
 
 /* A visible focus ring tells keyboard users which table viewport will scroll horizontally. */
@@ -1177,17 +1271,18 @@ html[data-theme="dark"]
 .table th {
   text-align: left;
   padding: 10px var(--space-4);
-  background: var(--color-surface-muted);
+  /* 表头用半透灰而不是实灰，保持表格整体的通透连续性 */
+  background: rgba(241, 245, 249, 0.55);
   color: var(--color-text-secondary);
   font-weight: 600;
   font-size: var(--font-size-sm);
   white-space: nowrap;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--material-edge-hairline);
 }
 
 .table td {
   padding: 10px var(--space-4);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--material-edge-hairline);
   vertical-align: middle;
 }
 
@@ -1207,7 +1302,7 @@ html[data-theme="dark"]
 }
 
 .table tbody tr:hover {
-  background: var(--color-surface-muted);
+  background: rgba(241, 245, 249, 0.5);
 }
 
 .table tbody tr {
@@ -1493,7 +1588,7 @@ html[data-theme="dark"]
   border-radius: var(--radius-sm);
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
-  background: var(--color-surface);
+  background: var(--material-panel);
 }
 
 /* Task metadata contains several optional pills. Keep each readable as a
@@ -1543,7 +1638,8 @@ html[data-theme="dark"]
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.45);
+  /* 压暗以聚焦（dim to focus）：比过去的 0.45 轻，让玻璃模态自己说话 */
+  background: rgba(15, 23, 42, 0.36);
   z-index: var(--z-modal);
   display: flex;
   align-items: center;
@@ -1560,9 +1656,15 @@ html[data-theme="dark"]
 }
 
 .modal {
-  background: var(--color-surface);
+  /* 最浮的一层：最厚模糊 + 深投影 + 顶边高光，大表面要读得出“厚度” */
+  background: var(--material-overlay);
+  backdrop-filter: var(--material-blur-overlay);
+  -webkit-backdrop-filter: var(--material-blur-overlay);
+  border: 1px solid var(--material-edge-hairline);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  box-shadow:
+    var(--shadow-lg),
+    inset 0 1px 0 var(--material-edge-light);
   width: 100%;
   max-width: 520px;
   max-height: 85vh;
@@ -1571,7 +1673,7 @@ html[data-theme="dark"]
 }
 
 .modal[data-motion-state="open"] {
-  animation: motion-surface-enter var(--motion-surface) var(--ease-out) both;
+  animation: motion-surface-enter var(--motion-sheet) var(--ease-spring-out) both;
 }
 
 .modal[data-motion-state="closing"] {
@@ -1587,12 +1689,13 @@ html[data-theme="dark"]
   align-items: center;
   justify-content: space-between;
   padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--material-edge-hairline);
 }
 
 .modal-title {
   font-size: var(--font-size-lg);
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .modal-body {
@@ -1605,7 +1708,7 @@ html[data-theme="dark"]
   justify-content: flex-end;
   gap: var(--space-2);
   padding: var(--space-4) var(--space-5);
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--material-edge-hairline);
 }
 
 /* 抽屉：右侧滑出，用于节点详情/工具专注视图（NF19 两级展示的第二级） */
@@ -1630,20 +1733,31 @@ html[data-theme="dark"]
   right: 0;
   bottom: 0;
   width: min(440px, 92vw);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-lg);
+  /* 抽屉是同模态同级的浮层材质，左侧发丝线 + 顶边高光替代硬边框 */
+  background: var(--material-overlay);
+  backdrop-filter: var(--material-blur-overlay);
+  -webkit-backdrop-filter: var(--material-blur-overlay);
+  border-left: 1px solid var(--material-edge-hairline);
+  box-shadow:
+    var(--shadow-lg),
+    inset 0 1px 0 var(--material-edge-light);
   z-index: var(--z-drawer);
   display: flex;
   flex-direction: column;
 }
 
 .drawer[data-motion-state="open"] {
-  animation: motion-drawer-enter var(--motion-surface) var(--ease-out) both;
+  animation: motion-drawer-enter var(--motion-sheet) var(--ease-spring-out) both;
 }
 
 .drawer[data-motion-state="closing"] {
-  animation: motion-drawer-exit var(--motion-surface) var(--ease-in) both;
+  animation: motion-drawer-exit var(--motion-surface) var(--ease-spring-in) both;
   pointer-events: none;
+}
+
+/* JS 拖拽关闭已完成弹簧飞行时，CSS 退出动画不再重复驱动同一变换 */
+.drawer[data-drag-dismissed] {
+  animation: none !important;
 }
 
 .drawer-header {
@@ -1651,12 +1765,21 @@ html[data-theme="dark"]
   align-items: center;
   justify-content: space-between;
   padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--material-edge-hairline);
+  /* 头部兼作拖拽手柄（iOS sheet 手势）：横向拖动归我们，纵向滚动照常 */
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.drawer-header:active {
+  cursor: grabbing;
 }
 
 .drawer-title {
   font-size: var(--font-size-lg);
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .drawer-body {
@@ -1675,20 +1798,28 @@ html[data-theme="dark"]
   top: calc(100% + 6px);
   right: 0;
   min-width: 180px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  /* 下拉是浮层：overlay 材质让菜单“飘”在顶栏之上 */
+  background: var(--material-overlay);
+  backdrop-filter: var(--material-blur-overlay);
+  -webkit-backdrop-filter: var(--material-blur-overlay);
+  border: 1px solid var(--material-edge-hairline);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  box-shadow:
+    var(--shadow-md),
+    inset 0 1px 0 var(--material-edge-light);
   padding: var(--space-1);
   z-index: var(--z-dropdown);
 }
 
 .dropdown-menu[data-motion-state="open"] {
-  animation: motion-popover-enter var(--motion-fast) var(--ease-out) both;
+  /* 从触发按钮一侧锚定展开（菜单右对齐，原点即在右上） */
+  transform-origin: top right;
+  animation: motion-popover-enter var(--motion-surface) var(--ease-spring-out) both;
 }
 
 .dropdown-menu[data-motion-state="closing"] {
-  animation: motion-popover-exit var(--motion-fast) var(--ease-in) both;
+  transform-origin: top right;
+  animation: motion-popover-exit var(--motion-fast) var(--ease-spring-in) both;
   pointer-events: none;
 }
 
@@ -1719,17 +1850,25 @@ html[data-theme="dark"]
 .dropdown-divider {
   height: 1px;
   margin: var(--space-1) 0;
-  background: var(--color-border);
+  background: var(--material-edge-hairline);
 }
 
 /* -------------------------------------------------------------- 页签 */
+/* Apple 分段控件（segmented control）：灰底胶囊容器 + 浮起的激活段。
+   注意保留 flex-wrap/overflow-x 契约（tests 有源码级断言）。 */
 .tabs {
   display: flex;
   /* Keep mode tabs on one semantic row. On compact viewports the row itself
      scrolls horizontally so tab order and active-state geometry stay stable. */
   flex-wrap: nowrap;
-  gap: var(--space-1);
-  border-bottom: 1px solid var(--color-border);
+  gap: 2px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 2px;
+  border: 1px solid var(--material-edge-hairline);
+  border-radius: var(--radius-md);
+  /* 容器“凹”进去：半透灰底，color-mix 让暗色皮肤自动跟随 */
+  background: color-mix(in srgb, var(--color-surface-muted) 68%, transparent);
   margin-bottom: var(--space-4);
   overflow-x: auto;
   overflow-y: hidden;
@@ -1740,26 +1879,31 @@ html[data-theme="dark"]
   /* Content-sized tabs avoid uneven widths while flex-shrink: 0 prevents a
      narrow viewport from squeezing labels into unreadable controls. */
   flex: 0 0 auto;
-  padding: 8px var(--space-4);
+  padding: 6px var(--space-4);
   border: none;
   background: none;
+  border-radius: calc(var(--radius-md) - 2px);
   font-size: var(--font-size-base);
   color: var(--color-text-secondary);
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
   white-space: nowrap;
   transition:
-    border-color var(--motion-fast) var(--ease-standard),
+    background var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
     color var(--motion-fast) var(--ease-standard);
 }
 
-.tab:hover {
+.tab:hover:not(.active) {
   color: var(--color-text);
+  background: color-mix(in srgb, var(--color-surface) 55%, transparent);
 }
 
+/* 激活段“浮”出容器：实色 + 小投影 + 顶边高光，macOS 分段控件的标准态 */
 .tab.active {
-  color: var(--color-primary);
-  border-bottom-color: var(--color-primary);
+  background: var(--color-surface);
+  box-shadow:
+    var(--shadow-sm),
+    inset 0 1px 0 var(--material-edge-light);
+  color: var(--color-text);
   font-weight: 600;
 }
 
@@ -1888,10 +2032,11 @@ html[data-theme="dark"]
 .citation-card {
   display: block;
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--material-edge-hairline);
   border-left: 3px solid var(--color-primary);
   border-radius: var(--radius-md);
-  background: var(--color-surface);
+  /* 列表中的小卡只取承载层底色、不加模糊——小面积模糊性价比低且易脏 */
+  background: var(--material-panel);
   margin-bottom: var(--space-2);
 }
 
@@ -1913,16 +2058,24 @@ html[data-theme="dark"]
   align-items: center;
   justify-content: center;
   padding: var(--space-6);
-  background: linear-gradient(160deg, #eef2ff 0%, var(--color-bg) 55%);
+  /* 认证页是门面：品牌色渐变 + 环境光斑，给玻璃卡片足够可折射的背景 */
+  background:
+    var(--ambient-background),
+    linear-gradient(160deg, #eef2ff 0%, var(--color-bg) 55%);
 }
 
 .auth-card {
   width: 100%;
   max-width: 420px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  /* 浮在渐变背景上的玻璃卡：overlay 材质 + 顶边高光，通透的门面 */
+  background: var(--material-overlay);
+  backdrop-filter: var(--material-blur-overlay);
+  -webkit-backdrop-filter: var(--material-blur-overlay);
+  border: 1px solid var(--material-edge-hairline);
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-md);
+  box-shadow:
+    var(--shadow-lg),
+    inset 0 1px 0 var(--material-edge-light);
   padding: var(--space-8);
   /* Public routes do not pass through ShellLayout, so they opt into the
      same restrained page entrance as authenticated route content. */
@@ -1938,12 +2091,7 @@ html[data-theme="dark"]
   font-size: var(--font-size-2xl);
   font-weight: 700;
   color: var(--color-primary);
-}
-
-.auth-brand-slogan {
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
-  margin-top: var(--space-1);
+  letter-spacing: -0.02em;
 }
 
 .auth-title {
@@ -2009,7 +2157,14 @@ html[data-theme="dark"]
   font-size: var(--font-size-sm);
   line-height: 1.5;
   pointer-events: auto;
-  animation: motion-popover-enter var(--motion-surface) var(--ease-out) both;
+  /* 通知是最高浮层：语义色保持可辨，但降到 0.88 透明度 + 模糊，
+     让它像 iOS 通知一样“飘”在内容之上 */
+  backdrop-filter: var(--material-blur-overlay);
+  -webkit-backdrop-filter: var(--material-blur-overlay);
+  box-shadow: var(--shadow-md);
+  /* 通知从右上角锚定弹入 */
+  transform-origin: top right;
+  animation: motion-popover-enter var(--motion-surface) var(--ease-spring-out) both;
 }
 
 .toast-message {
@@ -2020,22 +2175,22 @@ html[data-theme="dark"]
 
 .toast-success {
   border-color: #b7eb8f;
-  background: #f6ffed;
+  background: rgba(246, 255, 237, 0.88);
 }
 
 .toast-error {
   border-color: #ffccc7;
-  background: #fff2f0;
+  background: rgba(255, 242, 240, 0.88);
 }
 
 .toast-info {
   border-color: #91caff;
-  background: #e6f4ff;
+  background: rgba(230, 244, 255, 0.88);
 }
 
 .toast-warning {
   border-color: #ffe58f;
-  background: #fffbe6;
+  background: rgba(255, 251, 230, 0.88);
 }
 
 .toast-close {
@@ -2335,6 +2490,43 @@ html[data-theme="dark"]
   }
 }
 
+/* ---------------------------------------------------------- 通透降级回退 */
+/* 三条独立的降级路径，全部只改令牌、不动组件：
+   1) 浏览器不支持 backdrop-filter：材质升为数近实色，避免文字透花；
+   2) 用户开启“降低透明度”：去掉模糊、表面进一步实化（Apple：更霜更实）；
+   3) 用户要求“更高对比度”：近实色底 + 明确的分隔边框。 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --material-blur-chrome: none;
+    --material-blur-panel: none;
+    --material-blur-overlay: none;
+    --material-chrome: rgba(255, 255, 255, 0.96);
+    --material-panel: rgba(255, 255, 255, 0.97);
+    --material-overlay: rgba(255, 255, 255, 0.98);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --material-blur-chrome: none;
+    --material-blur-panel: none;
+    --material-blur-overlay: none;
+    --material-chrome: rgba(255, 255, 255, 0.97);
+    --material-panel: rgba(255, 255, 255, 0.98);
+    --material-overlay: rgba(255, 255, 255, 0.99);
+    --ambient-background: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --material-chrome: rgba(255, 255, 255, 0.98);
+    --material-panel: rgba(255, 255, 255, 0.99);
+    --material-overlay: rgba(255, 255, 255, 1);
+    --material-edge-hairline: rgba(15, 23, 42, 0.24);
+  }
+}
+
 /* -------------------------------------------------------------- 打印 */
 /* 打印友好：诊断报告/学情报表可能被导出；隐藏导航与交互件，保留内容。 */
 @media print {
@@ -2354,6 +2546,9 @@ html[data-theme="dark"]
   .card {
     box-shadow: none;
     break-inside: avoid;
+    background: #fff; /* 打印不输出模糊与半透明，保证纸面可读 */
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   body {
@@ -2398,15 +2593,28 @@ html[data-theme="dark"]
   --color-text-secondary: var(--ink-soft);
   --color-text-muted: var(--ink-faint);
   --motion-surface: 180ms;
+  /* 工作台材质令牌：与共享门户同一层级语义，但底色换成更安静的
+     canvas/surface 调性（学生端刻意比管理端“轻”） */
+  --material-chrome: rgba(251, 252, 253, 0.72);
+  --material-panel: rgba(255, 255, 255, 0.78);
+  --material-overlay: rgba(255, 255, 255, 0.88);
+  --material-edge-hairline: rgba(23, 33, 43, 0.07);
+  --material-edge-light: rgba(255, 255, 255, 0.6);
   /* Keep the learning canvas light regardless of the operating-system theme.
      White remains reserved for input and content surfaces, as in the approved demo. */
-  background: var(--canvas);
+  background-color: var(--canvas);
+  /* 环境光斑固定在壳层上：侧栏/顶栏的玻璃有色彩可折射 */
+  background-image: var(--ambient-background);
+  background-attachment: fixed;
 }
 
 .shell[data-shell-variant="student-workbench"] .sidebar {
   width: var(--student-workbench-sidebar-width);
-  background: var(--surface-soft);
-  border-color: var(--line);
+  /* 侧栏改结构层玻璃：壳层环境光斑透过模糊若隐若现 */
+  background: var(--material-chrome);
+  backdrop-filter: var(--material-blur-chrome);
+  -webkit-backdrop-filter: var(--material-blur-chrome);
+  border-color: var(--material-edge-hairline);
   transition: width 180ms var(--ease-out);
 }
 
@@ -2417,7 +2625,8 @@ html[data-theme="dark"]
 
 .shell[data-shell-variant="student-workbench"] .main {
   margin-left: var(--student-workbench-sidebar-width);
-  background: var(--canvas);
+  /* 不再铺实色，让壳层的 canvas + 环境光斑透到内容区 */
+  background: transparent;
   transition: margin-left 180ms var(--ease-out);
 }
 
@@ -2427,7 +2636,7 @@ html[data-theme="dark"]
 
 .shell[data-shell-variant="student-workbench"] .main-content {
   padding: 28px;
-  background: var(--canvas);
+  background: transparent; /* 同 .main：内容区共享壳层材质背景 */
 }
 
 /* Keep the bell available on every student route without adding a toolbar or
@@ -2501,8 +2710,11 @@ html[data-theme="dark"]
   width: 36px;
   height: 36px;
   color: var(--color-text-secondary);
-  border-color: var(--color-border);
-  background: var(--color-surface);
+  border-color: var(--material-edge-hairline);
+  /* 悬浮控件走 overlay 材质，与页头恢复按钮同一玻璃语言 */
+  background: var(--material-overlay);
+  backdrop-filter: var(--material-blur-overlay);
+  -webkit-backdrop-filter: var(--material-blur-overlay);
   box-shadow: 0 4px 14px rgba(23, 33, 43, 0.12);
 }
 
@@ -2564,12 +2776,14 @@ html[data-theme="dark"]
 
 .shell[data-shell-variant="student-workbench"] .sidebar-nav a:hover,
 .shell[data-shell-variant="student-workbench"] .sidebar-nav a.active {
-  background: #eef2f6;
+  background: rgba(238, 242, 246, 0.7);
   color: var(--ink);
 }
 
+/* macOS 式整行圆角选中块：淡主色底 + 主色文字，不再用左色条 */
 .shell[data-shell-variant="student-workbench"] .sidebar-nav a.active {
-  box-shadow: inset 2px 0 0 var(--accent);
+  background: color-mix(in srgb, var(--accent-soft) 82%, transparent);
+  color: var(--accent);
   font-weight: 650;
 }
 
@@ -2670,6 +2884,16 @@ html[data-theme="dark"]
   bottom: calc(100% + 8px);
   left: auto;
   top: auto;
+  /* 向上展开的菜单：锚点在右下，从下方长出来 */
+  transform-origin: bottom right;
+}
+
+.student-workbench-account-menu .dropdown-menu[data-motion-state="open"] {
+  animation-name: motion-popover-enter-up;
+}
+
+.student-workbench-account-menu .dropdown-menu[data-motion-state="closing"] {
+  animation-name: motion-popover-exit-up;
 }
 
 .shell[data-shell-variant="student-workbench"] .student-workbench-context {
@@ -2838,6 +3062,17 @@ html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] {
   --color-primary-active: #b1d3f7;
   --color-primary-border: #467eae;
   --color-surface-muted: #1d2831;
+  /* 深色玻璃材质：暗底 + 白色高光发丝线；深色下玻璃折射反而更明显，
+     所以环境光斑给得比浅色略强 */
+  --material-chrome: rgba(19, 27, 33, 0.66);
+  --material-panel: rgba(22, 32, 39, 0.72);
+  --material-overlay: rgba(26, 37, 45, 0.86);
+  --material-edge-hairline: rgba(237, 243, 247, 0.09);
+  --material-edge-light: rgba(255, 255, 255, 0.07);
+  --ambient-background:
+    radial-gradient(58% 46% at 12% -4%, rgba(101, 169, 239, 0.1), transparent 62%),
+    radial-gradient(46% 40% at 92% 6%, rgba(73, 189, 178, 0.08), transparent 60%),
+    radial-gradient(42% 38% at 55% 104%, rgba(101, 169, 239, 0.06), transparent 62%);
 }
 
 html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] .sidebar-nav a:hover,
@@ -2849,7 +3084,7 @@ html[data-theme="dark"]
 html[data-theme="dark"]
   .shell[data-shell-variant="student-workbench"]
   .workbench-session-row.is-current {
-  background: #1d2831;
+  background: rgba(29, 40, 49, 0.6); /* 半透 hover 让侧栏玻璃材质保持连续 */
 }
 
 html[data-theme="dark"]
@@ -2895,8 +3130,17 @@ html[data-theme="dark"]
   --color-text: var(--operations-ink);
   --color-text-secondary: var(--operations-ink-soft);
   --color-text-muted: var(--operations-ink-faint);
+  /* 运营工作台材质：与学生端同一浅色玻璃口径，保持跨门户一致 */
+  --material-chrome: rgba(251, 252, 253, 0.72);
+  --material-panel: rgba(255, 255, 255, 0.78);
+  --material-overlay: rgba(255, 255, 255, 0.88);
+  --material-edge-hairline: rgba(23, 33, 43, 0.07);
+  --material-edge-light: rgba(255, 255, 255, 0.6);
   min-height: 100dvh;
-  background: var(--operations-canvas);
+  background-color: var(--operations-canvas);
+  /* 环境光斑固定在壳层，供侧栏/顶栏玻璃折射 */
+  background-image: var(--ambient-background);
+  background-attachment: fixed;
 }
 
 .shell[data-shell-variant="operations-workbench"] .sidebar {
@@ -2905,15 +3149,18 @@ html[data-theme="dark"]
   z-index: var(--z-drawer);
   width: var(--operations-sidebar-width);
   overflow-y: auto;
-  background: var(--operations-surface-soft);
-  border-color: var(--operations-line);
+  /* 结构层玻璃：透出壳层环境光斑 */
+  background: var(--material-chrome);
+  backdrop-filter: var(--material-blur-chrome);
+  -webkit-backdrop-filter: var(--material-blur-chrome);
+  border-color: var(--material-edge-hairline);
   transition: width 180ms var(--ease-out);
 }
 
 .shell[data-shell-variant="operations-workbench"] .main {
   min-height: 100dvh;
   margin-left: var(--operations-sidebar-width);
-  background: var(--operations-canvas);
+  background: transparent; /* 让壳层 canvas + 光斑透到内容区 */
   transition: margin-left 180ms var(--ease-out);
 }
 
@@ -2997,12 +3244,14 @@ html[data-theme="dark"]
 
 .shell[data-shell-variant="operations-workbench"] .sidebar-nav a:hover,
 .shell[data-shell-variant="operations-workbench"] .sidebar-nav a.active {
-  background: #eef2f6;
+  background: rgba(238, 242, 246, 0.7);
   color: var(--operations-ink);
 }
 
+/* macOS 式整行圆角选中块，与学生端口径一致 */
 .shell[data-shell-variant="operations-workbench"] .sidebar-nav a.active {
-  box-shadow: inset 2px 0 0 var(--operations-accent);
+  background: color-mix(in srgb, var(--operations-accent-soft) 82%, transparent);
+  color: var(--operations-accent);
   font-weight: 650;
 }
 
@@ -3080,6 +3329,16 @@ html[data-theme="dark"]
   right: 0;
   bottom: calc(100% + 8px);
   left: auto;
+  /* 向上展开的菜单：锚点在右下 */
+  transform-origin: bottom right;
+}
+
+.operations-workbench-account-menu .dropdown-menu[data-motion-state="open"] {
+  animation-name: motion-popover-enter-up;
+}
+
+.operations-workbench-account-menu .dropdown-menu[data-motion-state="closing"] {
+  animation-name: motion-popover-exit-up;
 }
 
 .shell[data-shell-variant="operations-workbench"] .operations-workbench-context {
@@ -3093,7 +3352,7 @@ html[data-theme="dark"]
   margin: 0;
   padding: 28px;
   overflow: visible;
-  background: var(--operations-canvas);
+  background: transparent; /* 共享壳层材质背景 */
 }
 
 /* Chunk editing needs a simultaneous source, list, and edit view on wide
@@ -3114,9 +3373,10 @@ html[data-theme="dark"]
   width: 100%;
   min-height: 36px;
   padding: 7px var(--space-3);
-  border: 1px solid var(--color-border);
+  /* 填充式触发器，与 .select-trigger 同一语言 */
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
-  background: var(--color-surface);
+  background: color-mix(in srgb, var(--color-surface-muted) 78%, transparent);
   color: var(--color-text);
   text-align: left;
 }
@@ -3159,9 +3419,12 @@ html[data-theme="dark"]
   max-height: 240px;
   overflow-y: auto;
   padding: var(--space-1);
-  border: 1px solid var(--color-border-strong);
+  border: 1px solid var(--material-edge-hairline);
   border-radius: var(--radius-md);
-  background: var(--color-surface);
+  /* 浮层列表：overlay 材质，压在筛选卡之上时仍清晰 */
+  background: var(--material-overlay);
+  backdrop-filter: var(--material-blur-overlay);
+  -webkit-backdrop-filter: var(--material-blur-overlay);
   box-shadow: var(--shadow-lg);
 }
 
@@ -3289,11 +3552,21 @@ html[data-theme="dark"] .shell[data-shell-variant="operations-workbench"] {
   --color-primary-active: #b1d3f7;
   --color-primary-border: #467eae;
   --color-surface-muted: #1d2831;
+  /* 深色玻璃材质，口径与学生端暗色一致 */
+  --material-chrome: rgba(19, 27, 33, 0.66);
+  --material-panel: rgba(22, 32, 39, 0.72);
+  --material-overlay: rgba(26, 37, 45, 0.86);
+  --material-edge-hairline: rgba(237, 243, 247, 0.09);
+  --material-edge-light: rgba(255, 255, 255, 0.07);
+  --ambient-background:
+    radial-gradient(58% 46% at 12% -4%, rgba(101, 169, 239, 0.1), transparent 62%),
+    radial-gradient(46% 40% at 92% 6%, rgba(73, 189, 178, 0.08), transparent 60%),
+    radial-gradient(42% 38% at 55% 104%, rgba(101, 169, 239, 0.06), transparent 62%);
 }
 
 html[data-theme="dark"] .shell[data-shell-variant="operations-workbench"] .sidebar-nav a:hover,
 html[data-theme="dark"] .shell[data-shell-variant="operations-workbench"] .sidebar-nav a.active {
-  background: #1d2831;
+  background: rgba(29, 40, 49, 0.6); /* 半透 hover 保持玻璃连续 */
 }
 
 @media (max-width: 900px) {
@@ -3684,8 +3957,9 @@ html[data-theme="dark"] .shell[data-shell-variant="operations-workbench"] .sideb
 }
 
 .shell[data-shell-variant="student-workbench"] .student-workbench-account-footer {
-  background: #edf1f5;
-  border-top-color: var(--line);
+  /* 账户条半透：不切断侧栏底部的玻璃连续性 */
+  background: rgba(237, 241, 245, 0.55);
+  border-top-color: var(--material-edge-hairline);
 }
 
 .shell[data-shell-variant="student-workbench"] .student-workbench-context {
@@ -3706,7 +3980,7 @@ html[data-theme="dark"] .shell[data-shell-variant="operations-workbench"] .sideb
 }
 
 .shell[data-shell-variant="operations-workbench"] .operations-workbench-account-footer {
-  background: #f1f4f7;
+  background: rgba(241, 244, 247, 0.55); /* 与学生端一致：侧栏底部半透 */
 }
 
 .shell[data-shell-variant="student-workbench"] .main-content.student-workbench-main-content {
@@ -3734,8 +4008,11 @@ html[data-theme="dark"] .shell[data-shell-variant="operations-workbench"] .sideb
     width: 36px;
     height: 36px;
     place-items: center;
-    border-color: var(--color-border);
-    background: var(--color-surface);
+    border-color: var(--material-edge-hairline);
+    /* 移动端悬浮导航开关：overlay 玻璃材质 */
+    background: var(--material-overlay);
+    backdrop-filter: var(--material-blur-overlay);
+    -webkit-backdrop-filter: var(--material-blur-overlay);
     box-shadow: 0 4px 14px rgba(23, 33, 43, 0.12);
   }
 
@@ -3782,5 +4059,5 @@ html[data-theme="dark"]
 html[data-theme="dark"]
   .shell[data-shell-variant="operations-workbench"]
   .operations-workbench-account-footer {
-  background: #182129;
+  background: rgba(24, 33, 41, 0.55); /* 暗色侧栏底部同样保持半透 */
 }

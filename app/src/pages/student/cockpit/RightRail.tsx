@@ -1,14 +1,13 @@
 /**
- * 对话画布中的按需运行上下文。
+ * 对话画布中的引用来源区。
  *
- * 这里不再承担一个常驻右栏：确认门必须与当前对话一起可见，引用只在
- * 收到真实来源后出现。引用详情仍可通过显式点击打开二级抽屉，但抽屉
- * 不参与默认桌面布局，也不会遮住需要用户决策的确认操作。
+ * 确认门已移入对话流主线（ChatStream 的 run-flow 分组，与步骤流、工具结果卡
+ * 同属一条执行流水线），这里只保留引用：收到真实来源后出现，详情经显式点击
+ * 打开二级抽屉，抽屉不参与默认桌面布局。
  */
 import { useState } from "react";
 import { CitationCard, Drawer } from "../../../components";
 import type { Citation } from "../../../api/types";
-import ConfirmationGate from "./ConfirmationGate";
 import type { CockpitRun } from "./useCockpitRun";
 
 export interface RightRailProps {
@@ -17,43 +16,31 @@ export interface RightRailProps {
 
 export default function RightRail({ run }: RightRailProps) {
   const [activeCitation, setActiveCitation] = useState<Citation | null>(null);
-  const hasContext = Boolean(run.confirmation || run.citations.length > 0);
 
-  if (!hasContext) return null;
+  if (run.citations.length === 0) return null;
 
   return (
     <section
       className="cockpit-runtime-context"
-      aria-label="当前运行上下文"
+      aria-label="引用来源"
       data-testid="cockpit-status-panel"
     >
-      {run.confirmation ? (
-        <ConfirmationGate
-          confirmation={run.confirmation}
-          confirming={run.confirming}
-          onConfirm={run.confirm}
-          onCancel={run.cancel}
-        />
-      ) : null}
-
-      {run.citations.length > 0 ? (
-        <section className="runtime-context-section" data-testid="citation-section">
-          <div className="runtime-context-heading">
-            <h2>引用来源</h2>
-            <span>{run.citations.length} 条</span>
-          </div>
-          <div className="runtime-citations">
-            {run.citations.map((citation, index) => (
-              <CitationCard
-                key={`${citation.document_id}-${index}`}
-                citation={citation}
-                index={index + 1}
-                onClick={() => setActiveCitation(citation)}
-              />
-            ))}
-          </div>
-        </section>
-      ) : null}
+      <section className="runtime-context-section" data-testid="citation-section">
+        <div className="runtime-context-heading">
+          <h2>引用来源</h2>
+          <span>{run.citations.length} 条</span>
+        </div>
+        <div className="runtime-citations">
+          {run.citations.map((citation, index) => (
+            <CitationCard
+              key={`${citation.document_id}-${index}`}
+              citation={citation}
+              index={index + 1}
+              onClick={() => setActiveCitation(citation)}
+            />
+          ))}
+        </div>
+      </section>
 
       {/* Details are intentionally secondary and user-triggered; they never
           become a second permanent navigation surface. */}

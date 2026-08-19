@@ -78,7 +78,6 @@ export default function WelcomeState({ onQuickAction, composer, busy = false }: 
           ))}
         </div>
         <h1>标航智导</h1>
-        <p>把学习目标交给指挥舱，生成清晰的练习路径、任务卡和诊断建议。</p>
       </div>
 
       {composer}

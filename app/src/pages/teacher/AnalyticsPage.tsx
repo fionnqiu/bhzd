@@ -165,7 +165,6 @@ export default function AnalyticsPage() {
     <div className="teacher-workbench-page teacher-analytics-page">
       <PageHeader
         title="学情分析"
-        sub="基于班级真实学习数据的薄弱定位与教学干预建议"
         actions={
           <Link
             className="btn btn-secondary"
@@ -252,7 +251,7 @@ export default function AnalyticsPage() {
               className="teacher-table-surface"
             >
               {data.heatmap.length === 0 ? (
-                <EmptyState title="暂无掌握度数据" hint="学生完成练习后将在此呈现班级能力分布" />
+                <EmptyState title="暂无掌握度数据" />
               ) : (
                 <DataTable
                   ariaLabel="班级能力热力图"
@@ -269,7 +268,7 @@ export default function AnalyticsPage() {
           {/* 任务完成趋势：纯 CSS 双系列柱状图（提交 vs 完成） */}
           <Card title="任务完成趋势" className="mb-4">
             {data.trend.length === 0 ? (
-              <EmptyState title="暂无任务活动" hint="统计期内没有提交或完成记录" />
+              <EmptyState title="暂无任务活动" />
             ) : (
               <div>
                 <div className="flex gap-4 mb-2">
@@ -339,7 +338,7 @@ export default function AnalyticsPage() {
             {/* 高频错误统计（诊断摘要聚合；严重度用徽章区分干预优先级） */}
             <Card title="高频错误统计">
               {data.top_errors.length === 0 ? (
-                <EmptyState title="暂无错误统计" hint="学生提交诊断后将在此聚合高频错误类型" />
+                <EmptyState title="暂无错误统计" />
               ) : (
                 <ul className="flex flex-col gap-2">
                   {data.top_errors.map((err) => (
@@ -367,7 +366,6 @@ export default function AnalyticsPage() {
             {data.suggestions.length === 0 ? (
               <EmptyState
                 title="数据积累中"
-                hint="完成更多学习任务与诊断后，将基于真实数据生成针对性建议"
               />
             ) : (
               <div className="flex flex-col gap-2">

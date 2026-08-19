@@ -352,9 +352,6 @@ export default function DocumentDetailPage() {
             </Button>
           ) : null}
         </div>
-        <p className="text-xs text-muted mt-2">
-          解析、切片、索引会自动完成；归档/删除仍会写入审计日志，已发布资料只能归档。
-        </p>
       </Card>
 
       {/* 敏感信息告警（PRD-06 §4.3：身份证阻止发布，手机号/邮箱建议脱敏） */}
@@ -490,7 +487,6 @@ export default function DocumentDetailPage() {
               empty={
                 <EmptyState
                   title="暂无召回记录"
-                  hint="该资料尚未产生可追溯的召回命中记录。"
                 />
               }
             />
@@ -510,9 +506,6 @@ export default function DocumentDetailPage() {
 
       {/* 版本历史（任务流水：阶段/状态/耗时/错误） */}
       <Card title="版本历史（处理任务）" className="mt-4">
-        <p className="text-xs text-muted mb-2">
-          当前处理版本 #{doc.process_version}；任务记录按时间倒序（任务不携带版本号，参数变化整链重跑）。
-        </p>
         <DataTable
           ariaLabel="处理任务版本历史"
           columns={jobColumns}

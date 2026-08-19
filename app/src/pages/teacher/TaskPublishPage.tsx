@@ -362,7 +362,7 @@ export default function TaskPublishPage() {
 
   const fillFromManual = () => {
     if (!manualText.trim()) return;
-    // MVP 手动组装（Agent 生成走指挥舱）：把企业任务描述落到学习目标，
+    // MVP 手动组装（Agent 生成走对话页）：把企业任务描述落到学习目标，
     // 标题为空时取首行，减少重复誊写
     patchForm({
       goal: manualText.trim(),
@@ -784,7 +784,6 @@ export default function TaskPublishPage() {
     <div className="teacher-workbench-page teacher-task-publish-page">
       <PageHeader
         title={pageTitle}
-        sub="把企业岗位任务转化为课堂任务，发布到班级后学生即可执行"
         actions={
           <Link className="btn btn-secondary" to="/teacher/tasks">
             <ArrowLeft size={16} aria-hidden />

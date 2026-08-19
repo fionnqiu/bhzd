@@ -278,7 +278,6 @@ export default function PublishReviewPage() {
     <div>
       <PageHeader
         title="发布审核"
-        sub="审核待发布资料的来源、切片与敏感信息，决定发布范围或驳回；发布与驳回均写入审计日志"
       />
       <Tabs
         tabs={[
@@ -298,7 +297,7 @@ export default function PublishReviewPage() {
             columns={queueColumns}
             rows={queue}
             loading={queueLoading}
-            empty={<EmptyState title="没有待审核资料" hint="资料送审后会出现在这里" />}
+            empty={<EmptyState title="没有待审核资料" />}
           />
         )
       ) : recordsError ? (
@@ -309,10 +308,9 @@ export default function PublishReviewPage() {
           columns={recordColumns}
           rows={records}
           loading={recordsLoading}
-          empty={<EmptyState title="暂无发布记录" hint="通过或驳回的资料会记录在这里" />}
+          empty={<EmptyState title="暂无发布记录" />}
         />
       )}
-      <p className="text-xs text-muted mt-2">发布与驳回均写入审计日志，可在系统管理端审计日志中追溯。</p>
 
       {/* 审核抽屉 */}
       <Drawer open={target !== null} title={target ? `审核：${target.title}` : ""} onClose={() => setTarget(null)}>
@@ -437,7 +435,6 @@ export default function PublishReviewPage() {
                     驳回
                   </Button>
                 </div>
-                <p className="text-xs text-muted mt-2">发布与驳回均写入审计日志。</p>
               </div>
             ) : null}
           </div>

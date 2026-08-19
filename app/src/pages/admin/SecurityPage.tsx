@@ -135,7 +135,6 @@ export default function SecurityPage() {
     <div>
       <PageHeader
         title="系统状态"
-        sub="仅展示后端当前可证明的告警、登录、会话和服务指标"
       />
 
       {/* 系统告警（PRD-06 §13.2）：触发中的告警逐条展示，健康时为绿色"当前无告警" */}

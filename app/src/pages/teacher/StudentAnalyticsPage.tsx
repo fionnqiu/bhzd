@@ -270,7 +270,6 @@ export default function StudentAnalyticsPage() {
     <div className="teacher-workbench-page teacher-analytics-page teacher-student-analytics-page">
       <PageHeader
         title="学生能力分析"
-        sub="选择班级和学生后查看其掌握度、任务进展与授权范围内的诊断摘要"
         actions={
           <Link className="btn btn-secondary" to={analyticsLink}>
             返回学情分析
@@ -329,7 +328,7 @@ export default function StudentAnalyticsPage() {
                   逐能力掌握度（{detail.mastery.length}）
                 </h2>
                 {detail.mastery.length === 0 ? (
-                  <EmptyState title="暂无掌握度记录" hint="学生完成练习或诊断后将在此呈现" />
+                  <EmptyState title="暂无掌握度记录" />
                 ) : (
                   <DataTable
                     ariaLabel="学生逐能力掌握度"
@@ -345,7 +344,7 @@ export default function StudentAnalyticsPage() {
                   最近任务（{detail.tasks.length}）
                 </h2>
                 {detail.tasks.length === 0 ? (
-                  <EmptyState title="暂无任务记录" hint="发布任务到班级后，学生任务将在此出现" />
+                  <EmptyState title="暂无任务记录" />
                 ) : (
                   <DataTable
                     ariaLabel="学生最近任务"
@@ -393,7 +392,7 @@ export default function StudentAnalyticsPage() {
                     </p>
                   </div>
                 ) : detail.diagnostics.length === 0 ? (
-                  <EmptyState title="暂无诊断记录" hint="学生上传文件完成诊断后将在此汇总" />
+                  <EmptyState title="暂无诊断记录" />
                 ) : (
                   <ul className="flex flex-col gap-2">
                     {detail.diagnostics.map((diagnostic) => (

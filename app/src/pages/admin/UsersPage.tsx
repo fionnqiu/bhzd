@@ -306,7 +306,6 @@ export default function UsersPage() {
     <div>
       <PageHeader
         title="用户与权限"
-        sub="角色调整、账号禁用与密码重置；权限变更均记录审计日志"
       />
 
       <div className="card card-padded mb-4">

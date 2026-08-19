@@ -384,7 +384,7 @@ def _seed_demo(conn: sqlite3.Connection, *, school_id: str, admin_id: str) -> di
     student_id = user_ids["student@demo.bhzd"]
     demo_admin_id = user_ids["admin@demo.bhzd"]
 
-    # 演示学生直接置为"已完成入学测评"：演示账号从指挥舱开始演示主线，
+    # 演示学生直接置为"已完成入学测评"：演示账号从对话首页开始演示主线，
     # 不应被首次使用引导（onboarding gate）拦截；share_diagnostics 默认授权，
     # 便于演示"教师查看诊断详情"链路（真实学生默认关闭，此处仅演示库）
     now = utc_now_iso()

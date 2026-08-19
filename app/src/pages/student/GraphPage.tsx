@@ -11,7 +11,7 @@
  * - CAP 节点颜色只由 mastery_status 决定（绿实心=已掌握/橙描边=待加强/
  *   红描边=初学），与 MasteryBadge 同一口径，
  *   学生跨页看到的颜色语义必须一致。
- * - 支持 ?node= 深链（指挥舱/诊断页跳转）：图数据就绪后自动打开节点抽屉。
+ * - 支持 ?node= 深链（对话页/诊断页跳转）：图数据就绪后自动打开节点抽屉。
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -360,7 +360,7 @@ export default function GraphPage() {
     }
   }, [netReady, canvasData, pathHighlight]);
 
-  // ?node= 深链：图数据就绪后打开一次（指挥舱/诊断页跳入口径）
+  // ?node= 深链：图数据就绪后打开一次（对话页/诊断页跳入口径）
   useEffect(() => {
     const nodeParam = searchParams.get("node");
     if (nodeParam && overview && !deepLinkHandled.current) {
@@ -416,8 +416,7 @@ export default function GraphPage() {
   return (
     <div>
       <PageHeader
-        title="能力图谱"
-        sub="166 个节点的岗位能力地图：搜索定位、查看前置路径，按掌握度着色"
+        title="能力图谱"
       />
 
       {/* 工具栏：搜索 + 筛选 + 视图模式（PRD-01 §5.1） */}

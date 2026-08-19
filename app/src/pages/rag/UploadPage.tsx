@@ -286,15 +286,11 @@ export default function UploadPage() {
     <div>
       <PageHeader
         title="上传资料"
-        sub="支持 PDF / Word / Markdown / TXT / CSV / Excel，单文件不超过 50MB；上传后进入解析 → 切片 → 索引流程"
       />
 
       <Card title="批量导入" className="mb-4">
         <div className="flex flex-col gap-3">
-          <p className="text-sm text-secondary">
-            可选择多个文件或整个目录（每批最多 1000 个）；系统只上传你明确选择的文件，不会扫描固定的 docs/ragData。
-            每份资料会逐一解析、切片、索引；成功后自动发布到学生端。
-          </p>
+          可选择多个文件或整个目录（每批最多 1000 个）。
           <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
             <Button variant="secondary" onClick={() => batchFilesInputRef.current?.click()}>
               选择文件
@@ -521,15 +517,6 @@ export default function UploadPage() {
         ) : null}
       </Card>
       </details>
-
-      {/* Processing is deliberately automatic so a successful upload cannot
-          be stranded behind a manual review toggle or a hidden queue step. */}
-      <Card title="自动处理" className="mb-4">
-        <p className="text-sm text-secondary mb-3">
-          切片策略使用系统默认切片参数（chunk_size / overlap 由系统管理端 RAG 参数统一配置），
-            上传后自动完成解析、切片与索引；成功后自动发布到学生端。
-        </p>
-      </Card>
 
       <div className="flex gap-2">
         <Button size="lg" loading={submitting} onClick={() => void submit()}>

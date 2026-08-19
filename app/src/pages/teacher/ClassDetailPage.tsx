@@ -566,12 +566,6 @@ export default function ClassDetailPage() {
                 ) : null}
               </div>
 
-              {diag.kind === "idle" ? (
-                <p className="text-sm text-secondary">
-                  学生授权后，可在此查看其诊断摘要与逐条错误归因
-                </p>
-              ) : null}
-
               {diag.kind === "loading" ? (
                 <div className="loading-block">
                   <Spinner size={16} /> 加载中…
@@ -591,7 +585,7 @@ export default function ClassDetailPage() {
 
               {diag.kind === "ok" ? (
                 diag.items.length === 0 ? (
-                  <EmptyState title="暂无诊断记录" hint="学生上传文件完成诊断后将在此汇总" />
+                  <EmptyState title="暂无诊断记录" />
                 ) : (
                   <>
                     <DataTable

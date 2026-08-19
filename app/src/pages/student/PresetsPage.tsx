@@ -47,10 +47,10 @@ import {
 type PresetGroupKey = "newbie" | "job" | "weak";
 
 /** 分组展示顺序与 PRD-01 §4.2 一致 */
-const GROUPS: { key: PresetGroupKey; title: string; sub: string }[] = [
-  { key: "newbie", title: "入门推荐", sub: "零基础与低难度练习" },
-  { key: "job", title: "岗位推荐", sub: "面向岗位目标的技能练习" },
-  { key: "weak", title: "薄弱能力推荐", sub: "根据你的掌握度个性化推荐" },
+const GROUPS: { key: PresetGroupKey; title: string }[] = [
+  { key: "newbie", title: "入门推荐" },
+  { key: "job", title: "岗位推荐" },
+  { key: "weak", title: "薄弱能力推荐" },
 ];
 
 /**
@@ -192,7 +192,6 @@ export default function PresetsPage() {
     <div>
       <PageHeader
         title="学习推荐"
-        sub="按数据类型和薄弱能力推荐一次性练习任务"
       />
 
       {/* 顶部筛选（PRD-01 §4.2）：只保留数据类型 */}
@@ -230,7 +229,6 @@ export default function PresetsPage() {
             <h2 className="mb-2" style={{ fontSize: "var(--font-size-lg)" }}>
               {group.title}
             </h2>
-            <p className="text-sm text-secondary mb-3">{group.sub}</p>
             <div className="grid grid-cols-3">
               {group.items.map((preset) => (
                 <div
