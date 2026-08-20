@@ -1,5 +1,5 @@
 /**
- * 指挥舱测试（PRD-01 §3.6 验收驱动）：欢迎态 + SSE 事件流全链路。
+ * 对话页测试（PRD-01 §3.6 验收驱动）：欢迎态 + SSE 事件流全链路。
  * mock 策略：api 桩（按 path 分派）+ FakeRunEventStream 播放事件帧（见 cockpit-shared）。
  */
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -97,7 +97,7 @@ beforeEach(() => {
 
 const TEST_RUN_GOAL = "请生成一份文本标注练习计划";
 
-describe("指挥舱 · 欢迎态", () => {
+describe("对话页 · 欢迎态", () => {
   it("渲染五个快捷入口，并把 Hero Composer 放在欢迎滚动内容内", async () => {
     renderCockpit();
 
@@ -150,16 +150,15 @@ describe("指挥舱 · 欢迎态", () => {
 
     await screen.findByTestId("chat-stream");
     // The pre-answer state is the same bounded lifecycle summary used by the
-    // execution record; no standalone thinking widget is rendered.
+    // execution record; the steps stream owns all long-running feedback.
     const executionRecord = await screen.findByTestId("agent-activity-timeline");
     expect(within(executionRecord).getByTestId("agent-current-action")).toHaveTextContent(
-      /执行计划|正在整理学习目标|正在准备练习内容/,
+      /正在准备处理|正在整理学习目标|正在准备练习内容/,
     );
     expect(within(executionRecord).getByTestId("agent-current-action")).toHaveAttribute(
       "aria-expanded",
       "true",
     );
-    expect(screen.queryByTestId("agent-thinking-state")).not.toBeInTheDocument();
     const conversationInfo = screen.getByRole("status", { name: "当前对话信息" });
     expect(conversationInfo).toHaveTextContent("学习会话");
     expect(conversationInfo).toHaveClass("conversation-info-bar", "conversation-heading");
@@ -189,7 +188,7 @@ describe("指挥舱 · 欢迎态", () => {
   });
 });
 
-describe("指挥舱 · 运行事件流", () => {
+describe("对话页 · 运行事件流", () => {
   async function startRun() {
     renderCockpit();
     const input = await screen.findByLabelText("对话输入");
@@ -199,7 +198,7 @@ describe("指挥舱 · 运行事件流", () => {
     await waitForStream();
   }
 
-  it("plan.updated 在处理面板展示受控执行清单", async () => {
+  it("plan.updated 在步骤流展示受控计划步骤", async () => {
     await startRun();
     emit("plan.updated", {
       seq: 2,
@@ -219,9 +218,20 @@ describe("指挥舱 · 运行事件流", () => {
       ],
     });
 
-    expect(screen.getByTestId("agent-activity-timeline")).toBeInTheDocument();
-    expect(screen.getByTestId("execution-plan")).toHaveTextContent("召回标注规范资料");
-    expect(screen.getByTestId("execution-plan")).toHaveTextContent("定位关联能力");
+    const timeline = screen.getByTestId("agent-activity-timeline");
+    expect(timeline).toBeInTheDocument();
+    // 计划步骤即步骤流行：行状态直接来自 plan.updated 帧
+    const stepsList = screen.getByTestId("agent-steps");
+    expect(within(stepsList).getByText("召回标注规范资料").closest("li")).toHaveClass(
+      "agent-step",
+      "agent-step-completed",
+    );
+    expect(within(stepsList).getByText("定位关联能力").closest("li")).toHaveClass(
+      "agent-step",
+      "agent-step-running",
+    );
+    // 摘要同步当前进行中的计划步骤
+    expect(screen.getByTestId("agent-current-action")).toHaveTextContent("正在定位关联能力");
   });
 
   it("执行事件显示受控阶段，但不泄露内部思考或参数", async () => {
@@ -295,12 +305,14 @@ describe("指挥舱 · 运行事件流", () => {
     const summary = screen.getByTestId("agent-current-action");
     // 主流 agent 行为：成功终态自动收成单行摘要，让答案成为视觉主体
     expect(summary).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByTestId("agent-activity-history")).not.toBeInTheDocument();
-    expect(summary).toHaveTextContent("处理完成");
+    expect(screen.queryByTestId("agent-steps")).not.toBeInTheDocument();
+    expect(summary).toHaveTextContent("已完成 2 步");
 
     fireEvent.click(summary);
     expect(summary).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByTestId("agent-activity-history")).toBeInTheDocument();
+    // 展开后步骤流可见：乐观规划行 + 回答生成行
+    const stepsList = screen.getByTestId("agent-steps");
+    expect(within(stepsList).getByText("回答已生成")).toBeInTheDocument();
   });
 
   it("RAG 生命周期显示安全检索摘要，不显示思考原文", async () => {
@@ -320,19 +332,21 @@ describe("指挥舱 · 运行事件流", () => {
 
     emit("rag.retrieval.started", { seq: 3 });
     emit("rag.retrieval.completed", { seq: 4, hit_count: 0, latency_ms: 1 });
-    expect(screen.getByTestId("agent-activity-timeline")).toHaveTextContent("资料检索完成");
-    expect(screen.getByTestId("agent-activity-timeline")).toHaveTextContent(
-      "命中 0 条资料，耗时 1 ms",
-    );
-    // A row owns its status beside the stage label. Keeping only two direct
-    // children prevents completed labels from reforming a detached right column.
-    const retrievalRow = document.querySelector<HTMLElement>(".agent-activity-row-retrieval");
-    if (!retrievalRow) throw new Error("retrieval activity row must be visible after expansion");
-    expect(retrievalRow.children).toHaveLength(2);
-    expect(
-      retrievalRow.querySelector(".agent-activity-row-primary .agent-activity-status"),
-    ).toHaveTextContent("已完成");
+    const timeline = screen.getByTestId("agent-activity-timeline");
+    expect(timeline).toHaveTextContent("资料检索完成");
+    // detail 的耗时属开发向信息：步骤行只保留命中数（首个“，”之前的部分）
+    expect(timeline).toHaveTextContent("命中 0 条资料");
+    expect(screen.queryByText(/耗时 1 ms/)).not.toBeInTheDocument();
+    // 步骤行 = 状态图标 + 服务端标题 + 次级说明，行状态落在 class 上
+    const retrievalRow = within(screen.getByTestId("agent-steps"))
+      .getByText("资料检索完成")
+      .closest("li");
+    if (!retrievalRow) throw new Error("retrieval step row must be visible after expansion");
+    expect(retrievalRow).toHaveClass("agent-step", "agent-step-completed");
+    expect(within(retrievalRow).getByText("命中 0 条资料")).toBeInTheDocument();
+    // understanding / retrieval 阶段的原始进度文案不进入学生可见步骤流
     expect(screen.queryByText("正在理解你的目标")).not.toBeInTheDocument();
+    expect(screen.queryByText("不应展示的资料检索进度")).not.toBeInTheDocument();
     emit("run.progress", {
       seq: 5,
       phase: "synthesis",
@@ -479,7 +493,7 @@ describe("指挥舱 · 运行事件流", () => {
     expect(summaryToggle).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(summaryToggle);
     expect(summaryToggle).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByTestId("agent-activity-history")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-steps")).toBeInTheDocument();
     expect(screen.queryByText("执行检查 · 参数 2 项，具体值已隐藏")).not.toBeInTheDocument();
     expect(screen.queryByText("执行完成，返回 1 项")).not.toBeInTheDocument();
   });
@@ -740,6 +754,8 @@ describe("指挥舱 · 运行事件流", () => {
     });
 
     const gate = await screen.findByTestId("confirmation-gate");
+    // 确认门已并入对话流主线（run-flow 分组），不再挂在侧栏状态面板里
+    expect(within(screen.getByTestId("run-flow")).getByTestId("confirmation-gate")).toBe(gate);
     const syncButton = within(gate).getByTestId("task-sync-button");
     const confirmationStream = latestStream();
     expect(syncButton).toHaveTextContent("同步到学习任务");
@@ -763,6 +779,8 @@ describe("指挥舱 · 运行事件流", () => {
       result: { task_id: "t1", title: "NER 标注练习任务" },
     });
     const receipt = await screen.findByTestId("embedded-task.create");
+    // 回执卡标题强调同步结果，正文保留任务名回执
+    expect(within(receipt).getByText("已同步到学习任务")).toBeInTheDocument();
     expect(within(receipt).getByText("学习任务「NER 标注练习任务」已同步。")).toBeInTheDocument();
     expect(within(receipt).getByRole("link", { name: "前往学习任务查看 →" })).toHaveAttribute(
       "href",

@@ -58,10 +58,10 @@ test("入学测评：新注册学生被引导完成测评并生成初始能力�
   }
   await page.getByRole("button", { name: "提交测评" }).click();
 
-  // 第三步：结果与初始能力地图 → 进入指挥舱
+  // 第三步：结果与初始能力地图 → 开始学习
   await expect(page.getByText("初始能力地图")).toBeVisible({ timeout: 15000 });
   await expect(page.getByText(/本次得分/)).toBeVisible();
-  await page.getByRole("button", { name: "进入指挥舱" }).click();
+  await page.getByRole("button", { name: "开始学习" }).click();
   await expect(page).toHaveURL(/127\.0\.0\.1:4173\/$/, { timeout: 15000 });
 });
 

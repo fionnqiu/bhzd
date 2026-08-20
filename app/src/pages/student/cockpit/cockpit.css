@@ -1574,17 +1574,25 @@
   overflow-y: auto;
 }
 
+/* 欢迎态整块（标题 + 输入框 + 快捷入口）在右侧内容区垂直居中。
+   居中放在内层 flex 容器而非滚动层上：内容超出视口时内层随内容增高，
+   不会出现 justify-content:center 直接裁掉顶部的经典问题。 */
+.cockpit-workbench .cockpit-center-welcome .cockpit-content-inner {
+  justify-content: center;
+}
+
 /* ---------------------------------------------------------------- Welcome */
 .cockpit-workbench .welcome {
   width: min(900px, 100%);
   margin: 0 auto;
-  padding: clamp(76px, 15vh, 146px) 0 48px;
+  padding: 32px 0 48px;
   text-align: center;
 }
 
 .welcome-hero {
   width: min(900px, 100%);
-  margin: 0 auto;
+  /* 标题区与 hero 输入框之间留出呼吸间距（小七 2026-08-20 反馈） */
+  margin: 0 auto 28px;
 }
 
 .capability-mark {

@@ -20,7 +20,7 @@ const STUDENT = { email: "student@demo.bhzd", password: "Demo1234!" };
 const TEACHER = { email: "teacher@demo.bhzd", password: "Demo1234!" };
 
 test.describe("学生端 PRD 主线", () => {
-  test("登录页可登录并进入指挥舱欢迎态（8 入口 + 占位文案）", async ({ page }) => {
+  test("登录页可登录并进入对话页欢迎态（快捷入口 + 目标输入）", async ({ page }) => {
     await page.goto("/login");
     await page.locator('input[type="email"]').fill(STUDENT.email);
     await page.locator('input[type="password"]').fill(STUDENT.password);

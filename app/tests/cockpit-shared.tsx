@@ -1,5 +1,5 @@
 /**
- * 指挥舱测试共享桩（cockpit.test.tsx / cockpit-flow.test.tsx 共用）。
+ * 对话页测试共享桩（cockpit.test.tsx / cockpit-flow.test.tsx 共用）。
  *
  * 为什么抽出来：两个测试文件的 api 桩工厂与 FakeRunEventStream 完全相同，
  * 复制两份只会让后续契约调整改两遍。

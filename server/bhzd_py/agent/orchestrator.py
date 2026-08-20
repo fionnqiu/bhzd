@@ -1065,11 +1065,11 @@ async def _compose_final_text(
             base += "\n" + composer.template_plan_summary(
                 {"steps": others}, results)
         return base, usage_capture.value, composer.compact_summary(base)
-    return (
-        composer.template_plan_summary(plan, results),
-        usage_capture.value,
-        composer.template_compact_plan_summary(plan, results),
-    )
+    # 降级回复与摘要卡同文：执行过程已由对话内的步骤流承载，最终消息只保留
+    # 干净结论；若沿用 template_plan_summary 会把 ✓ 步骤清单与工具原始 JSON
+    # （如 graph.reason 的空结果）再次倒进对话气泡。
+    fallback = composer.template_compact_plan_summary(plan, results)
+    return (fallback, usage_capture.value, fallback)
 
 
 def _collect_results(db: sqlite3.Connection, steps: list[dict[str, Any]]) -> dict[str, Any]:

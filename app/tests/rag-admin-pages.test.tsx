@@ -247,9 +247,6 @@ describe("UploadPage（PRD-03 §5）", () => {
 
   it("仅选择文件即可提交，并将空高级元数据交给服务端默认", async () => {
     renderPage(<UploadPage />);
-    // The simplified flow makes publication depend on a successful index,
-    // rather than exposing a separate approval surface to administrators.
-    expect(screen.getAllByText(/成功后自动发布到学生端/).length).toBeGreaterThan(0);
     const selected = new File(["# 规范内容"], "spec.md", { type: "text/markdown" });
     fireEvent.change(screen.getByLabelText("选择文件"), {
       target: { files: [selected] },

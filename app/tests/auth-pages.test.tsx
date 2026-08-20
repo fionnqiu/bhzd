@@ -59,7 +59,7 @@ function renderLogin() {
       <MemoryRouter initialEntries={["/login"]}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/" element={<div>指挥舱占位</div>} />
+          <Route path="/" element={<div>对话页占位</div>} />
           <Route path="/teacher" element={<div>教师端占位</div>} />
         </Routes>
       </MemoryRouter>
@@ -143,7 +143,7 @@ describe("LoginPage", () => {
       });
     });
     // 登录成功 → 守卫来源缺省回 /
-    expect(await screen.findByText("指挥舱占位")).toBeInTheDocument();
+    expect(await screen.findByText("对话页占位")).toBeInTheDocument();
   });
 
   it("教师登录时跳转教师端而不是学生端", async () => {
@@ -169,7 +169,7 @@ describe("LoginPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
 
     expect(await screen.findByText("教师端占位")).toBeInTheDocument();
-    expect(screen.queryByText("指挥舱占位")).not.toBeInTheDocument();
+    expect(screen.queryByText("对话页占位")).not.toBeInTheDocument();
   });
 
   it("登录失败展示后端中文错误", async () => {

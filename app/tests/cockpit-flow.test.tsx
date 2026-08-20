@@ -1,5 +1,5 @@
 /**
- * 指挥舱链路测试：诊断上传 / 会话管理 / 确认门过期。
+ * 对话页链路测试：诊断上传 / 会话管理 / 确认门过期。
  * mock 策略与 cockpit.test.tsx 相同（共享桩见 cockpit-shared.tsx）。
  */
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -133,7 +133,7 @@ async function submitComposerGoal(goal: string) {
   await waitFor(() => expect(FakeRunEventStream.instances).toHaveLength(1));
 }
 
-describe("指挥舱 · SSE 恢复", () => {
+describe("对话页 · SSE 恢复", () => {
   async function startRun() {
     renderCockpit();
     await submitComposerGoal("测试 SSE 恢复");
@@ -346,7 +346,7 @@ describe("指挥舱 · SSE 恢复", () => {
   });
 });
 
-describe("指挥舱 · 内嵌输入操作", () => {
+describe("对话页 · 内嵌输入操作", () => {
   it("把上传和发送操作放在对话输入的同一视觉壳层中", async () => {
     renderCockpit();
 
@@ -425,7 +425,7 @@ describe("指挥舱 · 内嵌输入操作", () => {
   });
 });
 
-describe("指挥舱 · 诊断上传", () => {
+describe("对话页 · 诊断上传", () => {
   it("欢迎态和诊断报告位于独立滚动区，Hero Composer 保持在欢迎内容内", async () => {
     mockedPostForm.mockResolvedValue(REPORT);
     renderCockpit();
@@ -525,7 +525,7 @@ describe("指挥舱 · 诊断上传", () => {
   });
 });
 
-describe("指挥舱 · 会话管理", () => {
+describe("对话页 · 会话管理", () => {
   const CONVERSATION = {
     id: "c9",
     title: "旧会话",
@@ -806,7 +806,7 @@ describe("指挥舱 · 会话管理", () => {
   });
 });
 
-describe("指挥舱 · 确认门过期", () => {
+describe("对话页 · 确认门过期", () => {
   it("倒计时到期自动 POST expire，关闭确认门并恢复输入", async () => {
     mockedPost.mockImplementation(async (path: string) => {
       if (path === "/api/runs") return { run_id: "r1", conversation_id: "c1" };
@@ -922,7 +922,7 @@ describe("指挥舱 · 确认门过期", () => {
   });
 });
 
-describe("指挥舱 · 确认门终态收敛", () => {
+describe("对话页 · 确认门终态收敛", () => {
   it("服务端尚未到期的 409 会重试并最终关闭确认门", async () => {
     let expireAttempts = 0;
     mockedPost.mockImplementation(async (path: string) => {

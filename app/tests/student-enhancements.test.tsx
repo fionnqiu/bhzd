@@ -137,7 +137,7 @@ function renderOnboarding() {
   return renderPage(
     <>
       <Route path="/onboarding" element={<OnboardingPage />} />
-      <Route path="/" element={<div>指挥舱标记</div>} />
+      <Route path="/" element={<div>对话页标记</div>} />
     </>,
     "/onboarding",
   );
@@ -192,12 +192,12 @@ describe("OnboardingPage 入学引导", () => {
       });
     });
 
-    // ③ 结果页：得分 + 初始能力地图（能力名由图谱解析）+ 进入指挥舱
+    // ③ 结果页：得分 + 初始能力地图（能力名由图谱解析）+ 开始学习
     expect(await screen.findByText("初始能力地图")).toBeInTheDocument();
     expect(await screen.findByText("能力甲")).toBeInTheDocument();
     expect(screen.getByText("能力乙")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "进入指挥舱" }));
-    expect(await screen.findByText("指挥舱标记")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "开始学习" }));
+    expect(await screen.findByText("对话页标记")).toBeInTheDocument();
   });
 
   it("稍后再测：POST skip 后回首页", async () => {
@@ -213,7 +213,7 @@ describe("OnboardingPage 入学引导", () => {
     await waitFor(() => {
       expect(mockedPost).toHaveBeenCalledWith("/api/onboarding/skip");
     });
-    expect(await screen.findByText("指挥舱标记")).toBeInTheDocument();
+    expect(await screen.findByText("对话页标记")).toBeInTheDocument();
   });
 });
 
@@ -253,7 +253,7 @@ function installNotificationGet() {
 function renderLayout() {
   return renderPage(
     <Route path="/" element={<StudentLayout />}>
-      <Route index element={<div>指挥舱标记</div>} />
+      <Route index element={<div>对话页标记</div>} />
       <Route path="tasks/:id" element={<div>任务详情标记</div>} />
     </Route>,
     "/",

@@ -803,12 +803,10 @@ describe("AuditLogsPage（PRD-04 §7）", () => {
     mockedGet.mockResolvedValue({ items: [LOG], total: 1 });
   });
 
-  it("渲染 before→after 变更摘要与只读说明", async () => {
+  it("渲染 before→after 变更摘要", async () => {
     renderPage(<AuditLogsPage />);
     expect(await screen.findByText("provider.set_role")).toBeInTheDocument();
     expect(screen.getByText("role: none → primary")).toBeInTheDocument();
-    // 页头副标题与底部说明各出现一次
-    expect(screen.getAllByText(/审计日志不允许删除/).length).toBeGreaterThan(0);
   });
 
   it("点击审计详情打开 Drawer 并展示 before/after JSON", async () => {

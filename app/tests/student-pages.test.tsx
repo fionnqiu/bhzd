@@ -253,7 +253,7 @@ describe("TasksPage", () => {
 
     expect(await screen.findByText("还没有学习任务")).toBeInTheDocument();
     expect(screen.getByText("去预设学习")).toBeInTheDocument();
-    expect(screen.getByText("打开 Agent 指挥舱")).toBeInTheDocument();
+    expect(screen.getByText("开始对话")).toBeInTheDocument();
     expect(screen.getByText("上传标注诊断")).toBeInTheDocument();
   });
 
