@@ -15,11 +15,18 @@ vi.mock("../src/api/client", () => {
   class MockApiRequestError extends Error {
     status: number;
     code: string;
-    constructor(status: number, code: string, message: string) {
+    retryAfterSeconds: number | null;
+    constructor(
+      status: number,
+      code: string,
+      message: string,
+      retryAfterSeconds: number | null = null,
+    ) {
       super(message);
       this.name = "ApiRequestError";
       this.status = status;
       this.code = code;
+      this.retryAfterSeconds = retryAfterSeconds;
     }
   }
   return {
@@ -187,6 +194,52 @@ describe("LoginPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
 
     expect(await screen.findByText("邮箱或密码不正确")).toBeInTheDocument();
+  });
+
+  it("触发 IP 限流时显示倒计时并暂时禁用提交", async () => {
+    // The mock mirrors ApiRequestError's recovery metadata from the real API
+    // client; this keeps the page test focused on user-visible lockout state.
+    mockedPost.mockRejectedValue(
+      new ApiRequestError(429, "RATE_LIMITED", "尝试过于频繁", 3),
+    );
+    renderLogin();
+
+    fireEvent.change(await screen.findByPlaceholderText("you@example.com"), {
+      target: { value: "a@b.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("请输入密码"), {
+      target: { value: "WrongPass1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+
+    const retryButton = await screen.findByRole("button", { name: "3 秒后重试" });
+    expect(retryButton).toBeDisabled();
+    expect(screen.getByText("尝试过于频繁，请 3 秒后再试")).toBeInTheDocument();
+  });
+
+  it("倒计时结束后恢复登录按钮并清除过期提示", async () => {
+    mockedPost.mockRejectedValueOnce(
+      new ApiRequestError(429, "RATE_LIMITED", "尝试过于频繁", 1),
+    );
+    renderLogin();
+
+    fireEvent.change(await screen.findByPlaceholderText("you@example.com"), {
+      target: { value: "a@b.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("请输入密码"), {
+      target: { value: "WrongPass1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+    expect(await screen.findByRole("button", { name: "1 秒后重试" })).toBeDisabled();
+
+    await waitFor(
+      () => {
+        const button = screen.getByRole("button", { name: "登录" });
+        expect(button).not.toBeDisabled();
+        expect(screen.queryByText(/尝试过于频繁/)).not.toBeInTheDocument();
+      },
+      { timeout: 2500 },
+    );
   });
 });
 

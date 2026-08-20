@@ -27,6 +27,9 @@ def _notification_dto(row: sqlite3.Row) -> dict:
         "body": row["body"],
         "ref_type": row["ref_type"],
         "ref_id": row["ref_id"],
+        # The joined status lets clients distinguish an actionable task from a
+        # historical link without exposing any task outside the notification owner.
+        "ref_status": row["ref_status"] if "ref_status" in row.keys() else None,
         "read_at": row["read_at"],
         "created_at": row["created_at"],
     }
@@ -41,14 +44,21 @@ def list_notifications(
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
     """自己的通知列表（新→旧）；unread=1 时只返回未读。"""
-    where = "user_id = ?" + (" AND read_at IS NULL" if unread == 1 else "")
+    where = "n.user_id = ?" + (" AND n.read_at IS NULL" if unread == 1 else "")
     total = conn.execute(
-        f"SELECT COUNT(*) AS n FROM notifications WHERE {where}",
+        f"SELECT COUNT(*) AS n FROM notifications AS n WHERE {where}",
         (current.user["id"],),
     ).fetchone()["n"]
     rows = conn.execute(
-        f"SELECT * FROM notifications WHERE {where} "
-        "ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
+        # Select notification columns explicitly so a future schema column
+        # cannot shadow the owner-scoped status alias in the DTO.
+        f"SELECT n.id, n.user_id, n.type, n.title, n.body, n.ref_type, n.ref_id, "
+        "n.read_at, n.created_at, t.status AS ref_status "
+        "FROM notifications AS n "
+        "LEFT JOIN learning_tasks AS t "
+        "ON n.ref_type = 'task' AND t.id = n.ref_id AND t.user_id = n.user_id "
+        f"WHERE {where} "
+        "ORDER BY n.created_at DESC, n.id DESC LIMIT ? OFFSET ?",
         (current.user["id"], limit, offset),
     ).fetchall()
     return {"items": [_notification_dto(r) for r in rows], "total": total}

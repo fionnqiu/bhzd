@@ -15,6 +15,7 @@ from bhzd_py.security import (
     encrypt_secret,
     hash_password,
     hash_token,
+    ip_rate_limit_retry_after_seconds,
     is_ip_rate_limited,
     is_login_locked,
     load_encryption_key,
@@ -132,6 +133,11 @@ def test_login_rate_limit_and_lockout(tmp_db_path):
         assert is_ip_rate_limited(conn, "1.2.3.4") is False
         record_login_attempt(conn, "a@b.c", "1.2.3.4", False)
         assert is_ip_rate_limited(conn, "1.2.3.4") is True
+        retry_after = ip_rate_limit_retry_after_seconds(conn, "1.2.3.4")
+        # The helper is intentionally bounded to the same one-minute window as
+        # the guard, so a client can safely use it for a countdown.
+        assert retry_after is not None and 1 <= retry_after <= 60
+        assert ip_rate_limit_retry_after_seconds(conn, "5.6.7.8") is None
         assert is_ip_rate_limited(conn, "5.6.7.8") is False  # 其他 IP 不受牵连
 
         # 连续失败 10 次锁定 15 分钟；一次成功登录即解除历史失败计数

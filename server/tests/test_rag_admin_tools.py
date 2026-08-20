@@ -51,11 +51,6 @@ def teacher(db):
 
 
 @pytest.fixture()
-def content_admin(db):
-    return _user(db, "content_admin")
-
-
-@pytest.fixture()
 def system_admin(db):
     return _user(db, "system_admin")
 
@@ -82,7 +77,7 @@ def _management_row_counts(db) -> dict[str, int]:
     }
 
 
-@pytest.mark.parametrize("principal_fixture", ("teacher", "content_admin"))
+@pytest.mark.parametrize("principal_fixture", ("teacher",))
 @pytest.mark.parametrize("spec", _RAG_ADMIN_SPECS, ids=lambda spec: spec.name)
 def test_non_system_admin_cannot_preview_or_apply_rag_admin_tools(
     db, request, principal_fixture, spec

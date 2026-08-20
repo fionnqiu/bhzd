@@ -1,6 +1,6 @@
 """RAG 管理端路由（蓝图 §6.4，PRD-03 全篇，PRD-06 §4/§5）。
 
-权限（蓝图 §15）：全部端点仅允许 system_admin；教师、内容管理员和学生一律
+权限（蓝图 §15）：全部端点仅允许 system_admin；教师和学生一律
 403；变更类请求叠加 csrf_protect。系统管理员可能只有管理端会话
 （bhzd_admin_session），因此 GET 端点用本模块的 rag_staff 依赖（任一类会话
 均可），写端点直接复用 csrf_protect 的"任一会话"加载再查角色。

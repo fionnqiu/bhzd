@@ -18,6 +18,8 @@ EXPECTED_MIGRATIONS = [
     "017_provider_protocol_grader.sql", "018_task_learning_content.sql",
     "019_query_rewrite_setting.sql", "020_rag_sampling_settings.sql",
     "021_rag_eval_sets_and_retrieval.sql", "022_rag_reprocess_batches.sql",
+    "023_remove_content_admin.sql", "024_task_content_generation_observability.sql",
+    "025_task_grading_recovery.sql",
 ]
 
 EXPECTED_TABLES = {
@@ -162,7 +164,44 @@ def test_fresh_database_applies_all_migrations(tmp_db_path):
         learning_columns = {
             row["name"] for row in conn.execute("PRAGMA table_info(learning_tasks)")
         }
-        assert {"content_status", "content_generated_at"} <= learning_columns
+        assert {
+            "content_status",
+            "content_generated_at",
+            "content_generation_source",
+            "content_failure_reason",
+            "content_generation_message",
+            "content_generation_retry_count",
+            "content_last_attempt_at",
+        } <= learning_columns
+        submission_columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(task_exercise_submissions)")
+        }
+        # 025 keeps each failed grading attempt and its bounded manual-review
+        # handoff additive, so historical submissions remain readable.
+        assert {
+            "grade_failure_reason",
+            "grade_retry_count",
+            "grade_retry_limit",
+            "retry_of_submission_id",
+            "manual_review_required",
+            "manual_reviewer_id",
+            "manually_graded_at",
+        } <= submission_columns
+        defaults = {
+            row["name"]: row["dflt_value"]
+            for row in conn.execute("PRAGMA table_info(task_exercise_submissions)")
+        }
+        assert defaults["grade_retry_count"] == "0"
+        assert defaults["grade_retry_limit"] == "2"
+        assert defaults["manual_review_required"] == "0"
+        recovery_indexes = {
+            row["name"]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
+            )
+        }
+        assert "idx_task_submissions_grade_recovery" in recovery_indexes
         rag_columns = {row["name"] for row in conn.execute("PRAGMA table_info(rag_settings)")}
         # Sampling controls are persisted independently of provider-specific
         # credentials so RAG tuning can be audited and replayed.
@@ -229,6 +268,9 @@ def test_provider_protocol_migration_preserves_legacy_row_data(tmp_path):
     (legacy_migrations / "020_rag_sampling_settings.sql").unlink()
     (legacy_migrations / "021_rag_eval_sets_and_retrieval.sql").unlink()
     (legacy_migrations / "022_rag_reprocess_batches.sql").unlink()
+    (legacy_migrations / "023_remove_content_admin.sql").unlink()
+    (legacy_migrations / "024_task_content_generation_observability.sql").unlink()
+    (legacy_migrations / "025_task_grading_recovery.sql").unlink()
     database_path = str(tmp_path / "provider-migration.sqlite")
     conn = connect(database_path)
     try:
@@ -324,6 +366,9 @@ def test_scenario_removal_migration_unifies_mastery_and_drops_business_columns(t
     (legacy_migrations / "020_rag_sampling_settings.sql").unlink()
     (legacy_migrations / "021_rag_eval_sets_and_retrieval.sql").unlink()
     (legacy_migrations / "022_rag_reprocess_batches.sql").unlink()
+    (legacy_migrations / "023_remove_content_admin.sql").unlink()
+    (legacy_migrations / "024_task_content_generation_observability.sql").unlink()
+    (legacy_migrations / "025_task_grading_recovery.sql").unlink()
     database_path = str(tmp_path / "scenario-removal.sqlite")
     conn = connect(database_path)
     try:

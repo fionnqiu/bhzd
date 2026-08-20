@@ -41,8 +41,8 @@
   min-height: 40px;
   gap: var(--space-2);
   padding: 8px var(--space-3);
-  /* 填充式触发器，与全局输入控件同一语言 */
-  border: 1px solid transparent;
+  /* 填充式触发器，与全局输入控件同一语言（含可见边框，白色抽屉上不再“消失”） */
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-surface-muted) 78%, transparent);
   color: var(--color-text);

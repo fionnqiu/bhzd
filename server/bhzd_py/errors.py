@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -19,15 +21,30 @@ logger = logging.getLogger(__name__)
 class ApiError(Exception):
     """业务错误：code 用 SNAKE_CODE，message 必须是面向用户的中文。"""
 
-    def __init__(self, status_code: int, code: str, message: str) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        code: str,
+        message: str,
+        *,
+        details: dict[str, Any] | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.code = code
         self.message = message
+        # Selected failures need machine-readable recovery data (for example a
+        # retry delay), while the default error shell stays concise and safe.
+        self.details = details
+        self.headers = dict(headers or {})
 
 
-def _error_body(code: str, message: str) -> dict:
-    return {"error": {"code": code, "message": message}}
+def _error_body(code: str, message: str, details: dict[str, Any] | None = None) -> dict:
+    error: dict[str, Any] = {"code": code, "message": message}
+    if details:
+        error["details"] = details
+    return {"error": error}
 
 
 def register_error_handlers(app: FastAPI) -> None:
@@ -37,7 +54,8 @@ def register_error_handlers(app: FastAPI) -> None:
     async def _handle_api_error(_request: Request, exc: ApiError) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
-            content=_error_body(exc.code, exc.message),
+            content=_error_body(exc.code, exc.message, exc.details),
+            headers=exc.headers,
         )
 
     @app.exception_handler(StarletteHTTPException)

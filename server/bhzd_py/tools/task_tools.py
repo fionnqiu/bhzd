@@ -49,6 +49,52 @@ _EXERCISE_TYPE_ALIASES = {
 }
 _SUPPORTED_EXERCISE_TYPES = frozenset({"open_ended", "multiple_choice", "true_false"})
 
+# These values are intentionally user-safe labels, not provider identifiers.
+# A teacher only needs to know whether content came from a configured model,
+# the deterministic fallback, or reviewed/manual work; revealing upstream
+# endpoint or exception details would make a retry status unsafe to display.
+_CONTENT_SOURCE_PROVIDER = "provider"
+_CONTENT_SOURCE_TEMPLATE = "template"
+_CONTENT_SOURCE_MANUAL = "manual"
+_CONTENT_SOURCE_COPIED = "copied"
+
+
+def _mark_task_content_done(
+    conn: sqlite3.Connection,
+    task_id: str,
+    *,
+    source: str,
+    now: str | None = None,
+    message: str | None = None,
+) -> None:
+    """Persist a terminal, explainable content result in one update.
+
+    The state is written with the lesson rows, rather than inferred from a
+    background log, so a refresh after process restart still tells the teacher
+    whether they should review template fallback content.
+    """
+
+    completed_at = now or utc_now_iso()
+    conn.execute(
+        "UPDATE learning_tasks SET content_status = 'done', content_generated_at = ?, "
+        "content_generation_source = ?, content_failure_reason = NULL, "
+        "content_generation_message = ?, "
+        "content_last_attempt_at = COALESCE(content_last_attempt_at, ?) WHERE id = ?",
+        (completed_at, source, message, completed_at, task_id),
+    )
+
+
+def _mark_task_content_failed(
+    conn: sqlite3.Connection, task_id: str, reason: str
+) -> None:
+    """Record only a stable recovery message, never an upstream exception body."""
+
+    conn.execute(
+        "UPDATE learning_tasks SET content_status = 'failed', content_generation_source = 'none', "
+        "content_failure_reason = ?, content_generation_message = NULL WHERE id = ?",
+        (reason, task_id),
+    )
+
 
 def _cap_names(cap_ids: list[str]) -> list[dict[str, str]]:
     """cap_id → 名称（graphx 惰性查询；未就绪时以 id 代名称，不阻断组卡）。"""
@@ -179,6 +225,9 @@ def _persist_task_content_rows(
     knowledge_points: list[dict[str, str]],
     exercises: list[dict[str, Any]],
     now: str,
+    *,
+    generation_source: str = _CONTENT_SOURCE_MANUAL,
+    generation_message: str | None = None,
 ) -> dict[str, Any]:
     """Write one reviewed/generated lesson without committing the caller transaction."""
 
@@ -216,9 +265,12 @@ def _persist_task_content_rows(
         )
     # A reviewed empty array is deliberate too: this terminal marker prevents a
     # detached generator from silently replacing a card the learner confirmed.
-    conn.execute(
-        "UPDATE learning_tasks SET content_status = 'done', content_generated_at = ? WHERE id = ?",
-        (now, task_id),
+    _mark_task_content_done(
+        conn,
+        task_id,
+        source=generation_source,
+        now=now,
+        message=generation_message,
     )
     return {
         "knowledge_points": len(knowledge_points),
@@ -370,13 +422,17 @@ def task_create_apply(ctx: ToolContext) -> dict[str, Any]:
 
 
 def mark_task_content_generating(
-    conn: sqlite3.Connection, task_id: str, *, force: bool = False
+    conn: sqlite3.Connection,
+    task_id: str,
+    *,
+    force: bool = False,
+    retry: bool = False,
 ) -> bool:
     """Atomically mark a task for generation without committing its caller's transaction.
 
     ``force`` is used for a new teacher-task version or an explicit content
-    edit.  Normal creation is idempotent: a retry cannot enqueue a second
-    worker after the task has already reached ``generating``/``done``.
+    retry. Normal creation is idempotent: a second request cannot enqueue a
+    duplicate worker after the task has already reached ``generating``/``done``.
     """
 
     try:
@@ -386,8 +442,11 @@ def mark_task_content_generating(
         predicate = "id = ?" if force else "id = ? AND COALESCE(content_status, 'none') = 'none'"
         cursor = conn.execute(
             "UPDATE learning_tasks SET content_status = 'generating', "
-            "content_generated_at = NULL WHERE " + predicate,
-            (task_id,),
+            "content_generated_at = NULL, content_generation_source = 'none', "
+            "content_failure_reason = NULL, content_generation_message = NULL, "
+            "content_last_attempt_at = ?, content_generation_retry_count = "
+            "COALESCE(content_generation_retry_count, 0) + ? WHERE " + predicate,
+            (utc_now_iso(), 1 if retry else 0, task_id),
         )
     except sqlite3.Error:
         # Older rolling deployments may not have the additive content columns
@@ -525,6 +584,7 @@ def queue_task_content(
     task_id: str,
     *,
     force: bool = False,
+    retry: bool = False,
     _preserve_recovery_claim: bool = False,
 ) -> bool:
     """Commit a generation marker and enqueue exactly one background worker."""
@@ -532,7 +592,7 @@ def queue_task_content(
     if not _preserve_recovery_claim:
         # A normal create/retry supersedes any prior startup claim for this row.
         _release_content_recovery_claim(conn, task_id)
-    if not mark_task_content_generating(conn, task_id, force=force):
+    if not mark_task_content_generating(conn, task_id, force=force, retry=retry):
         return False
     conn.commit()
     database_path = _connection_database_path(conn)
@@ -542,10 +602,7 @@ def queue_task_content(
         # A supervisor/loop failure must remain visible and retryable rather
         # than leaving the task permanently stuck in ``generating``.
         logger.warning("task content worker could not be scheduled", exc_info=True)
-        conn.execute(
-            "UPDATE learning_tasks SET content_status = 'failed' WHERE id = ?",
-            (task_id,),
-        )
+        _mark_task_content_failed(conn, task_id, "学习内容任务未能启动，请稍后重试")
         conn.commit()
         _release_content_recovery_claim(conn, task_id)
         return False
@@ -596,11 +653,16 @@ async def _generate_task_content_uncached(
             # before the status transition.  Reconcile the durable marker here
             # so recovery never leaves a usable lesson stuck at ``none``.
             now = utc_now_iso()
-            conn.execute(
-                "UPDATE learning_tasks SET content_status = 'done', "
-                "content_generated_at = COALESCE(content_generated_at, ?) "
-                "WHERE id = ?",
-                (now, task_id),
+            existing_source = (
+                str(task["content_generation_source"] or "none")
+                if "content_generation_source" in task.keys()
+                else "none"
+            )
+            _mark_task_content_done(
+                conn,
+                task_id,
+                source=existing_source if existing_source != "none" else _CONTENT_SOURCE_MANUAL,
+                now=now,
             )
             conn.commit()
             return {
@@ -610,8 +672,9 @@ async def _generate_task_content_uncached(
             }
         now = utc_now_iso()
         conn.execute(
-            "UPDATE learning_tasks SET content_status = 'generating' WHERE id = ?",
-            (task_id,),
+            "UPDATE learning_tasks SET content_status = 'generating', "
+            "content_last_attempt_at = COALESCE(content_last_attempt_at, ?) WHERE id = ?",
+            (now, task_id),
         )
         conn.commit()
         title = str(task["title"] or "学习任务")
@@ -620,6 +683,7 @@ async def _generate_task_content_uncached(
         cap_text = ", ".join(str(item) for item in cap_ids) if isinstance(cap_ids, list) else ""
         knowledge_points: list[dict[str, Any]] = []
         exercises: list[dict[str, Any]] = []
+        provider_issue: str | None = None
         try:
             from ..agent.providers import complete
 
@@ -661,10 +725,17 @@ async def _generate_task_content_uncached(
                     for item in payload.get("exercises", [])
                     if isinstance(item, dict) and item.get("question")
                 ][:20]
+            else:
+                provider_issue = "模型返回内容不完整"
         except Exception:
+            # The full exception may include a provider URL or other upstream
+            # detail. Log it for operators, but retain only a stable summary in
+            # the task row because teachers see that row directly.
             logger.warning("task content provider failed; using deterministic draft", exc_info=True)
+            provider_issue = "模型服务暂不可用"
 
         default_points, default_exercises = _default_task_content(title, description)
+        used_template = not knowledge_points or not exercises
         if not knowledge_points:
             knowledge_points = default_points
         if not exercises:
@@ -685,11 +756,16 @@ async def _generate_task_content_uncached(
             return {"knowledge_points": 0, "exercises": 0, "status": "missing"}
         if latest_counts["points"] or latest_counts["exercises"]:
             now = utc_now_iso()
-            conn.execute(
-                "UPDATE learning_tasks SET content_status = 'done', "
-                "content_generated_at = COALESCE(content_generated_at, ?) "
-                "WHERE id = ?",
-                (now, task_id),
+            latest_source = (
+                str(task["content_generation_source"] or "none")
+                if "content_generation_source" in task.keys()
+                else "none"
+            )
+            _mark_task_content_done(
+                conn,
+                task_id,
+                source=latest_source if latest_source != "none" else _CONTENT_SOURCE_MANUAL,
+                now=now,
             )
             conn.commit()
             return {
@@ -707,16 +783,21 @@ async def _generate_task_content_uncached(
             _normalized_knowledge_points(knowledge_points),
             _normalized_exercises(exercises, require_choice_options=False),
             now,
+            generation_source=(
+                _CONTENT_SOURCE_TEMPLATE if used_template else _CONTENT_SOURCE_PROVIDER
+            ),
+            generation_message=(
+                f"{provider_issue or '模型返回内容不完整'}，已使用本地模板补全，请审核后发布"
+                if used_template
+                else None
+            ),
         )
         conn.commit()
         return result
     except Exception:
         logger.warning("task content persistence failed", exc_info=True)
         try:
-            conn.execute(
-                "UPDATE learning_tasks SET content_status = 'failed' WHERE id = ?",
-                (task_id,),
-            )
+            _mark_task_content_failed(conn, task_id, "学习内容保存失败，请稍后重试")
             conn.commit()
         except Exception:
             logger.warning("task content failure status could not be persisted", exc_info=True)
@@ -781,11 +862,11 @@ def _copy_task_content(
     points, exercises = _content_counts(conn, target_task_id)
     if points or exercises:
         now = utc_now_iso()
-        conn.execute(
-            "UPDATE learning_tasks SET content_status = 'done', "
-            "content_generated_at = COALESCE(content_generated_at, ?) "
-            "WHERE id = ?",
-            (now, target_task_id),
+        _mark_task_content_done(
+            conn,
+            target_task_id,
+            source=_CONTENT_SOURCE_COPIED,
+            now=now,
         )
         conn.commit()
         return {"knowledge_points": points, "exercises": exercises, "status": "done"}
@@ -798,9 +879,10 @@ def _copy_task_content(
         (source_task_id,),
     ).fetchall()
     if not source_points and not source_exercises:
-        conn.execute(
-            "UPDATE learning_tasks SET content_status = 'failed' WHERE id = ?",
-            (target_task_id,),
+        _mark_task_content_failed(
+            conn,
+            target_task_id,
+            "源任务尚未生成可复制的学习内容，请稍后重试",
         )
         conn.commit()
         return {"knowledge_points": 0, "exercises": 0, "status": "failed"}
@@ -836,9 +918,11 @@ def _copy_task_content(
                 now,
             ),
         )
-    conn.execute(
-        "UPDATE learning_tasks SET content_status = 'done', content_generated_at = ? WHERE id = ?",
-        (now, target_task_id),
+    _mark_task_content_done(
+        conn,
+        target_task_id,
+        source=_CONTENT_SOURCE_COPIED,
+        now=now,
     )
     conn.commit()
     return {
@@ -869,11 +953,16 @@ async def generate_task_content(
             # Content rows are authoritative even if a prior worker crashed
             # before persisting the status marker.
             now = utc_now_iso()
-            conn.execute(
-                "UPDATE learning_tasks SET content_status = 'done', "
-                "content_generated_at = COALESCE(content_generated_at, ?) "
-                "WHERE id = ?",
-                (now, task_id),
+            current_source = (
+                str(task["content_generation_source"] or "none")
+                if "content_generation_source" in task.keys()
+                else "none"
+            )
+            _mark_task_content_done(
+                conn,
+                task_id,
+                source=current_source if current_source != "none" else _CONTENT_SOURCE_MANUAL,
+                now=now,
             )
             conn.commit()
             return {"knowledge_points": points, "exercises": exercises, "status": "done"}
@@ -886,11 +975,16 @@ async def generate_task_content(
             points, exercises = _content_counts(conn, task_id)
             if points or exercises:
                 now = utc_now_iso()
-                conn.execute(
-                    "UPDATE learning_tasks SET content_status = 'done', "
-                    "content_generated_at = COALESCE(content_generated_at, ?) "
-                    "WHERE id = ?",
-                    (now, task_id),
+                current_source = (
+                    str(task["content_generation_source"] or "none")
+                    if "content_generation_source" in task.keys()
+                    else "none"
+                )
+                _mark_task_content_done(
+                    conn,
+                    task_id,
+                    source=current_source if current_source != "none" else _CONTENT_SOURCE_MANUAL,
+                    now=now,
                 )
                 conn.commit()
                 return {"knowledge_points": points, "exercises": exercises, "status": "done"}
@@ -902,9 +996,10 @@ async def generate_task_content(
                     source_task_id, database_path=resolved_path
                 )
                 if source_result.get("status") != "done":
-                    conn.execute(
-                        "UPDATE learning_tasks SET content_status = 'failed' WHERE id = ?",
-                        (task_id,),
+                    _mark_task_content_failed(
+                        conn,
+                        task_id,
+                        "源任务学习内容生成失败，请稍后重试",
                     )
                     conn.commit()
                     return {"knowledge_points": 0, "exercises": 0, "status": "failed"}
@@ -914,10 +1009,7 @@ async def generate_task_content(
     except Exception:
         logger.warning("task content fan-out persistence failed", exc_info=True)
         try:
-            conn.execute(
-                "UPDATE learning_tasks SET content_status = 'failed' WHERE id = ?",
-                (task_id,),
-            )
+            _mark_task_content_failed(conn, task_id, "学习内容复制失败，请稍后重试")
             conn.commit()
         except Exception:
             logger.warning(

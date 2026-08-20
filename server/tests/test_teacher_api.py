@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+import json
 
 import pytest
 
@@ -40,6 +41,67 @@ def _create_task(api, teacher, **overrides):
         assert row is not None
         assert row["resources_json"] == "[]"
     return response
+
+
+def _create_failed_teacher_submission(api, suffix: str = "manual-grade") -> dict:
+    """Build a real teacher-published failed submission for recovery tests."""
+
+    teacher = api.login_as(f"{suffix}-teacher@test.local", name="任课教师", role="teacher")
+    clazz = _create_class(api, teacher, f"{suffix}班")
+    student = api.login_as(f"{suffix}-student@test.local", name="待评学生")
+    joined = api.client.post(
+        "/api/student/join-class",
+        json={"invite_code": clazz["invite_code"]},
+        headers=student["headers"],
+    )
+    assert joined.status_code == 200, joined.text
+    api.act_as(teacher)
+    task = _create_task(api, teacher, defer_content_generation=True).json()
+    exercise = api.client.post(
+        f"/api/teacher/tasks/{task['id']}/exercises",
+        json={
+            "question": "需要教师人工评阅的练习",
+            "type": "open_ended",
+            "reference_answer": "标准答案",
+        },
+        headers=teacher["headers"],
+    )
+    assert exercise.status_code == 201, exercise.text
+    published = api.client.post(
+        f"/api/teacher/tasks/{task['id']}/publish",
+        json={"class_id": clazz["id"]},
+        headers=teacher["headers"],
+    )
+    assert published.status_code == 201, published.text
+    student_task = api.conn.execute(
+        "SELECT id FROM learning_tasks WHERE parent_task_id = ? AND user_id = ?",
+        (task["id"], student["user_id"]),
+    ).fetchone()
+    assert student_task is not None
+    copied_exercise = api.conn.execute(
+        "SELECT id FROM task_exercises WHERE task_id = ?",
+        (student_task["id"],),
+    ).fetchone()
+    assert copied_exercise is not None
+    submission_id = uuid.uuid4().hex
+    now = "2026-08-20T12:00:00+00:00"
+    api.conn.execute(
+        "INSERT INTO task_exercise_submissions "
+        "(id, exercise_id, student_id, answer, grade_status, grade_failure_reason, "
+        "grade_retry_count, grade_retry_limit, manual_review_required) "
+        "VALUES (?, ?, ?, ?, 'failed', ?, 1, 1, 1)",
+        (submission_id, copied_exercise["id"], student["user_id"], "学生原始答案", "AI 评阅暂不可用"),
+    )
+    api.conn.commit()
+    return {
+        "teacher": teacher,
+        "student": student,
+        "task": task,
+        "student_task_id": student_task["id"],
+        "class": clazz,
+        "submission_id": submission_id,
+        "exercise_id": copied_exercise["id"],
+    }
 
 
 def test_class_enroll_and_join_by_code(api):
@@ -158,6 +220,16 @@ def test_class_students_aggregates_task_mastery_and_activity_in_one_response(api
     )
     api.act_as(teacher)
     task = _create_task(api, teacher).json()
+    exercise = api.client.post(
+        f"/api/teacher/tasks/{task['id']}/exercises",
+        json={
+            "question": "聚合任务的最小练习",
+            "type": "open_ended",
+            "reference_answer": "完成",
+        },
+        headers=teacher["headers"],
+    )
+    assert exercise.status_code == 201, exercise.text
     published = api.client.post(
         f"/api/teacher/tasks/{task['id']}/publish",
         json={"class_id": clazz["id"]},
@@ -654,3 +726,131 @@ def test_publish_requires_class_ownership(api):
         headers=owner["headers"],
     )
     assert resp.status_code == 403
+
+
+def test_teacher_manual_grade_persists_result_notification_and_audit(api):
+    """A class teacher can close a failed submission with durable evidence."""
+
+    fixture = _create_failed_teacher_submission(api, "manual-grade-success")
+    teacher = fixture["teacher"]
+    api.act_as(teacher)
+    response = api.client.post(
+        f"/api/teacher/submissions/{fixture['submission_id']}/grade",
+        json={"score": 86, "feedback": "已补充关键步骤，继续保持。"},
+        headers=teacher["headers"],
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["submission_id"] == fixture["submission_id"]
+    assert body["grade_status"] == "done"
+    assert body["score"] == 86
+    assert body["manual_reviewer_id"] == teacher["user_id"]
+    assert body["manually_graded_at"]
+
+    submission = api.conn.execute(
+        "SELECT answer, grade_status, score, feedback, graded_at, grade_failure_reason, "
+        "manual_review_required, manual_reviewer_id, manually_graded_at "
+        "FROM task_exercise_submissions WHERE id = ?",
+        (fixture["submission_id"],),
+    ).fetchone()
+    assert submission["answer"] == "学生原始答案"
+    assert submission["grade_status"] == "done"
+    assert submission["score"] == 86
+    assert submission["feedback"] == "已补充关键步骤，继续保持。"
+    assert submission["graded_at"]
+    assert submission["grade_failure_reason"] is None
+    assert submission["manual_review_required"] == 0
+    assert submission["manual_reviewer_id"] == teacher["user_id"]
+    assert submission["manually_graded_at"]
+
+    notice = api.conn.execute(
+        "SELECT type, user_id, body, ref_type, ref_id FROM notifications "
+        "WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+        (fixture["student"]["user_id"],),
+    ).fetchone()
+    assert notice["type"] == "task_feedback"
+    assert notice["user_id"] == fixture["student"]["user_id"]
+    assert "86" in notice["body"]
+    assert notice["ref_type"] == "task"
+    # Feedback links to the student's published copy, which is the task page
+    # the recipient can actually open from the notification.
+    assert notice["ref_id"] == fixture["student_task_id"]
+
+    audit_row = api.conn.execute(
+        "SELECT actor_id, action, target_type, target_id, before_json, after_json "
+        "FROM audit_logs WHERE action = 'teacher_submission.manual_grade' "
+        "AND target_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+        (fixture["submission_id"],),
+    ).fetchone()
+    assert audit_row is not None
+    assert audit_row["actor_id"] == teacher["user_id"]
+    assert audit_row["target_type"] == "task_exercise_submission"
+    assert json.loads(audit_row["before_json"])["grade_status"] == "failed"
+    assert json.loads(audit_row["after_json"])["score"] == 86
+
+
+def test_teacher_manual_grade_rejects_unauthorized_teacher(api):
+    """A teacher outside the task class cannot infer or mutate its submission."""
+
+    fixture = _create_failed_teacher_submission(api, "manual-grade-owner")
+    stranger = api.login_as("manual-grade-stranger@test.local", name="旁听教师", role="teacher")
+    api.act_as(stranger)
+    response = api.client.post(
+        f"/api/teacher/submissions/{fixture['submission_id']}/grade",
+        json={"score": 50, "feedback": "越权尝试"},
+        headers=stranger["headers"],
+    )
+    assert response.status_code == 403, response.text
+    assert response.json()["error"]["code"] == "FORBIDDEN"
+    state = api.conn.execute(
+        "SELECT grade_status, score FROM task_exercise_submissions WHERE id = ?",
+        (fixture["submission_id"],),
+    ).fetchone()
+    assert tuple(state) == ("failed", None)
+
+
+def test_teacher_manual_grade_rejects_out_of_range_score(api):
+    """Manual grades use the same inclusive 0..100 contract as the UI."""
+
+    fixture = _create_failed_teacher_submission(api, "manual-grade-range")
+    teacher = fixture["teacher"]
+    api.act_as(teacher)
+    for score in (-1, 101):
+        response = api.client.post(
+            f"/api/teacher/submissions/{fixture['submission_id']}/grade",
+            json={"score": score, "feedback": "不应保存"},
+            headers=teacher["headers"],
+        )
+        assert response.status_code == 400, response.text
+        assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    state = api.conn.execute(
+        "SELECT grade_status, score FROM task_exercise_submissions WHERE id = ?",
+        (fixture["submission_id"],),
+    ).fetchone()
+    assert tuple(state) == ("failed", None)
+
+
+def test_teacher_manual_grade_rejects_non_failed_submission(api):
+    """Completed or pending automatic reviews cannot be overwritten manually."""
+
+    fixture = _create_failed_teacher_submission(api, "manual-grade-state")
+    teacher = fixture["teacher"]
+    api.conn.execute(
+        "UPDATE task_exercise_submissions SET grade_status = 'done', score = 73 "
+        "WHERE id = ?",
+        (fixture["submission_id"],),
+    )
+    api.conn.commit()
+    api.act_as(teacher)
+    response = api.client.post(
+        f"/api/teacher/submissions/{fixture['submission_id']}/grade",
+        json={"score": 90, "feedback": "不应覆盖自动评分"},
+        headers=teacher["headers"],
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "MANUAL_GRADE_INVALID"
+    state = api.conn.execute(
+        "SELECT grade_status, score, manual_reviewer_id FROM task_exercise_submissions WHERE id = ?",
+        (fixture["submission_id"],),
+    ).fetchone()
+    assert tuple(state) == ("done", 73, None)

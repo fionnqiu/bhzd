@@ -97,11 +97,6 @@ def teacher(db_path):
 
 
 @pytest.fixture()
-def content_admin(db_path):
-    return create_session(db_path, create_user(db_path, "content-admin@test.local", "content_admin"))
-
-
-@pytest.fixture()
 def student(db_path):
     return create_session(db_path, create_user(db_path, "student@test.local", "student"))
 
@@ -670,8 +665,8 @@ def test_upload_validation_and_role_guard(client, db_path, system_admin, student
     assert response.status_code == 403
 
 
-@pytest.mark.parametrize("non_admin_fixture", ("teacher", "content_admin"))
-def test_teacher_and_content_admin_cannot_manage_rag_documents(client, request, non_admin_fixture):
+@pytest.mark.parametrize("non_admin_fixture", ("teacher",))
+def test_teacher_cannot_manage_rag_documents(client, request, non_admin_fixture):
     """RAG metadata and uploads are system-admin-only, not teacher resource selection."""
     headers = as_user(client, request.getfixturevalue(non_admin_fixture))
 

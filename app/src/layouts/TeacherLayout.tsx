@@ -10,7 +10,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/teacher/analytics", label: "学情分析", icon: BarChart3 },
 ];
 
-/** 教师端壳（teacher/content_admin/system_admin 可进，路由守卫控制）。 */
+/** 教师端壳（teacher/system_admin 可进，路由守卫控制）。 */
 export default function TeacherLayout() {
   return (
     <ShellLayout

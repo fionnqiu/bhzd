@@ -1689,17 +1689,26 @@
   font-size: 15px;
 }
 
-/* The header now sits outside the transcript. Remove the old message-heading
-   margin and leave room for the viewport-level notification on the right. */
+/* The header now sits outside the transcript. Render it as a compact floating
+   pill aligned with the content column instead of a full-bleed strip, so the
+   conversation context reads as a lightweight label rather than a banner. */
 .cockpit-workbench .conversation-info-bar {
   flex: 0 0 auto;
-  /* Escape only the main-content side padding; the title stays in flow at the
-     top of Cockpit so it cannot be clipped by the hidden shell overflow. */
-  width: calc(100% + 56px);
-  margin: 0 -28px 28px;
-  padding: 14px 84px 14px 28px;
-  border-radius: 0;
+  align-self: flex-start;
+  width: auto;
+  max-width: 100%;
+  margin: 0 0 12px;
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-sm);
   min-width: 0;
+}
+
+/* 长标题在胶囊内省略，不撑破布局 */
+.cockpit-workbench .conversation-info-bar strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .message-list {
@@ -2222,11 +2231,10 @@
     padding: 0 0 20px;
   }
 
-  /* Mobile reserves the left menu toggle and right notification floating action. */
+  /* Mobile keeps the same floating pill, just slightly tighter. */
   .cockpit-workbench .conversation-info-bar {
-    width: calc(100% + 32px);
-    margin: 0 -16px 20px;
-    padding: 12px 60px 12px 16px;
+    margin: 0 0 10px;
+    padding: 6px 12px;
   }
 }
 
@@ -2352,12 +2360,6 @@ html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] .composer
   width: 100%;
   min-width: 0;
   min-height: 100%;
-}
-
-.cockpit-workbench .conversation-info-bar {
-  /* The transcript starts directly below the title band, matching the
-     reference layout instead of reserving an empty strip above the first turn. */
-  margin-bottom: 0;
 }
 
 .cockpit-workbench .cockpit-content-scroll::-webkit-scrollbar,

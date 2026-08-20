@@ -350,11 +350,10 @@ def test_teacher_registration_does_not_require_or_authorize_an_invite(client):
 
 
 def test_administrator_roles_remain_closed_to_self_registration(client):
-    # 取消教师邀请码不扩大管理员权限：两类管理员仍只能由后台创建。
-    for role in ("content_admin", "system_admin"):
-        response = _register(client, f"{role}@example.com", role=role)
-        assert response.status_code == 403
-        assert response.json()["error"]["code"] == "ROLE_NOT_ALLOWED"
+    # 取消教师邀请码不扩大管理员权限：系统管理员仍只能由后台创建。
+    response = _register(client, "system_admin@example.com", role="system_admin")
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "ROLE_NOT_ALLOWED"
 
 
 # ---------------------------------------------------------------- 登录安全
@@ -372,6 +371,20 @@ def test_wrong_password_lockout(client, monkeypatch):
     resp = _login(client, "lock@example.com")
     assert resp.status_code == 429
     assert resp.json()["error"]["code"] == "LOGIN_LOCKED"
+
+
+def test_login_ip_rate_limit_exposes_bounded_retry_metadata(client, monkeypatch):
+    """429 限流响应同时提供 header 与结构化等待秒数，便于前端恢复。"""
+    monkeypatch.setattr(security, "RATE_LIMIT_ATTEMPTS_PER_MINUTE", 1)
+    first = _login(client, "rate-limit@example.com", password="WrongPass1")
+    assert first.status_code == 401
+
+    second = _login(client, "rate-limit@example.com", password="WrongPass1")
+    assert second.status_code == 429, second.text
+    assert second.json()["error"]["code"] == "RATE_LIMITED"
+    retry_after = second.json()["error"]["details"]["retry_after_seconds"]
+    assert isinstance(retry_after, int) and 1 <= retry_after <= 60
+    assert second.headers["Retry-After"] == str(retry_after)
 
 
 def test_disabled_account_login_blocked(client):

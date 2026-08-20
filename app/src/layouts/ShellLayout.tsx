@@ -37,13 +37,13 @@ export const PORTALS: PortalDef[] = [
     key: "student",
     name: "学生端",
     path: "/",
-    roles: ["student", "content_admin", "system_admin"],
+    roles: ["student", "system_admin"],
   },
   {
     key: "teacher",
     name: "教师端",
     path: "/teacher",
-    roles: ["teacher", "content_admin", "system_admin"],
+    roles: ["teacher", "system_admin"],
   },
   // rag-admin 门户入口已从切换器移除：RAG 知识库管理已并入 /admin，
   // system_admin 用户直接通过系统管理端侧边栏访问，无需独立门户切换。
@@ -53,7 +53,6 @@ export const PORTALS: PortalDef[] = [
 const ROLE_NAMES: Record<string, string> = {
   student: "学生",
   teacher: "教师",
-  content_admin: "内容管理员",
   system_admin: "系统管理员",
 };
 

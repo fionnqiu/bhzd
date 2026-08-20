@@ -7,11 +7,10 @@
 
 import { ApiRequestError } from "../../api/client";
 
-/** 用户角色（users.role CHECK 约束） */
+/** 用户角色（users.role CHECK 约束；content_admin 已于 023 号迁移移除） */
 export const ROLE_OPTIONS = [
   { value: "student", label: "学生" },
   { value: "teacher", label: "教师" },
-  { value: "content_admin", label: "内容管理员" },
   { value: "system_admin", label: "系统管理员" },
 ] as const;
 

@@ -9,7 +9,7 @@
 
 /* ================================================================ 通用 */
 
-export type Role = "student" | "teacher" | "content_admin" | "system_admin";
+export type Role = "student" | "teacher" | "system_admin";
 
 /** UserDTO（routers/auth.py `_user_dto`） */
 export interface User {
@@ -27,11 +27,13 @@ export interface Paginated<T> {
   total: number;
 }
 
-/** 统一错误体（errors.py：`{"error":{"code","message"}}`） */
+/** 统一错误体（errors.py：`{"error":{"code","message","details?"}}`） */
 export interface ApiErrorBody {
   error: {
     code: string;
     message: string;
+    /** Optional recovery metadata, such as auth rate-limit wait seconds. */
+    details?: Record<string, unknown>;
   };
 }
 
@@ -481,6 +483,8 @@ export type TaskStatus =
 
 export type TaskSource = "agent" | "preset" | "teacher" | "diagnostic";
 export type TaskContentStatus = "none" | "generating" | "done" | "failed";
+/** Durable origin of the current task lesson; template is an explicit local fallback. */
+export type TaskContentGenerationSource = "none" | "provider" | "template" | "manual" | "copied";
 
 export interface TaskStep {
   title: string;
@@ -567,6 +571,12 @@ export interface TaskExerciseSubmission {
   feedback: string | null;
   graded_at: string | null;
   created_at: string;
+  /** Safe retry metadata; provider diagnostics never leave the server. */
+  grade_failure_reason?: string | null;
+  retry_count?: number;
+  retry_limit?: number;
+  can_retry?: boolean;
+  manual_review_required?: boolean;
 }
 
 export interface TaskExercise {
@@ -1130,6 +1140,15 @@ export interface TeacherTask {
   /** 任务创建后自动生成的 AI 学习内容状态。旧服务端缺省为 none。 */
   content_status?: TaskContentStatus;
   content_generated_at?: string | null;
+  /** Provider success, deterministic fallback, manually reviewed, or copied content. */
+  content_generation_source?: TaskContentGenerationSource;
+  /** Safe, actionable summary when background generation could not finish. */
+  content_failure_reason?: string | null;
+  /** Safe explanation for a successful template fallback that still needs review. */
+  content_generation_message?: string | null;
+  /** Explicit failed-generation retries; the initial generation does not increment it. */
+  content_generation_retry_count?: number;
+  content_last_attempt_at?: string | null;
   knowledge_points?: TaskKnowledgePoint[];
   exercises?: Array<TaskExercise & { reference_answer?: string | null }>;
   created_at: string;

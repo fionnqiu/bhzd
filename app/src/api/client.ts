@@ -18,12 +18,14 @@ import type { ApiErrorBody, SessionResponse } from "./types";
 export class ApiRequestError extends Error {
   readonly status: number;
   readonly code: string;
+  readonly retryAfterSeconds: number | null;
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, retryAfterSeconds: number | null = null) {
     super(message);
     this.name = "ApiRequestError";
     this.status = status;
     this.code = code;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -147,14 +149,29 @@ function buildUrl(path: string, query?: RequestOptions["query"]): string {
 async function toError(res: Response): Promise<ApiRequestError> {
   let code = `HTTP_${res.status}`;
   let message = `请求失败（${res.status}）`;
+  let retryAfterSeconds = retryAfterFromHeader(res.headers.get("Retry-After"));
   try {
     const body = (await res.json()) as ApiErrorBody;
     if (body?.error?.code) code = body.error.code;
     if (body?.error?.message) message = body.error.message;
+    retryAfterSeconds = retryAfterFromDetails(body?.error?.details) ?? retryAfterSeconds;
   } catch {
     // 非 JSON 错误体（如网关 502 页面）：保留兜底文案
   }
-  return new ApiRequestError(res.status, code, message);
+  return new ApiRequestError(res.status, code, message, retryAfterSeconds);
+}
+
+/** Keep retry metadata bounded before it reaches a page-level countdown. */
+function retryAfterFromDetails(details: Record<string, unknown> | undefined): number | null {
+  const value = details?.retry_after_seconds;
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.ceil(value)
+    : null;
+}
+
+function retryAfterFromHeader(value: string | null): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.ceil(parsed) : null;
 }
 
 /** 重新拉取会话以轮换 CSRF 令牌（403 CSRF_TOKEN_INVALID 后的恢复路径） */
@@ -248,17 +265,19 @@ async function doFetch<T>(path: string, options: RequestOptions): Promise<T> {
     // 有 body 时 toError 已消费不了（上面已读 text），这里就地解析
     let code = `HTTP_${res.status}`;
     let message = `请求失败（${res.status}）`;
+    let retryAfterSeconds = retryAfterFromHeader(res.headers.get("Retry-After"));
     if (text) {
       try {
         const parsed = JSON.parse(text) as ApiErrorBody;
         if (parsed?.error?.code) code = parsed.error.code;
         if (parsed?.error?.message) message = parsed.error.message;
+        retryAfterSeconds = retryAfterFromDetails(parsed?.error?.details) ?? retryAfterSeconds;
       } catch {
         /* 非 JSON 错误体，保留兜底 */
       }
     }
     abortHandle.dispose();
-    throw new ApiRequestError(res.status, code, message);
+    throw new ApiRequestError(res.status, code, message, retryAfterSeconds);
   }
   if (!text) {
     abortHandle.dispose();

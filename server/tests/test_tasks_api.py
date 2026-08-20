@@ -176,6 +176,49 @@ def test_archive_hides_from_default_list(api):
     assert explicit.json()["total"] == 1
 
 
+def test_archived_task_is_read_only_and_detail_does_not_requeue_content(api, monkeypatch):
+    """Historical notification links must not mutate an archived assignment."""
+
+    user = api.login_as("archived-readonly@test.local")
+    task = _create_task(api, user)
+    exercise = api.client.post(
+        f"/api/tasks/{task['id']}/exercises",
+        json={"question": "历史练习", "reference_answer": "答案"},
+        headers=user["headers"],
+    )
+    assert exercise.status_code == 201, exercise.text
+    exercise_id = exercise.json()["id"]
+    archived = api.client.post(f"/api/tasks/{task['id']}/archive", headers=user["headers"])
+    assert archived.status_code == 200
+
+    queued: list[str] = []
+    monkeypatch.setattr(
+        "bhzd_py.tools.task_tools.schedule_task_content",
+        lambda task_id, **_kwargs: queued.append(task_id),
+    )
+    api.conn.execute(
+        "UPDATE learning_tasks SET content_status = 'none' WHERE id = ?", (task["id"],)
+    )
+    api.conn.commit()
+    detail = api.client.get(f"/api/tasks/{task['id']}")
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["status"] == "archived"
+    assert queued == []
+
+    patch = api.client.patch(
+        f"/api/tasks/{task['id']}", json={"title": "不应修改"}, headers=user["headers"]
+    )
+    assert patch.status_code == 409
+    assert patch.json()["error"]["code"] == "TASK_ARCHIVED"
+    submit = api.client.post(
+        f"/api/tasks/{task['id']}/exercises/{exercise_id}/submit",
+        json={"answer": "历史答案"},
+        headers=user["headers"],
+    )
+    assert submit.status_code == 409
+    assert submit.json()["error"]["code"] == "TASK_ARCHIVED"
+
+
 def test_ownership_isolation(api):
     owner = api.login_as("owner-tasks@test.local")
     task = _create_task(api, owner)

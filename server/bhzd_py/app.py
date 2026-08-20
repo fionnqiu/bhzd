@@ -135,6 +135,15 @@ async def _lifespan(app: FastAPI):
                 "startup recovered interrupted learning-content tasks: %d",
                 len(recovered_content_tasks),
             )
+        # Grading workers use the same process-level loop as content workers;
+        # reclaim pending/grading submissions left by a stopped process before
+        # traffic resumes so a learner never needs to resubmit an answer.
+        recovered_grade_submissions = tasks.recover_interrupted_submission_grading(conn)
+        if recovered_grade_submissions:
+            logger.warning(
+                "startup recovered interrupted grading submissions: %d",
+                len(recovered_grade_submissions),
+            )
         # Queue rows survive a process crash.  The bounded daemon below resumes
         # them after the lifespan connection is released, so 202 never depends
         # solely on the original BackgroundTasks worker remaining alive.

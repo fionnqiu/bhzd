@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ApiRequestError } from "../api/client";
 import { Button, Field, Input } from "../components";
@@ -29,21 +29,58 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [retryAfterSeconds, setRetryAfterSeconds] = useState<number | null>(null);
+  const retryDeadlineRef = useRef<number | null>(null);
 
   const requestedPath = (location.state as { from?: string } | null)?.from;
 
+  useEffect(() => {
+    if (retryAfterSeconds === null) {
+      retryDeadlineRef.current = null;
+      return;
+    }
+    // Keep one absolute deadline across state updates; rebuilding it whenever
+    // the displayed seconds change would make the lockout extend forever.
+    const deadline =
+      retryDeadlineRef.current ?? (Date.now() + retryAfterSeconds * 1000);
+    retryDeadlineRef.current = deadline;
+    const timer = window.setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      if (remaining === 0) {
+        // The next submission is allowed again; remove the stale lockout copy
+        // so the form does not claim that a completed wait is still active.
+        setRetryAfterSeconds(null);
+        setError(null);
+        return;
+      }
+      setRetryAfterSeconds(remaining);
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [retryAfterSeconds]);
+
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (retryAfterSeconds !== null) return;
     setError(null);
     setSubmitting(true);
     try {
       const session = await login(email.trim(), password);
       navigate(loginDestination(session.user.role, requestedPath), { replace: true });
     } catch (err) {
-      // 后端已给中文话术（错误口令/限流/锁定/禁用），原样展示即可
-      setError(
-        err instanceof ApiRequestError ? err.message : "登录失败，请稍后重试",
-      );
+      const retryAfter = err instanceof ApiRequestError ? err.retryAfterSeconds : null;
+      if (
+        err instanceof ApiRequestError &&
+        err.code === "RATE_LIMITED" &&
+        typeof retryAfter === "number" &&
+        Number.isFinite(retryAfter) &&
+        retryAfter > 0
+      ) {
+        setRetryAfterSeconds(Math.ceil(retryAfter));
+        setError(`尝试过于频繁，请 ${Math.ceil(retryAfter)} 秒后再试`);
+      } else {
+        // Other backend messages are already user-safe and actionable.
+        setError(err instanceof ApiRequestError ? err.message : "登录失败，请稍后重试");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -78,8 +115,8 @@ export default function LoginPage() {
               required
             />
           </Field>
-          <Button type="submit" block loading={submitting}>
-            登录
+          <Button type="submit" block loading={submitting} disabled={retryAfterSeconds !== null}>
+            {retryAfterSeconds === null ? "登录" : `${retryAfterSeconds} 秒后重试`}
           </Button>
         </form>
         <div className="auth-links">

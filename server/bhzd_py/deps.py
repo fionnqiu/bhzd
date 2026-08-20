@@ -1,6 +1,6 @@
 """FastAPI 依赖：数据库连接、会话加载、角色校验、CSRF 防护。
 
-会话隔离（NF4）：学生/教师/内容管理员用 `bhzd_session` cookie（user_sessions
+会话隔离（NF4）：学生/教师用 `bhzd_session` cookie（user_sessions
 表），系统管理员用独立的 `bhzd_admin_session` cookie（admin_sessions 表），
 两套互不承认。
 
@@ -100,7 +100,7 @@ def _build_current_user(
 def get_current_user(
     request: Request, conn: sqlite3.Connection = Depends(get_db)
 ) -> CurrentUser:
-    """加载学生/教师/内容管理员会话（`bhzd_session` cookie）。"""
+    """加载学生/教师会话（`bhzd_session` cookie）。"""
     token = request.cookies.get(USER_SESSION_COOKIE)
     if not token:
         _unauthenticated()
@@ -143,7 +143,7 @@ def require_verified_user(
     return current
 
 
-STUDENT_PORTAL_ROLES = ("student", "content_admin", "system_admin")
+STUDENT_PORTAL_ROLES = ("student", "system_admin")
 
 
 def require_student_portal_user(
@@ -162,7 +162,7 @@ def require_student_portal_user(
 
 
 def require_role(*roles: str) -> Callable[..., CurrentUser]:
-    """角色校验依赖工厂：`Depends(require_role("teacher", "content_admin"))`。"""
+    """角色校验依赖工厂：`Depends(require_role("teacher", "system_admin"))`。"""
 
     def dependency(
         current: CurrentUser = Depends(get_current_user),

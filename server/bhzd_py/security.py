@@ -21,6 +21,7 @@ import hashlib
 import hmac
 import ipaddress
 import logging
+import math
 import os
 import secrets
 import sqlite3
@@ -227,6 +228,36 @@ def is_ip_rate_limited(conn: sqlite3.Connection, ip: str | None) -> bool:
         (ip, since),
     ).fetchone()
     return row["n"] >= RATE_LIMIT_ATTEMPTS_PER_MINUTE
+
+
+def ip_rate_limit_retry_after_seconds(conn: sqlite3.Connection, ip: str | None) -> int | None:
+    """Return the bounded wait for an IP rate limit, or ``None`` when clear.
+
+    The count and expiry lookup use the same one-minute window as the guard so
+    the browser never receives a generic wait message that disagrees with the
+    next allowed login attempt.  Malformed historical timestamps fail closed
+    to a short full window instead of leaking an implementation error.
+    """
+
+    if not ip:
+        return None
+    now = datetime.now(timezone.utc)
+    since = (now - timedelta(minutes=1)).isoformat()
+    rows = conn.execute(
+        "SELECT created_at FROM login_attempts WHERE ip = ? AND created_at >= ? "
+        "ORDER BY created_at ASC",
+        (ip, since),
+    ).fetchall()
+    if len(rows) < RATE_LIMIT_ATTEMPTS_PER_MINUTE:
+        return None
+    try:
+        oldest = datetime.fromisoformat(str(rows[0]["created_at"]))
+        if oldest.tzinfo is None:
+            oldest = oldest.replace(tzinfo=timezone.utc)
+        remaining = (oldest.astimezone(timezone.utc) + timedelta(minutes=1) - now).total_seconds()
+    except (TypeError, ValueError, IndexError):
+        return 60
+    return max(1, min(60, math.ceil(remaining)))
 
 
 def is_login_locked(conn: sqlite3.Connection, email: str) -> bool:

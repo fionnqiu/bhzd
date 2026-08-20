@@ -22,6 +22,22 @@ def _create_student_task(api, user):
     return response.json()
 
 
+def _add_teacher_exercise(api, teacher, task_id: str, question: str = "最小可执行练习") -> dict:
+    """Attach one executable row so publish tests exercise the guarded path."""
+
+    response = api.client.post(
+        f"/api/teacher/tasks/{task_id}/exercises",
+        json={
+            "question": question,
+            "type": "open_ended",
+            "reference_answer": "完成",
+        },
+        headers=teacher["headers"],
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
 def test_student_content_crud_hides_reference_answers(api):
     """Student detail exposes authored prompts but never the grading answer."""
 
@@ -309,8 +325,193 @@ def test_exercise_grading_persists_done_and_failed_states(api, monkeypatch):
     assert detail["exercises"][0]["submission"]["grade_status"] == "failed"
 
 
-def test_teacher_create_and_publish_queues_content_for_each_task(api, monkeypatch):
-    """Teacher-authored rows and their published copies generate automatically."""
+def test_failed_grading_retry_preserves_original_answer(api, monkeypatch):
+    """A provider failure creates a linked retry row instead of rewriting history."""
+
+    student = api.login_as("content-grade-retry@test.local")
+    task = _create_student_task(api, student)
+    exercise = api.client.post(
+        f"/api/tasks/{task['id']}/exercises",
+        json={"question": "可重试评分题", "reference_answer": "标准答案"},
+        headers=student["headers"],
+    ).json()
+    scheduled: list[object] = []
+
+    def capture(coro):
+        # The request path is tested separately from the worker; closing the
+        # coroutine keeps this focused test deterministic and leak-free.
+        scheduled.append(coro)
+        coro.close()
+
+    monkeypatch.setattr(tasks_router, "_schedule_background", capture)
+
+    async def fail_provider(*_args, **_kwargs):
+        raise RuntimeError("provider secret must not persist")
+
+    monkeypatch.setattr(providers, "complete", fail_provider)
+    first = api.client.post(
+        f"/api/tasks/{task['id']}/exercises/{exercise['id']}/submit",
+        json={"answer": "原始答案"},
+        headers=student["headers"],
+    )
+    assert first.status_code == 202, first.text
+    first_id = first.json()["submission_id"]
+    database_path = api.conn.execute("PRAGMA database_list").fetchone()[2]
+    asyncio.run(tasks_router._grade_submission_async(first_id, database_path=database_path))
+
+    failed = api.conn.execute(
+        "SELECT * FROM task_exercise_submissions WHERE id = ?", (first_id,)
+    ).fetchone()
+    assert failed["grade_status"] == "failed"
+    assert failed["answer"] == "原始答案"
+    assert failed["grade_retry_count"] == 0
+    assert failed["manual_review_required"] == 0
+    assert failed["grade_failure_reason"]
+    assert "provider secret" not in failed["grade_failure_reason"]
+
+    retry = api.client.post(
+        f"/api/tasks/{task['id']}/exercises/{exercise['id']}/retry-grade",
+        headers=student["headers"],
+    )
+    assert retry.status_code == 202, retry.text
+    retry_id = retry.json()["submission_id"]
+    assert retry_id != first_id
+    assert retry.json()["retry_count"] == 1
+    linked = api.conn.execute(
+        "SELECT retry_of_submission_id, answer, grade_status, grade_retry_count "
+        "FROM task_exercise_submissions WHERE id = ?",
+        (retry_id,),
+    ).fetchone()
+    assert tuple(linked) == (first_id, "原始答案", "pending", 1)
+
+    async def grade_retry(_messages, *, role="primary", **_kwargs):
+        assert role == "grader"
+        return {"text": json.dumps({"score": 76, "feedback": "重试评分完成"}, ensure_ascii=False)}
+
+    monkeypatch.setattr(providers, "complete", grade_retry)
+    asyncio.run(tasks_router._grade_submission_async(retry_id, database_path=database_path))
+    original = api.conn.execute(
+        "SELECT answer, grade_status, score FROM task_exercise_submissions WHERE id = ?",
+        (first_id,),
+    ).fetchone()
+    retried = api.conn.execute(
+        "SELECT retry_of_submission_id, answer, grade_status, score, grade_retry_count "
+        "FROM task_exercise_submissions WHERE id = ?",
+        (retry_id,),
+    ).fetchone()
+    assert tuple(original) == ("原始答案", "failed", None)
+    assert tuple(retried) == (first_id, "原始答案", "done", 76, 1)
+
+
+def test_grading_retry_exhaustion_promotes_manual_review(api, monkeypatch):
+    """Exhausted automatic attempts remain visible and become teacher-review work."""
+
+    student = api.login_as("content-grade-exhausted@test.local")
+    task = _create_student_task(api, student)
+    exercise = api.client.post(
+        f"/api/tasks/{task['id']}/exercises",
+        json={"question": "人工评阅题", "reference_answer": "标准答案"},
+        headers=student["headers"],
+    ).json()
+    monkeypatch.setattr(tasks_router, "_schedule_background", lambda coro: coro.close())
+
+    async def fail_provider(*_args, **_kwargs):
+        raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr(providers, "complete", fail_provider)
+    first = api.client.post(
+        f"/api/tasks/{task['id']}/exercises/{exercise['id']}/submit",
+        json={"answer": "待评答案"},
+        headers=student["headers"],
+    )
+    first_id = first.json()["submission_id"]
+    database_path = api.conn.execute("PRAGMA database_list").fetchone()[2]
+    # Lower the fixture limit to one so the test reaches the manual-review
+    # branch with one explicit retry rather than waiting through two retries.
+    api.conn.execute(
+        "UPDATE task_exercise_submissions SET grade_retry_limit = 1 WHERE id = ?",
+        (first_id,),
+    )
+    api.conn.commit()
+    asyncio.run(tasks_router._grade_submission_async(first_id, database_path=database_path))
+
+    retry = api.client.post(
+        f"/api/tasks/{task['id']}/exercises/{exercise['id']}/retry-grade",
+        headers=student["headers"],
+    )
+    assert retry.status_code == 202, retry.text
+    retry_id = retry.json()["submission_id"]
+    asyncio.run(tasks_router._grade_submission_async(retry_id, database_path=database_path))
+
+    exhausted = api.conn.execute(
+        "SELECT grade_status, grade_retry_count, grade_retry_limit, manual_review_required "
+        "FROM task_exercise_submissions WHERE id = ?",
+        (retry_id,),
+    ).fetchone()
+    assert tuple(exhausted) == ("failed", 1, 1, 1)
+    blocked = api.client.post(
+        f"/api/tasks/{task['id']}/exercises/{exercise['id']}/retry-grade",
+        headers=student["headers"],
+    )
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "GRADE_RETRY_EXHAUSTED"
+
+    detail = api.client.get(f"/api/tasks/{task['id']}", headers=student["headers"])
+    submission = next(
+        item["submission"]
+        for item in detail.json()["exercises"]
+        if item["id"] == exercise["id"]
+    )
+    assert submission["manual_review_required"] is True
+    assert submission["can_retry"] is False
+
+
+def test_interrupted_grading_recovery_requeues_pending_and_claimed_rows(api, monkeypatch):
+    """Startup recovery resets dead claims and schedules every unfinished row."""
+
+    student = api.login_as("content-grade-recovery@test.local")
+    task = _create_student_task(api, student)
+    exercise = api.client.post(
+        f"/api/tasks/{task['id']}/exercises",
+        json={"question": "恢复评分题", "reference_answer": "标准答案"},
+        headers=student["headers"],
+    ).json()
+    monkeypatch.setattr(tasks_router, "_schedule_background", lambda coro: coro.close())
+    submissions = []
+    for answer in ("待恢复一", "待恢复二"):
+        response = api.client.post(
+            f"/api/tasks/{task['id']}/exercises/{exercise['id']}/submit",
+            json={"answer": answer},
+            headers=student["headers"],
+        )
+        assert response.status_code == 202
+        submissions.append(response.json()["submission_id"])
+    api.conn.execute(
+        "UPDATE task_exercise_submissions SET grade_status = 'grading' WHERE id = ?",
+        (submissions[0],),
+    )
+    api.conn.commit()
+
+    scheduled: list[str] = []
+
+    def capture_schedule(conn, submission_id):
+        scheduled.append(submission_id)
+
+    monkeypatch.setattr(tasks_router, "_schedule_grade_submission", capture_schedule)
+    recovered = tasks_router.recover_interrupted_submission_grading(api.conn)
+    assert set(recovered) == set(submissions)
+    assert scheduled == recovered
+    statuses = api.conn.execute(
+        "SELECT id, grade_status FROM task_exercise_submissions ORDER BY created_at, rowid"
+    ).fetchall()
+    assert {row["id"]: row["grade_status"] for row in statuses} == {
+        submissions[0]: "pending",
+        submissions[1]: "pending",
+    }
+
+
+def test_teacher_create_and_publish_copies_authored_content_for_each_task(api, monkeypatch):
+    """Teacher-authored rows publish only after an executable exercise exists."""
 
     queued: list[str] = []
 
@@ -328,6 +529,7 @@ def test_teacher_create_and_publish_queues_content_for_each_task(api, monkeypatc
     parent_id = created.json()["id"]
     assert created.json()["content_status"] == "generating"
     assert queued == [parent_id]
+    _add_teacher_exercise(api, teacher, parent_id)
 
     clazz = api.client.post(
         "/api/teacher/classes",
@@ -353,12 +555,14 @@ def test_teacher_create_and_publish_queues_content_for_each_task(api, monkeypatc
         (parent_id,),
     ).fetchone()
     assert copy is not None
-    assert copy["content_status"] == "generating"
-    assert copy["id"] in queued
+    # Authored rows are copied transactionally, so no detached generation worker
+    # is needed for the student copy.
+    assert copy["content_status"] == "done"
+    assert copy["id"] not in queued
 
 
-def test_teacher_publish_queues_every_active_student_copy(api, monkeypatch):
-    """Publishing to a class schedules generation for every student copy."""
+def test_teacher_publish_copies_content_to_every_active_student(api, monkeypatch):
+    """Publishing copies the executable lesson to every active student row."""
 
     queued: list[str] = []
 
@@ -376,6 +580,7 @@ def test_teacher_publish_queues_every_active_student_copy(api, monkeypatch):
     )
     assert created.status_code == 201, created.text
     parent_id = created.json()["id"]
+    _add_teacher_exercise(api, teacher, parent_id)
 
     clazz_response = api.client.post(
         "/api/teacher/classes",
@@ -410,12 +615,12 @@ def test_teacher_publish_queues_every_active_student_copy(api, monkeypatch):
         (parent_id,),
     ).fetchall()
     assert [row["user_id"] for row in copies] == sorted(student_ids)
-    assert all(row["content_status"] == "generating" for row in copies)
-    assert set(queued) == {row["id"] for row in copies}
+    assert all(row["content_status"] == "done" for row in copies)
+    assert queued == []
 
 
 def test_teacher_fanout_generates_source_once_and_copies_content(api, monkeypatch):
-    """Concurrent student workers share one primary-model response per publish."""
+    """One generated source lesson satisfies publish and is copied to students."""
 
     scheduled: list[str] = []
 
@@ -454,6 +659,12 @@ def test_teacher_fanout_generates_source_once_and_copies_content(api, monkeypatc
     )
     assert created.status_code == 201, created.text
     parent_id = created.json()["id"]
+    database_path = api.conn.execute("PRAGMA database_list").fetchone()[2]
+    generated = asyncio.run(
+        task_tools.generate_task_content(parent_id, database_path=database_path)
+    )
+    assert generated["status"] == "done"
+    assert calls == [("primary", database_path)]
     clazz = api.client.post(
         "/api/teacher/classes",
         json={"name": "reuse class"},
@@ -470,8 +681,8 @@ def test_teacher_fanout_generates_source_once_and_copies_content(api, monkeypatc
         )
         assert joined.status_code == 200, joined.text
 
-    # The parent enqueue is intentionally not executed; publishing creates
-    # only the student rows, whose workers must elect the parent as source.
+    # The parent enqueue is intentionally not executed; the explicit source
+    # generation above makes the publish transaction copy a complete lesson.
     scheduled.clear()
     api.act_as(teacher)
     published = api.client.post(
@@ -485,20 +696,7 @@ def test_teacher_fanout_generates_source_once_and_copies_content(api, monkeypatc
         (parent_id,),
     ).fetchall()
     assert len(copies) == len(students)
-    database_path = api.conn.execute("PRAGMA database_list").fetchone()[2]
-
-    async def generate_copies() -> list[dict]:
-        return await asyncio.gather(
-            *(
-                task_tools.generate_task_content(
-                    row["id"], database_path=database_path
-                )
-                for row in copies
-            )
-        )
-
-    results = asyncio.run(generate_copies())
-    assert all(result["status"] == "done" for result in results)
+    assert scheduled == []
     assert calls == [("primary", database_path)]
     parent_counts = api.conn.execute(
         "SELECT COUNT(*) AS points FROM task_knowledge_points WHERE task_id = ?",
@@ -515,6 +713,11 @@ def test_teacher_fanout_generates_source_once_and_copies_content(api, monkeypatc
         ).fetchone()
         assert detail["content_status"] == "done"
         assert counts["points"] == 1
+        exercise_count = api.conn.execute(
+            "SELECT COUNT(*) AS exercises FROM task_exercises WHERE task_id = ?",
+            (row["id"],),
+        ).fetchone()
+        assert exercise_count["exercises"] == 1
 
 
 def test_mark_task_content_generating_claim_is_idempotent(api):

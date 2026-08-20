@@ -36,7 +36,7 @@ const LIMIT = 20;
 
 /** 角色标签（权限语义重，用不同色区分管理角色与普通角色） */
 function RoleTag({ role }: { role: string }) {
-  const admin = role === "system_admin" || role === "content_admin";
+  const admin = role === "system_admin";
   return <span className={`badge ${admin ? "badge-primary" : "badge-neutral"}`}>{ROLE_LABELS[role] ?? role}</span>;
 }
 
@@ -410,7 +410,7 @@ export default function UsersPage() {
           />
         </Field>
         <p className="text-xs text-muted">
-          学生：仅学生端；教师：+班级管理；内容管理员：+教学内容协作；系统管理员：+系统管理与知识库管理。
+          学生：仅学生端；教师：+班级管理；系统管理员：+系统管理与知识库管理。
         </p>
       </Modal>
 

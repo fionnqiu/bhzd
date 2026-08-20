@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 _PROTOCOLS = ("chat_completions", "anthropic_messages", "responses")
 _PROVIDER_ROLES = ("primary", "fallback", "embedding", "rerank", "grader", "none")
-_USER_ROLES = ("student", "teacher", "content_admin", "system_admin")
+_USER_ROLES = ("student", "teacher", "system_admin")
 
 
 def _admin_csrf(
@@ -916,7 +916,7 @@ def _user_filter(role: str | None, q: str | None) -> tuple[str, list[Any]]:
     params: list[Any] = []
     if role:
         if role not in _USER_ROLES:
-            raise ApiError(400, "INVALID_ROLE", "角色仅支持 student / teacher / content_admin / system_admin")
+            raise ApiError(400, "INVALID_ROLE", "角色仅支持 student / teacher / system_admin")
         clauses.append("role = ?")
         params.append(role)
     if q:
@@ -1072,7 +1072,7 @@ def patch_user(
     if body.role is None and body.status is None:
         raise ApiError(400, "EMPTY_PATCH", "没有需要修改的内容")
     if body.role is not None and body.role not in _USER_ROLES:
-        raise ApiError(400, "INVALID_ROLE", "角色仅支持 student / teacher / content_admin / system_admin")
+        raise ApiError(400, "INVALID_ROLE", "角色仅支持 student / teacher / system_admin")
     if body.status is not None and body.status not in ("active", "disabled"):
         raise ApiError(400, "INVALID_STATUS", "状态仅支持 active / disabled")
 

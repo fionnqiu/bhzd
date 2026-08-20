@@ -35,7 +35,7 @@ from ..notify import notify
 
 router = APIRouter()
 
-TEACHER_ROLES = ("teacher", "content_admin", "system_admin")
+TEACHER_ROLES = ("teacher", "system_admin")
 WEAK_LINE = 0.6  # 班级薄弱线（PRD-02 §6 热力图口径）
 MIN_SAMPLE = 3  # PRD-06 §10.2：少于此人数聚合报表提示样本过小
 
@@ -135,6 +135,12 @@ def _task_json(row: sqlite3.Row, key: str, default: Any) -> Any:
         return default
 
 
+def _task_column(row: sqlite3.Row, key: str, default: Any) -> Any:
+    """Read an additive task column without breaking a rolling schema upgrade."""
+
+    return row[key] if key in row.keys() else default
+
+
 def _teacher_task_dto(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
     published = conn.execute(
         "SELECT COUNT(*) AS n FROM learning_tasks WHERE parent_task_id = ?",
@@ -170,13 +176,18 @@ def _teacher_task_dto(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
         "version": row["version"],
         "parent_task_id": row["parent_task_id"],
         "published_count": published,
-        # Content generation is automatic for every authored task.  Keep the
-        # fields optional at the database boundary so a rolling deployment can
-        # still read a pre-018 row while the migration is being applied.
-        "content_status": row["content_status"] if "content_status" in row.keys() else "none",
-        "content_generated_at": (
-            row["content_generated_at"] if "content_generated_at" in row.keys() else None
+        # Keep the content lifecycle explicit.  A terminal template fallback is
+        # deliberately not presented as provider-generated content, and errors
+        # are already reduced to safe user-facing summaries by the worker.
+        "content_status": _task_column(row, "content_status", "none"),
+        "content_generated_at": _task_column(row, "content_generated_at", None),
+        "content_generation_source": _task_column(row, "content_generation_source", "none"),
+        "content_failure_reason": _task_column(row, "content_failure_reason", None),
+        "content_generation_message": _task_column(row, "content_generation_message", None),
+        "content_generation_retry_count": _task_column(
+            row, "content_generation_retry_count", 0
         ),
+        "content_last_attempt_at": _task_column(row, "content_last_attempt_at", None),
         "knowledge_points": [_teacher_knowledge_point_dto(point) for point in points],
         "exercises": [_teacher_exercise_dto(exercise) for exercise in exercises],
         "created_at": row["created_at"],
@@ -236,6 +247,47 @@ def _normalize_exercise_type(value: Any) -> str:
         "single_choice": "multiple_choice",
     }.get(normalized, normalized)
     return normalized if normalized in _EXERCISE_TYPES else "open_ended"
+
+
+def _has_executable_teacher_exercise(conn: sqlite3.Connection, task_id: str) -> bool:
+    """Return whether a draft contains at least one student-renderable exercise.
+
+    Publishing copies rows directly into student tasks, so this validation lives
+    beside the fan-out helper instead of the browser.  It also protects old or
+    imported rows that predate the current CRUD validators.
+    """
+
+    rows = conn.execute(
+        "SELECT question, type, options_json FROM task_exercises WHERE task_id = ?",
+        (task_id,),
+    ).fetchall()
+    for exercise in rows:
+        if not str(exercise["question"] or "").strip():
+            continue
+        kind = _normalize_exercise_type(exercise["type"])
+        if kind != "multiple_choice":
+            # Open questions and true/false questions always have a usable
+            # student control; the latter receives its canonical two options
+            # in the student DTO when an old row did not persist them.
+            return True
+        try:
+            options = json.loads(exercise["options_json"] or "[]")
+        except (TypeError, json.JSONDecodeError):
+            options = []
+        if isinstance(options, list) and any(str(option).strip() for option in options):
+            return True
+    return False
+
+
+def _assert_teacher_task_publishable(conn: sqlite3.Connection, task_id: str) -> None:
+    """Reject fan-out before it can create a student task with no practice."""
+
+    if not _has_executable_teacher_exercise(conn, task_id):
+        raise ApiError(
+            409,
+            "TASK_NO_EXECUTABLE_EXERCISE",
+            "发布前请至少添加一道可执行练习题",
+        )
 
 
 def _copy_teacher_learning_content(
@@ -309,7 +361,12 @@ def _assert_teacher_content_editable(
 
 
 def _refresh_teacher_content_status(conn: sqlite3.Connection, task_id: str) -> None:
-    """Keep the additive content status honest after manual CRUD operations."""
+    """Keep content state honest after manual CRUD operations.
+
+    Manual rows are authoritative over an in-flight automatic worker.  Recording
+    their source here makes the teacher-facing status explain why a completed
+    lesson did not come from the provider or local template fallback.
+    """
 
     count = conn.execute(
         "SELECT (SELECT COUNT(*) FROM task_knowledge_points WHERE task_id = ?) + "
@@ -319,14 +376,20 @@ def _refresh_teacher_content_status(conn: sqlite3.Connection, task_id: str) -> N
     now = utc_now_iso()
     conn.execute(
         "UPDATE learning_tasks SET content_status = ?, content_generated_at = "
-        "CASE WHEN ? > 0 THEN COALESCE(content_generated_at, ?) ELSE NULL END, updated_at = ? "
+        "CASE WHEN ? > 0 THEN COALESCE(content_generated_at, ?) ELSE NULL END, "
+        "content_generation_source = CASE WHEN ? > 0 THEN 'manual' ELSE 'none' END, "
+        "content_failure_reason = NULL, content_generation_message = NULL, updated_at = ? "
         "WHERE id = ?",
-        ("done" if count else "none", count, now, now, task_id),
+        ("done" if count else "none", count, now, count, now, task_id),
     )
 
 
 def _queue_generated_content(
-    conn: sqlite3.Connection, task_ids: list[str], *, force: bool = False
+    conn: sqlite3.Connection,
+    task_ids: list[str],
+    *,
+    force: bool = False,
+    retry: bool = False,
 ) -> list[str]:
     """Queue automatic content workers only after the caller has committed.
 
@@ -339,7 +402,7 @@ def _queue_generated_content(
 
     queued: list[str] = []
     for task_id in dict.fromkeys(task_ids):
-        if queue_task_content(conn, task_id, force=force):
+        if queue_task_content(conn, task_id, force=force, retry=retry):
             queued.append(task_id)
     return queued
 
@@ -740,6 +803,11 @@ class TeacherTaskBody(BaseModel):
     steps: list[dict] = []
     rubric: list[dict] | None = None
     practice: dict | None = None
+    # The browser writes learning-content rows immediately after creating the
+    # task.  Deferring the detached worker for that one request avoids a late
+    # template result racing those reviewed edits; direct/API callers retain
+    # the established automatic generation behavior by default.
+    defer_content_generation: bool = False
 
 
 class TeacherTaskPatchBody(BaseModel):
@@ -751,6 +819,9 @@ class TeacherTaskPatchBody(BaseModel):
     steps: list[dict] | None = None
     rubric: list[dict] | None = None
     practice: dict | None = None
+    # See TeacherTaskBody: this is an explicit request-scoped coordination
+    # signal, not persisted task metadata.
+    defer_content_generation: bool = False
     # 截止时间是"发布"的属性（存学生副本上），与内容字段分开处理
     due_at: str | None = None
 
@@ -781,6 +852,13 @@ class TeacherExercisePatchBody(BaseModel):
     options: list[str] | None = None
     reference_answer: str | None = None
     sort_order: int | None = None
+
+
+class TeacherManualGradeBody(BaseModel):
+    """Teacher-authored recovery grade for a submission awaiting review."""
+
+    score: int
+    feedback: str = ""
 
 
 def _check_task_body(title: str, cap_ids: list[str]) -> None:
@@ -900,7 +978,8 @@ def create_teacher_task(
         ),
     )
     conn.commit()
-    _queue_generated_content(conn, [task_id])
+    if not body.defer_content_generation:
+        _queue_generated_content(conn, [task_id])
     audit(conn, current.user, "teacher_task.create", target_type="learning_task",
           target_id=task_id, after={"title": body.title.strip()})
     return _teacher_task_dto(conn, _get_own_teacher_task(conn, task_id, current.user["id"]))
@@ -1218,6 +1297,162 @@ def delete_teacher_exercise(
     return {"deleted": True}
 
 
+@router.post("/api/teacher/tasks/{task_id}/content/retry")
+def retry_teacher_task_content(
+    task_id: str,
+    current: CurrentUser = Depends(csrf_protect),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Start an observable initial generation or retry an unsuccessful one.
+
+    A browser retry is intentionally restricted to terminal empty/failed states.
+    This keeps an in-flight provider request single-flight and avoids replacing
+    content that a teacher has already reviewed or authored by hand.
+    """
+
+    _require_teacher_role(current)
+    row = _get_own_teacher_task(conn, task_id, current.user["id"])
+    status = str(_task_column(row, "content_status", "none") or "none")
+    if status == "generating":
+        raise ApiError(409, "CONTENT_GENERATION_IN_PROGRESS", "学习内容正在生成，请稍候")
+    if status == "done":
+        raise ApiError(409, "CONTENT_ALREADY_READY", "学习内容已就绪，无需重新生成")
+    if status not in {"none", "failed"}:
+        raise ApiError(409, "CONTENT_RETRY_UNAVAILABLE", "当前学习内容状态不能重新生成")
+
+    retrying = status == "failed"
+    queued = _queue_generated_content(
+        conn,
+        [task_id],
+        force=retrying,
+        retry=retrying,
+    )
+    if not queued:
+        # queue_task_content has persisted a safe failure summary when its
+        # scheduler is unavailable, so the next detail fetch remains useful.
+        raise ApiError(503, "CONTENT_RETRY_UNAVAILABLE", "学习内容暂时无法生成，请稍后重试")
+    audit(
+        conn,
+        current.user,
+        "teacher_task.content.retry" if retrying else "teacher_task.content.generate",
+        target_type="learning_task",
+        target_id=task_id,
+        after={"retry": retrying},
+    )
+    return _teacher_task_dto(conn, _get_own_teacher_task(conn, task_id, current.user["id"]))
+
+
+@router.post("/api/teacher/submissions/{submission_id}/grade")
+def grade_teacher_submission(
+    submission_id: str,
+    body: TeacherManualGradeBody,
+    current: CurrentUser = Depends(csrf_protect),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Apply a bounded teacher grade to an exhausted automatic review.
+
+    The student answer row is append-only from the learner's perspective, but
+    its terminal review fields are intentionally mutable by an authorized
+    teacher.  The ownership join is performed before the update so a teacher
+    cannot grade a submission from another class by guessing its id.
+    """
+
+    _require_teacher_role(current)
+    if body.score < 0 or body.score > 100:
+        raise ApiError(400, "VALIDATION_ERROR", "评分必须在 0 到 100 之间")
+    feedback = body.feedback.strip()
+    if len(feedback) > 2000:
+        raise ApiError(400, "VALIDATION_ERROR", "评语不能超过 2000 个字符")
+
+    submission = conn.execute(
+        """
+        SELECT s.*, e.task_id, t.title AS task_title, t.user_id AS student_id,
+               t.class_id, t.source AS task_source
+        FROM task_exercise_submissions AS s
+        JOIN task_exercises AS e ON e.id = s.exercise_id
+        JOIN learning_tasks AS t ON t.id = e.task_id
+        WHERE s.id = ?
+        """,
+        (submission_id,),
+    ).fetchone()
+    if submission is None or submission["task_source"] != "teacher" or not submission["class_id"]:
+        # Keep submission existence and class membership private across teacher accounts.
+        raise ApiError(404, "SUBMISSION_NOT_FOUND", "评阅提交不存在")
+
+    if current.user["role"] != "system_admin":
+        owned = conn.execute(
+            "SELECT 1 FROM class_teachers WHERE class_id = ? AND teacher_id = ?",
+            (submission["class_id"], current.user["id"]),
+        ).fetchone()
+        if owned is None:
+            raise ApiError(403, "FORBIDDEN", "您不是该班级的任课教师，无权评阅")
+
+    # Manual review is a recovery path for a failed provider grade; ordinary
+    # pending or already-completed rows remain under the automated path.  We do
+    # not require the retry-limit marker here so an authorized teacher can take
+    # over immediately when a provider failure is operationally obvious.
+    if submission["grade_status"] != "failed":
+        raise ApiError(409, "MANUAL_GRADE_INVALID", "当前提交不在教师人工评阅队列中")
+
+    now = utc_now_iso()
+    before = {
+        "grade_status": submission["grade_status"],
+        "score": submission["score"],
+        "feedback": submission["feedback"],
+        "manual_review_required": bool(submission["manual_review_required"]),
+    }
+    updated = conn.execute(
+        """
+        UPDATE task_exercise_submissions
+        SET grade_status = 'done', score = ?, feedback = ?, graded_at = ?,
+            grade_failure_reason = NULL, manual_review_required = 0,
+            manual_reviewer_id = ?, manually_graded_at = ?
+        WHERE id = ? AND grade_status = 'failed' AND manual_review_required = 1
+        """,
+        (body.score, feedback, now, current.user["id"], now, submission_id),
+    )
+    if updated.rowcount != 1:
+        conn.rollback()
+        raise ApiError(409, "MANUAL_GRADE_INVALID", "提交状态已变化，请刷新后重试")
+
+    # Notify and grade are one transaction: a student never receives a review
+    # notice for a write that failed to persist.
+    notify(
+        conn,
+        submission["student_id"],
+        "task_feedback",
+        submission["task_title"],
+        body=f"教师已完成人工评阅，得分 {body.score} 分：{feedback or '暂无评语'}",
+        ref_type="task",
+        ref_id=submission["task_id"],
+    )
+    conn.commit()
+    audit(
+        conn,
+        current.user,
+        "teacher_submission.manual_grade",
+        target_type="task_exercise_submission",
+        target_id=submission_id,
+        before=before,
+        after={
+            "grade_status": "done",
+            "score": body.score,
+            "manual_reviewer_id": current.user["id"],
+            "manually_graded_at": now,
+        },
+    )
+    return {
+        "submission_id": submission_id,
+        "grade_status": "done",
+        "score": body.score,
+        "feedback": feedback,
+        "graded_at": now,
+        "manual_review_required": False,
+        "manual_reviewer_id": current.user["id"],
+        "manually_graded_at": now,
+    }
+
+
 @router.patch("/api/teacher/tasks/{task_id}")
 def patch_teacher_task(
     task_id: str,
@@ -1343,11 +1578,13 @@ def patch_teacher_task(
             # version. Mark them terminal before commit so a detached generator
             # cannot race a teacher's subsequent content edits.
             conn.execute(
-                "UPDATE learning_tasks SET content_status = 'done', content_generated_at = ? WHERE id = ?",
+                "UPDATE learning_tasks SET content_status = 'done', content_generated_at = ?, "
+                "content_generation_source = 'copied', content_failure_reason = NULL, "
+                "content_generation_message = NULL WHERE id = ?",
                 (now, new_id),
             )
         conn.commit()
-        if not (copied_points or copied_exercises):
+        if not (copied_points or copied_exercises) and not body.defer_content_generation:
             _queue_generated_content(conn, [new_id])
         audit(conn, current.user, "teacher_task.version_bump", target_type="learning_task",
               target_id=new_id, before={"version": row["version"]},
@@ -1366,15 +1603,22 @@ def patch_teacher_task(
     if content_changed:
         # Editing an unpublished task invalidates its previous generated lesson;
         # the next worker must derive content from the new title/capabilities.
+        # Reset the observable lifecycle too, otherwise an old provider error
+        # would be misleading after the teacher has changed the task premise.
         new_fields["content_status"] = "none"
         new_fields["content_generated_at"] = None
+        new_fields["content_generation_source"] = "none"
+        new_fields["content_failure_reason"] = None
+        new_fields["content_generation_message"] = None
+        new_fields["content_generation_retry_count"] = 0
+        new_fields["content_last_attempt_at"] = None
         assignments = ", ".join(f"{col} = ?" for col in new_fields)
     conn.execute(
         f"UPDATE learning_tasks SET {assignments}, updated_at = ? WHERE id = ?",
         (*new_fields.values(), utc_now_iso(), task_id),
     )
     conn.commit()
-    if content_changed:
+    if content_changed and not body.defer_content_generation:
         _queue_generated_content(conn, [task_id], force=True)
     result = _teacher_task_dto(conn, _get_own_teacher_task(conn, task_id, current.user["id"]))
     result["version_bumped"] = False
@@ -1404,7 +1648,13 @@ def publish_teacher_task_rows(
     entry points subject to identical ownership and fan-out rules.
     """
     row = _get_own_teacher_task(conn, task_id, teacher_id)
+    # Resolve class ownership before content validation so an unauthorized
+    # class request keeps the existing 403 boundary instead of revealing the
+    # draft's content state through a 409 response.
     _get_owned_class(conn, class_id, teacher_id)
+    # This is deliberately before the first student INSERT.  A failed check
+    # leaves no partial task copies or notifications for an empty assignment.
+    _assert_teacher_task_publishable(conn, row["id"])
     student_ids = _class_student_ids(conn, [class_id])
     now = utc_now_iso()
     content_task_ids: list[str] = []
@@ -1447,7 +1697,9 @@ def publish_teacher_task_rows(
             # JSON fields empty prevents a legacy task body from reappearing
             # beside the current four-field content on the student side.
             conn.execute(
-                "UPDATE learning_tasks SET content_status = 'done', content_generated_at = ? WHERE id = ?",
+                "UPDATE learning_tasks SET content_status = 'done', content_generated_at = ?, "
+                "content_generation_source = 'copied', content_failure_reason = NULL, "
+                "content_generation_message = NULL WHERE id = ?",
                 (now, student_task_id),
             )
         else:

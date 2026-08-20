@@ -27,6 +27,7 @@ interface NotificationItem {
   body: string | null;
   ref_type: string | null;
   ref_id: string | null;
+  ref_status: string | null;
   read_at: string | null;
   created_at: string;
 }
@@ -34,6 +35,8 @@ interface NotificationItem {
 /** 通知类型 → 中文名（后端 type 为自由字符串，未知类型兜底"通知"） */
 const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   task_assigned: "任务",
+  task_published: "任务",
+  task_due_changed: "提醒",
   task_feedback: "反馈",
   task_reminder: "提醒",
   class: "班级",
@@ -224,6 +227,13 @@ function NotificationBell({ navigationDisabled = false }: { navigationDisabled?:
                   >
                     {item.title}
                   </span>
+                  {item.ref_type === "task" && item.ref_status === "archived" ? (
+                    // Archived links remain useful as history, but must explain
+                    // why the learner cannot continue the original action.
+                    <span className="text-xs text-secondary">
+                      任务已归档，查看历史记录
+                    </span>
+                  ) : null}
                   <span className="text-xs text-muted">{formatTime(item.created_at)}</span>
                 </span>
               </button>

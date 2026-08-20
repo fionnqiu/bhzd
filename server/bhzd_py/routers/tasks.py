@@ -20,7 +20,6 @@ import json
 import re
 import sqlite3
 import uuid
-import asyncio
 import datetime as dt
 import logging
 from typing import Any
@@ -30,17 +29,18 @@ from pydantic import BaseModel
 
 from ..config import get_config
 from ..db import connect as db_connect
-from ..db import utc_now_iso
+from ..db import transaction, utc_now_iso
 from ..deps import CurrentUser, csrf_protect, get_current_user, get_db, require_student_portal_user
 from ..errors import ApiError
 from ..mastery import service as mastery_service
 
 logger = logging.getLogger(__name__)
 
-# Keep references to detached grading workers until they finish.  Without this
-# set an event loop is allowed to garbage-collect a task before it writes its
-# terminal status, leaving a submission stuck at ``grading``.
-_BACKGROUND_TASKS: set[asyncio.Task] = set()
+# Automatic retries remain deliberately bounded: a learner can recover a
+# transient provider outage, but repeated remote calls must eventually expose a
+# clear teacher-review handoff instead of looping forever.
+_AUTOMATED_GRADE_RETRY_LIMIT = 2
+_SAFE_GRADING_FAILURE_MESSAGE = "AI 评阅暂不可用，答案已保留"
 
 def _task_portal_boundary(
     request: Request,
@@ -55,7 +55,7 @@ def _task_portal_boundary(
     """
 
     if request.url.path == "/api/internal/grade-submission":
-        if current.user["role"] in {"system_admin", "content_admin"}:
+        if current.user["role"] == "system_admin":
             return current
         raise ApiError(403, "FORBIDDEN", "无权执行内部评阅")
     return require_student_portal_user(current)
@@ -142,6 +142,19 @@ def _get_own_task(conn: sqlite3.Connection, task_id: str, user_id: str) -> sqlit
     if row is None or row["user_id"] != user_id:
         raise ApiError(404, "TASK_NOT_FOUND", "任务不存在")
     return row
+
+
+def _assert_task_mutable(row: sqlite3.Row) -> None:
+    """Keep archived assignments read-only, including direct API calls.
+
+    The student shell hides controls for an archived task, but notifications
+    and old clients can still reach the API directly.  Enforcing the boundary
+    here prevents a historical link from silently starting generation or
+    changing the learner's durable answer history.
+    """
+
+    if row["status"] == "archived":
+        raise ApiError(409, "TASK_ARCHIVED", "任务已归档，仅可查看历史记录")
 
 
 def _do_transition(row: sqlite3.Row, action: str) -> str:
@@ -389,6 +402,22 @@ def _exercise_dto(
         "created_at": row["created_at"],
     }
     if submission is not None:
+        # The student receives recovery state, never a raw provider exception.
+        # Migration 025 is additive, so defaults keep a rolling deployment
+        # compatible with an older submission row.
+        retry_count = (
+            int(submission["grade_retry_count"] or 0)
+            if "grade_retry_count" in submission.keys()
+            else 0
+        )
+        retry_limit = (
+            int(submission["grade_retry_limit"] or _AUTOMATED_GRADE_RETRY_LIMIT)
+            if "grade_retry_limit" in submission.keys()
+            else _AUTOMATED_GRADE_RETRY_LIMIT
+        )
+        manual_review_required = bool(submission["manual_review_required"]) if (
+            "manual_review_required" in submission.keys()
+        ) else False
         result["submission"] = {
             "id": submission["id"],
             "answer": submission["answer"],
@@ -397,6 +426,19 @@ def _exercise_dto(
             "feedback": submission["feedback"],
             "graded_at": submission["graded_at"],
             "created_at": submission["created_at"],
+            "grade_failure_reason": (
+                submission["grade_failure_reason"]
+                if "grade_failure_reason" in submission.keys()
+                else None
+            ),
+            "retry_count": retry_count,
+            "retry_limit": retry_limit,
+            "manual_review_required": manual_review_required,
+            "can_retry": (
+                submission["grade_status"] == "failed"
+                and not manual_review_required
+                and retry_count < retry_limit
+            ),
         }
     else:
         result["submission"] = None
@@ -454,11 +496,49 @@ def _parse_grade_response(value: Any) -> tuple[int, str]:
     return max(0, min(100, score)), str(feedback or "")[:2000]
 
 
-async def _grade_submission_async(submission_id: str) -> None:
-    """Grade one submission off-request and always persist a terminal state."""
+def _connection_database_path(conn: sqlite3.Connection) -> str | None:
+    """Capture the caller database before work leaves the request lifecycle."""
 
-    conn = db_connect(get_config().resolved_database_path)
     try:
+        row = conn.execute("PRAGMA database_list").fetchone()
+    except sqlite3.Error:
+        return None
+    return str(row[2]) if row is not None and row[2] else None
+
+
+def _mark_submission_grading_failed(conn: sqlite3.Connection, submission_id: str) -> None:
+    """Persist a user-safe failure and promote exhausted retries to review."""
+
+    conn.execute(
+        "UPDATE task_exercise_submissions SET grade_status = 'failed', "
+        "grade_failure_reason = ?, manual_review_required = "
+        "CASE WHEN grade_retry_count >= grade_retry_limit THEN 1 ELSE 0 END "
+        "WHERE id = ? AND grade_status IN ('pending', 'grading')",
+        (_SAFE_GRADING_FAILURE_MESSAGE, submission_id),
+    )
+    conn.commit()
+
+
+async def _grade_submission_async(
+    submission_id: str, *, database_path: str | None = None
+) -> None:
+    """Grade one claimed submission and always leave durable recovery state.
+
+    A conditional ``pending -> grading`` claim makes duplicate scheduling
+    harmless.  The worker opens its own connection because it runs on the
+    process-level Agent loop and can outlive the HTTP request that queued it.
+    """
+
+    conn = db_connect(database_path or get_config().resolved_database_path)
+    try:
+        claimed = conn.execute(
+            "UPDATE task_exercise_submissions SET grade_status = 'grading', "
+            "grade_failure_reason = NULL WHERE id = ? AND grade_status = 'pending'",
+            (submission_id,),
+        )
+        conn.commit()
+        if claimed.rowcount != 1:
+            return
         submission = conn.execute(
             "SELECT s.*, e.question, e.type, e.reference_answer FROM task_exercise_submissions s "
             "JOIN task_exercises e ON e.id = s.exercise_id WHERE s.id = ?",
@@ -466,14 +546,9 @@ async def _grade_submission_async(submission_id: str) -> None:
         ).fetchone()
         if submission is None:
             return
-        conn.execute(
-            "UPDATE task_exercise_submissions SET grade_status = 'grading' WHERE id = ?",
-            (submission_id,),
-        )
-        conn.commit()
         # Closed-choice questions have an exact authored answer.  Grade them
-        # locally so a radio/select submission does not depend on an LLM
-        # provider and remains deterministic in offline deployments.
+        # locally so a radio/select submission remains deterministic when an
+        # external grading provider is unavailable.
         if _exercise_type(submission["type"]) in {"multiple_choice", "true_false"}:
             expected = " ".join(str(submission["reference_answer"] or "").split()).casefold()
             got = " ".join(str(submission["answer"] or "").split()).casefold()
@@ -481,13 +556,17 @@ async def _grade_submission_async(submission_id: str) -> None:
             feedback = "答案正确" if score else "请对照学习内容重新判断"
             conn.execute(
                 "UPDATE task_exercise_submissions SET grade_status = 'done', score = ?, "
-                "feedback = ?, graded_at = ? WHERE id = ?",
+                "feedback = ?, graded_at = ?, grade_failure_reason = NULL WHERE id = ? "
+                "AND grade_status = 'grading'",
                 (score, feedback, dt.datetime.now(dt.timezone.utc).isoformat(), submission_id),
             )
             conn.commit()
             return
         from ..agent import providers
 
+        provider_kwargs: dict[str, Any] = {"role": "grader"}
+        if database_path is not None:
+            provider_kwargs["database_path"] = database_path
         response = await providers.complete(
             [
                 {
@@ -502,35 +581,80 @@ async def _grade_submission_async(submission_id: str) -> None:
                     ),
                 },
             ],
-            role="grader",
+            **provider_kwargs,
         )
         if not response or not response.get("text"):
             raise RuntimeError("grader_unavailable")
         score, feedback = _parse_grade_response(response["text"])
         conn.execute(
             "UPDATE task_exercise_submissions SET grade_status = 'done', score = ?, "
-            "feedback = ?, graded_at = ? WHERE id = ?",
+            "feedback = ?, graded_at = ?, grade_failure_reason = NULL WHERE id = ? "
+            "AND grade_status = 'grading'",
             (score, feedback, dt.datetime.now(dt.timezone.utc).isoformat(), submission_id),
         )
         conn.commit()
     except Exception:
         logger.warning("task exercise grading failed", exc_info=True)
         try:
-            conn.execute(
-                "UPDATE task_exercise_submissions SET grade_status = 'failed' WHERE id = ?",
-                (submission_id,),
-            )
-            conn.commit()
+            _mark_submission_grading_failed(conn, submission_id)
         except Exception:
             logger.warning("task exercise failure status could not be persisted", exc_info=True)
     finally:
         conn.close()
 
 
+def _schedule_grade_submission(conn: sqlite3.Connection, submission_id: str) -> None:
+    """Queue grading on the shared process-level loop after a committed claim."""
+
+    database_path = _connection_database_path(conn)
+
+    async def worker() -> None:
+        await _grade_submission_async(submission_id, database_path=database_path)
+
+    try:
+        # Keep the small indirection for existing unit hooks while routing real
+        # work through the process-level loop rather than a request event loop.
+        _schedule_background(worker())
+    except Exception:
+        # A scheduling failure is operationally equivalent to a provider
+        # failure: retain the answer and give the learner a bounded recovery.
+        logger.warning("task exercise worker could not be scheduled", exc_info=True)
+        _mark_submission_grading_failed(conn, submission_id)
+
+
 def _schedule_background(coro) -> None:
-    task = asyncio.create_task(coro)
-    _BACKGROUND_TASKS.add(task)
-    task.add_done_callback(_BACKGROUND_TASKS.discard)
+    """Compatibility hook backed by the durable process-level Agent loop."""
+
+    from ..agent.orchestrator import spawn
+
+    spawn(coro)
+
+
+def recover_interrupted_submission_grading(conn: sqlite3.Connection) -> list[str]:
+    """Reclaim unfinished grade claims after a process stop and reschedule them."""
+
+    try:
+        rows = conn.execute(
+            "SELECT id FROM task_exercise_submissions "
+            "WHERE grade_status IN ('pending', 'grading') ORDER BY created_at, id"
+        ).fetchall()
+        if not rows:
+            return []
+        # ``grading`` belongs to a dead process on startup.  Moving it back to
+        # ``pending`` before scheduling makes the worker's atomic claim valid.
+        conn.execute(
+            "UPDATE task_exercise_submissions SET grade_status = 'pending' "
+            "WHERE grade_status = 'grading'"
+        )
+        conn.commit()
+        submission_ids = [str(row["id"]) for row in rows]
+        for submission_id in submission_ids:
+            _schedule_grade_submission(conn, submission_id)
+        return submission_ids
+    except sqlite3.Error:
+        conn.rollback()
+        logger.warning("startup grading recovery failed", exc_info=True)
+        return []
 
 
 def _mastery_preview_for_score(
@@ -658,13 +782,16 @@ def _score_submitted_exercises(
     total_weight = 0.0
     for exercise in exercises:
         submission = conn.execute(
-            "SELECT answer, grade_status, score, feedback FROM task_exercise_submissions "
+            "SELECT answer, grade_status, score, feedback, manual_review_required "
+            "FROM task_exercise_submissions "
             "WHERE exercise_id = ? AND student_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
             (exercise["id"], student_id),
         ).fetchone()
         if submission is None:
             return None, feedback, "请先提交全部练习题"
         if submission["grade_status"] == "failed":
+            if bool(submission["manual_review_required"]):
+                return None, feedback, "存在待教师人工评阅的题目，请等待评阅完成"
             return None, feedback, "存在评分失败的题目，请重试后再提交任务"
         if submission["grade_status"] != "done" or submission["score"] is None:
             return None, feedback, "题目仍在评分中，请等待评分完成"
@@ -751,6 +878,11 @@ class StartLearningBody(BaseModel):
 
 class InternalGradeBody(BaseModel):
     submission_id: str
+
+
+class ManualGradeBody(BaseModel):
+    score: int
+    feedback: str = ""
 
 
 # ---------------------------------------------------------------- 端点
@@ -843,7 +975,7 @@ def task_detail(
     row = _get_own_task(conn, task_id, current.user["id"])
     # Historical rows may predate automatic content generation.  Queue them
     # on first detail read so no learner has to press a manual generate button.
-    if _task_content_status(row) == "none":
+    if row["status"] != "archived" and _task_content_status(row) == "none":
         from ..tools.task_tools import queue_task_content
 
         queue_task_content(conn, task_id)
@@ -924,6 +1056,7 @@ def create_knowledge_point(
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict[str, Any]:
     row = _get_own_task(conn, task_id, current.user["id"])
+    _assert_task_mutable(row)
     if not body.title.strip() or not body.content.strip():
         raise ApiError(400, "VALIDATION_ERROR", "知识点标题和内容不能为空")
     point_id = uuid.uuid4().hex
@@ -964,6 +1097,7 @@ def create_exercise(
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict[str, Any]:
     row = _get_own_task(conn, task_id, current.user["id"])
+    _assert_task_mutable(row)
     if not body.question.strip():
         raise ApiError(400, "VALIDATION_ERROR", "练习题不能为空")
     kind = _exercise_type(body.type)
@@ -1009,7 +1143,8 @@ async def submit_exercise(
     current: CurrentUser = Depends(csrf_protect),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict[str, Any]:
-    _get_own_task(conn, task_id, current.user["id"])
+    task = _get_own_task(conn, task_id, current.user["id"])
+    _assert_task_mutable(task)
     exercise = conn.execute(
         "SELECT * FROM task_exercises WHERE id = ? AND task_id = ?",
         (exercise_id, task_id),
@@ -1021,12 +1156,132 @@ async def submit_exercise(
     submission_id = uuid.uuid4().hex
     conn.execute(
         "INSERT INTO task_exercise_submissions "
-        "(id, exercise_id, student_id, answer, grade_status) VALUES (?, ?, ?, ?, 'pending')",
-        (submission_id, exercise_id, current.user["id"], body.answer.strip()),
+        "(id, exercise_id, student_id, answer, grade_status, grade_retry_limit) "
+        "VALUES (?, ?, ?, ?, 'pending', ?)",
+        (
+            submission_id,
+            exercise_id,
+            current.user["id"],
+            body.answer.strip(),
+            _AUTOMATED_GRADE_RETRY_LIMIT,
+        ),
     )
     conn.commit()
-    _schedule_background(_grade_submission_async(submission_id))
+    _schedule_grade_submission(conn, submission_id)
     return {"submission_id": submission_id, "grade_status": "pending"}
+
+
+@router.post("/api/tasks/{task_id}/exercises/{exercise_id}/retry-grade", status_code=202)
+def retry_exercise_grade(
+    task_id: str,
+    exercise_id: str,
+    current: CurrentUser = Depends(csrf_protect),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Create one explicit retry while preserving the failed answer row."""
+
+    # Retry is an append-only operation, but two browser clicks can arrive at
+    # the same time.  Claim the writer slot while reading the latest row and
+    # inserting its child so both requests cannot create duplicate attempts.
+    submission_id: str | None = None
+    result: dict[str, Any]
+    with transaction(conn, immediate=True):
+        task = _get_own_task(conn, task_id, current.user["id"])
+        _assert_task_mutable(task)
+        latest = conn.execute(
+            "SELECT s.* FROM task_exercise_submissions s "
+            "JOIN task_exercises e ON e.id = s.exercise_id "
+            "WHERE s.exercise_id = ? AND e.task_id = ? AND s.student_id = ? "
+            "ORDER BY s.created_at DESC, s.rowid DESC LIMIT 1",
+            (exercise_id, task_id, current.user["id"]),
+        ).fetchone()
+        if latest is None:
+            raise ApiError(404, "SUBMISSION_NOT_FOUND", "没有可重试的答案")
+
+        # If another request already appended a retry, return that durable row
+        # rather than asking the learner to retry a retry or creating a second
+        # provider call.  A completed child falls through to the normal state
+        # error below because no further retry is needed.
+        retry_of_submission_id = (
+            latest["retry_of_submission_id"]
+            if "retry_of_submission_id" in latest.keys()
+            else None
+        )
+        if latest["grade_status"] in {"pending", "grading"} and retry_of_submission_id:
+            retry_count = int(latest["grade_retry_count"] or 0)
+            retry_limit = int(latest["grade_retry_limit"] or _AUTOMATED_GRADE_RETRY_LIMIT)
+            result = {
+                "submission_id": latest["id"],
+                "grade_status": latest["grade_status"],
+                "retry_count": retry_count,
+                "retry_limit": retry_limit,
+            }
+        else:
+            if latest["grade_status"] != "failed":
+                raise ApiError(409, "GRADE_RETRY_INVALID", "当前答案不需要重试")
+            retry_count = (
+                int(latest["grade_retry_count"] or 0)
+                if "grade_retry_count" in latest.keys()
+                else 0
+            )
+            retry_limit = (
+                int(latest["grade_retry_limit"] or _AUTOMATED_GRADE_RETRY_LIMIT)
+                if "grade_retry_limit" in latest.keys()
+                else _AUTOMATED_GRADE_RETRY_LIMIT
+            )
+            manual_review_required = bool(
+                latest["manual_review_required"]
+                if "manual_review_required" in latest.keys()
+                else False
+            )
+            if manual_review_required or retry_count >= retry_limit:
+                raise ApiError(
+                    409,
+                    "GRADE_RETRY_EXHAUSTED",
+                    "自动重试次数已用尽，已转为教师人工评阅",
+                )
+            # A previous request may have inserted a child without it becoming
+            # the latest row due to equal timestamps; check the explicit link
+            # before appending another one.
+            active_child = conn.execute(
+                "SELECT id, grade_status, grade_retry_count, grade_retry_limit "
+                "FROM task_exercise_submissions "
+                "WHERE retry_of_submission_id = ? AND grade_status IN ('pending', 'grading') "
+                "ORDER BY rowid DESC LIMIT 1",
+                (latest["id"],),
+            ).fetchone()
+            if active_child is not None:
+                result = {
+                    "submission_id": active_child["id"],
+                    "grade_status": active_child["grade_status"],
+                    "retry_count": int(active_child["grade_retry_count"] or 0),
+                    "retry_limit": int(active_child["grade_retry_limit"] or retry_limit),
+                }
+            else:
+                submission_id = uuid.uuid4().hex
+                conn.execute(
+                    "INSERT INTO task_exercise_submissions "
+                    "(id, exercise_id, student_id, answer, grade_status, grade_retry_count, "
+                    "grade_retry_limit, retry_of_submission_id) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)",
+                    (
+                        submission_id,
+                        exercise_id,
+                        current.user["id"],
+                        latest["answer"],
+                        retry_count + 1,
+                        retry_limit,
+                        latest["id"],
+                    ),
+                )
+                result = {
+                    "submission_id": submission_id,
+                    "grade_status": "pending",
+                    "retry_count": retry_count + 1,
+                    "retry_limit": retry_limit,
+                }
+    if submission_id is not None:
+        _schedule_grade_submission(conn, submission_id)
+    return result
 
 
 @router.post("/api/tasks/start-learning")
@@ -1039,6 +1294,7 @@ async def start_learning(
 
     if body.task_id:
         task = _get_own_task(conn, body.task_id, current.user["id"])
+        _assert_task_mutable(task)
         task_caps = _task_json(task, "cap_ids_json", []) or []
         if body.cap_node_id not in task_caps:
             raise ApiError(422, "TASK_CAP_MISMATCH", "任务不包含指定的能力节点")
@@ -1095,10 +1351,11 @@ async def start_learning(
 async def grade_submission_internal(
     body: InternalGradeBody,
     current: CurrentUser = Depends(get_current_user),
+    conn: sqlite3.Connection = Depends(get_db),
 ) -> dict[str, str]:
-    if current.user["role"] not in {"system_admin", "content_admin"}:
+    if current.user["role"] != "system_admin":
         raise ApiError(403, "FORBIDDEN", "无权执行内部评阅")
-    _schedule_background(_grade_submission_async(body.submission_id))
+    _schedule_grade_submission(conn, body.submission_id)
     return {"submission_id": body.submission_id, "grade_status": "pending"}
 
 
@@ -1111,6 +1368,7 @@ def patch_task(
 ) -> dict:
     """编辑标题/目标/步骤，或做 pause/resume/confirm 状态迁移（非法迁移 409）。"""
     row = _get_own_task(conn, task_id, current.user["id"])
+    _assert_task_mutable(row)
     updates: dict[str, Any] = {}
     if body.title is not None:
         if not body.title.strip():

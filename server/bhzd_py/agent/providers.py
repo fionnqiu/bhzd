@@ -248,7 +248,10 @@ def _candidate_rows_from_connection(db: sqlite3.Connection, role: str) -> list[s
     primary_row = get_provider_by_role(db, role)
     if primary_row is not None:
         rows.append(primary_row)
-    if role == "primary":
+    if role in {"primary", "grader"}:
+        # An unset grader already resolves through primary.  A dedicated grader
+        # still needs the same bounded fallback so one unavailable scoring
+        # provider cannot strand a learner's submitted answer indefinitely.
         fallback_row = get_enabled_provider(db, "fallback")
         if fallback_row is not None:
             rows.append(fallback_row)

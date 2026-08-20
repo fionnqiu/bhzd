@@ -69,9 +69,9 @@ test("教师发布任务 → 学生通知铃铛收到并读", async ({ page, bro
   // 教师端：用预设模板快速组装并发布
   await injectSession(page, TEACHER);
   await page.goto("/teacher/tasks");
-  await page.getByRole("button", { name: "新建教学任务" }).click();
-  await page.getByRole("tab", { name: "从预设模板选择" }).click();
-  await page.getByRole("button", { name: "使用模板" }).first().click();
+  // 模板库已并入手动组装流程：新建任务直接进入编辑器（页面头部与空态各有一个同名按钮）
+  await page.getByRole("button", { name: "新建任务" }).first().click();
+  await expect(page).toHaveURL(/\/teacher\/tasks\/new/);
   // 标题补一个时间戳便于在通知里辨认
   const title = `e2e 通知任务 ${Date.now() % 100000}`;
   const titleInput = page
@@ -84,9 +84,10 @@ test("教师发布任务 → 学生通知铃铛收到并读", async ({ page, bro
     .getByRole("option", { name: "数据标注2301班", exact: true })
     .click();
   await page.getByRole("button", { name: "发布", exact: true }).click();
-  await expect(page.getByText(/已发布给 \d+ 名学生/)).toBeVisible({
-    timeout: 20000,
-  });
+  // toast 浮层已按工作台约定移除；发布成功的持久证据是任务列表中的「已发布」徽标
+  await expect(
+    page.getByRole("button", { name: new RegExp(`${title} 已发布`) }),
+  ).toBeVisible({ timeout: 20000 });
 
   // 学生端：铃铛出现未读，通知内容可见，全部已读
   const studentPage = await browser.newPage();
@@ -109,11 +110,14 @@ test("系统管理上传 RAG 资料→自动发布→学生 Agent 命中引用",
   await page.goto("/admin/rag/upload");
   const title = `e2e质检规范${Date.now() % 100000}`;
   const md = `# ${title} v1.0\n\n## 日合格率\n标注员每日合格率不得低于百分之九十六，低于该线必须当日复检。\n`;
-  await page.locator('input[type="file"]').setInputFiles({
+  // 页面有多个文件输入（批量/拖拽区/表单），按可访问名精确锁定表单入口
+  await page.getByLabel("选择文件", { exact: true }).setInputFiles({
     name: "qa-rule.md",
     mimeType: "text/markdown",
     buffer: Buffer.from(md, "utf-8"),
   });
+  // 高级元数据默认折叠；展开后再填可识别的标题与治理字段
+  await page.getByText("高级元数据（可选）").click();
   await page
     .locator(".field", { hasText: "资料标题" })
     .locator("input")
@@ -128,15 +132,7 @@ test("系统管理上传 RAG 资料→自动发布→学生 Agent 命中引用",
     .locator(".field", { hasText: "版本号" })
     .locator("input")
     .fill("v1.0");
-  // 适用数据类型：勾选 文本
-  await page
-    .locator(".field", { hasText: "适用数据类型" })
-    .getByText("文本", { exact: true })
-    .click();
-  await page.getByRole("combobox", { name: "可见范围" }).click();
-  await page.getByRole("option", { name: "学生可见", exact: true }).click();
-  await page.getByRole("combobox", { name: "授权状态" }).click();
-  await page.getByRole("option", { name: "已授权", exact: true }).click();
+  // 可见范围/授权状态已随「索引成功即自动发布」流程移除；适用数据类型留空默认文本
   await page.getByRole("button", { name: /确认上传/ }).click();
   await expect(page.getByText("上传成功", { exact: true })).toBeVisible({
     timeout: 40000,
@@ -171,9 +167,11 @@ test("学习任务批量归档", async ({ page }) => {
   // API 造两个任务（CSRF 取自会话接口）
   const session = await page.request.get("/api/auth/session");
   const csrf = (await session.json()).csrf_token;
-  for (let i = 0; i < 2; i += 1) {
+  const stamp = Date.now() % 10000;
+  const titles = [`e2e 批量任务0-${stamp}`, `e2e 批量任务1-${stamp}`];
+  for (const title of titles) {
     const r = await page.request.post("/api/tasks", {
-      data: { title: `e2e 批量任务${i}-${Date.now() % 10000}`, cap_ids: [] },
+      data: { title, cap_ids: [] },
       headers: { "x-csrf-token": csrf },
     });
     expect(r.status()).toBeLessThan(300);
@@ -182,7 +180,8 @@ test("学习任务批量归档", async ({ page }) => {
   await page.locator('[aria-label="全选当前列表"]').check();
   await page.getByRole("button", { name: /批量归档/ }).click();
   await page.getByRole("button", { name: "确认批量归档", exact: true }).click();
-  await expect(page.getByText(/已批量归档 \d+ 项任务/)).toBeVisible({
-    timeout: 15000,
-  });
+  // toast 浮层已按工作台约定移除；归档成功的持久证据是任务从默认列表消失
+  for (const title of titles) {
+    await expect(page.getByText(title)).toHaveCount(0, { timeout: 15000 });
+  }
 });

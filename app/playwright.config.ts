@@ -19,6 +19,9 @@ const hasMsEdge = edgeExecutableCandidates.some((candidate) =>
 
 export default defineConfig({
   testDir: "../tests/e2e",
+  // The login limiter (NF5: 5 attempts/min/IP) can force ensureSession and the
+  // UI-login test into a 61s backoff; 30s would kill the test mid-wait.
+  timeout: 200_000,
   // The suite deliberately shares one seeded SQLite database and two demo accounts.
   // Parallel workers contend for the same write lock and can trip the global login
   // limiter, yielding false UI timeouts instead of product-level failures.

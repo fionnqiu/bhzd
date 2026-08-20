@@ -840,8 +840,9 @@ img {
 .textarea {
   width: 100%;
   padding: 8px var(--space-3);
-  /* Apple 填充式输入框：无硬边框的灰底“凹槽”，聚焦时才亮起 */
-  border: 1px solid transparent;
+  /* 填充式输入框 + 可见细边框：此前纯透明边框的灰底凹槽在白色浮层
+     （如供应商编辑抽屉）上几乎不可见，边框保证任何底色下都有控件轮廓 */
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-surface-muted) 78%, transparent);
   transition:
@@ -904,8 +905,8 @@ img {
   width: 100%;
   min-height: 36px;
   padding: 8px var(--space-3);
-  /* 与输入框同一填充式语言 */
-  border: 1px solid transparent;
+  /* 与输入框同一填充式语言，同样保留可见边框（浮层上不再“消失”） */
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-surface-muted) 78%, transparent);
   color: var(--color-text);
@@ -3373,8 +3374,8 @@ html[data-theme="dark"]
   width: 100%;
   min-height: 36px;
   padding: 7px var(--space-3);
-  /* 填充式触发器，与 .select-trigger 同一语言 */
-  border: 1px solid transparent;
+  /* 填充式触发器，与 .select-trigger 同一语言（含可见边框） */
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-surface-muted) 78%, transparent);
   color: var(--color-text);

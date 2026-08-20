@@ -91,6 +91,29 @@ describe("api client", () => {
     );
   });
 
+  it("保留 429 Retry-After 与错误详情中的恢复秒数", async () => {
+    // Error details take precedence over the header so the UI uses the
+    // server's canonical countdown when both transports are present.
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "RATE_LIMITED",
+            message: "尝试过于频繁",
+            details: { retry_after_seconds: 7 },
+          },
+        }),
+        { status: 429, headers: { "Retry-After": "9" } },
+      ),
+    );
+
+    await expect(api.post("/api/auth/login", { email: "a@b.com" })).rejects.toMatchObject({
+      status: 429,
+      code: "RATE_LIMITED",
+      retryAfterSeconds: 7,
+    });
+  });
+
   it("combines a caller abort signal without changing the existing api.get arguments", async () => {
     const caller = new AbortController();
     let requestSignal: AbortSignal | undefined;

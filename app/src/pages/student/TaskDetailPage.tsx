@@ -214,6 +214,7 @@ export default function TaskDetailPage() {
   const [starting, setStarting] = useState(false);
   const [exerciseAnswers, setExerciseAnswers] = useState<Record<string, string>>({});
   const [exerciseSubmitting, setExerciseSubmitting] = useState<string | null>(null);
+  const [exerciseRetrying, setExerciseRetrying] = useState<string | null>(null);
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -260,17 +261,20 @@ export default function TaskDetailPage() {
 
 
   useEffect(() => {
-    if (!id || detail?.content_status !== "generating") return;
+    const gradingInProgress = detail?.exercises.some((exercise) =>
+      exercise.submission && ["pending", "grading"].includes(exercise.submission.grade_status),
+    );
+    if (!id || (detail?.content_status !== "generating" && !gradingInProgress)) return;
     const timer = window.setInterval(() => {
       void api
         .get<TaskDetail>(`/api/tasks/${id}`)
         .then((next) => setDetail(normalizeTaskDetail(next)))
         .catch(() => {});
-    }, 2000);
+    }, 1500);
     return () => {
       window.clearInterval(timer);
     };
-  }, [detail?.content_status, id]);
+  }, [detail?.content_status, detail?.exercises, id]);
 
   useEffect(() => {
     if (!detail) return;
@@ -297,7 +301,9 @@ export default function TaskDetailPage() {
   const samples = useMemo(() => (detail ? extractSamples(detail) : []), [detail]);
 
   const generateContent = async () => {
-    if (!detail) return;
+    // Archived assignments are history-only; do not requeue generation from a
+    // stale notification or an older client that still renders this action.
+    if (!detail || detail.status === "archived") return;
     try {
       await api.post("/api/tasks/start-learning", {
         cap_node_id: detail.cap_ids[0] ?? detail.id,
@@ -325,6 +331,20 @@ export default function TaskDetailPage() {
       toast.error(errMsg(err));
     } finally {
       setExerciseSubmitting(null);
+    }
+  };
+
+  const retryGeneratedExercise = async (exerciseId: string) => {
+    if (!detail) return;
+    setExerciseRetrying(exerciseId);
+    try {
+      await api.post(`/api/tasks/${detail.id}/exercises/${exerciseId}/retry-grade`);
+      const refreshed = await api.get<TaskDetail>(`/api/tasks/${detail.id}`);
+      setDetail(normalizeTaskDetail(refreshed));
+    } catch (err) {
+      toast.error(errMsg(err));
+    } finally {
+      setExerciseRetrying(null);
     }
   };
 
@@ -599,7 +619,11 @@ export default function TaskDetailPage() {
 
       {/* Keep generated knowledge points as the only learning-content section; exercises live in the practice area below. */}
       <Card title={<TaskSectionTitle>学习内容</TaskSectionTitle>} className="mb-4">
-        {detail.content_status === "generating" ? (
+        {detail.status === "archived" ? (
+          <p className="text-sm text-secondary" role="status">
+            任务已归档，学习内容仅供历史查看。
+          </p>
+        ) : detail.content_status === "generating" ? (
           <div className="flex items-center gap-2 text-sm text-muted" role="status">
             <Spinner /> 正在生成学习内容，请稍候…
           </div>
@@ -734,9 +758,32 @@ export default function TaskDetailPage() {
                       </p>
                     ) : null}
                     {exercise.submission?.grade_status === "failed" ? (
-                      <p className="text-sm text-warning mt-2" role="status">
-                        AI 评阅暂不可用，请稍后重试。
-                      </p>
+                      <div className="mt-2" role="status">
+                        {exercise.submission.manual_review_required ? (
+                          <p className="text-sm text-warning">
+                            自动评阅多次失败，已转为教师人工评阅；答案已保留。
+                          </p>
+                        ) : (
+                          <>
+                            {/* Keep the stable failure message separate so existing assistive/test consumers can match it exactly. */}
+                            <p className="text-sm text-warning">AI 评阅暂不可用，请稍后重试。</p>
+                            <p className="text-xs text-secondary">
+                              已重试 {exercise.submission.retry_count ?? 0}/{exercise.submission.retry_limit ?? 2} 次。
+                            </p>
+                          </>
+                        )}
+                        {canPractice && exercise.submission.can_retry ? (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="mt-2"
+                            loading={exerciseRetrying === exercise.id}
+                            onClick={() => void retryGeneratedExercise(exercise.id)}
+                          >
+                            重试评阅
+                          </Button>
+                        ) : null}
+                      </div>
                     ) : null}
                     {exercise.submission &&
                     ["pending", "grading"].includes(exercise.submission.grade_status) ? (

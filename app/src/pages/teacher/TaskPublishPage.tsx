@@ -31,6 +31,8 @@ import type {
   Paginated,
   PublishTaskResponse,
   TaskExercise,
+  TaskContentGenerationSource,
+  TaskContentStatus,
   TaskKnowledgePoint,
   TeacherTask,
 } from "../../api/types";
@@ -83,6 +85,14 @@ interface FormState {
   classId: string;
   dueAt: string;
   counts: boolean;
+  /** Durable background lesson-generation state returned by the teacher API. */
+  contentStatus: TaskContentStatus;
+  contentGeneratedAt: string | null;
+  contentGenerationSource: TaskContentGenerationSource;
+  contentFailureReason: string | null;
+  contentGenerationMessage: string | null;
+  contentGenerationRetryCount: number;
+  contentLastAttemptAt: string | null;
 }
 
 interface ExerciseDraft {
@@ -113,6 +123,13 @@ function emptyForm(): FormState {
     classId: "",
     dueAt: "",
     counts: true, // PRD-06 §10.1：计入掌握度由教师发布时选择，默认计入
+    contentStatus: "none",
+    contentGeneratedAt: null,
+    contentGenerationSource: "none",
+    contentFailureReason: null,
+    contentGenerationMessage: null,
+    contentGenerationRetryCount: 0,
+    contentLastAttemptAt: null,
   };
 }
 
@@ -185,7 +202,58 @@ function formFromTask(task: TeacherTask, capNames: Record<string, string>): Form
     classId: task.class_id ?? "",
     dueAt: "",
     counts: true,
+    contentStatus: task.content_status ?? "none",
+    contentGeneratedAt: task.content_generated_at ?? null,
+    contentGenerationSource: task.content_generation_source ?? "none",
+    contentFailureReason: task.content_failure_reason ?? null,
+    contentGenerationMessage: task.content_generation_message ?? null,
+    contentGenerationRetryCount: task.content_generation_retry_count ?? 0,
+    contentLastAttemptAt: task.content_last_attempt_at ?? null,
   };
+}
+
+/** Keep the durable generation fields in one mapping so polling/retry responses cannot drift. */
+function contentFieldsFromTask(task: TeacherTask): Pick<
+  FormState,
+  | "contentStatus"
+  | "contentGeneratedAt"
+  | "contentGenerationSource"
+  | "contentFailureReason"
+  | "contentGenerationMessage"
+  | "contentGenerationRetryCount"
+  | "contentLastAttemptAt"
+> {
+  return {
+    contentStatus: task.content_status ?? "none",
+    contentGeneratedAt: task.content_generated_at ?? null,
+    contentGenerationSource: task.content_generation_source ?? "none",
+    contentFailureReason: task.content_failure_reason ?? null,
+    contentGenerationMessage: task.content_generation_message ?? null,
+    contentGenerationRetryCount: task.content_generation_retry_count ?? 0,
+    contentLastAttemptAt: task.content_last_attempt_at ?? null,
+  };
+}
+
+/** An exercise is executable when it can render a student control, not merely when a row exists. */
+function isExecutableExercise(exercise: ExerciseDraft): boolean {
+  if (!exercise.question.trim()) return false;
+  if (exercise.type !== "multiple_choice") return true;
+  return exercise.options.split(/\r?\n/).some((option) => option.trim());
+}
+
+function contentSourceLabel(source: TaskContentGenerationSource): string {
+  switch (source) {
+    case "provider":
+      return "模型生成";
+    case "template":
+      return "模板兜底";
+    case "manual":
+      return "教师维护";
+    case "copied":
+      return "从上一版本复制";
+    default:
+      return "尚未生成";
+  }
 }
 
 /** Read the one-shot task handoff used when Teacher Agent opens the publisher. */
@@ -265,6 +333,7 @@ export default function TaskPublishPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [contentRetrying, setContentRetrying] = useState(false);
   // ---- AI 生成 / 已发布任务截止时间调整 ----
   const [generating, setGenerating] = useState(false);
   const [aiBanner, setAiBanner] = useState<AiBannerState | null>(null);
@@ -357,6 +426,49 @@ export default function TaskPublishPage() {
       });
     return () => controller.abort();
   }, [agentTaskHandoffRetry, capNames, loadTasks]);
+
+  useEffect(() => {
+    const taskId = form.taskId;
+    if (!taskId || form.contentStatus !== "generating") return;
+    let active = true;
+    // Generation is detached from the request that saved the task. Poll only
+    // while it is in flight, then hydrate the generated rows once a terminal
+    // state is observed; this keeps refreshes honest without overwriting edits.
+    const refresh = () => {
+      void api
+        .get<TeacherTask>(`/api/teacher/tasks/${taskId}`)
+        .then((task) => {
+          if (!active || task.id !== taskId) return;
+          setForm((current) => {
+            if (current.taskId !== taskId) return current;
+            const generatedRows =
+              current.knowledgePoints.length === 0 && current.exercises.length === 0;
+            return {
+              ...current,
+              ...contentFieldsFromTask(task),
+              ...(generatedRows
+                ? {
+                    knowledgePoints: task.knowledge_points ?? [],
+                    exercises: (task.exercises ?? []).map((exercise) => ({
+                      id: exercise.id,
+                      question: exercise.question,
+                      type: normalizeExerciseType(exercise.type),
+                      options: (exercise.options ?? []).join("\n"),
+                      reference_answer: exercise.reference_answer ?? "",
+                    })),
+                  }
+                : {}),
+            };
+          });
+        })
+        .catch(() => undefined);
+    };
+    const timer = window.setInterval(refresh, 2000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [form.contentStatus, form.taskId]);
 
   /* ------------------------------------------------ 手动输入与 AI 生成 */
 
@@ -452,11 +564,16 @@ export default function TaskPublishPage() {
 
   /* ------------------------------------------------ 校验与提交 */
 
-  /** Client-side structural validation; publishing additionally requires a class. */
+  const hasExecutableExercise = form.exercises.some(isExecutableExercise);
+
+  /** Client-side structural validation; publishing additionally requires a class and executable practice. */
   const validate = (forPublish: boolean): boolean => {
     const next: Record<string, string> = {};
     if (!form.title.trim()) next.title = "任务名称不能为空";
     if (forPublish && !form.classId) next.classId = "发布前请选择班级";
+    if (forPublish && !hasExecutableExercise) {
+      next.exercises = "发布前请至少添加一道可执行练习题";
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -464,6 +581,9 @@ export default function TaskPublishPage() {
   const buildBody = () => ({
     title: form.title,
     description: form.goal.trim() || null,
+    // Content rows are persisted immediately after this request. Deferring the
+    // worker prevents a provider/template result from racing reviewed edits.
+    defer_content_generation: true,
   });
 
   /** Persist the active learning-content tables after the task row exists. */
@@ -575,12 +695,35 @@ export default function TaskPublishPage() {
       toast.info(`已生成新版本 v${res.version}，不影响已开始的学生`);
     }
     const persistedContent = await persistContent(res.id, Boolean(res.version_bumped));
+    const hasAuthoredContent =
+      persistedContent.knowledgePoints.length > 0 || persistedContent.exercises.length > 0;
     patchForm({
       taskId: res.id,
       publishedCount: res.published_count,
       knowledgePoints: persistedContent.knowledgePoints,
       exercises: persistedContent.exercises,
+      ...(hasAuthoredContent
+        ? {
+            contentStatus: "done" as const,
+            contentGeneratedAt: new Date().toISOString(),
+            contentGenerationSource: "manual" as const,
+            contentFailureReason: null,
+            contentGenerationMessage: null,
+            contentLastAttemptAt: res.content_last_attempt_at ?? null,
+          }
+        : {}),
     });
+    // A blank saved draft retains the legacy automatic-generation behavior, but
+    // only the initial `none` state is queued implicitly. Failed generations
+    // require the explicit retry action so a teacher can see the failure first.
+    if (!hasAuthoredContent && (res.content_status ?? "none") === "none") {
+      try {
+        const queued = await api.post<TeacherTask>(`/api/teacher/tasks/${res.id}/content/retry`);
+        patchForm(contentFieldsFromTask(queued));
+      } catch {
+        // The task is still saved; the status panel exposes the next action.
+      }
+    }
     void loadTasks();
     return res;
   };
@@ -595,6 +738,34 @@ export default function TaskPublishPage() {
       toast.error(errMsg(err));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const retryContent = async () => {
+    if (!form.taskId) return;
+    setContentRetrying(true);
+    try {
+      const task = await api.post<TeacherTask>(`/api/teacher/tasks/${form.taskId}/content/retry`);
+      patchForm({
+        ...contentFieldsFromTask(task),
+        ...(task.knowledge_points || task.exercises
+          ? {
+              knowledgePoints: task.knowledge_points ?? [],
+              exercises: (task.exercises ?? []).map((exercise) => ({
+                id: exercise.id,
+                question: exercise.question,
+                type: normalizeExerciseType(exercise.type),
+                options: (exercise.options ?? []).join("\n"),
+                reference_answer: exercise.reference_answer ?? "",
+              })),
+            }
+          : {}),
+      });
+      toast.info("学习内容已重新排队，请稍候查看生成结果");
+    } catch (err) {
+      toast.error(errMsg(err, "学习内容暂时无法生成，请稍后重试"));
+    } finally {
+      setContentRetrying(false);
     }
   };
 
@@ -702,6 +873,74 @@ export default function TaskPublishPage() {
     </Card>
   );
 
+  const contentStatusPanel = form.taskId ? (
+    <div
+      className="teacher-task-content-status"
+      style={{
+        padding: "var(--space-3) var(--space-4)",
+        border: "1px solid var(--color-border)",
+        borderRadius: "var(--radius-md)",
+        background: "var(--color-surface)"
+      }}
+      role={form.contentStatus === "failed" ? "alert" : "status"}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex items-center gap-2">
+          <strong>学习内容生成</strong>
+          <span
+            className={`badge ${
+              form.contentStatus === "failed"
+                ? "badge-danger"
+                : form.contentStatus === "done"
+                  ? "badge-success"
+                  : "badge-neutral"
+            }`}
+          >
+            {form.contentStatus === "generating"
+              ? "生成中"
+              : form.contentStatus === "failed"
+                ? "生成失败"
+                : form.contentStatus === "done"
+                  ? contentSourceLabel(form.contentGenerationSource)
+                  : "待生成"}
+          </span>
+        </span>
+        {form.contentStatus === "generating" ? <Spinner size={14} /> : null}
+      </div>
+      {form.contentStatus === "generating" ? (
+        <p className="text-sm text-secondary mt-2">正在准备学习内容，页面会自动更新状态。</p>
+      ) : null}
+      {form.contentStatus === "failed" ? (
+        <p className="text-sm text-danger mt-2">
+          {form.contentFailureReason ?? "学习内容生成失败，请稍后重试"}
+        </p>
+      ) : null}
+      {form.contentStatus === "done" && form.contentGenerationMessage ? (
+        <p className="text-sm text-secondary mt-2">{form.contentGenerationMessage}</p>
+      ) : null}
+      {form.contentStatus === "done" && form.contentGenerationSource === "template" ? (
+        <p className="text-sm text-warning mt-2">当前内容来自本地模板兜底，请审核后再发布。</p>
+      ) : null}
+      {form.contentGenerationRetryCount > 0 ? (
+        <p className="text-xs text-muted mt-2">
+          已重试 {form.contentGenerationRetryCount} 次
+          {form.contentLastAttemptAt ? ` · 最近尝试 ${fmtDateTime(form.contentLastAttemptAt)}` : ""}
+        </p>
+      ) : null}
+      {form.contentStatus === "none" || form.contentStatus === "failed" ? (
+        <Button
+          className="mt-3"
+          size="sm"
+          variant="secondary"
+          loading={contentRetrying}
+          onClick={() => void retryContent()}
+        >
+          {form.contentStatus === "failed" ? "重试生成" : "生成学习内容"}
+        </Button>
+      ) : null}
+    </div>
+  ) : null;
+
   // Publishing is kept next to the live preview: class and deadline choices are easier to review
   // against the student-facing card than when they sit at the end of the long editing column.
   const publishSettings = (
@@ -771,10 +1010,25 @@ export default function TaskPublishPage() {
         <Button variant="secondary" onClick={() => void saveDraft()} loading={saving}>
           保存草稿
         </Button>
-        <Button onClick={() => void publish()} loading={publishing}>
+        <Button
+          onClick={() => void publish()}
+          loading={publishing}
+          disabled={!hasExecutableExercise}
+          aria-describedby={!hasExecutableExercise ? "publish-exercise-requirement" : undefined}
+        >
           发布
         </Button>
       </div>
+      {!hasExecutableExercise ? (
+        <p id="publish-exercise-requirement" className="text-sm text-danger mt-2" role="alert">
+          {errors.exercises ?? "发布前请至少添加一道可执行练习题"}
+        </p>
+      ) : null}
+      {!form.classId && form.title.trim() ? (
+        <p className="text-sm text-danger mt-2" role="alert">
+          {errors.classId ?? "发布前请选择班级"}
+        </p>
+      ) : null}
     </Card>
   );
 
@@ -897,6 +1151,8 @@ export default function TaskPublishPage() {
                 ) : null}
               </div>
             ) : null}
+
+            {contentStatusPanel}
 
             {/* Active task authoring surface: name, description, learning content, practice. */}
             <Card title="任务内容">

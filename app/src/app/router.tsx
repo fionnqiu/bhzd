@@ -144,7 +144,7 @@ function RoleHome() {
   return <StudentLayout />;
 }
 
-const STAFF_ROLES: Role[] = ["teacher", "content_admin", "system_admin"];
+const STAFF_ROLES: Role[] = ["teacher", "system_admin"];
 // Teachers must use the teacher portal; administrators retain student-portal support access.
 // RAG management changes shared knowledge data, so only the system administrator may enter it.
 const RAG_ADMIN_ROLES: Role[] = ["system_admin"];

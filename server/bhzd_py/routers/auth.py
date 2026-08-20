@@ -414,7 +414,7 @@ def register(
 
     role = body.role or "student"
     if role not in ("student", "teacher"):
-        # 内容/系统管理员只能由管理员后台创建，绝不开放自助注册
+        # 系统管理员只能由管理员后台创建，绝不开放自助注册
         raise ApiError(403, "ROLE_NOT_ALLOWED", "该角色不支持自助注册，请联系系统管理员开通")
 
     email = body.email.lower()
@@ -503,8 +503,17 @@ def login(
     ip = _client_ip(request)
     email = body.email.lower()
 
-    if security.is_ip_rate_limited(conn, ip):
-        raise ApiError(429, "RATE_LIMITED", security.MSG_TOO_MANY_ATTEMPTS)
+    retry_after_seconds = security.ip_rate_limit_retry_after_seconds(conn, ip)
+    if retry_after_seconds is not None:
+        # Preserve the production threshold while returning an exact, safe
+        # recovery interval that clients can turn into a disabled countdown.
+        raise ApiError(
+            429,
+            "RATE_LIMITED",
+            f"尝试过于频繁，请 {retry_after_seconds} 秒后再试",
+            details={"retry_after_seconds": retry_after_seconds},
+            headers={"Retry-After": str(retry_after_seconds)},
+        )
     if security.is_login_locked(conn, email):
         raise ApiError(429, "LOGIN_LOCKED", security.MSG_ACCOUNT_LOCKED)
 

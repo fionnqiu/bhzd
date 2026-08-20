@@ -227,6 +227,7 @@ const NOTIFICATIONS = [
     body: null,
     ref_type: "task",
     ref_id: "t9",
+    ref_status: "not_started",
     read_at: null,
     created_at: "2026-07-31T09:00:00Z",
   },
@@ -237,6 +238,7 @@ const NOTIFICATIONS = [
     body: null,
     ref_type: null,
     ref_id: null,
+    ref_status: null,
     read_at: "2026-07-30T08:00:00Z",
     created_at: "2026-07-30T08:00:00Z",
   },
@@ -246,6 +248,40 @@ function installNotificationGet() {
   mockedGet.mockImplementation((path: string) => {
     if (path === "/api/notifications/unread-count") return Promise.resolve({ unread: 2 });
     if (path === "/api/notifications") return Promise.resolve({ items: NOTIFICATIONS, total: 2 });
+    return Promise.reject(new ApiRequestError(404, "NOT_FOUND", `未 mock 的 GET ${path}`));
+  });
+}
+
+const ARCHIVED_NOTIFICATIONS = [
+  {
+    id: "n-archived",
+    type: "task_published",
+    title: "已归档任务通知",
+    body: "教师发布了新任务",
+    ref_type: "task",
+    ref_id: "archived-task",
+    ref_status: "archived",
+    read_at: null,
+    created_at: "2026-07-31T09:00:00Z",
+  },
+  {
+    id: "n-due",
+    type: "task_due_changed",
+    title: "截止时间已调整",
+    body: "请按新时间完成",
+    ref_type: "task",
+    ref_id: "active-task",
+    ref_status: "in_progress",
+    read_at: "2026-07-30T08:00:00Z",
+    created_at: "2026-07-30T08:00:00Z",
+  },
+];
+
+function installArchivedNotificationGet() {
+  mockedGet.mockImplementation((path: string) => {
+    if (path === "/api/notifications/unread-count") return Promise.resolve({ unread: 1 });
+    if (path === "/api/notifications")
+      return Promise.resolve({ items: ARCHIVED_NOTIFICATIONS, total: ARCHIVED_NOTIFICATIONS.length });
     return Promise.reject(new ApiRequestError(404, "NOT_FOUND", `未 mock 的 GET ${path}`));
   });
 }
@@ -436,6 +472,29 @@ describe("StudentLayout 通知铃铛", () => {
     expect(taskPageBell.closest(".student-workbench-floating-actions")).not.toBeNull();
     expect(taskPageBell.closest(".student-workbench-cockpit-actions")).toBeNull();
     expect(document.querySelector(".student-workbench-page-actions")).toBeNull();
+  });
+
+  it("归档任务通知显示历史说明，并保留任务与截止提醒类型标签", async () => {
+    installArchivedNotificationGet();
+    mockedPost.mockImplementation((path: string) => {
+      if (path === "/api/notifications/n-archived/read")
+        return Promise.resolve({ id: "n-archived", read: true });
+      return Promise.reject(new ApiRequestError(500, "NOT_MOCKED", `未 mock 的 POST ${path}`));
+    });
+    renderLayout();
+
+    const bell = await screen.findByRole("button", { name: "通知（1 条未读）" });
+    fireEvent.click(bell);
+    const archivedItem = await screen.findByText("已归档任务通知");
+    expect(screen.getByText("任务已归档，查看历史记录")).toBeInTheDocument();
+    expect(screen.getByText("任务")).toBeInTheDocument();
+    expect(screen.getByText("提醒")).toBeInTheDocument();
+
+    fireEvent.click(archivedItem);
+    await waitFor(() => {
+      expect(mockedPost).toHaveBeenCalledWith("/api/notifications/n-archived/read");
+    });
+    expect(await screen.findByText("任务详情标记")).toBeInTheDocument();
   });
 
   it("keeps notifications inside the active Cockpit run while the help entry stays removed", async () => {

@@ -55,7 +55,7 @@ def test_teacher_cannot_mutate_student_portal_apis(api, path, body):
     assert response.json()["error"]["code"] == "FORBIDDEN"
 
 
-@pytest.mark.parametrize("role", ("content_admin", "system_admin"))
+@pytest.mark.parametrize("role", ("system_admin",))
 def test_administrative_roles_keep_student_portal_access(api, role):
     """The learner boundary excludes teachers without removing administrator access."""
     user = api.login_as(f"{role}-student-portal@test.local", role=role)

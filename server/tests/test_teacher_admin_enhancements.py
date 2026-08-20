@@ -75,7 +75,15 @@ def _enroll(api, class_id: str, student_id: str) -> None:
 
 
 def _create_task(api, teacher, **overrides) -> dict:
-    body = {"title": "岗位任务：音频切割", "cap_ids": [CAP], "resources": [RES], "data_type": "audio"}
+    body = {
+        "title": "岗位任务：音频切割",
+        "cap_ids": [CAP],
+        "resources": [RES],
+        "data_type": "audio",
+        # The helper adds reviewed content immediately below; deferring the
+        # detached worker removes a timing race with that authoring request.
+        "defer_content_generation": True,
+    }
     body.update(overrides)
     resp = api.client.post("/api/teacher/tasks", json=body, headers=teacher["headers"])
     assert resp.status_code == 201, resp.text
@@ -87,6 +95,19 @@ def _create_task(api, teacher, **overrides) -> dict:
     ).fetchone()
     assert row is not None
     assert row["resources_json"] == "[]"
+    # Publishing now rejects empty assignments; keep this shared fixture a
+    # minimal executable lesson so notification and lifecycle tests exercise
+    # the intended fan-out path rather than the validation guard.
+    exercise = api.client.post(
+        f"/api/teacher/tasks/{task['id']}/exercises",
+        json={
+            "question": "请完成一项最小练习",
+            "type": "open_ended",
+            "reference_answer": "完成",
+        },
+        headers=teacher["headers"],
+    )
+    assert exercise.status_code == 201, exercise.text
     return task
 
 
@@ -164,6 +185,7 @@ def test_notifications_read_flow(api):
     ).fetchone()
     # A learner notice must link to its own task copy, not the teacher template.
     assert item["ref_type"] == "task" and item["ref_id"] == copied_task["id"]
+    assert item["ref_status"] == "not_started"
 
     # 未带 CSRF 的变更请求一律 403
     no_csrf = api.client.post(f"/api/notifications/{item['id']}/read")
@@ -192,6 +214,65 @@ def test_notifications_read_flow(api):
     cleared = api.client.post("/api/notifications/read-all", headers=student["headers"])
     assert cleared.status_code == 200 and cleared.json()["updated"] == 2
     assert api.client.get("/api/notifications/unread-count").json()["unread"] == 0
+
+
+def test_notification_task_status_is_owned_and_archived(api):
+    """归档通知显示历史状态，且跨用户/失效引用不泄露任务状态。"""
+
+    student = api.login_as("s-noti-status@test.local")
+    other = api.login_as("s-noti-status-other@test.local")
+    now = db_module.utc_now_iso()
+
+    def insert_task(user_id: str, status: str) -> str:
+        task_id = uuid.uuid4().hex
+        api.conn.execute(
+            "INSERT INTO learning_tasks "
+            "(id, user_id, title, source, status, created_by, created_at, updated_at) "
+            "VALUES (?, ?, ?, 'agent', ?, ?, ?, ?)",
+            (task_id, user_id, "通知状态任务", status, user_id, now, now),
+        )
+        return task_id
+
+    archived_task_id = insert_task(student["user_id"], "archived")
+    foreign_task_id = insert_task(other["user_id"], "completed")
+
+    from bhzd_py.notify import notify
+
+    archived_notice_id = notify(
+        api.conn,
+        student["user_id"],
+        "task_published",
+        "已归档任务",
+        ref_type="task",
+        ref_id=archived_task_id,
+    )
+    foreign_notice_id = notify(
+        api.conn,
+        student["user_id"],
+        "task_published",
+        "跨用户任务引用",
+        ref_type="task",
+        ref_id=foreign_task_id,
+    )
+    missing_notice_id = notify(
+        api.conn,
+        student["user_id"],
+        "task_published",
+        "失效任务引用",
+        ref_type="task",
+        ref_id="missing-task",
+    )
+    api.conn.commit()
+
+    api.act_as(student)
+    listed = api.client.get("/api/notifications")
+    assert listed.status_code == 200, listed.text
+    items = {item["id"]: item for item in listed.json()["items"]}
+    assert items[archived_notice_id]["ref_status"] == "archived"
+    # The JOIN must include notification ownership; dangling references are
+    # represented as null instead of exposing another learner's task state.
+    assert items[foreign_notice_id]["ref_status"] is None
+    assert items[missing_notice_id]["ref_status"] is None
 
 
 def test_publish_notifies_each_enrolled_student(api):

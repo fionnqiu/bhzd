@@ -270,6 +270,7 @@ describe("TaskPublishPage（PRD-02 §5）", () => {
       expect(mockedPatch).toHaveBeenCalledWith("/api/teacher/tasks/t-agent-contract", {
         title: "Agent 字段契约草稿",
         description: "根据对话生成的学习任务描述。",
+        defer_content_generation: true,
       }),
     );
     await waitFor(() =>
@@ -351,6 +352,7 @@ describe("TaskPublishPage（PRD-02 §5）", () => {
       expect(mockedPost).toHaveBeenCalledWith("/api/teacher/tasks", {
         title: "客服语音情感标注实战",
         description: null,
+        defer_content_generation: true,
       }),
     );
     const saveCall = mockedPost.mock.calls.find(([path]) => path === "/api/teacher/tasks");
@@ -400,6 +402,7 @@ describe("TaskPublishPage（PRD-02 §5）", () => {
       expect(mockedPost).toHaveBeenCalledWith("/api/teacher/tasks", {
         title: "客服语音情感标注实战",
         description: "学习并判断客服语音中的情感极性。",
+        defer_content_generation: true,
       }),
     );
     await waitFor(() =>
@@ -436,5 +439,115 @@ describe("TaskPublishPage（PRD-02 §5）", () => {
 
     expect(await screen.findByText("发布前请选择班级")).toBeInTheDocument();
     expect(mockedPost).not.toHaveBeenCalled();
+  });
+
+  it("disables publishing and explains the executable-practice requirement", async () => {
+    renderPage();
+    expect(await screen.findByDisplayValue("请选择班级")).toBeInTheDocument();
+
+    fillTitle();
+    fireEvent.change(screen.getByDisplayValue("请选择班级"), {
+      target: { value: "c1" },
+    });
+
+    const publishButton = screen.getByRole("button", { name: "发布" });
+    expect(publishButton).toBeDisabled();
+    expect(screen.getByText("发布前请至少添加一道可执行练习题")).toBeInTheDocument();
+    expect(mockedPost).not.toHaveBeenCalled();
+  });
+
+  it("shows safe generation failure details and can explicitly retry", async () => {
+    const failedTask = {
+      id: "t-failed",
+      published_count: 0,
+      title: "待生成任务",
+      goal: "需要生成学习内容",
+      description: "需要生成学习内容",
+      data_type: null,
+      cap_ids: [],
+      steps: [],
+      rubric: [],
+      knowledge_points: [],
+      exercises: [],
+      class_id: null,
+      version: 1,
+      parent_task_id: null,
+      status: "draft",
+      content_status: "failed",
+      content_generation_source: "none",
+      content_failure_reason: "模型服务暂不可用",
+      content_generation_message: null,
+      content_generation_retry_count: 2,
+      content_last_attempt_at: "2026-08-20T10:00:00Z",
+      created_at: "2026-08-20T09:00:00Z",
+      updated_at: "2026-08-20T10:00:00Z",
+    };
+    mockedGet.mockImplementation((path) => {
+      if (path === "/api/teacher/tasks") return Promise.resolve({ items: [failedTask], total: 1 });
+      if (path === "/api/teacher/classes") return Promise.resolve({ items: [testClass], total: 1 });
+      if (path === "/api/graph/nodes") return Promise.resolve({ items: [], total: 0 });
+      return Promise.reject(new Error("未 mock 的 GET " + String(path)));
+    });
+    mockedPost.mockImplementation((path) => {
+      if (path === "/api/teacher/tasks/t-failed/content/retry") {
+        return Promise.resolve({
+          ...failedTask,
+          content_status: "generating",
+          content_generation_retry_count: 3,
+        });
+      }
+      return Promise.reject(new Error("未 mock 的 POST " + String(path)));
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: /待生成任务/ }));
+
+    expect(await screen.findByText("模型服务暂不可用")).toBeInTheDocument();
+    expect(screen.getByText(/已重试 2 次/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重试生成" }));
+    await waitFor(() =>
+      expect(mockedPost).toHaveBeenCalledWith("/api/teacher/tasks/t-failed/content/retry"),
+    );
+    expect(await screen.findByText("生成中")).toBeInTheDocument();
+  });
+
+  it("labels deterministic template fallback instead of presenting it as model output", async () => {
+    const templateTask = {
+      id: "t-template",
+      published_count: 0,
+      title: "模板任务",
+      goal: "模板内容",
+      description: "模板内容",
+      data_type: null,
+      cap_ids: [],
+      steps: [],
+      rubric: [],
+      knowledge_points: [],
+      exercises: [],
+      class_id: null,
+      version: 1,
+      parent_task_id: null,
+      status: "draft",
+      content_status: "done",
+      content_generation_source: "template",
+      content_failure_reason: null,
+      content_generation_message: "模型服务暂不可用，已使用本地模板补全，请审核后发布",
+      content_generation_retry_count: 0,
+      content_last_attempt_at: "2026-08-20T10:00:00Z",
+      created_at: "2026-08-20T09:00:00Z",
+      updated_at: "2026-08-20T10:00:00Z",
+    };
+    mockedGet.mockImplementation((path) => {
+      if (path === "/api/teacher/tasks") return Promise.resolve({ items: [templateTask], total: 1 });
+      if (path === "/api/teacher/classes") return Promise.resolve({ items: [testClass], total: 1 });
+      if (path === "/api/graph/nodes") return Promise.resolve({ items: [], total: 0 });
+      return Promise.reject(new Error("未 mock 的 GET " + String(path)));
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: /模板任务/ }));
+    expect(await screen.findByText("模板兜底")).toBeInTheDocument();
+    expect(screen.getByText("当前内容来自本地模板兜底，请审核后再发布。")).toBeInTheDocument();
+    expect(screen.getByText("模型服务暂不可用，已使用本地模板补全，请审核后发布")).toBeInTheDocument();
   });
 });

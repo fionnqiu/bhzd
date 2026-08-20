@@ -155,7 +155,7 @@ describe("路由守卫", () => {
     const ragPortal = PORTALS.find((portal) => portal.key === "rag-admin");
     const adminPortal = PORTALS.find((portal) => portal.key === "admin");
 
-    expect(studentPortal?.roles).toEqual(["student", "content_admin", "system_admin"]);
+    expect(studentPortal?.roles).toEqual(["student", "system_admin"]);
     expect(ragPortal).toBeUndefined();
     expect(adminPortal?.roles).toEqual(["system_admin"]);
   });

@@ -133,3 +133,85 @@
 
 **仍需事实核验：**
 - Ruff 全仓仍有既有测试夹具重名/未使用变量告警（64 项），本次未扩大范围修复；前端全量测试仅有 jsdom 下载导航噪声，不影响断言。
+
+## [2026-08-20 21:52] 本地合成内测与账号凭据复核报告
+
+**变更文件：**
+- 新增 `evidence/internal-dogfood/2026-08-20/report.md`。
+- 新增诊断闭环与个人中心截图 `screenshots/18-result-diagnostic-report-saved.png`、`screenshots/19-profile-diagnostic-history.png`。
+
+**变更原因：**
+- 记录已批准的 2 个教师 + 10 个学生本地合成账号凭据重置、真实本地登录验证，以及学生/教师内测中发现的闭环问题。
+- 记录诊断上传、确认保存、掌握度事件和数据保留证据，便于后续修复回归。
+
+**验证：**
+- 12/12 个合成账号通过本地 HTTP 登录与退出；最终目标账号无活动会话。
+- 诊断报告成功保存，个人中心显示新增摘要和成长记录；浏览器控制台无 error/warn。
+- SQLite 在线备份保存在 `var/backups/`，未输出或持久化明文密码、密码哈希、会话令牌或诊断 token。
+
+**仍需事实核验：**
+- DF-01 至 DF-05 需要产品/开发修复后重新执行学生提交、评分、通知和批量内测回归。
+
+## [2026-08-20 23:05] 删除内容管理员角色 + 表单控件可见性 + 对话页标题胶囊化
+
+**变更文件：**
+- 前端角色移除：`app/src/api/types.ts`、`app/src/pages/admin/adminShared.ts`、`app/src/pages/admin/UsersPage.tsx`、`app/src/layouts/ShellLayout.tsx`、`app/src/layouts/TeacherLayout.tsx`、`app/src/app/router.tsx`、`app/tests/router.test.tsx`。
+- 后端角色移除：`server/bhzd_py/deps.py`、`server/bhzd_py/routers/{admin,auth,teacher,tasks,rag_admin}.py`、`server/tests/{test_auth,test_role_boundaries,test_rag_admin,test_rag_admin_tools,test_migrations}.py`。
+- 新增迁移 `server/bhzd_py/migrations/023_remove_content_admin.sql`：重建 users 表收紧 role CHECK 约束（移除 content_admin）。
+- 控件可见性：`app/src/index.css`（`.input`/`.textarea`/`.select-trigger`/`.rag-document-multi-select-trigger` 改为 `--color-border-strong` 可见边框）、`app/src/pages/admin/ProvidersPage.css`（模型输入触发器同款修复）。
+- 标题栏：`app/src/pages/student/cockpit/cockpit.css` 中 `.conversation-info-bar` 由通栏色带改为悬浮胶囊（去负边距、全圆角、轻阴影、长标题省略）。
+
+**变更原因：**
+- 用户要求彻底删除内容管理员角色（线上库无该角色用户，无数据遗留）。
+- 用户反馈供应商编辑抽屉等页面的输入框/选择框在白色浮层上"看不清"（纯透明边框 + 78% 灰底所致）。
+- 用户反馈 Agent 对话页顶部通栏标题色带突兀，选择改为悬浮胶囊。
+
+**验证：**
+- `uv run pytest -q`：474 passed（迁移 023 已在真实库副本上通过 apply_migrations 端到端验证：数据完整、外键检查零违例、重跑幂等、新 CHECK 拒绝 content_admin 写入）。
+- 前端 `vitest run` 259 通过、`tsc --noEmit` 与 `vite build` 通过。
+- 后端已按规则重启：旧 PID 13720/35700 → 新 PID 41604（父 13552），日志 `var/backend-20260820-role-cleanup.{stdout,stderr}.log`；`/api/health` ok，未登录访问 `/api/admin/users`、`/api/tasks` 均 401。
+- 浏览器实测截图：`.playwright-mcp/provider-drawer-after-fix.png`（抽屉控件边框清晰）、`users-role-filter.png`（角色筛选仅剩学生/教师/系统管理员）、`cockpit-title-pill.png`（标题胶囊）。
+
+**仍需事实核验：**
+- `001_identity.sql` 中的旧 CHECK 与注释按 sha256 防篡改机制保持原样（023 迁移头部已注明原因）；若其他环境存在 content_admin 历史用户，应用 023 会按设计失败回滚，需先人工改派角色。
+
+## [2026-08-20 23:28] 内测报告 DF-03/DF-04 修复与回归记录
+
+**变更文件：**
+- `server/bhzd_py/routers/notifications.py`、`server/bhzd_py/security.py`、`server/bhzd_py/errors.py`、`server/bhzd_py/routers/auth.py`。
+- `app/src/layouts/StudentLayout.tsx`、`app/src/auth/LoginPage.tsx`、`app/src/api/client.ts`。
+- 对应后端与前端回归测试文件。
+
+**变更原因：**
+- DF-03 通知列表需要返回收件人自有任务的状态，归档任务通知必须明确进入历史查看语义，并避免跨用户任务状态泄露。
+- DF-04 多账号走查触发 IP 限流时需要返回可用等待秒数，并让登录页在等待期间禁用提交、倒计时结束后恢复。
+
+**验证：**
+- DF-04 安全/认证测试 37 项与 DF-03 owner-scope 测试 1 项通过；前端 DF-03/DF-04 测试 29 项通过；`pnpm typecheck` 与 `git diff --check` 通过。
+- 全量后端 466 项通过、10 项因并行迁移/任务生成改动失败；全量前端 257 项通过、5 项因并行任务/评分改动失败，均未归因于本次 DF-03/DF-04 修复。
+- 已只读确认 `127.0.0.1:8787` 当前为 BHZD 进程且 `/api/health` 返回 200；因全量后端门禁未全绿，本次未重启服务。
+
+**仍需事实核验：**
+- 需在 DF-01、DF-02、DF-05 获批并修复后重新执行对应评分、空练习发布和生成状态回归；本次不扩大范围。
+
+## [2026-08-21 00:03] 内测报告 DF-01 至 DF-05 修复完成
+
+**变更文件：**
+- 评分恢复与启动回收：`server/bhzd_py/routers/tasks.py`、`server/bhzd_py/routers/teacher.py`、`server/bhzd_py/app.py`、`server/bhzd_py/migrations/025_task_grading_recovery.sql`。
+- 任务内容生成状态与发布校验：`server/bhzd_py/tools/task_tools.py`、`server/bhzd_py/migrations/024_task_content_generation_observability.sql`、`app/src/pages/teacher/TaskPublishPage.tsx`、`app/src/pages/student/TaskDetailPage.tsx`。
+- 通知归档与登录限流：`server/bhzd_py/routers/notifications.py`、`server/bhzd_py/security.py`、`server/bhzd_py/errors.py`、`server/bhzd_py/routers/auth.py`、`app/src/layouts/StudentLayout.tsx`、`app/src/auth/LoginPage.tsx`、`app/src/api/client.ts`。
+- 对应 API、迁移、前端和端到端回归测试。
+
+**变更原因：**
+- 修复报告中的 AI 评分失败闭环：保留原答案，提供有界重试，耗尽后转教师人工评阅，并支持启动恢复。
+- 发布前拒绝无可执行练习的教师任务；生成过程显示可恢复状态、失败原因、重试次数和模板兜底来源。
+- 归档通知改为历史查看语义并保持任务状态 owner-scope；登录限流返回等待秒数并在页面显示倒计时。
+
+**验证：**
+- 后端 `uv run pytest -q`：484 passed，1 个既有 Starlette 弃用警告。
+- 前端 `pnpm test:run`：32 个测试文件、266 tests 全部通过；`pnpm typecheck` 通过。
+- `git diff --check` 通过。
+- 已确认 `127.0.0.1:8787` 监听进程属于本 BHZD checkout；旧 PID 41604 已停止，新 PID 36008（uv 父进程 42184）从 `server` 启动，`GET /api/health` 返回 200；相关未认证 POST 路由返回 401。
+
+**仍需事实核验：**
+- 本次验证覆盖本地 SQLite、确定性测试和本地服务；真实 Provider、外部浏览器、生产部署与正式教学效果仍不在本地回归证明范围内。
