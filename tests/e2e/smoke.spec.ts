@@ -6,7 +6,7 @@
  *      （cd server && python -m bhzd_py.seed.loader --demo && python -m uvicorn bhzd_py.app:app --port 8787）
  *   2. playwright 配置自动拉起前端 dev server（127.0.0.1:4173，/api 代理到 8787）。
  *
- * 覆盖 PRD-00 §8 的关键验收主线：AC1（目标→计划→确认→任务）、AC2（预设入口）、
+ * 覆盖 PRD-00 §8 的关键验收主线：AC1（目标→任务草稿→预览卡→同步）、AC2（预设入口）、
  * AC5/AC6（引用与拒答）、AC7（图谱页）、教师工作台。
  *
  * 限流注意（NF5：5 次/分/IP）：整套用例只在 beforeAll 各登录一次（学生/教师），
@@ -44,7 +44,7 @@ test.describe("学生端 PRD 主线", () => {
     await expect(page.locator('[placeholder*="输入你的学习目标"]').first()).toBeVisible();
   });
 
-  test("AC1 目标输入 → Agent 计划 → 确认门 → 任务创建", async ({ page }) => {
+  test("AC1 目标输入 → Agent 生成任务草稿 → 预览卡 → 同步到学习任务", async ({ page }) => {
     await injectSession(page, STUDENT);
     await page.goto("/");
     const input = page.locator("textarea").first();
@@ -52,11 +52,14 @@ test.describe("学生端 PRD 主线", () => {
     await input.press("Enter");
     // 执行过程以步骤流呈现（plan.updated / tool.call.* 经 SSE 到达）
     await expect(page.getByTestId("agent-activity-timeline")).toBeVisible({ timeout: 20000 });
-    // 写操作必须过确认门：点「同步到学习任务」后出现同步回执
-    const confirmButton = page.getByTestId("task-sync-button");
-    await expect(confirmButton).toBeVisible({ timeout: 20000 });
-    await confirmButton.click();
-    await expect(page.getByText(/已同步到学习任务/).first()).toBeVisible({ timeout: 20000 });
+    // 回答底部出现任务卡按钮；点击打开预览弹窗
+    const openButton = page.getByTestId("task-draft-open");
+    await expect(openButton).toBeVisible({ timeout: 20000 });
+    await openButton.click();
+    await expect(page.getByText("学习任务卡预览")).toBeVisible({ timeout: 20000 });
+    // 卡片上的「同步到学习任务」即学生显式确认：点击后出现已同步回执
+    await page.getByTestId("task-draft-sync").click();
+    await expect(page.getByText(/已同步 \d+ 个学习任务/).first()).toBeVisible({ timeout: 20000 });
   });
 
   test("AC2 预设学习：路径列表 → 详情抽屉", async ({ page }) => {

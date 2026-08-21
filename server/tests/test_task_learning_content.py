@@ -10,6 +10,7 @@ from bhzd_py.routers import tasks as tasks_router
 from bhzd_py.tools import task_tools
 
 CAP = "CAP-AUD-SEGMENT-ALIGN-001"
+IMAGE_CAP = "CAP-IMG-BOX-ANNOTATE-001"
 
 
 def _create_student_task(api, user):
@@ -159,6 +160,48 @@ def test_start_learning_generates_content_and_reuses_task(api, monkeypatch):
     assert detail.json()["exercises"]
 
 
+def test_graph_learning_uses_reviewed_unit_when_provider_is_unavailable(api, monkeypatch):
+    """A graph task stays specific offline instead of falling back to a CAP-id prompt."""
+
+    monkeypatch.setattr(task_tools, "schedule_task_content", lambda *_args, **_kwargs: None)
+    student = api.login_as("content-image-unit@test.local")
+    response = api.client.post(
+        "/api/tasks/start-learning",
+        json={"cap_node_id": IMAGE_CAP, "generate_content": True},
+        headers=student["headers"],
+    )
+    assert response.status_code == 200, response.text
+    task_id = response.json()["task_id"]
+    row = api.conn.execute("SELECT * FROM learning_tasks WHERE id = ?", (task_id,)).fetchone()
+    assert row is not None
+    assert row["title"] == "掌握能力：绘制紧致目标框"
+    assert row["goal"] == "绘制覆盖目标且尽量减少背景的矩形框。"
+    assert json.loads(row["resources_json"]) == [
+        {
+            "type": "teaching_unit",
+            "ref_id": "TU-IMAGE-OCCLUSION-TRUNCATION-001",
+            "title": "区分遮挡与画面截断",
+        }
+    ]
+
+    async def unavailable(*_args, **_kwargs):
+        raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr(providers, "complete", unavailable)
+    database_path = api.conn.execute("PRAGMA database_list").fetchone()[2]
+    generated = asyncio.run(task_tools.generate_task_content(task_id, database_path=database_path))
+
+    assert generated == {"knowledge_points": 2, "exercises": 1, "status": "done"}
+    detail = api.client.get(f"/api/tasks/{task_id}", headers=student["headers"])
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert [point["title"] for point in body["knowledge_points"]] == [
+        "区分遮挡与画面截断学习目标",
+        "区分遮挡与画面截断判定规则",
+    ]
+    assert "occlusion 表示目标仍在图像范围内" in body["knowledge_points"][1]["content"]
+    assert body["exercises"][0]["question"] == "提交 JSON：分别判断 occluded 和 truncated，不得把两个状态合并为单一标签。"
+    assert "reference_answer" not in body["exercises"][0]
 def test_content_generation_uses_the_persisted_stage_description(api, monkeypatch):
     """A staged Agent row must give its own description to the content worker."""
 

@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 from ..agent import conversation_memory
 from ..agent import media
 from ..agent import providers
+from ..agent import task_drafts as agent_task_drafts
 from ..agent.composer import sanitize_model_text
 from ..agent import events as agent_events
 from ..agent.orchestrator import execute_run, spawn
@@ -582,6 +583,8 @@ async def get_conversation(
         "activities_by_run": _project_conversation_activities(
             db, conversation_id, current.user["id"]
         ),
+        # 历史会话中的任务草稿投影：回答底部的预览/同步按钮据此复原
+        "task_drafts_by_run": agent_task_drafts.projections_by_run(db, conversation_id),
     }
 
 

@@ -70,15 +70,16 @@ def _insert_follow_up_run(db, user_id: str, conversation_id: str, input_text: st
     return run_id
 
 
-def _task_create_args(db, run_id: str) -> dict:
-    """Read the pending write's frozen arguments, which are the plan's output contract."""
+def _task_draft_card(db, run_id: str) -> dict:
+    """Read the persisted task draft's first card, which is the plan's output contract."""
 
     row = db.execute(
-        "SELECT args_json FROM tool_calls WHERE run_id = ? AND tool_name = 'task.create'",
-        (run_id,),
+        "SELECT card_json FROM task_drafts WHERE run_id = ?", (run_id,)
     ).fetchone()
     assert row is not None
-    return json.loads(row["args_json"])
+    cards = json.loads(row["card_json"])["cards"]
+    assert cards, "任务草稿至少包含一张任务卡"
+    return cards[0]
 
 
 def _capture_l3_data_type_preference(db, user_id: str, preference: str) -> None:
@@ -365,12 +366,13 @@ def test_goal_reply_reuses_captured_scope_and_becomes_the_plan_goal(
 
     # This phrase is recognized as learn_goal, but answers the explicit goal
     # question rather than starting a new task with the old scope by accident.
-    args = _task_create_args(db, third_run)
-    assert args["goal"] == "学习规范"
-    assert args["data_type"] == "text"
+    card = _task_draft_card(db, third_run)
+    assert card["goal"] == "学习规范"
+    assert card["data_type"] == "text"
+    # 任务类意图不再停在 task.create 写门：草稿生成后本轮即完成
     assert db.execute(
         "SELECT status FROM agent_runs WHERE id = ?", (third_run,)
-    ).fetchone()["status"] == "waiting_confirmation"
+    ).fetchone()["status"] == "completed"
 
 
 def test_full_goal_after_goal_question_does_not_inherit_old_scope(
@@ -389,9 +391,9 @@ def test_full_goal_after_goal_question_does_not_inherit_old_scope(
 
     # A new request supplies its own scope, so the prior clarification must not
     # leak into this independent plan.
-    args = _task_create_args(db, new_run)
-    assert args["goal"] == "我想学图像标注"
-    assert args["data_type"] == "image"
+    card = _task_draft_card(db, new_run)
+    assert card["goal"] == "我想学图像标注"
+    assert card["data_type"] == "image"
 
 
 @pytest.mark.parametrize("intervening_status", ("failed", "waiting_confirmation"))
@@ -435,9 +437,9 @@ def test_new_recognized_intent_does_not_inherit_old_clarification(
 
     new_run = _insert_follow_up_run(db, user_id, conversation_id, "我想学图像标注")
     asyncio.run(orchestrator.execute_run(new_run, tmp_db_path))
-    args = _task_create_args(db, new_run)
-    assert args["goal"] == "我想学图像标注"
-    assert args["data_type"] == "image"
+    card = _task_draft_card(db, new_run)
+    assert card["goal"] == "我想学图像标注"
+    assert card["data_type"] == "image"
 
 
 def test_l3_generic_preference_fills_omitted_student_task_type(
@@ -449,11 +451,11 @@ def test_l3_generic_preference_fills_omitted_student_task_type(
     run_id, _ = insert_run(db, user_id, "我想学客服标注")
     asyncio.run(orchestrator.execute_run(run_id, tmp_db_path))
 
-    args = _task_create_args(db, run_id)
-    assert args["data_type"] == "audio"
+    card = _task_draft_card(db, run_id)
+    assert card["data_type"] == "audio"
     # The historical preference is reduced to an enum; it cannot replace the
     # current task wording or leak its original text into tool arguments.
-    assert args["goal"] == "我想学客服标注"
+    assert card["goal"] == "我想学客服标注"
 
 
 def test_current_explicit_type_wins_over_conversation_and_l3_preference(
@@ -470,7 +472,7 @@ def test_current_explicit_type_wins_over_conversation_and_l3_preference(
     db.commit()
     asyncio.run(orchestrator.execute_run(run_id, tmp_db_path))
 
-    assert _task_create_args(db, run_id)["data_type"] == "image"
+    assert _task_draft_card(db, run_id)["data_type"] == "image"
 
 
 def test_ambiguous_current_type_signal_does_not_fall_back_to_l3(
@@ -779,9 +781,63 @@ def test_rag_insufficient_reports_model_unavailable_when_providers_do_not_respon
     assert events.CITATION_ATTACHED not in _event_types(fetch_events(tmp_db_path, run_id))
 
 
+def _insert_diagnose_run(db, user_id: str) -> tuple[str, str]:
+    """插入一条诊断上传运行：其计划仍含 diagnostic.save_summary 写门。"""
+
+    run_id, conv_id = insert_run(db, user_id, "帮我诊断标注结果")
+    db.execute(
+        "UPDATE agent_runs SET plan_json = ? WHERE id = ?",
+        (json.dumps({"attachment": {"diagnostic_token": "tok-1"}}), run_id),
+    )
+    db.commit()
+    return run_id, conv_id
+
+
+def test_task_intent_generates_draft_without_write_gate(db, tmp_db_path, user_id, monkeypatch):
+    """任务类意图的新链路：读工具 → 任务草稿落库 + task.draft 事件，不再开写门。"""
+
+    install_stub_tools(monkeypatch)
+    run_id, conv_id = insert_run(db, user_id, "我想学车载唤醒词标注")
+    asyncio.run(orchestrator.execute_run(run_id, tmp_db_path))
+
+    run = db.execute("SELECT * FROM agent_runs WHERE id = ?", (run_id,)).fetchone()
+    assert run["status"] == "completed"
+    tool_names = {
+        row["tool_name"]
+        for row in db.execute(
+            "SELECT tool_name FROM tool_calls WHERE run_id = ?", (run_id,)
+        ).fetchall()
+    }
+    assert "task.create" not in tool_names
+    assert "task.preview" not in tool_names
+    assert db.execute(
+        "SELECT COUNT(*) AS c FROM pending_confirmations WHERE run_id = ?", (run_id,)
+    ).fetchone()["c"] == 0
+
+    # 离线 composer → 模板卡回退，但草稿仍落库且可同步（链路不断）
+    draft = db.execute(
+        "SELECT * FROM task_drafts WHERE run_id = ?", (run_id,)
+    ).fetchone()
+    assert draft is not None and draft["status"] == "draft"
+    cards = json.loads(draft["card_json"])["cards"]
+    assert cards and cards[0]["data_type"] == "audio"
+    rows = fetch_events(tmp_db_path, run_id)
+    draft_events = [
+        row for row in rows if row["event_type"] == events.TASK_DRAFT_UPDATED
+    ]
+    assert draft_events
+    assert draft_events[-1]["payload"]["draft"]["id"] == draft["id"]
+    assert _event_types(rows)[-1] == events.RUN_COMPLETED
+    message = db.execute(
+        "SELECT content FROM messages WHERE conversation_id = ? AND role = 'assistant'",
+        (conv_id,),
+    ).fetchone()
+    assert "查看学习任务卡" in message["content"]
+
+
 def test_run_stops_at_write_gate(db, tmp_db_path, user_id, monkeypatch):
     install_stub_tools(monkeypatch)
-    run_id, _ = insert_run(db, user_id, "我想学车载唤醒词标注")
+    run_id, _ = _insert_diagnose_run(db, user_id)
     asyncio.run(orchestrator.execute_run(run_id, tmp_db_path))
 
     run = db.execute("SELECT * FROM agent_runs WHERE id = ?", (run_id,)).fetchone()
@@ -791,7 +847,7 @@ def test_run_stops_at_write_gate(db, tmp_db_path, user_id, monkeypatch):
         "SELECT * FROM pending_confirmations WHERE run_id = ?", (run_id,)
     ).fetchone()
     assert confirmation is not None
-    assert confirmation["action_type"] == "task.create"
+    assert confirmation["action_type"] == "diagnostic.save_summary"
     assert confirmation["status"] == "pending"
 
     rows = fetch_events(tmp_db_path, run_id)
@@ -803,18 +859,18 @@ def test_run_stops_at_write_gate(db, tmp_db_path, user_id, monkeypatch):
         "SELECT tool_name, status FROM tool_calls WHERE run_id = ?", (run_id,)
     ).fetchall()
     by_name = {t["tool_name"]: t["status"] for t in tool_calls}
-    assert by_name["task.create"] == "awaiting_confirmation"
-    assert by_name["rag.search"] == "completed"
+    assert by_name["diagnostic.save_summary"] == "awaiting_confirmation"
+    assert by_name["diagnostic.preview"] == "completed"
 
 
 def test_continue_run_after_confirm(db, tmp_db_path, user_id, monkeypatch):
     stubs = install_stub_tools(monkeypatch)
-    run_id, conv_id = insert_run(db, user_id, "我想学车载唤醒词标注")
+    run_id, conv_id = _insert_diagnose_run(db, user_id)
     asyncio.run(orchestrator.execute_run(run_id, tmp_db_path))
 
     # 模拟确认路由：同步 apply + tool_call 置 completed（confirmations.py 的行为）
     tool_call = db.execute(
-        "SELECT * FROM tool_calls WHERE run_id = ? AND tool_name = 'task.create'",
+        "SELECT * FROM tool_calls WHERE run_id = ? AND tool_name = 'diagnostic.save_summary'",
         (run_id,),
     ).fetchone()
     run = db.execute("SELECT * FROM agent_runs WHERE id = ?", (run_id,)).fetchone()
@@ -824,7 +880,7 @@ def test_continue_run_after_confirm(db, tmp_db_path, user_id, monkeypatch):
     ).fetchone()
     ctx = ToolContext(db=db, config=None, user_row=user, run_row=run,
                       conversation_row=conv, args=json.loads(tool_call["args_json"]))
-    result = stubs["task.create"].apply(ctx)
+    result = stubs["diagnostic.save_summary"].apply(ctx)
     db.execute(
         "UPDATE tool_calls SET status = 'completed', result_json = ? WHERE id = ?",
         (json.dumps(result, ensure_ascii=False), tool_call["id"]),

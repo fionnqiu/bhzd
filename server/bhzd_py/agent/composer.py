@@ -634,6 +634,24 @@ def template_tool_summary(tool_name: str, result: Any) -> str:
     return f"{tool_name} 执行完成。"
 
 
+def template_task_draft_summary(cards: list[dict[str, Any]]) -> str:
+    """任务草稿的降级文案：列卡名并引导使用回答下方的预览/同步按钮。
+
+    只在无 Provider 的模板降级路径使用——有模型时草稿卡已作为证据进入
+    合成消息，由模型自然介绍。
+    """
+
+    titles = [str(card.get("title") or "未命名任务") for card in cards if isinstance(card, dict)]
+    if not titles:
+        return "学习任务草稿已生成，点击下方「查看学习任务卡」预览并同步。"
+    if len(titles) == 1:
+        return f"已生成学习任务草稿「{titles[0]}」，点击下方「查看学习任务卡」预览并同步。"
+    lines = [f"已生成 {len(titles)} 个分阶段学习任务草稿："]
+    lines += [f"{index}. {title}" for index, title in enumerate(titles, 1)]
+    lines.append("点击下方「查看学习任务卡」预览并同步。")
+    return "\n".join(lines)
+
+
 def template_plan_summary(plan: dict[str, Any], tool_results: dict[str, Any]) -> str:
     """整轮运行的降级总结：列步骤结果，不生成自然语言发挥（PRD-06 §11.1）。
 

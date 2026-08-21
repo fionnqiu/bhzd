@@ -18,7 +18,13 @@ from _agent_helpers import (
     wait_run_status,
 )
 
-_GATE_INPUT = "我想学车载唤醒词标注"  # 信息完整 → 计划直达 task.create 写门
+_GATE_INPUT = "帮我诊断标注结果"  # 带诊断附件 → 计划直达 diagnostic.save_summary 写门
+_GATE_BODY = {
+    "input": _GATE_INPUT,
+    # 任务类意图已改为任务草稿链路（无写门）；诊断流仍走确认门，
+    # 因此确认机制的 API 契约用它覆盖。
+    "attachment": {"diagnostic_token": "tok-1"},
+}
 
 
 @pytest.fixture()
@@ -32,7 +38,7 @@ def client(tmp_db_path, monkeypatch):
 
 def _open_gate(client, tmp_db_path) -> tuple[str, str]:
     """启动一轮直达写确认门的运行，返回 (run_id, confirmation_id)。"""
-    response = client.post("/api/runs", json={"input": _GATE_INPUT},
+    response = client.post("/api/runs", json=_GATE_BODY,
                            headers=csrf_headers())
     assert response.status_code == 202, response.text
     run_id = response.json()["run_id"]
@@ -41,8 +47,8 @@ def _open_gate(client, tmp_db_path) -> tuple[str, str]:
     assert detail["run"]["status"] == "waiting_confirmation"
     assert len(detail["confirmations"]) == 1
     confirmation = detail["confirmations"][0]
-    assert confirmation["action_type"] == "task.create"
-    assert confirmation["preview"]["action"] == "task.create"  # 预览载荷
+    assert confirmation["action_type"] == "diagnostic.save_summary"
+    assert confirmation["preview"]["action"] == "diagnostic.save_summary"  # 预览载荷
     return run_id, confirmation["id"]
 
 
@@ -55,7 +61,7 @@ def test_confirm_applies_and_completes(client, tmp_db_path):
     assert response.status_code == 200, response.text
     payload = response.json()
     assert payload["status"] == "confirmed"
-    assert payload["result"]["applied"] == "task.create"  # stub apply 真被执行
+    assert payload["result"]["applied"] == "diagnostic.save_summary"  # stub apply 真被执行
 
     # 续跑完成整轮
     wait_run_status(tmp_db_path, run_id, ("completed",))
@@ -67,7 +73,7 @@ def test_confirm_applies_and_completes(client, tmp_db_path):
         ).fetchone()
         assert confirmation["status"] == "confirmed"
         tool_call = conn.execute(
-            "SELECT status FROM tool_calls WHERE run_id = ? AND tool_name = 'task.create'",
+            "SELECT status FROM tool_calls WHERE run_id = ? AND tool_name = 'diagnostic.save_summary'",
             (run_id,),
         ).fetchone()
         assert tool_call["status"] == "completed"
@@ -101,7 +107,7 @@ def test_cancel_applies_nothing(client, tmp_db_path):
         task_count = conn.execute("SELECT COUNT(*) AS c FROM learning_tasks").fetchone()["c"]
         assert task_count == 0
         tool_call = conn.execute(
-            "SELECT status FROM tool_calls WHERE run_id = ? AND tool_name = 'task.create'",
+            "SELECT status FROM tool_calls WHERE run_id = ? AND tool_name = 'diagnostic.save_summary'",
             (run_id,),
         ).fetchone()
         assert tool_call["status"] == "cancelled"
@@ -109,7 +115,7 @@ def test_cancel_applies_nothing(client, tmp_db_path):
             "SELECT plan_json FROM agent_runs WHERE id = ?", (run_id,)
         ).fetchone()
         steps = json.loads(plan["plan_json"])["steps"]
-        assert next(step for step in steps if step["tool"] == "task.create")["status"] == "cancelled"
+        assert next(step for step in steps if step["tool"] == "diagnostic.save_summary")["status"] == "cancelled"
         notice = conn.execute(
             "SELECT content FROM messages WHERE run_id = ? AND role = 'assistant'",
             (run_id,),
@@ -146,7 +152,7 @@ def test_expired_confirmation_returns_410(client, tmp_db_path):
         ).fetchone()
         assert row["status"] == "expired"
         tool = conn.execute(
-            "SELECT status FROM tool_calls WHERE run_id = ? AND tool_name = 'task.create'",
+            "SELECT status FROM tool_calls WHERE run_id = ? AND tool_name = 'diagnostic.save_summary'",
             (run_id,),
         ).fetchone()
         assert tool["status"] == "cancelled"
@@ -155,7 +161,7 @@ def test_expired_confirmation_returns_410(client, tmp_db_path):
         ).fetchone()
         assert run["status"] == "completed"
         steps = json.loads(run["plan_json"])["steps"]
-        assert next(step for step in steps if step["tool"] == "task.create")["status"] == "cancelled"
+        assert next(step for step in steps if step["tool"] == "diagnostic.save_summary")["status"] == "cancelled"
         terminal_events = conn.execute(
             """
             SELECT event_type, payload_json FROM agent_events
@@ -232,7 +238,7 @@ def test_claimed_confirmation_rejects_double_click_and_cancel(client, tmp_db_pat
     conn = open_db(tmp_db_path)
     try:
         conn.execute(
-            "UPDATE tool_calls SET status = 'running' WHERE run_id = ? AND tool_name = 'task.create'",
+            "UPDATE tool_calls SET status = 'running' WHERE run_id = ? AND tool_name = 'diagnostic.save_summary'",
             (run_id,),
         )
         conn.commit()
@@ -252,7 +258,7 @@ def test_claimed_confirmation_rejects_double_click_and_cancel(client, tmp_db_pat
     conn = open_db(tmp_db_path)
     try:
         tool = conn.execute(
-            "SELECT status FROM tool_calls WHERE run_id = ? AND tool_name = 'task.create'",
+            "SELECT status FROM tool_calls WHERE run_id = ? AND tool_name = 'diagnostic.save_summary'",
             (run_id,),
         ).fetchone()
         confirmation = conn.execute(
@@ -321,7 +327,7 @@ def test_confirm_cannot_cross_deadline_between_precheck_and_claim(
     try:
         assert conn.execute("SELECT COUNT(*) AS c FROM learning_tasks").fetchone()["c"] == 0
         tool = conn.execute(
-            "SELECT status FROM tool_calls WHERE run_id = ? AND tool_name = 'task.create'",
+            "SELECT status FROM tool_calls WHERE run_id = ? AND tool_name = 'diagnostic.save_summary'",
             (run_id,),
         ).fetchone()
         assert tool["status"] == "cancelled"
@@ -363,7 +369,7 @@ def test_cancel_cannot_cross_deadline_between_precheck_and_transition(
         run = conn.execute("SELECT status FROM agent_runs WHERE id = ?", (run_id,)).fetchone()
         assert run["status"] == "completed"
         tool = conn.execute(
-            "SELECT status FROM tool_calls WHERE run_id = ? AND tool_name = 'task.create'",
+            "SELECT status FROM tool_calls WHERE run_id = ? AND tool_name = 'diagnostic.save_summary'",
             (run_id,),
         ).fetchone()
         assert tool["status"] == "cancelled"
@@ -381,7 +387,7 @@ def test_apply_failure_resolves_plan_gate_and_terminal_events(
     def fail_apply(_ctx):
         raise RuntimeError("test-only apply failure")
 
-    monkeypatch.setattr(registry.TOOLS["task.create"], "apply", fail_apply)
+    monkeypatch.setattr(registry.TOOLS["diagnostic.save_summary"], "apply", fail_apply)
     response = client.post(
         f"/api/confirmations/{confirmation_id}/confirm", headers=csrf_headers()
     )
@@ -399,7 +405,7 @@ def test_apply_failure_resolves_plan_gate_and_terminal_events(
         ).fetchone()
         assert run["status"] == "failed"
         steps = json.loads(run["plan_json"])["steps"]
-        assert next(step for step in steps if step["tool"] == "task.create")["status"] == "failed"
+        assert next(step for step in steps if step["tool"] == "diagnostic.save_summary")["status"] == "failed"
         terminal = conn.execute(
             """
             SELECT event_type FROM agent_events

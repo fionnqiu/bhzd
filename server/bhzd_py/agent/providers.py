@@ -62,6 +62,7 @@ _SMOKE_CAPABILITY_BY_ROLE = {
     "grader": "chat",
     "none": "chat",
 }
+_ASSIGNABLE_PROVIDER_ROLES = frozenset(_SMOKE_CAPABILITY_BY_ROLE) - {"none"}
 # A connectivity check is an interactive admin action, not a normal model run.
 # Keep it short even when the saved runtime timeout permits several minutes.
 _PROVIDER_TEST_TIMEOUT_SECONDS = 8.0
@@ -147,13 +148,28 @@ class ProviderError(RuntimeError):
 def get_enabled_provider(db: sqlite3.Connection, role: str) -> sqlite3.Row | None:
     """取指定角色的启用 provider 行。
 
-    set-role 接口保证同角色至多一行；ORDER BY 只是防御性兜底。
+    A row may now own several roles.  The query therefore filters in Python so
+    malformed legacy JSON cannot make SQLite's JSON extension a runtime dependency.
     """
-    return db.execute(
-        "SELECT * FROM provider_configs WHERE role = ? AND enabled = 1"
-        " ORDER BY updated_at DESC LIMIT 1",
-        (role,),
-    ).fetchone()
+    rows = db.execute(
+        "SELECT * FROM provider_configs WHERE enabled = 1 ORDER BY updated_at DESC"
+    ).fetchall()
+    # Keep malformed role arrays from hiding a valid legacy scalar projection.
+    for row in rows:
+        raw_roles = row["roles_json"] if "roles_json" in row.keys() else None
+        roles: list[str] = []
+        if raw_roles:
+            try:
+                parsed = json.loads(raw_roles)
+            except (json.JSONDecodeError, TypeError):
+                parsed = None
+            if isinstance(parsed, list):
+                roles = [value for value in parsed if value in _ASSIGNABLE_PROVIDER_ROLES]
+        if not roles and row["role"] != "none":
+            roles = [str(row["role"])]
+        if role in roles:
+            return row
+    return None
 
 
 def get_provider_by_role(db: sqlite3.Connection, role: str) -> sqlite3.Row | None:
@@ -1561,14 +1577,30 @@ async def _smoke_rerank(row: sqlite3.Row) -> None:
         raise ProviderError("invalid_rerank_response")
 
 
-async def test_provider(row: sqlite3.Row) -> dict[str, Any]:
+async def test_provider(row: sqlite3.Row, role: str | None = None) -> dict[str, Any]:
     """Run the smallest role-appropriate live provider capability check.
 
     The stored result intentionally contains only safe metadata.  In
     particular, it never retains the one-time prompt, the provider response,
     URL, request headers, or decrypted API key.
     """
-    raw_role = str(row["role"])
+    # A multi-role row is tested against the first persisted assignment when no
+    # capability was explicitly selected; this avoids silently using a stale
+    # scalar projection after a legacy row gains a second role.
+    raw_role = role
+    if raw_role is None:
+        raw_roles = row["roles_json"] if "roles_json" in row.keys() else None
+        parsed_roles: list[str] = []
+        if raw_roles:
+            try:
+                parsed = json.loads(raw_roles)
+            except (json.JSONDecodeError, TypeError):
+                parsed = None
+            if isinstance(parsed, list):
+                parsed_roles = [
+                    value for value in parsed if value in _ASSIGNABLE_PROVIDER_ROLES
+                ]
+        raw_role = parsed_roles[0] if parsed_roles else str(row["role"])
     capability = _SMOKE_CAPABILITY_BY_ROLE.get(raw_role)
     reported_role = raw_role if capability is not None else "unknown"
     start = time.perf_counter()

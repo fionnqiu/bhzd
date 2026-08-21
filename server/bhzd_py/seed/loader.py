@@ -27,6 +27,7 @@ from ..config import AppConfig, get_config
 from ..db import apply_migrations, connect, utc_now_iso
 from ..rag.local_embed import EMBEDDING_MODEL, embed_text
 from ..security import hash_password
+from .demo_learning_content import get_demo_learning_content
 from .presets import get_presets
 
 logger = logging.getLogger(__name__)
@@ -296,6 +297,137 @@ def _ingest_demo_document(
     return doc_id, len(chunks), True
 
 
+def _seed_demo_learning_tasks(
+    conn: sqlite3.Connection,
+    *,
+    student_id: str,
+    admin_id: str,
+    now: str,
+) -> dict[str, int]:
+    """为每条内置预设写入一条可追溯的静态学习任务及练习内容。
+
+    任务、知识点和题目都使用确定性 id。这样 demo seed 可以安全重跑，也能
+    在旧的 NER 演示任务已经存在时只补齐缺失内容，不依赖异步 Provider。
+    """
+    presets_by_id = {preset["id"]: preset for preset in get_presets()}
+    summary = {"tasks_created": 0, "knowledge_points_created": 0, "exercises_created": 0}
+    for lesson in get_demo_learning_content():
+        preset = presets_by_id[lesson["preset_id"]]
+        task_id = _seed_id(lesson["task_key"])
+        steps = [
+            {
+                "title": point["title"],
+                "description": point["content"],
+            }
+            for point in lesson["knowledge_points"]
+        ]
+        resources = [
+            {
+                "type": "graph_task",
+                "title": "知识图谱任务",
+                "ref_id": lesson["graph_task_id"],
+            },
+            *[
+                {
+                    "type": "teaching_unit",
+                    "title": unit_id,
+                    "ref_id": unit_id,
+                }
+                for unit_id in preset["unit_ids"]
+            ],
+        ]
+        cursor = conn.execute(
+            """
+            INSERT OR IGNORE INTO learning_tasks
+              (id, user_id, title, goal, data_type, cap_ids_json,
+               source, status, steps_json, resources_json,
+               counts_toward_mastery, created_by, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'preset', 'not_started', ?, ?, 1, ?, ?, ?)
+            """,
+            (
+                task_id,
+                student_id,
+                "NER 实体标注入门练习" if lesson["preset_id"] == "preset-ner-intro" else f"{preset['title']}演示练习",
+                preset["goal"],
+                preset["data_type"],
+                json.dumps(preset["cap_ids"], ensure_ascii=False),
+                json.dumps(steps, ensure_ascii=False),
+                json.dumps(resources, ensure_ascii=False),
+                admin_id,
+                now,
+                now,
+            ),
+        )
+        summary["tasks_created"] += int(cursor.rowcount == 1)
+        # Refresh only the deterministic demo row so the former NER seed gains
+        # the same graph traceability and content status as the new preset rows.
+        conn.execute(
+            """
+            UPDATE learning_tasks
+               SET title = ?, goal = ?, data_type = ?, cap_ids_json = ?,
+                   source = 'preset', steps_json = ?, resources_json = ?,
+                   content_status = 'done',
+                   content_generated_at = COALESCE(content_generated_at, ?),
+                   content_generation_source = 'manual',
+                   content_failure_reason = NULL,
+                   content_generation_message = '内置项目演示内容',
+                   updated_at = ?
+             WHERE id = ?
+            """,
+            (
+                "NER 实体标注入门练习" if lesson["preset_id"] == "preset-ner-intro" else f"{preset['title']}演示练习",
+                preset["goal"],
+                preset["data_type"],
+                json.dumps(preset["cap_ids"], ensure_ascii=False),
+                json.dumps(steps, ensure_ascii=False),
+                json.dumps(resources, ensure_ascii=False),
+                now,
+                now,
+                task_id,
+            ),
+        )
+        for index, point in enumerate(lesson["knowledge_points"]):
+            cursor = conn.execute(
+                """
+                INSERT OR IGNORE INTO task_knowledge_points
+                  (id, task_id, title, content, sort_order, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    _seed_id(f"{lesson['task_key']}:knowledge:{index}"),
+                    task_id,
+                    point["title"],
+                    point["content"],
+                    index,
+                    now,
+                    now,
+                ),
+            )
+            summary["knowledge_points_created"] += int(cursor.rowcount == 1)
+        for index, exercise in enumerate(lesson["exercises"]):
+            cursor = conn.execute(
+                """
+                INSERT OR IGNORE INTO task_exercises
+                  (id, task_id, question, type, options_json, reference_answer, sort_order, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    _seed_id(f"{lesson['task_key']}:exercise:{index}"),
+                    task_id,
+                    exercise["question"],
+                    exercise["type"],
+                    json.dumps(exercise["options"], ensure_ascii=False)
+                    if exercise["options"]
+                    else None,
+                    exercise["reference_answer"],
+                    index,
+                    now,
+                ),
+            )
+            summary["exercises_created"] += int(cursor.rowcount == 1)
+    return summary
+
+
 def run_seed(demo: bool = False, config: AppConfig | None = None) -> dict:
     """执行种子加载，返回汇总字典（测试与 CLI 共用此入口）。"""
     config = config or get_config()
@@ -361,7 +493,14 @@ def run_seed(demo: bool = False, config: AppConfig | None = None) -> dict:
 
 def _seed_demo(conn: sqlite3.Connection, *, school_id: str, admin_id: str) -> dict:
     """`--demo` 演示数据：账号、班级、台账、评测用例与 4 篇已发布文档。"""
-    demo_summary: dict = {"users_created": 0, "documents": [], "eval_cases": 0}
+    demo_summary: dict = {
+        "users_created": 0,
+        "documents": [],
+        "eval_cases": 0,
+        "tasks_created": 0,
+        "knowledge_points_created": 0,
+        "exercises_created": 0,
+    }
 
     demo_users = [
         ("student@demo.bhzd", "演示学生", "student"),
@@ -452,28 +591,11 @@ def _seed_demo(conn: sqlite3.Connection, *, school_id: str, admin_id: str) -> di
             )
             demo_summary["eval_cases"] += 1
 
-    # 示例学习任务（agent 来源，NER 入门）与一条诊断摘要：演示"任务+诊断"数据形态
-    task_id = _seed_id("task:demo-ner-intro")
-    conn.execute(
-        "INSERT OR IGNORE INTO learning_tasks (id, user_id, title, goal, data_type,"
-        " cap_ids_json, source, status, steps_json, resources_json,"
-        " counts_toward_mastery, created_by, created_at, updated_at)"
-        " VALUES (?, ?, ?, ?, 'text', ?, 'agent', 'not_started', ?, '[]', 1, ?, ?, ?)",
-        (
-            task_id,
-            student_id,
-            "NER 实体标注入门练习",
-            "按 BIO 规范完成一段客服对话的实体标注",
-            json.dumps(["CAP-TXT-ENTITY-BOUNDARY-001"], ensure_ascii=False),
-            json.dumps(
-                [{"title": "通读 NER 规范", "description": "重点掌握 BIO 边界与最长实体优先规则"}],
-                ensure_ascii=False,
-            ),
-            demo_admin_id,
-            now,
-            now,
-        ),
+    # 预设任务使用静态、项目相关内容，确保演示账号打开任务即可练习。
+    task_summary = _seed_demo_learning_tasks(
+        conn, student_id=student_id, admin_id=demo_admin_id, now=now
     )
+    demo_summary.update(task_summary)
     conn.execute(
         "INSERT OR IGNORE INTO diagnostic_summaries (id, user_id, file_format, data_type,"
         " error_count, severity_counts_json, report_json, weak_cap_ids_json,"
@@ -523,6 +645,10 @@ def main(argv: list[str] | None = None) -> int:
             state = "新建" if doc["created"] else "已存在（跳过）"
             print(f"  文档 {doc['title']}：{doc['chunks']} 个切片，{state}")
         print(f"本次新建评测用例：{demo['eval_cases']} 条")
+        print(
+            f"本次新建预设任务：{demo['tasks_created']} 条，"
+            f"知识点：{demo['knowledge_points_created']} 条，练习：{demo['exercises_created']} 道"
+        )
     return 0
 
 

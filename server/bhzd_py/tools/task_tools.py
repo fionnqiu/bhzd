@@ -119,6 +119,107 @@ def _cap_names(cap_ids: list[str]) -> list[dict[str, str]]:
     return named
 
 
+def graph_learning_context(cap_id: str) -> dict[str, Any] | None:
+    """Return the reviewed local teaching context for one graph capability.
+
+    A graph CAP is only an index entry.  The returned teaching-unit projection
+    is deliberately filtered to the same published/student-visible contract as
+    the graph API, so automatic lessons never turn catalogue metadata or draft
+    course material into student-facing content.
+    """
+
+    try:
+        from ..diagnosis.engine import load_teaching_units
+        from ..graphx import reason
+
+        detail = reason.node_detail(cap_id)
+    except Exception:
+        logger.warning("图谱学习上下文读取失败: %s", cap_id, exc_info=True)
+        return None
+    if not isinstance(detail, dict) or detail.get("type") != "CAP":
+        return None
+
+    units_by_id = {
+        str(unit["id"]): unit
+        for unit in load_teaching_units()
+        if isinstance(unit, dict) and isinstance(unit.get("id"), str)
+    }
+    teaching_units: list[dict[str, Any]] = []
+    seen_unit_ids: set[str] = set()
+    for graph_task in detail.get("tasks") or []:
+        if not isinstance(graph_task, dict):
+            continue
+        for link in graph_task.get("teaching_unit_links") or []:
+            if not isinstance(link, dict):
+                continue
+            unit_id = link.get("unit_id")
+            unit = units_by_id.get(unit_id) if isinstance(unit_id, str) else None
+            if (
+                unit is None
+                or unit_id in seen_unit_ids
+                or not link.get("consumable")
+                or not link.get("student_visible")
+                or not link.get("in_student_visible_index")
+                or link.get("review_status") != "published"
+                or unit.get("review_status") != "published"
+                or not unit.get("student_visible")
+            ):
+                continue
+            seen_unit_ids.add(unit_id)
+            teaching_units.append(unit)
+
+    label = str(detail.get("label") or cap_id).strip()
+    description = str(detail.get("description") or "").strip()
+    data_types = detail.get("data_types")
+    data_type = data_types[0] if isinstance(data_types, list) and data_types else None
+    return {
+        "cap_id": cap_id,
+        "label": label,
+        "description": description,
+        "data_type": data_type if isinstance(data_type, str) else None,
+        "teaching_units": teaching_units,
+        "resources": [
+            {"type": "teaching_unit", "ref_id": unit["id"], "title": unit.get("title")}
+            for unit in teaching_units
+        ],
+    }
+
+
+def _task_teaching_units(task: sqlite3.Row) -> list[dict[str, Any]]:
+    """Resolve persisted reviewed teaching-unit references for deterministic fallbacks.
+
+    The worker reads the task's saved references instead of a fresh graph query.
+    This makes retries reproduce the lesson originally confirmed for a learner
+    even when the graph catalogue changes after task creation.
+    """
+
+    try:
+        resources = json.loads(task["resources_json"] or "[]")
+    except (TypeError, json.JSONDecodeError):
+        resources = []
+    unit_ids = [
+        item.get("ref_id")
+        for item in resources
+        if isinstance(item, dict)
+        and item.get("type") == "teaching_unit"
+        and isinstance(item.get("ref_id"), str)
+    ]
+    if not unit_ids:
+        return []
+    try:
+        from ..diagnosis.engine import load_teaching_units
+
+        units_by_id = {
+            str(unit["id"]): unit
+            for unit in load_teaching_units()
+            if isinstance(unit, dict) and isinstance(unit.get("id"), str)
+        }
+    except Exception:
+        logger.warning("教学单元读取失败，保留通用兜底", exc_info=True)
+        return []
+    return [units_by_id[unit_id] for unit_id in unit_ids if unit_id in units_by_id]
+
+
 def _normalized_knowledge_points(raw: Any) -> list[dict[str, str]]:
     """Validate the reviewed learning-content shape before it is persisted."""
 
@@ -137,9 +238,47 @@ def _normalized_knowledge_points(raw: Any) -> list[dict[str, str]]:
 
 
 def _default_task_content(
-    title: str, description: str
+    title: str,
+    description: str,
+    *,
+    teaching_units: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, str]], list[dict[str, Any]]]:
-    """Provide a reviewable baseline when an Agent request omits either content field."""
+    """Build a concrete local lesson when a reviewed teaching unit is available.
+
+    Provider outages are common enough that graph-created lessons need a useful
+    offline path.  Unit text is reviewed project material, whereas the old
+    title-only fallback could only repeat a CAP identifier and a generic prompt.
+    """
+
+    for unit in teaching_units or []:
+        objectives = [
+            str(item).strip() for item in unit.get("learning_objectives") or [] if str(item).strip()
+        ]
+        rule = str(unit.get("rule_explanation") or "").strip()
+        exercise = unit.get("exercise") if isinstance(unit.get("exercise"), dict) else {}
+        action = str(exercise.get("student_action") or "").strip()
+        answer = exercise.get("answer")
+        answer_text = json.dumps(answer, ensure_ascii=False) if answer is not None else "；".join(objectives)
+        unit_title = str(unit.get("title") or title).strip()
+        points = [
+            {
+                "title": f"{unit_title}学习目标",
+                "content": "；".join(objectives) or description or title,
+            }
+        ]
+        if rule:
+            points.append({"title": f"{unit_title}判定规则", "content": rule})
+        return (
+            points,
+            [
+                {
+                    "question": action or f"请说明完成“{unit_title}”时需要遵守的规则。",
+                    "type": "open_ended",
+                    "options": [],
+                    "reference_answer": answer_text or "应依据学习目标和判定规则完成作答。",
+                }
+            ],
+        )
 
     focus = description or title
     return (
@@ -681,6 +820,20 @@ async def _generate_task_content_uncached(
         description = str(task["goal"] or "").strip()
         cap_ids = json.loads(task["cap_ids_json"] or "[]")
         cap_text = ", ".join(str(item) for item in cap_ids) if isinstance(cap_ids, list) else ""
+        teaching_units = _task_teaching_units(task)
+        unit_context = [
+            {
+                "title": unit.get("title"),
+                "learning_objectives": unit.get("learning_objectives", []),
+                "rule_explanation": unit.get("rule_explanation", ""),
+                "exercise": (
+                    unit.get("exercise", {}).get("student_action", "")
+                    if isinstance(unit.get("exercise"), dict)
+                    else ""
+                ),
+            }
+            for unit in teaching_units
+        ]
         knowledge_points: list[dict[str, Any]] = []
         exercises: list[dict[str, Any]] = []
         provider_issue: str | None = None
@@ -704,7 +857,8 @@ async def _generate_task_content_uncached(
                         "content": (
                             f"任务名称：{title}\n"
                             f"任务描述：{description or title}\n"
-                            f"能力节点：{cap_text}"
+                            f"能力节点：{cap_text}\n"
+                            f"已审核教学材料：{json.dumps(unit_context, ensure_ascii=False)}"
                         ),
                     },
                 ],
@@ -734,7 +888,9 @@ async def _generate_task_content_uncached(
             logger.warning("task content provider failed; using deterministic draft", exc_info=True)
             provider_issue = "模型服务暂不可用"
 
-        default_points, default_exercises = _default_task_content(title, description)
+        default_points, default_exercises = _default_task_content(
+            title, description, teaching_units=teaching_units
+        )
         used_template = not knowledge_points or not exercises
         if not knowledge_points:
             knowledge_points = default_points

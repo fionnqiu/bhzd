@@ -55,6 +55,27 @@ GENERAL_KNOWLEDGE_SYSTEM = (
 # 响应，否则会把“模型暂不可用”错误地呈现成“资料不足”。
 GENERAL_KNOWLEDGE_SYSTEM += FINAL_RESPONSE_RULES
 
+# 任务草稿生成用：把学习目标 + 工具证据整理成结构化任务卡（JSON 契约）。
+# 只返回 JSON 的原因：输出经 task_tools 校验器归一化后才入库/展示，
+# 任何散文或围栏都会使解析失败并回退到模板卡。
+TASK_DRAFT_SYSTEM = (
+    "你是标航智导的学习任务设计助教，服务对象是数据标注方向的职业院校学生。"
+    "根据学生的学习目标、关联能力点和检索到的规范资料，设计学习任务卡。\n"
+    "只返回一个 JSON 对象，不要输出任何其他文字或 Markdown 围栏。格式：\n"
+    '{"title":"任务名称","goal":"任务目标（一句话）",'
+    '"knowledge_points":[{"title":"知识点标题","content":"知识点讲解"}],'
+    '"exercises":[{"question":"题目","type":"open_ended","options":[],'
+    '"reference_answer":"参考答案"}],"est_minutes":45}\n'
+    "要求：\n"
+    "1. 内容必须依据给定的能力点与资料，不得编造规范条款、标准号或来源；\n"
+    "2. 学习内容 2-5 项，讲解面向初学者；\n"
+    "3. 练习 1-4 题，type 只能是 open_ended / multiple_choice / true_false，"
+    "multiple_choice 必须给出 options；\n"
+    "4. 使用简洁中文。\n"
+    "若输入包含多个阶段，改为返回 "
+    '{"stages":[上述格式的对象，每阶段一张]}。'
+)
+
 GENERAL_KNOWLEDGE_UNAVAILABLE = (
     "当前模型服务暂不可用，暂时无法使用通用知识回答。请稍后重试。"
 )

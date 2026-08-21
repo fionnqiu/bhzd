@@ -584,6 +584,59 @@ def test_provider_set_role_uniqueness(admin_client):
     ).status_code == 400
 
 
+def test_provider_supports_multiple_roles_and_reassigns_one_role_only(admin_client):
+    """One model can serve several roles while each role has one owner."""
+    first = _create_provider(
+        admin_client,
+        name="模型A",
+        roles=["primary", "embedding"],
+    ).json()
+    assert first["roles"] == ["primary", "embedding"]
+    assert first["role"] == "primary"
+
+    second = _create_provider(
+        admin_client,
+        name="模型B",
+        roles=["fallback"],
+    ).json()
+    updated = admin_client.put(
+        f"/api/admin/providers/{second['id']}",
+        json={"roles": ["primary", "fallback"]},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["roles"] == ["primary", "fallback"]
+
+    listed = {
+        item["name"]: item
+        for item in admin_client.get("/api/admin/providers").json()["items"]
+    }
+    # Only the conflicting primary assignment transfers; A keeps embedding.
+    assert listed["模型A"]["roles"] == ["embedding"]
+    assert listed["模型A"]["role"] == "embedding"
+    assert listed["模型B"]["roles"] == ["primary", "fallback"]
+
+
+def test_provider_legacy_set_role_adds_without_dropping_other_roles(admin_client):
+    """The scalar compatibility endpoint must not erase a multi-role row."""
+    provider = _create_provider(
+        admin_client,
+        roles=["primary", "embedding"],
+    ).json()
+    response = admin_client.post(
+        f"/api/admin/providers/{provider['id']}/set-role",
+        json={"role": "rerank"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["roles"] == ["primary", "embedding", "rerank"]
+
+    cleared = admin_client.post(
+        f"/api/admin/providers/{provider['id']}/set-role",
+        json={"role": "none"},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["roles"] == []
+
+
 def test_provider_test_endpoint_records_last_test(admin_client, monkeypatch):
     # 真实网络出口由 providers 单测覆盖；这里替换为可控实现，验证端点接线与落库
     async def fake_test(row):

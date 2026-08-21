@@ -118,6 +118,38 @@ def test_get_enabled_provider_and_decrypt(db):
         conn.close()
 
 
+def test_get_enabled_provider_reads_multiple_roles_from_json(db):
+    """Runtime role lookup follows the complete assignment set, not projection."""
+    provider_id = _add_provider(role="primary", api_key="sk-multi")
+    conn = connect(get_config().resolved_database_path)
+    try:
+        conn.execute(
+            "UPDATE provider_configs SET roles_json = ?, role = ? WHERE id = ?",
+            (json.dumps(["primary", "embedding"]), "primary", provider_id),
+        )
+        conn.commit()
+        row = providers.get_enabled_provider(conn, "embedding")
+        assert row is not None and row["id"] == provider_id
+        assert providers.get_enabled_provider(conn, "rerank") is None
+    finally:
+        conn.close()
+
+
+def test_get_enabled_provider_falls_back_for_legacy_scalar_with_default_json(db):
+    """A direct legacy insert with roles_json=[] still exposes its scalar role."""
+    provider_id = _add_provider(role="embedding", api_key="sk-legacy")
+    conn = connect(get_config().resolved_database_path)
+    try:
+        conn.execute(
+            "UPDATE provider_configs SET roles_json = '[]' WHERE id = ?", (provider_id,)
+        )
+        conn.commit()
+        row = providers.get_enabled_provider(conn, "embedding")
+        assert row is not None and row["id"] == provider_id
+    finally:
+        conn.close()
+
+
 # ---------------------------------------------------------------- chat_completions 协议
 
 def test_get_provider_by_role_prefers_grader_and_falls_back_to_primary(db):

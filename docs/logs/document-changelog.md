@@ -215,3 +215,133 @@
 
 **仍需事实核验：**
 - 本次验证覆盖本地 SQLite、确定性测试和本地服务；真实 Provider、外部浏览器、生产部署与正式教学效果仍不在本地回归证明范围内。
+
+## [2026-08-21 00:12] 用户列表操作列按钮同一行显示
+
+**变更文件：**
+- `app/src/pages/admin/UsersPage.tsx`：操作列容器由 `flexWrap: "wrap"` 改为 `nowrap`（并加 `whiteSpace: nowrap`），列宽 230px → 250px。
+
+**变更原因：**
+- 用户反馈用户管理列表的「编辑角色 / 禁用 / 重置密码」按钮折成两行，要求同一行显示。
+
+**验证：**
+- Playwright 实测截图 `.playwright-mcp/users-actions-single-row.png`：三个按钮在各行均单行显示；三个 btn-sm 按钮合计约 216px，250px 列宽有余量。
+- 纯样式/布局微调，未改逻辑；前端测试此前已全绿。
+
+**仍需事实核验：**
+- 无。
+
+## [2026-08-21 00:50] 对话页标题胶囊：居中悬浮 + 顶部渐进模糊 + 内容区全高
+
+**变更文件：**
+- `app/src/pages/student/cockpit/cockpit.css`：`.conversation-info-bar` 改为绝对定位悬浮条（脱离布局流，内容区直达顶部）；新增 `.cockpit-top-veil` 渐进模糊面纱（backdrop-filter blur + mask-image 渐隐，越靠顶越模糊）；`.chat-stream` 顶部留白 72px（移动端 64px）避免首条消息被遮；`.cockpit.cockpit-workbench` 加 `position: relative` 作为定位基准。
+- `app/src/pages/student/CockpitPage.tsx`：会话激活时渲染 veil 元素；更新注释。
+- 追加调整：胶囊固定为与内容列同宽（`min(100%, 900px)`，移动端 `46rem`），标题文字靠左显示。
+
+**变更原因：**
+- 用户要求标题胶囊居中、过渡半透明（越靠近顶部越模糊）、对话内容盒拓展到顶部全高；随后要求胶囊固定内容区宽度、标题靠左。
+
+**验证：**
+- `tsc --noEmit` 通过；`vitest run tests/cockpit-flow.test.tsx tests/cockpit-summary.test.ts` 27/27 通过。
+- Playwright 实测截图 `.playwright-mcp/cockpit-title-bar-width.png`（等宽胶囊、标题靠左）与 `cockpit-title-blur-scroll.png`（滚动时消息在顶部面纱下渐隐模糊）。
+
+**仍需事实核验：**
+- 无。
+
+## [2026-08-21 00:57] 删除会话确认弹窗改为全页面全局显示
+
+**变更文件：**
+- `app/src/pages/student/cockpit/LeftRail.tsx`：`WorkbenchRecentSessions` 内的 `ConfirmDialog` 改为通过 `createPortal(..., document.body)` 渲染（含 SSR 防护 `typeof document === "undefined"` 判断），并补充注释说明 portal 原因。
+
+**变更原因：**
+- 用户反馈删除 Agent 会话历史的确认弹窗只出现在左侧导航栏区域。根因：侧栏 `.shell[data-shell-variant="student-workbench"] .sidebar` 带 `backdrop-filter: blur(...)`，会成为 fixed 后代的包含块，将弹窗裁剪到侧栏内。
+- 选择 portal 到 body 而非全局改 `Modal`：避免学生工作台 shell 上重映射的设计令牌（`--color-surface` 等）对全局 Modal 失效；该确认弹窗仅用 material 令牌，root 与学生端取值几乎一致，视觉无差。
+
+**验证：**
+- `tsc --noEmit` 通过；`vitest run tests/cockpit-flow.test.tsx` 25/25 通过。
+- Playwright 实测：遮罩 `.overlay` 覆盖整个视口（1560×850），弹窗居中（中心点 780,425 与视口中心重合），DOM 挂载在 `BODY` 下；截图 `.playwright-mcp/confirm-dialog-global.png`。
+
+**仍需事实核验：**
+- 无。
+
+## [2026-08-21 10:36] 学生端 agent 对话：隐藏引用来源区 + 头像与字体排版优化
+
+**变更文件：**
+- `app/src/pages/student/cockpit/ChatStream.tsx`：移除对话流底部 `<RightRail>` 渲染及其 import，滚动跟随依赖中的 `run.citations` 一并移除；更新过时的 "citation panel" 注释。
+- `app/src/pages/student/cockpit/RightRail.tsx`：整文件删除（引用来源区唯一实现，已无消费者）。
+- `app/src/pages/student/cockpit/cockpit.css`：删除 `.cockpit-runtime-context` / `.runtime-context-*` / `.runtime-citations` 及其工作台覆盖（死样式）；`.assistant-avatar` 改为 8px 圆角方块、无描边；`.cockpit-workbench .assistant-avatar` 改为 30px 实心品牌蓝（`var(--accent)`）+ 白色图标，移除右下角琥珀色状态点 `::after`；新增深色主题头像底色压深规则（#2b6cb8）；`.cockpit-workbench .bubble` 正文 15px → 16px；`.cockpit-workbench .bubble-markdown` 正文色 `--ink-soft` → `--ink`、行高 1.75 → 1.8。
+- `app/src/components/agent/agent-presentation.css`：`.agent-avatar` 基础样式由浅底描边芯片改为品牌色实心底 + 白色图标（对齐 Kimi/DeepSeek/MiniMax 助手身份处理）。
+- `app/tests/cockpit.test.tsx`：`citation.attached` 用例改为负向断言——事件仍入运行状态，但对话画布不出现 `citation-section` 与「引用来源」文案。
+
+**变更原因：**
+- 用户要求学生端 agent 对话 UI 不再显示「引用来源/引用资料」类区块；仅隐藏 cockpit 对话页，RAG 问答页（RagQaPage）与教师端"如实展示"保持不变。
+- 用户要求参考 Kimi/DeepSeek/MiniMax 优化 agent 头像与对话字体：实心品牌色圆角方块白图标头像、16px 近墨色正文、1.8 行高提升中文长文阅读舒适度。
+- 后端 citation 数据管道（SSE `citation.attached`、`run.citations` 状态）保持不变，仅前端不渲染，便于日后恢复。
+
+**验证：**
+- `npx tsc --noEmit` 通过；`npx vitest run` 32 个测试文件、267 tests 全部通过（含改写后的引用隐藏用例与 agent-presentation/message-bubble 头像用例）。
+- Playwright 实测（dev server 5173 热更新生效）：历史会话中助手头像呈实心蓝底白图标圆角方块，对话流无引用来源区块；截图 `.playwright-mcp/cockpit-chat-ui-after.png`。
+
+**仍需事实核验：**
+- 深色主题为预留偏好（非默认），其头像底色规则未做实机目检。
+
+## [2026-08-21 12:03] 学生端对话 Markdown 渲染精化：标题层级 + 代码块头部栏
+
+**变更文件：**
+- `app/src/pages/student/cockpit/MessageBubble.tsx`：新增 `MarkdownCodeBlock` 组件并注册为 react-markdown 的 `pre` 渲染器——代码块外包一层头部栏，左侧语言标签（从 `language-x` className 提取，无标注回退 "code"），右侧复制按钮（`navigator.clipboard` 写 pre 纯文本，成功显示"已复制" 1.6s，剪贴板不可用静默失败）。
+- `app/src/pages/student/cockpit/cockpit.css`：工作台 markdown 标题字号与 16px 正文拉开层级（h1 20px/700、h2 18px/700、h3-h6 16px/650，基础样式中 h2 曾与正文同号、h3 反小于正文）；代码块边框/圆角/底色/下间距迁移至 `.md-codeblock` 外壳，pre 仅保留代码排版；新增 `.md-codeblock-header/-lang/-copy` 样式（令牌化颜色，暗色主题自动跟随）；列表项间距 2px → 4px 适配 1.8 行高。
+- `app/tests/message-bubble.test.tsx`：新增两例——python 围栏代码块渲染语言标签 + 复制按钮 + `.md-codeblock` 外壳；无语言标注代码块回退 "code" 标签。
+
+**变更原因：**
+- 用户要求优化对话内容 markdown 显示。实测现有 ReactMarkdown+GFM 渲染功能正常，但与 Kimi/DeepSeek 相比标题层级弱（h2 与正文同号）、代码块无语言标签/复制按钮。按用户拍板：只做对话页渲染精化，不新增语法高亮依赖。
+
+**验证：**
+- `npx tsc --noEmit` 通过；`npx vitest run` 32 个测试文件、269 tests 全部通过。
+- Playwright 实测（历史会话重载）：computed style 确认 h1 20px / h2 18px / 正文 16px / 行高 28.8px（=1.8）；代码块头部栏渲染 "python" + 复制按钮，点击后按钮变"已复制"。截图 `.playwright-mcp/markdown-polished-top.png`、`markdown-polished-codeblock.png`。
+
+**仍需事实核验：**
+- 复制按钮依赖安全上下文（localhost/127.0.0.1 满足）；非安全上下文下静默不复制，未做降级 UI 提示。
+
+## [2026-08-21 15:21] 扩充预设演示学习内容与知识图谱专项节点
+
+**变更文件：**
+- `server/bhzd_py/seed/demo_learning_content.py`：新增 8 条项目内置预设任务的确定性知识点和练习定义；每条任务含 2 个知识点、3 道混合题型练习，并保留旧 NER 业务键。
+- `server/bhzd_py/seed/loader.py`：`--demo` 为演示学生幂等写入 8 条预设任务、知识点和练习，标记为手工完成内容，并把图谱任务和教学单元写入资源追溯信息。
+- `data/graph/graph-catalog.json`：新增内容安全上下文、客服情感证据、车载唤醒负例、图像 IOU、视频事件边界五组 KNG/TSK/RES 节点及可追溯关系。
+- `data/graph/annotation-capability-graph.json`、`data/graph/annotation-capability-graph.graphml`：由构建脚本重新生成的图谱产物。
+- `scripts/validate_graph.py`、`server/tests/test_seed.py`、`server/tests/test_graphx.py`：同步图谱规模契约，并覆盖 seed 内容、图谱任务引用和幂等性。
+
+**变更原因：**
+- 演示版本需要更多与标航智导现有文本、图像、语音、视频教学规则一致的预设练习、知识点、题目和图谱节点，避免使用脱离项目的通用样例。
+
+**验证：**
+- `python scripts/build_graph.py` 生成 181 个节点、260 条边；`python scripts/validate_graph.py data/graph/annotation-capability-graph.json` 全项通过。
+- `uv run ruff check bhzd_py/seed/loader.py bhzd_py/seed/demo_learning_content.py tests/test_seed.py tests/test_graphx.py` 通过；`uv run python -m compileall -q bhzd_py/seed` 通过。
+- `uv run pytest -q tests/test_seed.py tests/test_graphx.py tests/test_task_learning_content.py`：26 passed，保留 1 个既有 Starlette/httpx 弃用警告；`git diff --check` 无空白错误。
+- 完整后端回归为 498 passed / 1 failed；失败为工作区既有的 `tests/test_task_drafts.py::test_revision_wording_routes_to_task_flow`，其任务草稿意图识别与本次演示数据文件无直接交集。
+
+**仍需事实核验：**
+- 因完整后端回归未全绿，未重启 `127.0.0.1:8787`，也未对当前持久化演示库运行 seed；运行时图谱刷新和持久化演示数据加载留待该独立失败处理后执行。
+
+## [2026-08-21 15:35] Agent 学习任务改为「草稿 → 回答底部按钮 → 预览卡 → 显式同步」链路
+
+**变更文件：**
+- `server/bhzd_py/migrations/027_task_drafts.sql`（新增）、`server/bhzd_py/agent/task_drafts.py`（新增）：任务草稿表与生成/同步逻辑；LLM 只产出任务卡文案字段，data_type/cap_ids 来自确定性计划与图谱工具结果；模型不可用时回退模板卡。
+- `server/bhzd_py/agent/orchestrator.py`：任务类意图计划改为 rag.search + graph.reason 两个读步骤，收尾阶段生成草稿；不再为学生端学习任务开 task.preview/task.create 确认门（工具本身保留，预设/教师路径不受影响）。
+- `server/bhzd_py/agent/events.py`、`prompts.py`、`composer.py`、`intents.py`：新增 task.draft 持久化事件与草稿生成提示词；模板降级补草稿引导文案；意图动词扩展 修改/调整/更新（支持「继续修改」话术，"如何修改…"仍走 RAG）。
+- `server/bhzd_py/routers/tasks.py`：新增 `POST /api/task-drafts/{id}/sync`（CSRF+属主校验，synced 状态幂等，重复点击/刷新不重复建任务）；`server/bhzd_py/routers/runs.py`：会话详情新增 task_drafts_by_run 投影供历史回放。
+- 前端：`app/src/api/types.ts`、`app/src/api/sse.ts`、`cockpit/runStream.ts`、`useCockpitRun.ts`、`ChatStream.tsx`、`CockpitPage.tsx`、新增 `TaskDraftSection.tsx`（预览弹窗：同步到学习任务 / 继续修改预填输入框）、`cockpit.css`；`EmbeddedCard.tsx` 导出 TaskCardBody 复用。
+- 测试：`server/tests/test_task_drafts.py`（新增 11 例）、`test_agent_orchestrator.py`、`test_confirmations.py`（确认门覆盖改用 diagnostic.save_summary 写门）、`test_migrations.py`（登记 027）；`app/tests/task-draft.test.tsx`（新增 3 例）；`tests/e2e/smoke.spec.ts` AC1 改为新链路断言。
+- `docs/master-checklist.md`：「不引入 ReAct」一行补充写确认路径口径（诊断/掌握度/预设走确认门；学习任务创建走草稿卡片显式同步）。
+
+**变更原因：**
+- 用户指出 Agent 无法真正生成学习任务：旧链路任务卡为固定模板（标题恒为「×标注练习任务」），LLM 不参与内容生成。按已批准简报改为：LLM 生成任务内容整理进回答，回答底部加交互按钮，点击打开任务卡预览，卡上按钮直接同步到学习任务或预填话术让 Agent 继续修改；旧 task.preview 嵌入卡 + task.create 确认门流程被替换（卡片同步按钮即学生显式确认）。
+
+**验证：**
+- 后端 `uv run pytest -q` 最终回归 500 passed（此前的 graphx/teacher_agent 失败为工作区并行会话改动与测试隔离抖动，孤立复跑均通过）；前端 `npx tsc --noEmit`、`npx eslint`（0 error）、`npx vitest run` 33 文件 272 tests 全部通过。
+- 后端已按 AGENTS.md 流程重启：旧进程 PID 39940（父 33968，venv `python -m bhzd_py.main`）→ 新进程 PID 36540（父 6776），2026-08-21 15:42，`GET /api/health` 200，迁移 027 已应用（schema_migrations=27）。
+- 真实链路验证（`scripts/verify_task_draft_chain.py`，直连 8787）：发起生成 → run 完成无确认门停留 → 会话详情含草稿卡（含学习内容/练习）→ 同步落库且内容行存在 → 二次同步幂等（already_synced）→ 无 CSRF 403 → 通过，验证数据已清理。
+- e2e `tests/e2e/smoke.spec.ts` AC1 在真实浏览器 chromium 与 msedge 双通道通过（按钮 → 预览弹窗 → 同步回执）。
+
+**仍需事实核验：**
+- 多阶段任务的 LLM 卡 JSON 结构（stages 数组）依赖模型遵从度，已有模板回退兜底但未经真实模型输出验证；「继续修改」的修订效果同理（提示词组装已有测试覆盖）。

@@ -6,8 +6,9 @@
   x-csrf-token"对齐。
 - Provider DTO 永不携带 api_key：固定 api_key_masked 只证明服务端已有密钥
   （PRD-06 §3.3），明文与密钥长度均不出服务端。审计 before/after 也先经 DTO 脱敏。
-- 同角色（primary/fallback/embedding/rerank/grader）至多一个 provider：set-role
-  与创建/更新里的角色赋值都在同一事务里先清后设，避免并发下出现两个主模型。
+- 同角色（primary/fallback/embedding/rerank/grader）至多一个 provider：创建/更新
+  会在同一连接事务里先从其它配置移除冲突角色，再写入目标配置；一个配置可以
+  同时拥有多个角色。
 - 指标端点（PRD-06 §13.1）全部用 SQL 诚实计算：无数据的指标返回 null 并
   在 note 里说明，绝不编造数字。
 """
@@ -51,7 +52,67 @@ logger = logging.getLogger(__name__)
 
 _PROTOCOLS = ("chat_completions", "anthropic_messages", "responses")
 _PROVIDER_ROLES = ("primary", "fallback", "embedding", "rerank", "grader", "none")
+_ASSIGNABLE_PROVIDER_ROLES = tuple(role for role in _PROVIDER_ROLES if role != "none")
 _USER_ROLES = ("student", "teacher", "system_admin")
+
+
+def _provider_roles_from_row(row: sqlite3.Row) -> list[str]:
+    """Read the multi-role set and safely fall back to the legacy scalar column."""
+    raw_roles = row["roles_json"] if "roles_json" in row.keys() else None
+    if raw_roles is not None:
+        try:
+            parsed = json.loads(raw_roles)
+        except (json.JSONDecodeError, TypeError):
+            parsed = None
+        if isinstance(parsed, list):
+            roles = [value for value in parsed if value in _ASSIGNABLE_PROVIDER_ROLES]
+            # A post-migration legacy writer may omit roles_json, leaving its
+            # default [] beside a meaningful scalar role.  Treat that shape as
+            # the old one-role record; rows written by this module always keep
+            # the projection at "none" when the set is intentionally empty.
+            if roles or ("role" in row.keys() and row["role"] == "none"):
+                return list(dict.fromkeys(roles))
+    legacy_role = row["role"] if "role" in row.keys() else "none"
+    return [legacy_role] if legacy_role in _ASSIGNABLE_PROVIDER_ROLES else []
+
+
+def _legacy_provider_role(roles: list[str]) -> str:
+    """Keep the old scalar projection deterministic for compatibility callers."""
+    return next((role for role in _ASSIGNABLE_PROVIDER_ROLES if role in roles), "none")
+
+
+def _normalize_provider_roles(roles: list[str] | None, legacy_role: str | None = None) -> list[str]:
+    """Normalize API role input while treating ``none`` as an empty assignment."""
+    values = roles if roles is not None else [legacy_role or "none"]
+    if not isinstance(values, list):
+        raise ApiError(400, "INVALID_ROLE", "供应商角色必须是数组")
+    if any(not isinstance(value, str) or value not in _PROVIDER_ROLES for value in values):
+        raise ApiError(400, "INVALID_ROLE", "供应商角色仅支持 primary / fallback / embedding / rerank / grader / none")
+    if "none" in values and len(values) > 1:
+        raise ApiError(400, "INVALID_ROLE", "无角色不能与其它角色同时设置")
+    return list(dict.fromkeys(value for value in values if value != "none"))
+
+
+def _write_provider_roles(
+    conn: sqlite3.Connection, provider_id: str, roles: list[str], now: str
+) -> None:
+    """Persist the role set and update the scalar compatibility projection."""
+    conn.execute(
+        "UPDATE provider_configs SET roles_json = ?, role = ?, updated_at = ? WHERE id = ?",
+        (json.dumps(roles, ensure_ascii=False), _legacy_provider_role(roles), now, provider_id),
+    )
+
+
+def _begin_provider_mutation(conn: sqlite3.Connection) -> None:
+    """Reserve SQLite's writer slot before role read-modify-write fan-out.
+
+    Role uniqueness is represented across JSON arrays, so SQLite cannot enforce
+    it with a normal unique index.  An immediate transaction serializes the
+    route-level cleanup and assignment while retaining the existing audit
+    commit boundary.
+    """
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
 
 
 def _admin_csrf(
@@ -73,6 +134,7 @@ def _ip(request: Request) -> str | None:
 
 def _provider_dto(row: sqlite3.Row) -> dict[str, Any]:
     """Provider DTO keeps the key server-side while exposing a stable UI mask."""
+    roles = _provider_roles_from_row(row)
     last_test: dict[str, Any] | None = None
     if row["last_test_json"]:
         try:
@@ -89,7 +151,10 @@ def _provider_dto(row: sqlite3.Row) -> dict[str, Any]:
         "protocol": row["protocol"],
         "base_url": row["base_url"],
         "model": row["model"],
-        "role": row["role"],
+        # ``role`` remains the deterministic first-role projection for older
+        # clients; new clients use the complete ``roles`` collection.
+        "role": _legacy_provider_role(roles),
+        "roles": roles,
         "enabled": bool(row["enabled"]),
         "timeout_seconds": row["timeout_seconds"],
         "extra": extra,
@@ -112,18 +177,37 @@ def _get_provider_or_404(conn: sqlite3.Connection, provider_id: str) -> sqlite3.
     return row
 
 
-def _assign_role_exclusive(conn: sqlite3.Connection, provider_id: str, role: str) -> None:
-    """把角色独占地赋给指定 provider：同角色其它行先降为 none（同事务）。"""
+def _assign_roles_exclusive(
+    conn: sqlite3.Connection, provider_id: str, roles: list[str]
+) -> None:
+    """Assign a role set and remove those roles from every other provider row."""
     now = utc_now_iso()
-    if role != "none":
-        conn.execute(
-            "UPDATE provider_configs SET role = 'none', updated_at = ? WHERE role = ? AND id != ?",
-            (now, role, provider_id),
-        )
-    conn.execute(
-        "UPDATE provider_configs SET role = ?, updated_at = ? WHERE id = ?",
-        (role, now, provider_id),
-    )
+    assigned = set(roles)
+    if assigned:
+        # A provider may keep unrelated roles (A=[primary,fallback], B selects
+        # primary => A keeps fallback), which is the requested replacement rule.
+        rows = conn.execute(
+            "SELECT id, role, roles_json FROM provider_configs WHERE id != ?", (provider_id,)
+        ).fetchall()
+        for row in rows:
+            existing = _provider_roles_from_row(row)
+            remaining = [role for role in existing if role not in assigned]
+            if remaining != existing:
+                _write_provider_roles(conn, row["id"], remaining, now)
+    _write_provider_roles(conn, provider_id, roles, now)
+
+
+def _assign_role_exclusive(
+    conn: sqlite3.Connection, provider_id: str, role: str
+) -> None:
+    """Add one role to a provider while preserving its unrelated assignments."""
+    if role == "none":
+        _assign_roles_exclusive(conn, provider_id, [])
+        return
+    row = _get_provider_or_404(conn, provider_id)
+    current = _provider_roles_from_row(row)
+    merged = list(dict.fromkeys([*current, role]))
+    _assign_roles_exclusive(conn, provider_id, merged)
 
 
 class ProviderCreateIn(BaseModel):
@@ -134,7 +218,9 @@ class ProviderCreateIn(BaseModel):
     base_url: str = Field(min_length=1, max_length=500)
     model: str = Field(min_length=1, max_length=100)
     api_key: str = Field(min_length=1, max_length=500)
+    # ``role`` is retained for older clients; ``roles`` is authoritative when supplied.
     role: str = "none"
+    roles: list[str] | None = Field(default=None, max_length=len(_ASSIGNABLE_PROVIDER_ROLES))
     enabled: bool = True
     timeout_seconds: float = Field(default=30, gt=0, le=300)
     extra: dict[str, Any] = Field(default_factory=dict)
@@ -151,6 +237,7 @@ class ProviderUpdateIn(BaseModel):
     model: str | None = Field(default=None, min_length=1, max_length=100)
     api_key: str | None = None
     role: str | None = None
+    roles: list[str] | None = Field(default=None, max_length=len(_ASSIGNABLE_PROVIDER_ROLES))
     enabled: bool | None = None
     timeout_seconds: float | None = Field(default=None, gt=0, le=300)
     extra: dict[str, Any] | None = None
@@ -214,6 +301,11 @@ def _validate_protocol_role(protocol: str, role: str) -> None:
         raise ApiError(400, "INVALID_PROTOCOL", "不支持的协议类型，可选：chat_completions / anthropic_messages / responses")
     if role not in _PROVIDER_ROLES:
         raise ApiError(400, "INVALID_ROLE", "供应商角色仅支持 primary / fallback / embedding / rerank / grader / none")
+
+
+def _validate_protocol_roles(protocol: str, roles: list[str]) -> None:
+    """Validate the protocol once and every normalized role assignment."""
+    _validate_protocol_role(protocol, _legacy_provider_role(roles))
 
 
 _MODEL_DISCOVERY_ERROR_RESPONSES: dict[str, tuple[int, str, str]] = {
@@ -411,12 +503,13 @@ async def test_saved_provider_model_connectivity(
     except Exception:
         # Keep the encrypted value and parser details out of the response.
         raise ApiError(500, "PROVIDER_TEST_FAILED", "无法读取供应商密钥，请重新保存配置") from None
+    selected_role = _provider_roles_from_row(row)
     return await providers.test_transient_provider(
         row["protocol"],
         row["base_url"].strip(),
         api_key,
         body.model.strip(),
-        str(row["role"]),
+        selected_role[0] if selected_role else str(row["role"]),
         _provider_extra(row),
     )
 
@@ -464,7 +557,9 @@ def create_provider(
     admin: CurrentUser = Depends(_admin_csrf),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict[str, Any]:
-    _validate_protocol_role(body.protocol, body.role)
+    _begin_provider_mutation(conn)
+    requested_roles = _normalize_provider_roles(body.roles, body.role)
+    _validate_protocol_roles(body.protocol, requested_roles)
     url_error = validate_provider_base_url(body.base_url)
     if url_error is not None:
         # NF9：拒绝本机/内网/云元数据地址，防 SSRF 转发 API Key
@@ -476,8 +571,8 @@ def create_provider(
     now = utc_now_iso()
     conn.execute(
         "INSERT INTO provider_configs (id, name, protocol, base_url, model,"
-        " api_key_encrypted, role, enabled, timeout_seconds, extra_json,"
-        " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'none', ?, ?, ?, ?, ?)",
+        " api_key_encrypted, role, roles_json, enabled, timeout_seconds, extra_json,"
+        " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'none', '[]', ?, ?, ?, ?, ?)",
         (
             provider_id,
             body.name.strip(),
@@ -492,8 +587,8 @@ def create_provider(
             now,
         ),
     )
-    if body.role != "none":
-        _assign_role_exclusive(conn, provider_id, body.role)
+    if requested_roles:
+        _assign_roles_exclusive(conn, provider_id, requested_roles)
     row = _get_provider_or_404(conn, provider_id)
     dto = _provider_dto(row)
     audit(
@@ -517,12 +612,18 @@ def update_provider(
     admin: CurrentUser = Depends(_admin_csrf),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict[str, Any]:
+    _begin_provider_mutation(conn)
     row = _get_provider_or_404(conn, provider_id)
     before = _provider_dto(row)
 
     new_protocol = body.protocol if body.protocol is not None else row["protocol"]
-    new_role = body.role if body.role is not None else row["role"]
-    _validate_protocol_role(new_protocol, new_role)
+    current_roles = _provider_roles_from_row(row)
+    requested_roles = (
+        _normalize_provider_roles(body.roles, body.role)
+        if body.roles is not None or body.role is not None
+        else current_roles
+    )
+    _validate_protocol_roles(new_protocol, requested_roles)
 
     fields: dict[str, Any] = {}
     if body.name is not None:
@@ -553,8 +654,8 @@ def update_provider(
             f"UPDATE provider_configs SET {assignments} WHERE id = ?",
             (*fields.values(), provider_id),
         )
-    if body.role is not None and body.role != row["role"]:
-        _assign_role_exclusive(conn, provider_id, body.role)
+    if body.roles is not None or body.role is not None:
+        _assign_roles_exclusive(conn, provider_id, requested_roles)
 
     updated = _get_provider_or_404(conn, provider_id)
     dto = _provider_dto(updated)
@@ -579,6 +680,7 @@ def delete_provider(
     admin: CurrentUser = Depends(_admin_csrf),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict[str, Any]:
+    _begin_provider_mutation(conn)
     row = _get_provider_or_404(conn, provider_id)
     before = _provider_dto(row)
     conn.execute("DELETE FROM provider_configs WHERE id = ?", (provider_id,))
@@ -636,10 +738,14 @@ def set_provider_role(
     admin: CurrentUser = Depends(_admin_csrf),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict[str, Any]:
+    _begin_provider_mutation(conn)
     if body.role not in _PROVIDER_ROLES:
         raise ApiError(400, "INVALID_ROLE", "供应商角色仅支持 primary / fallback / embedding / rerank / none")
     row = _get_provider_or_404(conn, provider_id)
     before = _provider_dto(row)
+    # This legacy endpoint represents one role action.  Adding a role keeps
+    # the provider's other assignments; ``none`` remains the explicit clear-all
+    # command used by older clients.
     _assign_role_exclusive(conn, provider_id, body.role)
     updated = _get_provider_or_404(conn, provider_id)
     dto = _provider_dto(updated)
@@ -649,8 +755,8 @@ def set_provider_role(
         "provider.set_role",
         target_type="provider",
         target_id=provider_id,
-        before={"role": before["role"]},
-        after={"role": dto["role"]},
+        before={"role": before["role"], "roles": before["roles"]},
+        after={"role": dto["role"], "roles": dto["roles"]},
         ip=_ip(request),
         user_agent=request.headers.get("user-agent"),
     )

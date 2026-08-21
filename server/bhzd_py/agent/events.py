@@ -31,6 +31,9 @@ CONFIRMATION_REQUIRED = "confirmation.required"
 RUN_COMPLETED = "run.completed"
 RUN_FAILED = "run.failed"
 RUN_USAGE = "run.usage"
+# 任务草稿投影（生成/同步各发一次，完整状态后写覆盖先写，回放取最后一条）。
+# 不在 §7 原始清单内：草稿交互（回答底部按钮 → 预览 → 同步）后置于该契约。
+TASK_DRAFT_UPDATED = "task.draft"
 
 # 仅 SSE 传输层使用，不落 agent_events（不属于 §7 持久化事件）
 STREAM_END = "stream.end"

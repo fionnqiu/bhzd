@@ -965,6 +965,41 @@ def create_task(
     return _task_summary(conn, row)
 
 
+@router.post("/api/task-drafts/{draft_id}/sync")
+def sync_task_draft(
+    draft_id: str,
+    current: CurrentUser = Depends(csrf_protect),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """把 Agent 任务草稿同步为 learning_tasks。
+
+    卡片上的「同步到学习任务」点击即学生对该草稿内容的显式确认，因此直接
+    落库而不再开确认门；草稿自身的 synced 状态让重复点击/刷新保持幂等。
+    """
+    from ..agent import task_drafts as agent_task_drafts
+
+    row = conn.execute(
+        "SELECT * FROM task_drafts WHERE id = ?", (draft_id,)
+    ).fetchone()
+    if row is None or row["user_id"] != current.user["id"]:
+        # 属主隔离用 404 而非 403：不暴露他人草稿的存在性（与任务路由同口径）
+        raise ApiError(404, "DRAFT_NOT_FOUND", "任务草稿不存在")
+    result = agent_task_drafts.sync_task_draft(
+        conn, draft_row=row, user_id=current.user["id"]
+    )
+    tasks = [
+        _task_summary(conn, _get_own_task(conn, task_id, current.user["id"]))
+        for task_id in result["task_ids"]
+    ]
+    return {
+        "draft_id": result["draft_id"],
+        "status": "synced",
+        "task_ids": result["task_ids"],
+        "tasks": tasks,
+        "already_synced": result["already_synced"],
+    }
+
+
 @router.get("/api/tasks/{task_id}")
 def task_detail(
     task_id: str,
@@ -1313,20 +1348,31 @@ async def start_learning(
             None,
         )
     if task is None:
+        # Resolve the CAP before persisting a graph-created task.  A CAP id is
+        # a stable machine key, not learner-facing teaching content; saving the
+        # reviewed local unit reference also gives the detached worker a
+        # concrete fallback when the configured provider is unavailable.
+        from ..tools.task_tools import graph_learning_context
+
+        learning_context = graph_learning_context(body.cap_node_id)
+        if learning_context is None:
+            raise ApiError(404, "CAP_NODE_NOT_FOUND", "能力节点不存在或不可用于生成练习")
         task_id = uuid.uuid4().hex
         now = utc_now_iso()
         conn.execute(
             "INSERT INTO learning_tasks "
-            "(id, user_id, title, goal, cap_ids_json, source, status, steps_json, resources_json, "
+            "(id, user_id, title, goal, data_type, cap_ids_json, source, status, steps_json, resources_json, "
             "counts_toward_mastery, created_by, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, 'agent', 'not_started', ?, '[]', 1, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, 'agent', 'not_started', ?, ?, 1, ?, ?, ?)",
             (
                 task_id,
                 current.user["id"],
-                f"学习能力 {body.cap_node_id}",
-                f"掌握能力 {body.cap_node_id}",
+                f"掌握能力：{learning_context['label']}",
+                learning_context["description"] or f"围绕{learning_context['label']}完成规范学习与练习",
+                learning_context["data_type"],
                 json.dumps([body.cap_node_id], ensure_ascii=False),
                 json.dumps([], ensure_ascii=False),
+                json.dumps(learning_context["resources"], ensure_ascii=False),
                 current.user["id"],
                 now,
                 now,

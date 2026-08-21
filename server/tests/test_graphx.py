@@ -15,10 +15,11 @@ def _fresh_graph_cache():
     loader.reset_cache()
 
 
-def test_real_graph_loads_166_nodes():
+def test_real_graph_loads_181_nodes():
     graph = reason.get_graph()
-    assert len(graph["nodes"]) == 166
-    assert len(graph["edges"]) == 240
+    # 演示图谱包含基础节点及五组可回溯的专项学习任务、知识与资源节点。
+    assert len(graph["nodes"]) == 181
+    assert len(graph["edges"]) == 260
     # 规范化契约：节点有 name，边有 type（源文件的 label/relation 也保留）
     node = next(n for n in graph["nodes"] if n["id"] == "CAP-AUD-SPEAKER-001")
     assert node["type"] == "CAP"
@@ -125,6 +126,9 @@ def test_node_detail_related_collections():
     assert detail is not None
     assert [n["id"] for n in detail["prerequisites"]] == ["CAP-AUD-TRANSCRIBE-PUNCT-001"]
     assert [n["id"] for n in detail["resources"]] == ["RES-AUD-EVENT-CATALOG-001"]
-    assert [n["id"] for n in detail["tasks"]] == ["TSK-AUD-EMOTION-EVENT-001"]
+    assert [n["id"] for n in detail["tasks"]] == [
+        "TSK-AUD-CUSTOMER-EMOTION-QA-001",
+        "TSK-AUD-EMOTION-EVENT-001",
+    ]
     assert detail["certificates"] and detail["scenarios"] and detail["knowledge"]
     assert reason.node_detail("NOPE") is None

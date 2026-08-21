@@ -28,7 +28,7 @@ from ..config import get_config
 from ..db import connect, utc_now_iso
 from ..tools import registry
 from ..tools.registry import ToolContext
-from . import composer, conversation_memory, events, intents, media, prompts
+from . import composer, conversation_memory, events, intents, media, prompts, task_drafts
 
 logger = logging.getLogger(__name__)
 
@@ -568,8 +568,12 @@ def _build_plan(
     attachment: dict[str, Any] | None,
     *,
     goal_text: str | None = None,
-) -> list[dict[str, Any]]:
-    """按意图生成确定性计划。步骤：{id,title,tool,args,status}。
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    """按意图生成确定性计划，返回 (steps, task_draft_args)。
+
+    steps: {id,title,tool,args,status}。task_draft_args 仅任务类意图非空：
+    任务卡不再经 task.preview/task.create 写门，改由收尾阶段据这些参数
+    生成 LLM 任务草稿（回答底部按钮预览、显式同步落库）。
 
     ``goal_text`` preserves the first-turn task wording when a later short
     clarification answer supplies only a missing data-type slot.
@@ -587,33 +591,35 @@ def _build_plan(
 
     if intent.kind == intents.KIND_RAG_QUESTION:
         # 纯问答 ≤3 步（蓝图 §10.3）
-        return [
+        return ([
             step(1, "召回相关资料", "rag.search",
                  {"query": question,
                   "filters": {"data_type": data_type}}),
             step(2, "基于资料生成回答", "rag.answer",
                  {"question": question, "data_type": data_type}),
-        ]
+        ], None)
 
     if intent.kind == intents.KIND_AGENT_IDENTITY:
         # Identity turns complete through direct chat before planning. Preserve
         # the empty result here so a future caller cannot fall into task/RAG.
-        return []
+        return ([], None)
 
     if intent.kind == intents.KIND_DIAGNOSE_UPLOAD:
         token = (attachment or {}).get("diagnostic_token")
         # 诊断 ≥ [格式校验/规则诊断(缓存报告), 补强路径, 保存摘要]
-        return [
+        return ([
             step(1, "读取诊断报告", "diagnostic.preview",
                  {"diagnostic_token": token}),
             step(2, "生成补强路径", "graph.reason",
                  {"action": "pre_path", "target_id": None}),
             step(3, "保存诊断摘要与掌握度", "diagnostic.save_summary",
                  {"diagnostic_token": token}),
-        ]
+        ], None)
 
     # learn_goal / preset_start / task_convert / teacher_task：
-    # 任务转化 ≥ [RAG 召回, 图谱定位, 任务卡生成]（蓝图 §10.3）
+    # 读步骤保留 RAG 召回 + 图谱定位（蓝图 §10.3 证据链）；任务卡生成移出
+    # 计划步骤，由 _finalize 用 task_draft_args 生成草稿（PRD 交互变更：
+    # 回答底部按钮打开预览卡，卡上按钮直接同步/继续修改）。
     source = {
         intents.KIND_PRESET_START: "preset",
         intents.KIND_TEACHER_TASK: "teacher",
@@ -621,24 +627,23 @@ def _build_plan(
     label = {"text": "文本", "image": "图像", "audio": "语音",
              "video": "视频"}.get(data_type or "", "")
     title = f"{label}标注练习任务" if label else "标注练习任务"
-    task_args = {
+    task_draft_args: dict[str, Any] = {
         "title": title,
         "goal": question,
         "description": question,
         "data_type": data_type,
+        "source": source,
     }
     stages = _extract_task_stages(question, base_title=title, data_type=data_type)
     if stages:
-        task_args["stages"] = stages
-    return [
+        task_draft_args["stages"] = stages
+    return ([
             step(1, "检索相关规范资料", "rag.search",
                  {"query": question,
                   "filters": {"data_type": data_type}}),
             step(2, "定位关联能力", "graph.reason",
                  {"action": "locate", "query": question, "data_type": data_type}),
-        step(3, "生成任务卡预览", "task.preview", dict(task_args)),
-        step(4, "创建学习任务", "task.create", {**task_args, "source": source}),
-    ]
+    ], task_draft_args)
 
 
 def _enrich_step_args(
@@ -1069,6 +1074,10 @@ async def _compose_final_text(
     # 干净结论；若沿用 template_plan_summary 会把 ✓ 步骤清单与工具原始 JSON
     # （如 graph.reason 的空结果）再次倒进对话气泡。
     fallback = composer.template_compact_plan_summary(plan, results)
+    draft_result = results.get("task_draft")
+    if isinstance(draft_result, dict) and draft_result.get("cards"):
+        # 模板降级时模型不会介绍任务卡，这里补一段草稿说明与按钮引导
+        fallback = f"{fallback}\n{composer.template_task_draft_summary(draft_result['cards'])}"
     return (fallback, usage_capture.value, fallback)
 
 
@@ -1374,10 +1383,53 @@ async def _finalize(
     steps: list[dict[str, Any]],
     *,
     goal_text: str | None = None,
+    task_draft_args: dict[str, Any] | None = None,
 ) -> None:
-    """全部步骤走完后的收尾：最终消息 → 引用/用量事件 → run.completed。"""
+    """全部步骤走完后的收尾：任务草稿 → 最终消息 → 引用/用量 → run.completed。"""
     results = _collect_results(db, steps)
     streamed = False
+
+    # 任务类意图：先出任务草稿（LLM 生成 + 模板回退），再合成最终回答，
+    # 让回答能介绍这张卡；草稿事件先行，前端按钮随回答流式出现。
+    if task_draft_args is not None:
+        _emit_progress(
+            db,
+            run["id"],
+            phase="synthesis",
+            status="running",
+            title="正在生成学习任务草稿",
+            detail="正在把学习目标整理成任务卡",
+        )
+        # cap_ids 只来自图谱工具结果（证据链接地），不由模型指定
+        if not task_draft_args.get("cap_ids"):
+            for step in steps:
+                if step.get("tool") != "graph.reason":
+                    continue
+                caps = (results.get(step["id"]) or {}).get("cap_ids")
+                if caps:
+                    task_draft_args["cap_ids"] = caps
+                    for stage in task_draft_args.get("stages") or []:
+                        if isinstance(stage, dict) and not stage.get("cap_ids"):
+                            stage["cap_ids"] = list(caps)
+                    break
+        draft_projection = None
+        try:
+            draft_projection = await task_drafts.generate_task_draft(
+                db, run_row=run, task_args=task_draft_args, results=results
+            )
+        except Exception:
+            # 草稿失败不拖垮整轮：回答仍照常给出，仅少一张可同步的卡
+            logger.exception("运行 %s 任务草稿生成失败", run["id"])
+        _emit_progress(
+            db,
+            run["id"],
+            phase="synthesis",
+            status="completed" if draft_projection else "failed",
+            title=("学习任务草稿已生成" if draft_projection else "学习任务草稿生成失败"),
+        )
+        if draft_projection:
+            # 合成回答的证据里加入草稿卡，模型才能把卡内容整理进回答
+            results = {**results, "task_draft": {"cards": draft_projection["cards"]}}
 
     async def _forward_delta(delta: str) -> None:
         nonlocal streamed
@@ -1610,7 +1662,7 @@ async def execute_run(run_id: str, db_path: str) -> None:
             title="正在制定执行计划",
             detail="正在安排可验证的处理步骤",
         )
-        steps = _build_plan(intent, run, conv, attachment, goal_text=goal_text)
+        steps, task_draft_args = _build_plan(intent, run, conv, attachment, goal_text=goal_text)
         _persist_plan(db, run_id, steps)
         _emit_plan_updated(db, run_id, steps)
         _emit_progress(
@@ -1623,14 +1675,24 @@ async def execute_run(run_id: str, db_path: str) -> None:
         )
         # Persist only the data type used by this run; the retired context is
         # intentionally absent from both the plan and run record.
-        _update_run(db, run_id, data_type=run["data_type"] or intent.data_type)
+        resolved_run_data_type = run["data_type"] or intent.data_type
+        _update_run(db, run_id, data_type=resolved_run_data_type)
+        if resolved_run_data_type:
+            # 会话级数据类型同步落库：后续「继续修改/再来一个」等无类型短句
+            # 经 _context_values 继承本轮范围，不再重复追问数据类型。
+            db.execute(
+                "UPDATE conversations SET data_type = ? WHERE id = ?",
+                (resolved_run_data_type, run["conversation_id"]),
+            )
+            db.commit()
 
         finished = await _run_steps(db, get_config(), user, run, conv, steps, 0)
         if not finished:
             _emit_plan_updated(db, run_id, steps)
             return  # 停在写确认门，等待 confirmations 路由续跑
         _emit_plan_updated(db, run_id, steps)
-        await _finalize(db, run, conv, intent, steps, goal_text=goal_text)
+        await _finalize(db, run, conv, intent, steps, goal_text=goal_text,
+                        task_draft_args=task_draft_args)
     except Exception:
         logger.exception("运行 %s 未处理异常", run_id)
         try:

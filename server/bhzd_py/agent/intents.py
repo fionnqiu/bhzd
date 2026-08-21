@@ -53,10 +53,12 @@ _TASK_CONVERT_RE = re.compile(r"转成任务|转化为任务|任务卡|企业任
 # ``任务`` (for example, "帮我生成学习任务").  Require either an imperative
 # at the beginning or an explicit request cue so explanatory questions such as
 # "如何生成学习任务？" keep their normal RAG route instead of opening a task flow.
+# 修改/调整/更新 同属任务动词：卡片「继续修改」预填的修订请求据此复用任务链路。
 _TASK_CREATE_REQUEST_RE = re.compile(
     r"(?:^\s*(?:请(?:帮我)?|帮我|给我|为我|替我|我要|我想|麻烦|直接)?\s*"
     r"|(?:请|帮我|给我|为我|替我|我要|我想|麻烦|能否|能|可以|可否|直接)\s*)"
-    r"(?:生成|创建|制定|安排)\s*(?:一(?:个|份))?\s*(?:学习|练习|标注)?\s*任务(?!的)"
+    r"(?:生成|创建|制定|安排|修改|调整|更新)\s*(?:一(?:个|份))?\s*"
+    r"(?:\S{0,6}的|一下)?\s*(?:学习|练习|标注)?\s*任务(?!的)"
 )
 _PRESET_RE = re.compile(r"预设|入门路径|学习路径|考证路径")
 _QUESTION_RE = re.compile(r"(什么是|怎么|如何|为什么|请问|吗[？?]?$|[？?]$)")

@@ -15,13 +15,13 @@ EXPECTED_SCHEMA_VERSION = "1.0.0"
 EXPECTED_GRAPH_VERSION = "1.0.0"
 EXPECTED_NODE_COUNTS = {
     "CAP": 40,
-    "KNG": 60,
-    "TSK": 20,
+    "KNG": 65,
+    "TSK": 25,
     "SCN": 4,
-    "RES": 30,
+    "RES": 35,
     "CERT": 12,
 }
-EXPECTED_EDGE_COUNT = 240
+EXPECTED_EDGE_COUNT = 260
 RELATION_ORDER = ("PRE", "ISA", "SUP", "REL", "INSCN", "MAPCERT")
 ALLOWED_DATA_TYPES = {"text", "image", "audio", "video"}
 STABLE_KNG_IDENTITIES = {
@@ -183,9 +183,9 @@ def validate_schema_and_counts(graph: dict[str, Any], errors: list[str]) -> None
     if graph.get("node_type_counts") != EXPECTED_NODE_COUNTS:
         add_error(errors, "declared_type_counts", "node_type_counts metadata is stale")
     if len(nodes) != sum(EXPECTED_NODE_COUNTS.values()):
-        add_error(errors, "node_count", f"expected 166 nodes, got {len(nodes)}")
+        add_error(errors, "node_count", f"expected 181 nodes, got {len(nodes)}")
     if len(edges) != EXPECTED_EDGE_COUNT:
-        add_error(errors, "edge_count", f"expected 240 edges, got {len(edges)}")
+        add_error(errors, "edge_count", f"expected 260 edges, got {len(edges)}")
 
     computed_edge_counts = Counter(
         edge.get("relation") for edge in edges if isinstance(edge, dict)

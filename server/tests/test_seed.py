@@ -6,6 +6,7 @@ import json
 
 from bhzd_py.config import REPO_ROOT
 from bhzd_py.db import connect
+from bhzd_py.seed.demo_learning_content import get_demo_learning_content
 from bhzd_py.seed.loader import run_seed
 from bhzd_py.seed.presets import get_presets
 
@@ -15,12 +16,18 @@ def test_seed_is_idempotent(tmp_db_path, clean_admin_env):
     # 首次创建管理员且未配置密码 → 生成随机密码（只此一次）
     assert first["generated_admin_password"]
     assert first["warnings"] == []
+    assert first["demo"]["tasks_created"] == 8
+    assert first["demo"]["knowledge_points_created"] == 16
+    assert first["demo"]["exercises_created"] == 24
 
     second = run_seed(demo=True)
     assert second["generated_admin_password"] is None  # 不再重复打印密码
     assert second["migrations_applied"] == []
     assert second["demo"]["users_created"] == 0
     assert second["demo"]["eval_cases"] == 0
+    assert second["demo"]["tasks_created"] == 0
+    assert second["demo"]["knowledge_points_created"] == 0
+    assert second["demo"]["exercises_created"] == 0
     assert all(not doc["created"] for doc in second["demo"]["documents"])
 
     # 两次运行后行数不变，证明幂等而非"插入失败被吞掉"
@@ -28,7 +35,16 @@ def test_seed_is_idempotent(tmp_db_path, clean_admin_env):
     try:
         counts = {
             table: conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()["n"]
-            for table in ("users", "rag_documents", "rag_chunks", "eval_cases", "source_ledgers")
+            for table in (
+                "users",
+                "rag_documents",
+                "rag_chunks",
+                "eval_cases",
+                "source_ledgers",
+                "learning_tasks",
+                "task_knowledge_points",
+                "task_exercises",
+            )
         }
     finally:
         conn.close()
@@ -87,6 +103,34 @@ def test_demo_seed_contents(tmp_db_path, clean_admin_env):
             assert doc["id"] in json.loads(ledger["related_document_ids_json"])
         assert conn.execute("SELECT COUNT(*) AS n FROM source_ledgers").fetchone()["n"] == 4
         assert conn.execute("SELECT COUNT(*) AS n FROM eval_cases").fetchone()["n"] == 20
+        # 每条预设都有一张项目相关任务卡、两个知识点和三道练习；
+        # graph_task 资源让学生任务可以回溯到知识图谱的具体 TSK 节点。
+        tasks = conn.execute(
+            "SELECT id, source, content_status, resources_json FROM learning_tasks "
+            "WHERE user_id = (SELECT id FROM users WHERE email = 'student@demo.bhzd') "
+            "ORDER BY id"
+        ).fetchall()
+        assert len(tasks) == 8
+        expected_graph_tasks = {
+            lesson["graph_task_id"] for lesson in get_demo_learning_content()
+        }
+        graph_task_refs = set()
+        for task in tasks:
+            assert task["source"] == "preset"
+            assert task["content_status"] == "done"
+            resources = json.loads(task["resources_json"])
+            graph_resources = [item for item in resources if item.get("type") == "graph_task"]
+            assert len(graph_resources) == 1
+            graph_task_refs.add(graph_resources[0]["ref_id"])
+            assert conn.execute(
+                "SELECT COUNT(*) AS n FROM task_knowledge_points WHERE task_id = ?", (task["id"],)
+            ).fetchone()["n"] == 2
+            assert conn.execute(
+                "SELECT COUNT(*) AS n FROM task_exercises WHERE task_id = ?", (task["id"],)
+            ).fetchone()["n"] == 3
+        assert graph_task_refs == expected_graph_tasks
+        assert conn.execute("SELECT COUNT(*) AS n FROM task_knowledge_points").fetchone()["n"] == 16
+        assert conn.execute("SELECT COUNT(*) AS n FROM task_exercises").fetchone()["n"] == 24
         # 每篇文档 approve + publish 两条审核记录
         assert conn.execute(
             "SELECT COUNT(*) AS n FROM review_records WHERE target_type = 'rag_document'"
@@ -108,3 +152,7 @@ def test_presets_have_no_dangling_references():
             assert cap_id in node_ids, f"{preset['id']} 悬空能力 {cap_id}"
         for unit_id in preset["unit_ids"]:
             assert unit_id in unit_ids, f"{preset['id']} 悬空单元 {unit_id}"
+    for lesson in get_demo_learning_content():
+        assert lesson["graph_task_id"] in node_ids, (
+            f"{lesson['preset_id']} 悬空图谱任务 {lesson['graph_task_id']}"
+        )

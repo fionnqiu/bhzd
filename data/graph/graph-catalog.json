@@ -11,8 +11,8 @@
     "teaching_units": "data/curriculum/teaching-units.json"
   },
   "expected_counts": {
-    "nodes": {"CAP": 40, "KNG": 60, "TSK": 20, "SCN": 4, "RES": 30, "CERT": 12},
-    "edges": 240
+    "nodes": {"CAP": 40, "KNG": 65, "TSK": 25, "SCN": 4, "RES": 35, "CERT": 12},
+    "edges": 260
   },
   "nodes": {
     "CAP": [
@@ -125,7 +125,13 @@
       {"id": "KNG-VID-MULTI-ACTOR-001", "label": "多参与者事件", "description": "多人事件分别记录参与轨迹及其角色。", "data_types": ["video"], "claim_type": "video_multi_actor_policy", "claim_basis": "curriculum_draft", "source_refs": []},
       {"id": "KNG-VID-SHOT-BOUNDARY-001", "label": "镜头边界处理", "description": "镜头切换通常终止缺少跨镜头证据的轨迹。", "data_types": ["video"], "claim_type": "video_shot_boundary_policy", "claim_basis": "curriculum_draft", "source_refs": []},
       {"id": "KNG-VID-QUALITY-METRICS-001", "label": "视频标注质量指标", "description": "轨迹完整性、ID 切换和事件边界共同参与复核。", "data_types": ["video"], "claim_type": "video_quality_policy", "claim_basis": "curriculum_draft", "source_refs": []},
-      {"id": "KNG-VID-EXPORT-FORMAT-001", "label": "视频标注导出格式", "description": "CVAT 格式可保存视频帧号、轨迹 ID 和几何字段。", "data_types": ["video"], "claim_type": "video_annotation_export", "claim_basis": "external_reference", "source_refs": ["SRC-CVAT-ANNOTATION-FORMAT-251"]}
+      {"id": "KNG-VID-EXPORT-FORMAT-001", "label": "视频标注导出格式", "description": "CVAT 格式可保存视频帧号、轨迹 ID 和几何字段。", "data_types": ["video"], "claim_type": "video_annotation_export", "claim_basis": "external_reference", "source_refs": ["SRC-CVAT-ANNOTATION-FORMAT-251"]},
+
+      {"id": "KNG-TXT-CONTENT-SAFETY-CONTEXT-001", "label": "内容安全上下文判定", "description": "敏感词命中后仍需结合说话对象、语境和风险类别边界作出审核结论。", "data_types": ["text"], "claim_type": "text_ambiguity_policy", "claim_basis": "project_policy", "source_refs": ["SRC-POLICY-TEXT-TASK3-001"]},
+      {"id": "KNG-AUD-EMOTION-EVIDENCE-001", "label": "客服情感听觉证据", "description": "客服情感标签应由语速、音调、停顿等可听证据支持，并与副语言事件分开记录。", "data_types": ["audio"], "claim_type": "audio_emotion_label_set_policy", "claim_basis": "project_policy", "source_refs": ["SRC-POLICY-AUDIO-TASK4-001"]},
+      {"id": "KNG-AUD-WAKEWORD-ROBUSTNESS-001", "label": "唤醒词鲁棒性负例", "description": "近音词、部分唤醒词和噪声重叠样本用于检验车载唤醒边界的稳定性。", "data_types": ["audio"], "claim_type": "audio_wakeword_detection_policy", "claim_basis": "project_policy", "source_refs": ["SRC-POLICY-AUDIO-TASK4-001"]},
+      {"id": "KNG-IMG-IOU-THRESHOLD-001", "label": "目标框 IOU 质检阈值", "description": "目标检测框质检同时关注框的贴合度、面积和项目约定的 IOU 合格线。", "data_types": ["image"], "claim_type": "image_quality_policy", "claim_basis": "project_policy", "source_refs": ["SRC-POLICY-IMAGE-TASK3-001"]},
+      {"id": "KNG-VID-EVENT-BOUNDARY-QA-001", "label": "视频事件边界复核", "description": "行为事件起止帧要能由可观察动作证据复核，并保持半开区间的一致约定。", "data_types": ["video"], "claim_type": "video_event_boundary_policy", "claim_basis": "project_policy", "source_refs": ["SRC-POLICY-VIDEO-TASK5-001"]}
     ],
     "TSK": [
       {"id": "TSK-TXT-LABEL-AUDIT-001", "label": "审计文本标签提交", "description": "检查标签是否属于配置集合并输出错误码。", "data_types": ["text"], "primary_capability_ref": "CAP-TXT-LABEL-VALIDATE-001", "primary_knowledge_ref": "KNG-TXT-LABEL-VOCAB-001", "teaching_unit_refs": ["TU-TEXT-LABEL-VOCAB-001"], "student_visible": false},
@@ -150,7 +156,13 @@
       {"id": "TSK-VID-FRAME-LABEL-001", "label": "标注抽样视频帧", "description": "按抽帧策略为关键帧添加类别和几何标注。", "data_types": ["video"], "primary_capability_ref": "CAP-VID-FRAME-ANNOTATE-001", "primary_knowledge_ref": "KNG-VID-FRAME-ANNOTATION-001", "teaching_unit_refs": ["TU-VIDEO-FRAME-ANNOTATION-001"], "student_visible": false},
       {"id": "TSK-VID-OBJECT-TRACK-001", "label": "建立跨帧目标轨迹", "description": "连接目标观察并处理插值与遮挡。", "data_types": ["video"], "primary_capability_ref": "CAP-VID-OBJECT-TRACK-001", "primary_knowledge_ref": "KNG-VID-TRACK-CONTINUITY-001", "teaching_unit_refs": ["TU-VIDEO-OBJECT-TRACKING-001"], "student_visible": false},
       {"id": "TSK-VID-ACTION-EVENT-001", "label": "标注视频行为事件", "description": "选择事件类别、参与轨迹及起止帧。", "data_types": ["video"], "primary_capability_ref": "CAP-VID-ACTION-EVENT-001", "primary_knowledge_ref": "KNG-VID-EVENT-START-END-001", "teaching_unit_refs": ["TU-VIDEO-BEHAVIOR-EVENT-001"], "student_visible": false},
-      {"id": "TSK-VID-TRACK-QA-001", "label": "复核轨迹与事件导出", "description": "检查轨迹连续性、ID 切换和事件边界。", "data_types": ["video"], "primary_capability_ref": "CAP-VID-EXPORT-QA-001", "primary_knowledge_ref": "KNG-VID-QUALITY-METRICS-001", "student_visible": false}
+      {"id": "TSK-VID-TRACK-QA-001", "label": "复核轨迹与事件导出", "description": "检查轨迹连续性、ID 切换和事件边界。", "data_types": ["video"], "primary_capability_ref": "CAP-VID-EXPORT-QA-001", "primary_knowledge_ref": "KNG-VID-QUALITY-METRICS-001", "student_visible": false},
+
+      {"id": "TSK-TXT-CONTENT-SAFETY-REVIEW-001", "label": "复核内容安全文本", "description": "结合上下文、风险类别互斥和复核条件完成内容安全文本审核。", "data_types": ["text"], "primary_capability_ref": "CAP-TXT-CLASSIFY-001", "primary_knowledge_ref": "KNG-TXT-CONTENT-SAFETY-CONTEXT-001", "teaching_unit_refs": ["TU-TEXT-DOCUMENT-CLASSIFY-001", "TU-TEXT-INTENT-AMBIGUITY-001"], "student_visible": false},
+      {"id": "TSK-AUD-CUSTOMER-EMOTION-QA-001", "label": "复核客服情感证据", "description": "从客服通话的听觉证据复核情感标签与副语言事件区间。", "data_types": ["audio"], "primary_capability_ref": "CAP-AUD-EMOTION-PARALING-001", "primary_knowledge_ref": "KNG-AUD-EMOTION-EVIDENCE-001", "teaching_unit_refs": ["TU-AUDIO-EMOTION-PARALINGUISTICS-001"], "student_visible": false},
+      {"id": "TSK-AUD-WAKEWORD-ROBUSTNESS-001", "label": "复核车载唤醒负例", "description": "比较正例、近音词和噪声重叠样本，复核唤醒词边界与负例标签。", "data_types": ["audio"], "primary_capability_ref": "CAP-AUD-WAKE-COMMAND-001", "primary_knowledge_ref": "KNG-AUD-WAKEWORD-ROBUSTNESS-001", "teaching_unit_refs": ["TU-AUDIO-WAKE-COMMAND-WORDS-001", "TU-AUDIO-SEGMENTATION-ALIGNMENT-001"], "student_visible": false},
+      {"id": "TSK-IMG-IOU-REVIEW-001", "label": "复核目标框 IOU", "description": "依据矩形框几何和项目阈值复核目标检测标注是否达标。", "data_types": ["image"], "primary_capability_ref": "CAP-IMG-RECT-VALIDATE-001", "primary_knowledge_ref": "KNG-IMG-IOU-THRESHOLD-001", "teaching_unit_refs": ["TU-IMAGE-RECT-BOUNDS-001", "TU-IMAGE-OCCLUSION-TRUNCATION-001"], "student_visible": false},
+      {"id": "TSK-VID-EVENT-BOUNDARY-QA-001", "label": "复核视频事件边界", "description": "根据动作出现与完成证据复核事件起止帧及轨迹关联。", "data_types": ["video"], "primary_capability_ref": "CAP-VID-EVENT-BOUNDARY-001", "primary_knowledge_ref": "KNG-VID-EVENT-BOUNDARY-QA-001", "teaching_unit_refs": ["TU-VIDEO-BEHAVIOR-EVENT-001"], "student_visible": false}
     ],
     "SCN": [
       {"id": "SCN-MEDICAL-001", "label": "医疗数据标注", "description": "医疗文本、影像和语音教学规则覆盖层。", "data_types": ["text", "image", "audio"], "supported_data_types": ["text", "image", "audio"], "status": "published", "student_visible": true, "review_records": ["REVIEW-TASK5-SCENARIOS-C5A91CB-001"], "publication_scope": "development_only", "human_release_allowed": false},
@@ -188,7 +200,13 @@
       {"id": "RES-VID-OCCLUSION-REID-CARD-001", "label": "遮挡重识别证据卡", "description": "比较位置、外观和运动连续性。", "data_types": ["video"]},
       {"id": "RES-VID-EVENT-TIMELINE-001", "label": "行为事件时间线", "description": "练习事件参与者和起止帧。", "data_types": ["video"]},
       {"id": "RES-VID-INTERPOLATION-CHECKLIST-001", "label": "轨迹插值检查表", "description": "检查关键帧、运动假设和中间帧。", "data_types": ["video"]},
-      {"id": "RES-VID-EXPORT-QA-CHECKLIST-001", "label": "视频导出检查表", "description": "核对帧号、轨迹、事件和格式。", "data_types": ["video"]}
+      {"id": "RES-VID-EXPORT-QA-CHECKLIST-001", "label": "视频导出检查表", "description": "核对帧号、轨迹、事件和格式。", "data_types": ["video"]},
+
+      {"id": "RES-TXT-CONTENT-SAFETY-CASEBOOK-001", "label": "内容安全边界案例集", "description": "用敏感词、上下文和风险类别优先级练习文本审核的一致判定。", "data_types": ["text"]},
+      {"id": "RES-AUD-EMOTION-EVIDENCE-CARD-001", "label": "客服情感证据卡", "description": "记录语速、音调、停顿与副语言事件，支持情感标签复核。", "data_types": ["audio"]},
+      {"id": "RES-AUD-WAKEWORD-NEGATIVE-SET-001", "label": "车载唤醒负例集", "description": "收集近音词、部分唤醒词和道路噪声重叠样本，练习负例边界。", "data_types": ["audio"]},
+      {"id": "RES-IMG-IOU-CALCULATION-SHEET-001", "label": "目标框 IOU 计算表", "description": "逐项计算交并比并结合越界、遮挡和截断属性完成框质检。", "data_types": ["image"]},
+      {"id": "RES-VID-EVENT-BOUNDARY-REVIEW-001", "label": "视频事件边界复核表", "description": "记录动作首帧、结束帧、轨迹 ID 和复核证据。", "data_types": ["video"]}
     ],
     "CERT": [
       {"id": "CERT-AIT-L5-DATA-PREP-001", "label": "人工智能训练师五级：数据准备映射", "description": "课程能力与数据准备相关考核方向的展示映射。", "data_types": ["text", "image", "audio", "video"]},
@@ -292,7 +310,12 @@
       {"source": "KNG-VID-OCCLUSION-REID-001", "target": "CAP-VID-OCCLUSION-REID-001"},
       {"source": "KNG-VID-ACTION-TAXONOMY-001", "target": "CAP-VID-ACTION-EVENT-001"},
       {"source": "KNG-VID-EVENT-START-END-001", "target": "CAP-VID-EVENT-BOUNDARY-001"},
-      {"source": "KNG-VID-MULTI-ACTOR-001", "target": "CAP-VID-ACTION-EVENT-001"}
+      {"source": "KNG-VID-MULTI-ACTOR-001", "target": "CAP-VID-ACTION-EVENT-001"},
+      {"source": "KNG-TXT-CONTENT-SAFETY-CONTEXT-001", "target": "CAP-TXT-CLASSIFY-001"},
+      {"source": "KNG-AUD-EMOTION-EVIDENCE-001", "target": "CAP-AUD-EMOTION-PARALING-001"},
+      {"source": "KNG-AUD-WAKEWORD-ROBUSTNESS-001", "target": "CAP-AUD-WAKE-COMMAND-001"},
+      {"source": "KNG-IMG-IOU-THRESHOLD-001", "target": "CAP-IMG-RECT-VALIDATE-001"},
+      {"source": "KNG-VID-EVENT-BOUNDARY-QA-001", "target": "CAP-VID-EVENT-BOUNDARY-001"}
     ],
     "SUP": [
       {"source": "CAP-TXT-LABEL-VALIDATE-001", "target": "TSK-TXT-LABEL-AUDIT-001"},
@@ -374,7 +397,25 @@
       {"source": "KNG-CORE-ASSET-AUTH-001", "target": "CAP-CORE-ASSET-QUALITY-001"},
       {"source": "KNG-CORE-QUALITY-DIMENSIONS-001", "target": "CAP-CORE-EXPORT-QA-001"},
       {"source": "KNG-CORE-ERROR-TAXONOMY-001", "target": "CAP-CORE-EXPORT-QA-001"},
-      {"source": "KNG-CORE-EXPORT-VERSIONING-001", "target": "CAP-CORE-EXPORT-QA-001"}
+      {"source": "KNG-CORE-EXPORT-VERSIONING-001", "target": "CAP-CORE-EXPORT-QA-001"},
+
+      {"source": "CAP-TXT-CLASSIFY-001", "target": "TSK-TXT-CONTENT-SAFETY-REVIEW-001"},
+      {"source": "CAP-AUD-EMOTION-PARALING-001", "target": "TSK-AUD-CUSTOMER-EMOTION-QA-001"},
+      {"source": "CAP-AUD-WAKE-COMMAND-001", "target": "TSK-AUD-WAKEWORD-ROBUSTNESS-001"},
+      {"source": "CAP-IMG-RECT-VALIDATE-001", "target": "TSK-IMG-IOU-REVIEW-001"},
+      {"source": "CAP-VID-EVENT-BOUNDARY-001", "target": "TSK-VID-EVENT-BOUNDARY-QA-001"},
+
+      {"source": "KNG-TXT-CONTENT-SAFETY-CONTEXT-001", "target": "TSK-TXT-CONTENT-SAFETY-REVIEW-001"},
+      {"source": "KNG-AUD-EMOTION-EVIDENCE-001", "target": "TSK-AUD-CUSTOMER-EMOTION-QA-001"},
+      {"source": "KNG-AUD-WAKEWORD-ROBUSTNESS-001", "target": "TSK-AUD-WAKEWORD-ROBUSTNESS-001"},
+      {"source": "KNG-IMG-IOU-THRESHOLD-001", "target": "TSK-IMG-IOU-REVIEW-001"},
+      {"source": "KNG-VID-EVENT-BOUNDARY-QA-001", "target": "TSK-VID-EVENT-BOUNDARY-QA-001"},
+
+      {"source": "RES-TXT-CONTENT-SAFETY-CASEBOOK-001", "target": "TSK-TXT-CONTENT-SAFETY-REVIEW-001"},
+      {"source": "RES-AUD-EMOTION-EVIDENCE-CARD-001", "target": "TSK-AUD-CUSTOMER-EMOTION-QA-001"},
+      {"source": "RES-AUD-WAKEWORD-NEGATIVE-SET-001", "target": "TSK-AUD-WAKEWORD-ROBUSTNESS-001"},
+      {"source": "RES-IMG-IOU-CALCULATION-SHEET-001", "target": "TSK-IMG-IOU-REVIEW-001"},
+      {"source": "RES-VID-EVENT-BOUNDARY-REVIEW-001", "target": "TSK-VID-EVENT-BOUNDARY-QA-001"}
     ],
     "REL": [
       {"source": "KNG-CORE-ERROR-TAXONOMY-001", "target": "KNG-TXT-INTERANNOTATOR-001"},

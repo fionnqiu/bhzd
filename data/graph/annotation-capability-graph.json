@@ -7,21 +7,21 @@
   "publication_state": "development",
   "generated_from": "data/graph/graph-catalog.json",
   "generated_by": "scripts/build_graph.py",
-  "catalog_sha256": "f124ab5845144b1c4045bd232c24125f301933082e52cd9ec726887163b01379",
+  "catalog_sha256": "a429aa8f8f81947fe58fc7bf1bffa33f575312b8642a1466fd16c23b00d53479",
   "source_registry": "data/sources/source-registry.json",
   "teaching_units": "data/curriculum/teaching-units.json",
   "node_type_counts": {
     "CAP": 40,
-    "KNG": 60,
-    "TSK": 20,
+    "KNG": 65,
+    "TSK": 25,
     "SCN": 4,
-    "RES": 30,
+    "RES": 35,
     "CERT": 12
   },
   "edge_type_counts": {
     "PRE": 40,
-    "ISA": 40,
-    "SUP": 77,
+    "ISA": 45,
+    "SUP": 92,
     "REL": 19,
     "INSCN": 24,
     "MAPCERT": 40
@@ -677,6 +677,21 @@
       "status": "draft"
     },
     {
+      "id": "KNG-AUD-EMOTION-EVIDENCE-001",
+      "label": "客服情感听觉证据",
+      "description": "客服情感标签应由语速、音调、停顿等可听证据支持，并与副语言事件分开记录。",
+      "data_types": [
+        "audio"
+      ],
+      "claim_type": "audio_emotion_label_set_policy",
+      "claim_basis": "project_policy",
+      "source_refs": [
+        "SRC-POLICY-AUDIO-TASK4-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
       "id": "KNG-AUD-EMOTION-LABEL-001",
       "label": "语音情感表示",
       "description": "EmotionML 用类别或维度结构表达情感；具体标签集由任务另行定义。",
@@ -935,6 +950,21 @@
       "status": "draft"
     },
     {
+      "id": "KNG-AUD-WAKEWORD-ROBUSTNESS-001",
+      "label": "唤醒词鲁棒性负例",
+      "description": "近音词、部分唤醒词和噪声重叠样本用于检验车载唤醒边界的稳定性。",
+      "data_types": [
+        "audio"
+      ],
+      "claim_type": "audio_wakeword_detection_policy",
+      "claim_basis": "project_policy",
+      "source_refs": [
+        "SRC-POLICY-AUDIO-TASK4-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
       "id": "KNG-CORE-ASSET-AUTH-001",
       "label": "素材授权与隐私边界",
       "description": "教学素材必须记录来源、授权和学生使用许可。",
@@ -1149,6 +1179,21 @@
       "status": "draft"
     },
     {
+      "id": "KNG-IMG-IOU-THRESHOLD-001",
+      "label": "目标框 IOU 质检阈值",
+      "description": "目标检测框质检同时关注框的贴合度、面积和项目约定的 IOU 合格线。",
+      "data_types": [
+        "image"
+      ],
+      "claim_type": "image_quality_policy",
+      "claim_basis": "project_policy",
+      "source_refs": [
+        "SRC-POLICY-IMAGE-TASK3-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
       "id": "KNG-IMG-KEYPOINT-VISIBILITY-001",
       "label": "关键点可见性",
       "description": "CVAT 标注格式用点几何与属性表达关键点状态。",
@@ -1335,6 +1380,21 @@
         "text"
       ],
       "claim_type": "text_class_exclusion",
+      "claim_basis": "project_policy",
+      "source_refs": [
+        "SRC-POLICY-TEXT-TASK3-001"
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-TXT-CONTENT-SAFETY-CONTEXT-001",
+      "label": "内容安全上下文判定",
+      "description": "敏感词命中后仍需结合说话对象、语境和风险类别边界作出审核结论。",
+      "data_types": [
+        "text"
+      ],
+      "claim_type": "text_ambiguity_policy",
       "claim_basis": "project_policy",
       "source_refs": [
         "SRC-POLICY-TEXT-TASK3-001"
@@ -1556,6 +1616,21 @@
           "description": "本项目使用 door_entry、door_exit、idle 闭合行为词表，并以可观察区域转移、参与轨迹和排除条件判定类别。",
           "version": "1.1.0"
         }
+      ],
+      "type": "KNG",
+      "status": "draft"
+    },
+    {
+      "id": "KNG-VID-EVENT-BOUNDARY-QA-001",
+      "label": "视频事件边界复核",
+      "description": "行为事件起止帧要能由可观察动作证据复核，并保持半开区间的一致约定。",
+      "data_types": [
+        "video"
+      ],
+      "claim_type": "video_event_boundary_policy",
+      "claim_basis": "project_policy",
+      "source_refs": [
+        "SRC-POLICY-VIDEO-TASK5-001"
       ],
       "type": "KNG",
       "status": "draft"
@@ -1806,6 +1881,17 @@
       "source_refs": []
     },
     {
+      "id": "RES-AUD-EMOTION-EVIDENCE-CARD-001",
+      "label": "客服情感证据卡",
+      "description": "记录语速、音调、停顿与副语言事件，支持情感标签复核。",
+      "data_types": [
+        "audio"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
       "id": "RES-AUD-EVENT-CATALOG-001",
       "label": "副语言事件目录",
       "description": "以本地 cue mapping 分离整体 emotion_label 与 laughter、sigh 副语言事件，提供 joy/neutral、sadness/neutral 允许答案、部分分人工复核及 [start_ms,end_ms) 区间双轨补强。",
@@ -1832,6 +1918,17 @@
       "id": "RES-AUD-TRANSCRIPT-STYLE-SHEET-001",
       "label": "转写风格表",
       "description": "按本地策略核对数字写法、全角标点、口语保留和不可听片段标记，修正转写正字法。",
+      "data_types": [
+        "audio"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-AUD-WAKEWORD-NEGATIVE-SET-001",
+      "label": "车载唤醒负例集",
+      "description": "收集近音词、部分唤醒词和道路噪声重叠样本，练习负例边界。",
       "data_types": [
         "audio"
       ],
@@ -1946,6 +2043,17 @@
       "source_refs": []
     },
     {
+      "id": "RES-IMG-IOU-CALCULATION-SHEET-001",
+      "label": "目标框 IOU 计算表",
+      "description": "逐项计算交并比并结合越界、遮挡和截断属性完成框质检。",
+      "data_types": [
+        "image"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
       "id": "RES-IMG-KEYPOINT-SKELETON-001",
       "label": "关键点骨架图",
       "description": "展示关键点顺序、连接和可见性。",
@@ -2012,6 +2120,17 @@
       "source_refs": []
     },
     {
+      "id": "RES-TXT-CONTENT-SAFETY-CASEBOOK-001",
+      "label": "内容安全边界案例集",
+      "description": "用敏感词、上下文和风险类别优先级练习文本审核的一致判定。",
+      "data_types": [
+        "text"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
       "id": "RES-TXT-LABEL-VOCAB-WORKSHEET-001",
       "label": "文本标签词表练习",
       "description": "练习封闭标签集与非法标签识别。",
@@ -2050,6 +2169,17 @@
       "description": "核对关系类型、方向及允许端点。",
       "data_types": [
         "text"
+      ],
+      "type": "RES",
+      "status": "draft",
+      "source_refs": []
+    },
+    {
+      "id": "RES-VID-EVENT-BOUNDARY-REVIEW-001",
+      "label": "视频事件边界复核表",
+      "description": "记录动作首帧、结束帧、轨迹 ID 和复核证据。",
+      "data_types": [
+        "video"
       ],
       "type": "RES",
       "status": "draft",
@@ -2250,6 +2380,29 @@
       "teaching_unit_links": []
     },
     {
+      "id": "TSK-AUD-CUSTOMER-EMOTION-QA-001",
+      "label": "复核客服情感证据",
+      "description": "从客服通话的听觉证据复核情感标签与副语言事件区间。",
+      "data_types": [
+        "audio"
+      ],
+      "primary_capability_ref": "CAP-AUD-EMOTION-PARALING-001",
+      "primary_knowledge_ref": "KNG-AUD-EMOTION-EVIDENCE-001",
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": [
+        {
+          "unit_id": "TU-AUDIO-EMOTION-PARALINGUISTICS-001",
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
+        }
+      ]
+    },
+    {
       "id": "TSK-AUD-EMOTION-EVENT-001",
       "label": "标注语音情感事件",
       "description": "区分情感标签与副语言事件区间。",
@@ -2325,6 +2478,66 @@
         },
         {
           "unit_id": "TU-AUDIO-TRANSCRIPTION-PUNCTUATION-001",
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
+        }
+      ]
+    },
+    {
+      "id": "TSK-AUD-WAKEWORD-ROBUSTNESS-001",
+      "label": "复核车载唤醒负例",
+      "description": "比较正例、近音词和噪声重叠样本，复核唤醒词边界与负例标签。",
+      "data_types": [
+        "audio"
+      ],
+      "primary_capability_ref": "CAP-AUD-WAKE-COMMAND-001",
+      "primary_knowledge_ref": "KNG-AUD-WAKEWORD-ROBUSTNESS-001",
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": [
+        {
+          "unit_id": "TU-AUDIO-SEGMENTATION-ALIGNMENT-001",
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
+        },
+        {
+          "unit_id": "TU-AUDIO-WAKE-COMMAND-WORDS-001",
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
+        }
+      ]
+    },
+    {
+      "id": "TSK-IMG-IOU-REVIEW-001",
+      "label": "复核目标框 IOU",
+      "description": "依据矩形框几何和项目阈值复核目标检测标注是否达标。",
+      "data_types": [
+        "image"
+      ],
+      "primary_capability_ref": "CAP-IMG-RECT-VALIDATE-001",
+      "primary_knowledge_ref": "KNG-IMG-IOU-THRESHOLD-001",
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": [
+        {
+          "unit_id": "TU-IMAGE-OCCLUSION-TRUNCATION-001",
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
+        },
+        {
+          "unit_id": "TU-IMAGE-RECT-BOUNDS-001",
           "review_status": "published",
           "student_visible": true,
           "in_student_visible_index": true,
@@ -2440,6 +2653,36 @@
       "teaching_unit_links": [
         {
           "unit_id": "TU-IMAGE-RECT-BOUNDS-001",
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
+        }
+      ]
+    },
+    {
+      "id": "TSK-TXT-CONTENT-SAFETY-REVIEW-001",
+      "label": "复核内容安全文本",
+      "description": "结合上下文、风险类别互斥和复核条件完成内容安全文本审核。",
+      "data_types": [
+        "text"
+      ],
+      "primary_capability_ref": "CAP-TXT-CLASSIFY-001",
+      "primary_knowledge_ref": "KNG-TXT-CONTENT-SAFETY-CONTEXT-001",
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": [
+        {
+          "unit_id": "TU-TEXT-DOCUMENT-CLASSIFY-001",
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
+        },
+        {
+          "unit_id": "TU-TEXT-INTENT-AMBIGUITY-001",
           "review_status": "published",
           "student_visible": true,
           "in_student_visible_index": true,
@@ -2571,6 +2814,29 @@
       ],
       "primary_capability_ref": "CAP-VID-ACTION-EVENT-001",
       "primary_knowledge_ref": "KNG-VID-EVENT-START-END-001",
+      "student_visible": false,
+      "type": "TSK",
+      "status": "draft",
+      "source_refs": [],
+      "teaching_unit_links": [
+        {
+          "unit_id": "TU-VIDEO-BEHAVIOR-EVENT-001",
+          "review_status": "published",
+          "student_visible": true,
+          "in_student_visible_index": true,
+          "consumable": true
+        }
+      ]
+    },
+    {
+      "id": "TSK-VID-EVENT-BOUNDARY-QA-001",
+      "label": "复核视频事件边界",
+      "description": "根据动作出现与完成证据复核事件起止帧及轨迹关联。",
+      "data_types": [
+        "video"
+      ],
+      "primary_capability_ref": "CAP-VID-EVENT-BOUNDARY-001",
+      "primary_knowledge_ref": "KNG-VID-EVENT-BOUNDARY-QA-001",
       "student_visible": false,
       "type": "TSK",
       "status": "draft",
@@ -3001,7 +3267,7 @@
     },
     {
       "id": "EDGE-0043",
-      "source": "KNG-AUD-EMOTION-LABEL-001",
+      "source": "KNG-AUD-EMOTION-EVIDENCE-001",
       "target": "CAP-AUD-EMOTION-PARALING-001",
       "relation": "ISA",
       "label": "归属于",
@@ -3009,6 +3275,14 @@
     },
     {
       "id": "EDGE-0044",
+      "source": "KNG-AUD-EMOTION-LABEL-001",
+      "target": "CAP-AUD-EMOTION-PARALING-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0045",
       "source": "KNG-AUD-LANGUAGE-DIALECT-001",
       "target": "CAP-AUD-LANGUAGE-DIALECT-001",
       "relation": "ISA",
@@ -3016,7 +3290,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0045",
+      "id": "EDGE-0046",
       "source": "KNG-AUD-PARALINGUISTIC-EVENT-001",
       "target": "CAP-AUD-EMOTION-PARALING-001",
       "relation": "ISA",
@@ -3024,7 +3298,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0046",
+      "id": "EDGE-0047",
       "source": "KNG-AUD-PUNCTUATION-001",
       "target": "CAP-AUD-TRANSCRIBE-PUNCT-001",
       "relation": "ISA",
@@ -3032,7 +3306,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0047",
+      "id": "EDGE-0048",
       "source": "KNG-AUD-SAMPLE-RATE-CHANNEL-001",
       "target": "CAP-AUD-CONFIG-VALIDATE-001",
       "relation": "ISA",
@@ -3040,7 +3314,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0048",
+      "id": "EDGE-0049",
       "source": "KNG-AUD-SPEAKER-TURN-001",
       "target": "CAP-AUD-SPEAKER-001",
       "relation": "ISA",
@@ -3048,7 +3322,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0049",
+      "id": "EDGE-0050",
       "source": "KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001",
       "target": "CAP-AUD-TRANSCRIBE-PUNCT-001",
       "relation": "ISA",
@@ -3056,7 +3330,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0050",
+      "id": "EDGE-0051",
       "source": "KNG-AUD-WAKEWORD-BOUNDARY-001",
       "target": "CAP-AUD-WAKE-COMMAND-001",
       "relation": "ISA",
@@ -3064,7 +3338,15 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0051",
+      "id": "EDGE-0052",
+      "source": "KNG-AUD-WAKEWORD-ROBUSTNESS-001",
+      "target": "CAP-AUD-WAKE-COMMAND-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0053",
       "source": "KNG-IMG-BOX-TIGHTNESS-001",
       "target": "CAP-IMG-BOX-ANNOTATE-001",
       "relation": "ISA",
@@ -3072,7 +3354,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0052",
+      "id": "EDGE-0054",
       "source": "KNG-IMG-CLASS-DEFINITION-001",
       "target": "CAP-IMG-OBJECT-CLASS-001",
       "relation": "ISA",
@@ -3080,7 +3362,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0053",
+      "id": "EDGE-0055",
       "source": "KNG-IMG-COORDINATE-SYSTEM-001",
       "target": "CAP-IMG-RECT-VALIDATE-001",
       "relation": "ISA",
@@ -3088,7 +3370,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0054",
+      "id": "EDGE-0056",
       "source": "KNG-IMG-INSTANCE-ID-001",
       "target": "CAP-IMG-INSTANCE-SEGMENT-001",
       "relation": "ISA",
@@ -3096,7 +3378,15 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0055",
+      "id": "EDGE-0057",
+      "source": "KNG-IMG-IOU-THRESHOLD-001",
+      "target": "CAP-IMG-RECT-VALIDATE-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0058",
       "source": "KNG-IMG-KEYPOINT-VISIBILITY-001",
       "target": "CAP-IMG-KEYPOINT-001",
       "relation": "ISA",
@@ -3104,7 +3394,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0056",
+      "id": "EDGE-0059",
       "source": "KNG-IMG-OCCLUSION-TRUNCATION-001",
       "target": "CAP-IMG-OCCLUSION-001",
       "relation": "ISA",
@@ -3112,7 +3402,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0057",
+      "id": "EDGE-0060",
       "source": "KNG-IMG-POLYGON-VERTEX-001",
       "target": "CAP-IMG-POLYGON-001",
       "relation": "ISA",
@@ -3120,7 +3410,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0058",
+      "id": "EDGE-0061",
       "source": "KNG-IMG-RECT-BOUNDS-001",
       "target": "CAP-IMG-RECT-VALIDATE-001",
       "relation": "ISA",
@@ -3128,7 +3418,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0059",
+      "id": "EDGE-0062",
       "source": "KNG-IMG-SEMANTIC-MASK-001",
       "target": "CAP-IMG-SEMANTIC-SEGMENT-001",
       "relation": "ISA",
@@ -3136,7 +3426,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0060",
+      "id": "EDGE-0063",
       "source": "KNG-IMG-SMALL-OBJECT-001",
       "target": "CAP-IMG-BOX-ANNOTATE-001",
       "relation": "ISA",
@@ -3144,7 +3434,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0061",
+      "id": "EDGE-0064",
       "source": "KNG-TXT-CLASS-EXCLUSION-001",
       "target": "CAP-TXT-CLASSIFY-001",
       "relation": "ISA",
@@ -3152,7 +3442,15 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0062",
+      "id": "EDGE-0065",
+      "source": "KNG-TXT-CONTENT-SAFETY-CONTEXT-001",
+      "target": "CAP-TXT-CLASSIFY-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0066",
       "source": "KNG-TXT-ENTITY-BOUNDARY-001",
       "target": "CAP-TXT-ENTITY-BOUNDARY-001",
       "relation": "ISA",
@@ -3160,7 +3458,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0063",
+      "id": "EDGE-0067",
       "source": "KNG-TXT-ENTITY-TYPE-001",
       "target": "CAP-TXT-ENTITY-TYPE-001",
       "relation": "ISA",
@@ -3168,7 +3466,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0064",
+      "id": "EDGE-0068",
       "source": "KNG-TXT-INTENT-HIERARCHY-001",
       "target": "CAP-TXT-INTENT-001",
       "relation": "ISA",
@@ -3176,7 +3474,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0065",
+      "id": "EDGE-0069",
       "source": "KNG-TXT-LABEL-VOCAB-001",
       "target": "CAP-TXT-LABEL-VALIDATE-001",
       "relation": "ISA",
@@ -3184,7 +3482,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0066",
+      "id": "EDGE-0070",
       "source": "KNG-TXT-NESTED-ENTITY-001",
       "target": "CAP-TXT-AMBIGUITY-001",
       "relation": "ISA",
@@ -3192,7 +3490,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0067",
+      "id": "EDGE-0071",
       "source": "KNG-TXT-RELATION-DIRECTION-001",
       "target": "CAP-TXT-RELATION-001",
       "relation": "ISA",
@@ -3200,7 +3498,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0068",
+      "id": "EDGE-0072",
       "source": "KNG-TXT-SENTIMENT-POLARITY-001",
       "target": "CAP-TXT-SENTIMENT-001",
       "relation": "ISA",
@@ -3208,7 +3506,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0069",
+      "id": "EDGE-0073",
       "source": "KNG-TXT-SINGLE-MULTI-LABEL-001",
       "target": "CAP-TXT-CLASSIFY-001",
       "relation": "ISA",
@@ -3216,7 +3514,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0070",
+      "id": "EDGE-0074",
       "source": "KNG-TXT-SPAN-OFFSET-001",
       "target": "CAP-TXT-ENTITY-BOUNDARY-001",
       "relation": "ISA",
@@ -3224,7 +3522,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0071",
+      "id": "EDGE-0075",
       "source": "KNG-VID-ACTION-TAXONOMY-001",
       "target": "CAP-VID-ACTION-EVENT-001",
       "relation": "ISA",
@@ -3232,7 +3530,15 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0072",
+      "id": "EDGE-0076",
+      "source": "KNG-VID-EVENT-BOUNDARY-QA-001",
+      "target": "CAP-VID-EVENT-BOUNDARY-001",
+      "relation": "ISA",
+      "label": "归属于",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0077",
       "source": "KNG-VID-EVENT-START-END-001",
       "target": "CAP-VID-EVENT-BOUNDARY-001",
       "relation": "ISA",
@@ -3240,7 +3546,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0073",
+      "id": "EDGE-0078",
       "source": "KNG-VID-FRAME-ANNOTATION-001",
       "target": "CAP-VID-FRAME-ANNOTATE-001",
       "relation": "ISA",
@@ -3248,7 +3554,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0074",
+      "id": "EDGE-0079",
       "source": "KNG-VID-FRAME-RATE-001",
       "target": "CAP-VID-FRAME-SAMPLE-001",
       "relation": "ISA",
@@ -3256,7 +3562,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0075",
+      "id": "EDGE-0080",
       "source": "KNG-VID-INTERPOLATION-001",
       "target": "CAP-VID-TRACK-INTERPOLATE-001",
       "relation": "ISA",
@@ -3264,7 +3570,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0076",
+      "id": "EDGE-0081",
       "source": "KNG-VID-MULTI-ACTOR-001",
       "target": "CAP-VID-ACTION-EVENT-001",
       "relation": "ISA",
@@ -3272,7 +3578,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0077",
+      "id": "EDGE-0082",
       "source": "KNG-VID-OCCLUSION-REID-001",
       "target": "CAP-VID-OCCLUSION-REID-001",
       "relation": "ISA",
@@ -3280,7 +3586,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0078",
+      "id": "EDGE-0083",
       "source": "KNG-VID-SAMPLING-STRATEGY-001",
       "target": "CAP-VID-FRAME-SAMPLE-001",
       "relation": "ISA",
@@ -3288,7 +3594,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0079",
+      "id": "EDGE-0084",
       "source": "KNG-VID-TRACK-CONTINUITY-001",
       "target": "CAP-VID-OBJECT-TRACK-001",
       "relation": "ISA",
@@ -3296,7 +3602,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0080",
+      "id": "EDGE-0085",
       "source": "KNG-VID-TRACK-ID-001",
       "target": "CAP-VID-TRACK-VALIDATE-001",
       "relation": "ISA",
@@ -3304,7 +3610,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0081",
+      "id": "EDGE-0086",
       "source": "CAP-AUD-CONFIG-VALIDATE-001",
       "target": "TSK-AUD-CONFIG-AUDIT-001",
       "relation": "SUP",
@@ -3312,7 +3618,15 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0082",
+      "id": "EDGE-0087",
+      "source": "CAP-AUD-EMOTION-PARALING-001",
+      "target": "TSK-AUD-CUSTOMER-EMOTION-QA-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0088",
       "source": "CAP-AUD-EMOTION-PARALING-001",
       "target": "TSK-AUD-EMOTION-EVENT-001",
       "relation": "SUP",
@@ -3320,7 +3634,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0083",
+      "id": "EDGE-0089",
       "source": "CAP-AUD-SPEAKER-001",
       "target": "TSK-AUD-SPEAKER-DIARIZE-001",
       "relation": "SUP",
@@ -3328,7 +3642,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0084",
+      "id": "EDGE-0090",
       "source": "CAP-AUD-TRANSCRIBE-PUNCT-001",
       "target": "TSK-AUD-TRANSCRIPT-ALIGN-001",
       "relation": "SUP",
@@ -3336,7 +3650,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0085",
+      "id": "EDGE-0091",
       "source": "CAP-AUD-WAKE-COMMAND-001",
       "target": "TSK-AUD-COMMAND-SEGMENT-001",
       "relation": "SUP",
@@ -3344,7 +3658,15 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0086",
+      "id": "EDGE-0092",
+      "source": "CAP-AUD-WAKE-COMMAND-001",
+      "target": "TSK-AUD-WAKEWORD-ROBUSTNESS-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0093",
       "source": "CAP-IMG-BOX-ANNOTATE-001",
       "target": "TSK-IMG-OBJECT-BOX-001",
       "relation": "SUP",
@@ -3352,7 +3674,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0087",
+      "id": "EDGE-0094",
       "source": "CAP-IMG-INSTANCE-SEGMENT-001",
       "target": "TSK-IMG-MASK-REVIEW-001",
       "relation": "SUP",
@@ -3360,7 +3682,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0088",
+      "id": "EDGE-0095",
       "source": "CAP-IMG-KEYPOINT-001",
       "target": "TSK-IMG-KEYPOINT-MARK-001",
       "relation": "SUP",
@@ -3368,7 +3690,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0089",
+      "id": "EDGE-0096",
       "source": "CAP-IMG-POLYGON-001",
       "target": "TSK-IMG-POLYGON-TRACE-001",
       "relation": "SUP",
@@ -3376,7 +3698,15 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0090",
+      "id": "EDGE-0097",
+      "source": "CAP-IMG-RECT-VALIDATE-001",
+      "target": "TSK-IMG-IOU-REVIEW-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0098",
       "source": "CAP-IMG-RECT-VALIDATE-001",
       "target": "TSK-IMG-RECT-AUDIT-001",
       "relation": "SUP",
@@ -3384,7 +3714,15 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0091",
+      "id": "EDGE-0099",
+      "source": "CAP-TXT-CLASSIFY-001",
+      "target": "TSK-TXT-CONTENT-SAFETY-REVIEW-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0100",
       "source": "CAP-TXT-CLASSIFY-001",
       "target": "TSK-TXT-DOCUMENT-CLASSIFY-001",
       "relation": "SUP",
@@ -3392,7 +3730,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0092",
+      "id": "EDGE-0101",
       "source": "CAP-TXT-ENTITY-BOUNDARY-001",
       "target": "TSK-TXT-NER-ANNOTATE-001",
       "relation": "SUP",
@@ -3400,7 +3738,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0093",
+      "id": "EDGE-0102",
       "source": "CAP-TXT-INTENT-001",
       "target": "TSK-TXT-INTENT-REVIEW-001",
       "relation": "SUP",
@@ -3408,7 +3746,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0094",
+      "id": "EDGE-0103",
       "source": "CAP-TXT-LABEL-VALIDATE-001",
       "target": "TSK-TXT-LABEL-AUDIT-001",
       "relation": "SUP",
@@ -3416,7 +3754,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0095",
+      "id": "EDGE-0104",
       "source": "CAP-TXT-RELATION-001",
       "target": "TSK-TXT-RELATION-LINK-001",
       "relation": "SUP",
@@ -3424,7 +3762,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0096",
+      "id": "EDGE-0105",
       "source": "CAP-VID-ACTION-EVENT-001",
       "target": "TSK-VID-ACTION-EVENT-001",
       "relation": "SUP",
@@ -3432,7 +3770,15 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0097",
+      "id": "EDGE-0106",
+      "source": "CAP-VID-EVENT-BOUNDARY-001",
+      "target": "TSK-VID-EVENT-BOUNDARY-QA-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0107",
       "source": "CAP-VID-EXPORT-QA-001",
       "target": "TSK-VID-TRACK-QA-001",
       "relation": "SUP",
@@ -3440,7 +3786,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0098",
+      "id": "EDGE-0108",
       "source": "CAP-VID-FRAME-ANNOTATE-001",
       "target": "TSK-VID-FRAME-LABEL-001",
       "relation": "SUP",
@@ -3448,7 +3794,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0099",
+      "id": "EDGE-0109",
       "source": "CAP-VID-OBJECT-TRACK-001",
       "target": "TSK-VID-OBJECT-TRACK-001",
       "relation": "SUP",
@@ -3456,7 +3802,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0100",
+      "id": "EDGE-0110",
       "source": "CAP-VID-TRACK-VALIDATE-001",
       "target": "TSK-VID-TRACK-ID-AUDIT-001",
       "relation": "SUP",
@@ -3464,7 +3810,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0101",
+      "id": "EDGE-0111",
       "source": "KNG-AUD-COMMAND-INTENT-001",
       "target": "TSK-AUD-COMMAND-SEGMENT-001",
       "relation": "SUP",
@@ -3472,7 +3818,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0102",
+      "id": "EDGE-0112",
       "source": "KNG-AUD-DATA-BINDING-001",
       "target": "TSK-AUD-CONFIG-AUDIT-001",
       "relation": "SUP",
@@ -3480,7 +3826,15 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0103",
+      "id": "EDGE-0113",
+      "source": "KNG-AUD-EMOTION-EVIDENCE-001",
+      "target": "TSK-AUD-CUSTOMER-EMOTION-QA-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0114",
       "source": "KNG-AUD-EMOTION-LABEL-001",
       "target": "TSK-AUD-EMOTION-EVENT-001",
       "relation": "SUP",
@@ -3488,7 +3842,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0104",
+      "id": "EDGE-0115",
       "source": "KNG-AUD-SPEAKER-TURN-001",
       "target": "TSK-AUD-SPEAKER-DIARIZE-001",
       "relation": "SUP",
@@ -3496,7 +3850,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0105",
+      "id": "EDGE-0116",
       "source": "KNG-AUD-TRANSCRIPT-ORTHOGRAPHY-001",
       "target": "TSK-AUD-TRANSCRIPT-ALIGN-001",
       "relation": "SUP",
@@ -3504,7 +3858,15 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0106",
+      "id": "EDGE-0117",
+      "source": "KNG-AUD-WAKEWORD-ROBUSTNESS-001",
+      "target": "TSK-AUD-WAKEWORD-ROBUSTNESS-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0118",
       "source": "KNG-CORE-ASSET-AUTH-001",
       "target": "CAP-CORE-ASSET-QUALITY-001",
       "relation": "SUP",
@@ -3512,7 +3874,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0107",
+      "id": "EDGE-0119",
       "source": "KNG-CORE-DATA-SCHEMA-001",
       "target": "CAP-CORE-LABEL-SCHEMA-001",
       "relation": "SUP",
@@ -3520,7 +3882,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0108",
+      "id": "EDGE-0120",
       "source": "KNG-CORE-ERROR-TAXONOMY-001",
       "target": "CAP-CORE-EXPORT-QA-001",
       "relation": "SUP",
@@ -3528,7 +3890,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0109",
+      "id": "EDGE-0121",
       "source": "KNG-CORE-EXPORT-VERSIONING-001",
       "target": "CAP-CORE-EXPORT-QA-001",
       "relation": "SUP",
@@ -3536,7 +3898,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0110",
+      "id": "EDGE-0122",
       "source": "KNG-CORE-QUALITY-DIMENSIONS-001",
       "target": "CAP-CORE-EXPORT-QA-001",
       "relation": "SUP",
@@ -3544,7 +3906,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0111",
+      "id": "EDGE-0123",
       "source": "KNG-CORE-TASK-OBJECTIVE-001",
       "target": "CAP-CORE-TASK-SCOPE-001",
       "relation": "SUP",
@@ -3552,7 +3914,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0112",
+      "id": "EDGE-0124",
       "source": "KNG-IMG-INSTANCE-ID-001",
       "target": "TSK-IMG-MASK-REVIEW-001",
       "relation": "SUP",
@@ -3560,7 +3922,15 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0113",
+      "id": "EDGE-0125",
+      "source": "KNG-IMG-IOU-THRESHOLD-001",
+      "target": "TSK-IMG-IOU-REVIEW-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0126",
       "source": "KNG-IMG-KEYPOINT-VISIBILITY-001",
       "target": "TSK-IMG-KEYPOINT-MARK-001",
       "relation": "SUP",
@@ -3568,7 +3938,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0114",
+      "id": "EDGE-0127",
       "source": "KNG-IMG-OCCLUSION-TRUNCATION-001",
       "target": "TSK-IMG-OBJECT-BOX-001",
       "relation": "SUP",
@@ -3576,7 +3946,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0115",
+      "id": "EDGE-0128",
       "source": "KNG-IMG-POLYGON-VERTEX-001",
       "target": "TSK-IMG-POLYGON-TRACE-001",
       "relation": "SUP",
@@ -3584,7 +3954,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0116",
+      "id": "EDGE-0129",
       "source": "KNG-IMG-RECT-BOUNDS-001",
       "target": "TSK-IMG-RECT-AUDIT-001",
       "relation": "SUP",
@@ -3592,7 +3962,15 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0117",
+      "id": "EDGE-0130",
+      "source": "KNG-TXT-CONTENT-SAFETY-CONTEXT-001",
+      "target": "TSK-TXT-CONTENT-SAFETY-REVIEW-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0131",
       "source": "KNG-TXT-ENTITY-BOUNDARY-001",
       "target": "TSK-TXT-NER-ANNOTATE-001",
       "relation": "SUP",
@@ -3600,7 +3978,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0118",
+      "id": "EDGE-0132",
       "source": "KNG-TXT-INTENT-HIERARCHY-001",
       "target": "TSK-TXT-INTENT-REVIEW-001",
       "relation": "SUP",
@@ -3608,7 +3986,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0119",
+      "id": "EDGE-0133",
       "source": "KNG-TXT-LABEL-VOCAB-001",
       "target": "TSK-TXT-LABEL-AUDIT-001",
       "relation": "SUP",
@@ -3616,7 +3994,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0120",
+      "id": "EDGE-0134",
       "source": "KNG-TXT-RELATION-DIRECTION-001",
       "target": "TSK-TXT-RELATION-LINK-001",
       "relation": "SUP",
@@ -3624,7 +4002,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0121",
+      "id": "EDGE-0135",
       "source": "KNG-TXT-SINGLE-MULTI-LABEL-001",
       "target": "TSK-TXT-DOCUMENT-CLASSIFY-001",
       "relation": "SUP",
@@ -3632,7 +4010,15 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0122",
+      "id": "EDGE-0136",
+      "source": "KNG-VID-EVENT-BOUNDARY-QA-001",
+      "target": "TSK-VID-EVENT-BOUNDARY-QA-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0137",
       "source": "KNG-VID-EVENT-START-END-001",
       "target": "TSK-VID-ACTION-EVENT-001",
       "relation": "SUP",
@@ -3640,7 +4026,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0123",
+      "id": "EDGE-0138",
       "source": "KNG-VID-FRAME-ANNOTATION-001",
       "target": "TSK-VID-FRAME-LABEL-001",
       "relation": "SUP",
@@ -3648,7 +4034,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0124",
+      "id": "EDGE-0139",
       "source": "KNG-VID-QUALITY-METRICS-001",
       "target": "TSK-VID-TRACK-QA-001",
       "relation": "SUP",
@@ -3656,7 +4042,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0125",
+      "id": "EDGE-0140",
       "source": "KNG-VID-TRACK-CONTINUITY-001",
       "target": "TSK-VID-OBJECT-TRACK-001",
       "relation": "SUP",
@@ -3664,7 +4050,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0126",
+      "id": "EDGE-0141",
       "source": "KNG-VID-TRACK-ID-001",
       "target": "TSK-VID-TRACK-ID-AUDIT-001",
       "relation": "SUP",
@@ -3672,7 +4058,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0127",
+      "id": "EDGE-0142",
       "source": "RES-AUD-ALIGNMENT-WORKSHEET-001",
       "target": "CAP-AUD-SEGMENT-ALIGN-001",
       "relation": "SUP",
@@ -3680,7 +4066,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0128",
+      "id": "EDGE-0143",
       "source": "RES-AUD-CONFIG-CHECKLIST-001",
       "target": "CAP-AUD-CONFIG-VALIDATE-001",
       "relation": "SUP",
@@ -3688,7 +4074,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0129",
+      "id": "EDGE-0144",
       "source": "RES-AUD-CONFIG-CHECKLIST-001",
       "target": "CAP-AUD-WAKE-COMMAND-001",
       "metadata": {
@@ -3699,7 +4085,7 @@
       "label": "支持"
     },
     {
-      "id": "EDGE-0130",
+      "id": "EDGE-0145",
       "source": "RES-AUD-DIALECT-LABEL-CARD-001",
       "target": "CAP-AUD-LANGUAGE-DIALECT-001",
       "relation": "SUP",
@@ -3707,7 +4093,15 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0131",
+      "id": "EDGE-0146",
+      "source": "RES-AUD-EMOTION-EVIDENCE-CARD-001",
+      "target": "TSK-AUD-CUSTOMER-EMOTION-QA-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0147",
       "source": "RES-AUD-EVENT-CATALOG-001",
       "target": "CAP-AUD-EMOTION-PARALING-001",
       "relation": "SUP",
@@ -3715,7 +4109,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0132",
+      "id": "EDGE-0148",
       "source": "RES-AUD-SPEAKER-TIMELINE-001",
       "target": "CAP-AUD-SPEAKER-001",
       "relation": "SUP",
@@ -3723,7 +4117,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0133",
+      "id": "EDGE-0149",
       "source": "RES-AUD-TRANSCRIPT-STYLE-SHEET-001",
       "target": "CAP-AUD-TRANSCRIBE-PUNCT-001",
       "relation": "SUP",
@@ -3731,7 +4125,15 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0134",
+      "id": "EDGE-0150",
+      "source": "RES-AUD-WAKEWORD-NEGATIVE-SET-001",
+      "target": "TSK-AUD-WAKEWORD-ROBUSTNESS-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0151",
       "source": "RES-CORE-ADJUDICATION-RECORD-001",
       "target": "CAP-CORE-LABEL-SCHEMA-001",
       "relation": "SUP",
@@ -3739,7 +4141,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0135",
+      "id": "EDGE-0152",
       "source": "RES-CORE-ASSET-AUTH-CHECKLIST-001",
       "target": "CAP-CORE-ASSET-QUALITY-001",
       "relation": "SUP",
@@ -3747,7 +4149,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0136",
+      "id": "EDGE-0153",
       "source": "RES-CORE-ERROR-REVIEW-FORM-001",
       "target": "CAP-CORE-EXPORT-QA-001",
       "relation": "SUP",
@@ -3755,7 +4157,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0137",
+      "id": "EDGE-0154",
       "source": "RES-CORE-EXPORT-MANIFEST-TEMPLATE-001",
       "target": "CAP-CORE-EXPORT-QA-001",
       "relation": "SUP",
@@ -3763,7 +4165,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0138",
+      "id": "EDGE-0155",
       "source": "RES-CORE-LABEL-SCHEMA-CHECKLIST-001",
       "target": "CAP-CORE-LABEL-SCHEMA-001",
       "relation": "SUP",
@@ -3771,7 +4173,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0139",
+      "id": "EDGE-0156",
       "source": "RES-CORE-TASK-BRIEF-TEMPLATE-001",
       "target": "CAP-CORE-TASK-SCOPE-001",
       "relation": "SUP",
@@ -3779,7 +4181,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0140",
+      "id": "EDGE-0157",
       "source": "RES-IMG-BOX-QUALITY-CHECKLIST-001",
       "target": "CAP-IMG-BOX-ANNOTATE-001",
       "relation": "SUP",
@@ -3787,7 +4189,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0141",
+      "id": "EDGE-0158",
       "source": "RES-IMG-COORDINATE-WORKSHEET-001",
       "target": "CAP-IMG-RECT-VALIDATE-001",
       "relation": "SUP",
@@ -3795,7 +4197,15 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0142",
+      "id": "EDGE-0159",
+      "source": "RES-IMG-IOU-CALCULATION-SHEET-001",
+      "target": "TSK-IMG-IOU-REVIEW-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0160",
       "source": "RES-IMG-KEYPOINT-SKELETON-001",
       "target": "CAP-IMG-KEYPOINT-001",
       "relation": "SUP",
@@ -3803,7 +4213,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0143",
+      "id": "EDGE-0161",
       "source": "RES-IMG-MASK-QA-CHECKLIST-001",
       "target": "CAP-IMG-INSTANCE-SEGMENT-001",
       "relation": "SUP",
@@ -3811,7 +4221,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0144",
+      "id": "EDGE-0162",
       "source": "RES-IMG-OCCLUSION-DECISION-TREE-001",
       "target": "CAP-IMG-OCCLUSION-001",
       "relation": "SUP",
@@ -3819,7 +4229,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0145",
+      "id": "EDGE-0163",
       "source": "RES-IMG-POLYGON-PRACTICE-001",
       "target": "CAP-IMG-POLYGON-001",
       "relation": "SUP",
@@ -3827,7 +4237,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0146",
+      "id": "EDGE-0164",
       "source": "RES-TXT-AMBIGUITY-PRACTICE-001",
       "target": "CAP-TXT-AMBIGUITY-001",
       "relation": "SUP",
@@ -3835,7 +4245,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0147",
+      "id": "EDGE-0165",
       "source": "RES-TXT-CLASSIFICATION-DECISION-TREE-001",
       "target": "CAP-TXT-CLASSIFY-001",
       "relation": "SUP",
@@ -3843,7 +4253,15 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0148",
+      "id": "EDGE-0166",
+      "source": "RES-TXT-CONTENT-SAFETY-CASEBOOK-001",
+      "target": "TSK-TXT-CONTENT-SAFETY-REVIEW-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0167",
       "source": "RES-TXT-LABEL-VOCAB-WORKSHEET-001",
       "target": "CAP-TXT-LABEL-VALIDATE-001",
       "relation": "SUP",
@@ -3851,7 +4269,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0149",
+      "id": "EDGE-0168",
       "source": "RES-TXT-NER-BOUNDARY-CHECKLIST-001",
       "target": "CAP-TXT-ENTITY-TYPE-001",
       "relation": "SUP",
@@ -3859,7 +4277,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0150",
+      "id": "EDGE-0169",
       "source": "RES-TXT-OFFSET-INSPECTOR-001",
       "target": "CAP-TXT-ENTITY-BOUNDARY-001",
       "relation": "SUP",
@@ -3867,7 +4285,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0151",
+      "id": "EDGE-0170",
       "source": "RES-TXT-RELATION-MATRIX-001",
       "target": "CAP-TXT-RELATION-001",
       "relation": "SUP",
@@ -3875,7 +4293,15 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0152",
+      "id": "EDGE-0171",
+      "source": "RES-VID-EVENT-BOUNDARY-REVIEW-001",
+      "target": "TSK-VID-EVENT-BOUNDARY-QA-001",
+      "relation": "SUP",
+      "label": "支持",
+      "metadata": {}
+    },
+    {
+      "id": "EDGE-0172",
       "source": "RES-VID-EVENT-TIMELINE-001",
       "target": "CAP-VID-EVENT-BOUNDARY-001",
       "relation": "SUP",
@@ -3883,7 +4309,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0153",
+      "id": "EDGE-0173",
       "source": "RES-VID-EXPORT-QA-CHECKLIST-001",
       "target": "CAP-VID-EXPORT-QA-001",
       "relation": "SUP",
@@ -3891,7 +4317,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0154",
+      "id": "EDGE-0174",
       "source": "RES-VID-FRAME-SAMPLING-WORKSHEET-001",
       "target": "CAP-VID-FRAME-SAMPLE-001",
       "relation": "SUP",
@@ -3899,7 +4325,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0155",
+      "id": "EDGE-0175",
       "source": "RES-VID-INTERPOLATION-CHECKLIST-001",
       "target": "CAP-VID-TRACK-INTERPOLATE-001",
       "relation": "SUP",
@@ -3907,7 +4333,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0156",
+      "id": "EDGE-0176",
       "source": "RES-VID-OCCLUSION-REID-CARD-001",
       "target": "CAP-VID-OCCLUSION-REID-001",
       "relation": "SUP",
@@ -3915,7 +4341,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0157",
+      "id": "EDGE-0177",
       "source": "RES-VID-TRACK-LEDGER-001",
       "target": "CAP-VID-OBJECT-TRACK-001",
       "relation": "SUP",
@@ -3923,7 +4349,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0158",
+      "id": "EDGE-0178",
       "source": "CAP-AUD-EMOTION-PARALING-001",
       "target": "CAP-VID-ACTION-EVENT-001",
       "relation": "REL",
@@ -3931,7 +4357,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0159",
+      "id": "EDGE-0179",
       "source": "CAP-IMG-BOX-ANNOTATE-001",
       "target": "CAP-VID-FRAME-ANNOTATE-001",
       "relation": "REL",
@@ -3939,7 +4365,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0160",
+      "id": "EDGE-0180",
       "source": "CAP-IMG-OCCLUSION-001",
       "target": "CAP-VID-OCCLUSION-REID-001",
       "relation": "REL",
@@ -3947,7 +4373,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0161",
+      "id": "EDGE-0181",
       "source": "KNG-AUD-SEGMENT-TIMESTAMP-001",
       "target": "CAP-AUD-SEGMENT-ALIGN-001",
       "metadata": {
@@ -3958,7 +4384,7 @@
       "label": "关联"
     },
     {
-      "id": "EDGE-0162",
+      "id": "EDGE-0182",
       "source": "KNG-CORE-ERROR-TAXONOMY-001",
       "target": "KNG-AUD-NOISE-OVERLAP-001",
       "relation": "REL",
@@ -3966,7 +4392,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0163",
+      "id": "EDGE-0183",
       "source": "KNG-CORE-ERROR-TAXONOMY-001",
       "target": "KNG-IMG-QUALITY-METRICS-001",
       "relation": "REL",
@@ -3974,7 +4400,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0164",
+      "id": "EDGE-0184",
       "source": "KNG-CORE-ERROR-TAXONOMY-001",
       "target": "KNG-TXT-INTERANNOTATOR-001",
       "relation": "REL",
@@ -3982,7 +4408,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0165",
+      "id": "EDGE-0185",
       "source": "KNG-CORE-ERROR-TAXONOMY-001",
       "target": "KNG-VID-QUALITY-METRICS-001",
       "relation": "REL",
@@ -3990,7 +4416,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0166",
+      "id": "EDGE-0186",
       "source": "KNG-CORE-EXPORT-VERSIONING-001",
       "target": "KNG-AUD-EXPORT-FORMAT-001",
       "relation": "REL",
@@ -3998,7 +4424,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0167",
+      "id": "EDGE-0187",
       "source": "KNG-CORE-EXPORT-VERSIONING-001",
       "target": "KNG-IMG-EXPORT-FORMAT-001",
       "relation": "REL",
@@ -4006,7 +4432,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0168",
+      "id": "EDGE-0188",
       "source": "KNG-CORE-EXPORT-VERSIONING-001",
       "target": "KNG-TXT-EXPORT-SCHEMA-001",
       "relation": "REL",
@@ -4014,7 +4440,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0169",
+      "id": "EDGE-0189",
       "source": "KNG-CORE-EXPORT-VERSIONING-001",
       "target": "KNG-VID-EXPORT-FORMAT-001",
       "relation": "REL",
@@ -4022,7 +4448,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0170",
+      "id": "EDGE-0190",
       "source": "KNG-CORE-REVIEW-ADJUDICATION-001",
       "target": "KNG-AUD-EMOTION-LABEL-001",
       "relation": "REL",
@@ -4030,7 +4456,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0171",
+      "id": "EDGE-0191",
       "source": "KNG-CORE-REVIEW-ADJUDICATION-001",
       "target": "KNG-IMG-OVERLAP-ORDER-001",
       "relation": "REL",
@@ -4038,7 +4464,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0172",
+      "id": "EDGE-0192",
       "source": "KNG-CORE-REVIEW-ADJUDICATION-001",
       "target": "KNG-TXT-AMBIGUITY-SET-001",
       "relation": "REL",
@@ -4046,7 +4472,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0173",
+      "id": "EDGE-0193",
       "source": "KNG-CORE-REVIEW-ADJUDICATION-001",
       "target": "KNG-VID-OCCLUSION-REID-001",
       "relation": "REL",
@@ -4054,7 +4480,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0174",
+      "id": "EDGE-0194",
       "source": "RES-CORE-ADJUDICATION-RECORD-001",
       "target": "TSK-IMG-MASK-REVIEW-001",
       "relation": "REL",
@@ -4062,7 +4488,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0175",
+      "id": "EDGE-0195",
       "source": "RES-CORE-ADJUDICATION-RECORD-001",
       "target": "TSK-TXT-INTENT-REVIEW-001",
       "relation": "REL",
@@ -4070,7 +4496,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0176",
+      "id": "EDGE-0196",
       "source": "RES-CORE-ADJUDICATION-RECORD-001",
       "target": "TSK-VID-TRACK-QA-001",
       "relation": "REL",
@@ -4078,7 +4504,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0177",
+      "id": "EDGE-0197",
       "source": "CAP-AUD-EMOTION-PARALING-001",
       "target": "SCN-CONTENT-SAFETY-001",
       "metadata": {
@@ -4100,7 +4526,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0178",
+      "id": "EDGE-0198",
       "source": "CAP-AUD-SPEAKER-001",
       "target": "SCN-CUSTOMER-SERVICE-001",
       "metadata": {
@@ -4122,7 +4548,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0179",
+      "id": "EDGE-0199",
       "source": "CAP-AUD-TRANSCRIBE-PUNCT-001",
       "target": "SCN-MEDICAL-001",
       "metadata": {
@@ -4144,7 +4570,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0180",
+      "id": "EDGE-0200",
       "source": "CAP-AUD-WAKE-COMMAND-001",
       "target": "SCN-IN-VEHICLE-001",
       "metadata": {
@@ -4166,7 +4592,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0181",
+      "id": "EDGE-0201",
       "source": "CAP-IMG-SEMANTIC-SEGMENT-001",
       "target": "SCN-MEDICAL-001",
       "metadata": {
@@ -4188,7 +4614,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0182",
+      "id": "EDGE-0202",
       "source": "CAP-TXT-CLASSIFY-001",
       "target": "SCN-CONTENT-SAFETY-001",
       "metadata": {
@@ -4210,7 +4636,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0183",
+      "id": "EDGE-0203",
       "source": "CAP-TXT-ENTITY-TYPE-001",
       "target": "SCN-MEDICAL-001",
       "metadata": {
@@ -4232,7 +4658,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0184",
+      "id": "EDGE-0204",
       "source": "CAP-TXT-INTENT-001",
       "target": "SCN-CUSTOMER-SERVICE-001",
       "metadata": {
@@ -4254,7 +4680,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0185",
+      "id": "EDGE-0205",
       "source": "CAP-VID-ACTION-EVENT-001",
       "target": "SCN-CONTENT-SAFETY-001",
       "metadata": {
@@ -4276,7 +4702,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0186",
+      "id": "EDGE-0206",
       "source": "KNG-AUD-LANGUAGE-DIALECT-001",
       "target": "SCN-MEDICAL-001",
       "metadata": {
@@ -4293,7 +4719,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0187",
+      "id": "EDGE-0207",
       "source": "KNG-AUD-NOISE-OVERLAP-001",
       "target": "SCN-IN-VEHICLE-001",
       "metadata": {
@@ -4310,7 +4736,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0188",
+      "id": "EDGE-0208",
       "source": "KNG-AUD-PARALINGUISTIC-EVENT-001",
       "target": "SCN-CONTENT-SAFETY-001",
       "metadata": {
@@ -4327,7 +4753,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0189",
+      "id": "EDGE-0209",
       "source": "KNG-AUD-SPEAKER-TURN-001",
       "target": "SCN-CUSTOMER-SERVICE-001",
       "metadata": {
@@ -4344,7 +4770,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0190",
+      "id": "EDGE-0210",
       "source": "KNG-AUD-WAKEWORD-BOUNDARY-001",
       "target": "SCN-IN-VEHICLE-001",
       "metadata": {
@@ -4361,7 +4787,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0191",
+      "id": "EDGE-0211",
       "source": "KNG-TXT-CLASS-EXCLUSION-001",
       "target": "SCN-CONTENT-SAFETY-001",
       "metadata": {
@@ -4378,7 +4804,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0192",
+      "id": "EDGE-0212",
       "source": "KNG-TXT-ENTITY-BOUNDARY-001",
       "target": "SCN-MEDICAL-001",
       "metadata": {
@@ -4395,7 +4821,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0193",
+      "id": "EDGE-0213",
       "source": "KNG-TXT-INTENT-HIERARCHY-001",
       "target": "SCN-CUSTOMER-SERVICE-001",
       "metadata": {
@@ -4412,7 +4838,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0194",
+      "id": "EDGE-0214",
       "source": "KNG-VID-ACTION-TAXONOMY-001",
       "target": "SCN-CONTENT-SAFETY-001",
       "metadata": {
@@ -4429,7 +4855,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0195",
+      "id": "EDGE-0215",
       "source": "TSK-AUD-COMMAND-SEGMENT-001",
       "target": "SCN-IN-VEHICLE-001",
       "metadata": {
@@ -4446,7 +4872,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0196",
+      "id": "EDGE-0216",
       "source": "TSK-AUD-SPEAKER-DIARIZE-001",
       "target": "SCN-CUSTOMER-SERVICE-001",
       "metadata": {
@@ -4463,7 +4889,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0197",
+      "id": "EDGE-0217",
       "source": "TSK-IMG-MASK-REVIEW-001",
       "target": "SCN-MEDICAL-001",
       "metadata": {
@@ -4480,7 +4906,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0198",
+      "id": "EDGE-0218",
       "source": "TSK-TXT-DOCUMENT-CLASSIFY-001",
       "target": "SCN-CONTENT-SAFETY-001",
       "metadata": {
@@ -4497,7 +4923,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0199",
+      "id": "EDGE-0219",
       "source": "TSK-TXT-INTENT-REVIEW-001",
       "target": "SCN-CUSTOMER-SERVICE-001",
       "metadata": {
@@ -4514,7 +4940,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0200",
+      "id": "EDGE-0220",
       "source": "TSK-VID-ACTION-EVENT-001",
       "target": "SCN-CONTENT-SAFETY-001",
       "metadata": {
@@ -4531,7 +4957,7 @@
       "label": "应用于场景"
     },
     {
-      "id": "EDGE-0201",
+      "id": "EDGE-0221",
       "source": "CAP-AUD-CONFIG-VALIDATE-001",
       "target": "CERT-DATA-ANNOTATION-FOUNDATION-001",
       "relation": "MAPCERT",
@@ -4539,7 +4965,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0202",
+      "id": "EDGE-0222",
       "source": "CAP-AUD-EMOTION-PARALING-001",
       "target": "CERT-DATA-ANNOTATION-SCENARIO-001",
       "relation": "MAPCERT",
@@ -4547,7 +4973,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0203",
+      "id": "EDGE-0223",
       "source": "CAP-AUD-EXPORT-QA-001",
       "target": "CERT-AIT-L4-QUALITY-CONTROL-001",
       "relation": "MAPCERT",
@@ -4555,7 +4981,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0204",
+      "id": "EDGE-0224",
       "source": "CAP-AUD-LANGUAGE-DIALECT-001",
       "target": "CERT-AIT-L5-AUDIO-ANNOTATION-001",
       "relation": "MAPCERT",
@@ -4563,7 +4989,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0205",
+      "id": "EDGE-0225",
       "source": "CAP-AUD-NOISE-OVERLAP-001",
       "target": "CERT-DATA-ANNOTATION-QA-001",
       "relation": "MAPCERT",
@@ -4571,7 +4997,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0206",
+      "id": "EDGE-0226",
       "source": "CAP-AUD-SEGMENT-ALIGN-001",
       "target": "CERT-AIT-L5-AUDIO-ANNOTATION-001",
       "relation": "MAPCERT",
@@ -4579,7 +5005,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0207",
+      "id": "EDGE-0227",
       "source": "CAP-AUD-SPEAKER-001",
       "target": "CERT-AIT-L5-AUDIO-ANNOTATION-001",
       "relation": "MAPCERT",
@@ -4587,7 +5013,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0208",
+      "id": "EDGE-0228",
       "source": "CAP-AUD-TRANSCRIBE-PUNCT-001",
       "target": "CERT-AIT-L5-AUDIO-ANNOTATION-001",
       "relation": "MAPCERT",
@@ -4595,7 +5021,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0209",
+      "id": "EDGE-0229",
       "source": "CAP-AUD-WAKE-COMMAND-001",
       "target": "CERT-DATA-ANNOTATION-SCENARIO-001",
       "relation": "MAPCERT",
@@ -4603,7 +5029,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0210",
+      "id": "EDGE-0230",
       "source": "CAP-CORE-ASSET-QUALITY-001",
       "target": "CERT-AIT-L5-DATA-PREP-001",
       "relation": "MAPCERT",
@@ -4611,7 +5037,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0211",
+      "id": "EDGE-0231",
       "source": "CAP-CORE-EXPORT-QA-001",
       "target": "CERT-AIT-L4-MULTIMODAL-001",
       "relation": "MAPCERT",
@@ -4619,7 +5045,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0212",
+      "id": "EDGE-0232",
       "source": "CAP-CORE-LABEL-SCHEMA-001",
       "target": "CERT-AIT-L4-SCHEMA-CONFIG-001",
       "relation": "MAPCERT",
@@ -4627,7 +5053,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0213",
+      "id": "EDGE-0233",
       "source": "CAP-CORE-TASK-SCOPE-001",
       "target": "CERT-AIT-L4-TASK-DELIVERY-001",
       "relation": "MAPCERT",
@@ -4635,7 +5061,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0214",
+      "id": "EDGE-0234",
       "source": "CAP-IMG-BOX-ANNOTATE-001",
       "target": "CERT-AIT-L5-IMAGE-ANNOTATION-001",
       "relation": "MAPCERT",
@@ -4643,7 +5069,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0215",
+      "id": "EDGE-0235",
       "source": "CAP-IMG-EXPORT-QA-001",
       "target": "CERT-AIT-L4-QUALITY-CONTROL-001",
       "relation": "MAPCERT",
@@ -4651,7 +5077,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0216",
+      "id": "EDGE-0236",
       "source": "CAP-IMG-INSTANCE-SEGMENT-001",
       "target": "CERT-AIT-L5-IMAGE-ANNOTATION-001",
       "relation": "MAPCERT",
@@ -4659,7 +5085,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0217",
+      "id": "EDGE-0237",
       "source": "CAP-IMG-KEYPOINT-001",
       "target": "CERT-AIT-L5-IMAGE-ANNOTATION-001",
       "relation": "MAPCERT",
@@ -4667,7 +5093,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0218",
+      "id": "EDGE-0238",
       "source": "CAP-IMG-OBJECT-CLASS-001",
       "target": "CERT-AIT-L5-IMAGE-ANNOTATION-001",
       "relation": "MAPCERT",
@@ -4675,7 +5101,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0219",
+      "id": "EDGE-0239",
       "source": "CAP-IMG-OCCLUSION-001",
       "target": "CERT-DATA-ANNOTATION-QA-001",
       "relation": "MAPCERT",
@@ -4683,7 +5109,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0220",
+      "id": "EDGE-0240",
       "source": "CAP-IMG-POLYGON-001",
       "target": "CERT-AIT-L5-IMAGE-ANNOTATION-001",
       "relation": "MAPCERT",
@@ -4691,7 +5117,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0221",
+      "id": "EDGE-0241",
       "source": "CAP-IMG-RECT-VALIDATE-001",
       "target": "CERT-DATA-ANNOTATION-FOUNDATION-001",
       "relation": "MAPCERT",
@@ -4699,7 +5125,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0222",
+      "id": "EDGE-0242",
       "source": "CAP-IMG-SEMANTIC-SEGMENT-001",
       "target": "CERT-AIT-L4-MULTIMODAL-001",
       "relation": "MAPCERT",
@@ -4707,7 +5133,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0223",
+      "id": "EDGE-0243",
       "source": "CAP-TXT-AMBIGUITY-001",
       "target": "CERT-DATA-ANNOTATION-QA-001",
       "relation": "MAPCERT",
@@ -4715,7 +5141,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0224",
+      "id": "EDGE-0244",
       "source": "CAP-TXT-CLASSIFY-001",
       "target": "CERT-AIT-L5-TEXT-ANNOTATION-001",
       "relation": "MAPCERT",
@@ -4723,7 +5149,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0225",
+      "id": "EDGE-0245",
       "source": "CAP-TXT-ENTITY-BOUNDARY-001",
       "target": "CERT-AIT-L5-TEXT-ANNOTATION-001",
       "relation": "MAPCERT",
@@ -4731,7 +5157,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0226",
+      "id": "EDGE-0246",
       "source": "CAP-TXT-ENTITY-TYPE-001",
       "target": "CERT-AIT-L5-TEXT-ANNOTATION-001",
       "relation": "MAPCERT",
@@ -4739,7 +5165,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0227",
+      "id": "EDGE-0247",
       "source": "CAP-TXT-EXPORT-QA-001",
       "target": "CERT-AIT-L4-QUALITY-CONTROL-001",
       "relation": "MAPCERT",
@@ -4747,7 +5173,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0228",
+      "id": "EDGE-0248",
       "source": "CAP-TXT-INTENT-001",
       "target": "CERT-AIT-L4-TASK-DELIVERY-001",
       "relation": "MAPCERT",
@@ -4755,7 +5181,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0229",
+      "id": "EDGE-0249",
       "source": "CAP-TXT-LABEL-VALIDATE-001",
       "target": "CERT-DATA-ANNOTATION-FOUNDATION-001",
       "relation": "MAPCERT",
@@ -4763,7 +5189,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0230",
+      "id": "EDGE-0250",
       "source": "CAP-TXT-RELATION-001",
       "target": "CERT-AIT-L5-TEXT-ANNOTATION-001",
       "relation": "MAPCERT",
@@ -4771,7 +5197,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0231",
+      "id": "EDGE-0251",
       "source": "CAP-TXT-SENTIMENT-001",
       "target": "CERT-DATA-ANNOTATION-SCENARIO-001",
       "relation": "MAPCERT",
@@ -4779,7 +5205,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0232",
+      "id": "EDGE-0252",
       "source": "CAP-VID-ACTION-EVENT-001",
       "target": "CERT-DATA-ANNOTATION-SCENARIO-001",
       "relation": "MAPCERT",
@@ -4787,7 +5213,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0233",
+      "id": "EDGE-0253",
       "source": "CAP-VID-EVENT-BOUNDARY-001",
       "target": "CERT-AIT-L5-VIDEO-ANNOTATION-001",
       "relation": "MAPCERT",
@@ -4795,7 +5221,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0234",
+      "id": "EDGE-0254",
       "source": "CAP-VID-EXPORT-QA-001",
       "target": "CERT-AIT-L4-QUALITY-CONTROL-001",
       "relation": "MAPCERT",
@@ -4803,7 +5229,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0235",
+      "id": "EDGE-0255",
       "source": "CAP-VID-FRAME-ANNOTATE-001",
       "target": "CERT-AIT-L5-VIDEO-ANNOTATION-001",
       "relation": "MAPCERT",
@@ -4811,7 +5237,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0236",
+      "id": "EDGE-0256",
       "source": "CAP-VID-FRAME-SAMPLE-001",
       "target": "CERT-AIT-L5-DATA-PREP-001",
       "relation": "MAPCERT",
@@ -4819,7 +5245,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0237",
+      "id": "EDGE-0257",
       "source": "CAP-VID-OBJECT-TRACK-001",
       "target": "CERT-AIT-L5-VIDEO-ANNOTATION-001",
       "relation": "MAPCERT",
@@ -4827,7 +5253,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0238",
+      "id": "EDGE-0258",
       "source": "CAP-VID-OCCLUSION-REID-001",
       "target": "CERT-DATA-ANNOTATION-QA-001",
       "relation": "MAPCERT",
@@ -4835,7 +5261,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0239",
+      "id": "EDGE-0259",
       "source": "CAP-VID-TRACK-INTERPOLATE-001",
       "target": "CERT-AIT-L5-VIDEO-ANNOTATION-001",
       "relation": "MAPCERT",
@@ -4843,7 +5269,7 @@
       "metadata": {}
     },
     {
-      "id": "EDGE-0240",
+      "id": "EDGE-0260",
       "source": "CAP-VID-TRACK-VALIDATE-001",
       "target": "CERT-DATA-ANNOTATION-FOUNDATION-001",
       "relation": "MAPCERT",
