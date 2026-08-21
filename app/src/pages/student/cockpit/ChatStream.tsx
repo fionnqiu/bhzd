@@ -11,18 +11,19 @@ import { Sparkles } from "lucide-react";
 import { Button, Card } from "../../../components";
 import MessageBubble from "./MessageBubble";
 import EmbeddedCard from "./EmbeddedCard";
+import TaskDraftSection from "./TaskDraftSection";
 import ActivityTimeline from "./ActivityTimeline";
 import ConfirmationGate from "./ConfirmationGate";
 import { isStudentHiddenEmbeddedTool } from "./constants";
 import type { CockpitRun } from "./useCockpitRun";
-import RightRail from "./RightRail";
-
 export interface ChatStreamProps {
   run: CockpitRun;
   /** 下一步建议“继续提问”→ 聚焦输入框 */
   onFocusComposer: () => void;
   /** Identifies the loaded transcript so each opened history starts at its newest turn. */
   conversationId: string | null;
+  /** 任务卡「继续修改」：预填修订话术并聚焦（composer 状态由页面持有） */
+  onPrefillComposer: (text: string) => void;
 }
 
 export interface ConversationInfoBarProps {
@@ -62,6 +63,7 @@ export default function ChatStream({
   run,
   onFocusComposer,
   conversationId,
+  onPrefillComposer,
 }: ChatStreamProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const followBottomRef = useRef(true);
@@ -107,7 +109,6 @@ export default function ChatStream({
   }, [
     run.activities,
     run.cards,
-    run.citations,
     run.confirmation,
     run.confirming,
     run.error,
@@ -119,7 +120,7 @@ export default function ChatStream({
     run.streamRecovery,
   ]);
 
-  // RAG execution remains available to the backend and citation panel, but its
+  // RAG execution remains available to the backend, but its
   // intermediate cards duplicate the answer rather than help the learner act.
   const visibleCards = run.cards.filter((card) => !isStudentHiddenEmbeddedTool(card.tool));
   const liveReplyId = run.runId ? `asst-${run.runId}` : null;
@@ -144,6 +145,21 @@ export default function ChatStream({
           ? "等待确认"
           : null;
 
+  // 任务草稿按钮跟随产生它的回答（按 runId 关联），而不是漂在对话末尾；
+  // 历史回放与流式新回答共用同一渲染入口。
+  const renderTaskDraftSection = (runKey: string | null | undefined) => {
+    if (!runKey) return null;
+    const draft = run.taskDraftsByRun[runKey];
+    if (!draft) return null;
+    return (
+      <TaskDraftSection
+        draft={draft}
+        onSync={() => run.syncTaskDraft(runKey, draft.id)}
+        onRevise={() => onPrefillComposer("请修改刚才的学习任务：")}
+      />
+    );
+  };
+
   return (
     <div className="chat-stream" data-testid="chat-stream">
       <div className="message-list" aria-live="polite" aria-relevant="additions text">
@@ -157,6 +173,7 @@ export default function ChatStream({
               />
             ) : null}
             <MessageBubble message={message} />
+            {message.role === "assistant" ? renderTaskDraftSection(message.runId) : null}
           </Fragment>
         ))}
 
@@ -214,8 +231,9 @@ export default function ChatStream({
 
         {liveReply ? <MessageBubble message={liveReply} /> : null}
 
-        {/* 引用来源保持在锚点之前，纳入同一次跟随滚动。 */}
-        <RightRail run={run} />
+        {/* 草稿事件可能先于首个回答 delta 到达（草稿在最终合成前生成），
+            因此入口独立于气泡渲染，回答出现后自然落在其下方。 */}
+        {renderTaskDraftSection(run.runId)}
 
         {run.status === "failed" ? (
           <Card title="运行失败" className="run-failed" data-testid="run-failed">

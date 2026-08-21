@@ -2,9 +2,14 @@
  * 学生工作栏中的会话入口：新会话与最近会话属于稳定导航，而不是
  * 需要额外打开的内容抽屉。删除确认仍由本组件负责，避免把破坏性操作
  * 直接暴露在窄小的会话行上。
+ *
+ * 注意：删除确认弹窗通过 portal 挂到 document.body。侧栏的玻璃材质
+ * （backdrop-filter）会成为 fixed 后代的包含块，原地渲染会把全局模态
+ * 禁锢在侧栏区域内（与 Select 下拉列表的 portal 同一处理思路）。
  */
 import { MessageSquarePlus, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { Button, ConfirmDialog, IconButton } from "../../../components";
 import type { Conversation } from "../../../api/types";
 
@@ -155,18 +160,23 @@ export function WorkbenchRecentSessions({
         </div>
       ) : null}
 
-      <ConfirmDialog
-        open={pendingDelete !== null}
-        title="删除会话"
-        description={`确定删除会话“${pendingDelete?.title || "未命名会话"}”吗？会话中的消息将一并删除，该操作不可恢复。`}
-        confirmText="删除"
-        danger
-        onCancel={() => setPendingDelete(null)}
-        onConfirm={() => {
-          if (pendingDelete) onDeleteConversation(pendingDelete.id);
-          setPendingDelete(null);
-        }}
-      />
+      {typeof document === "undefined"
+        ? null
+        : createPortal(
+            <ConfirmDialog
+              open={pendingDelete !== null}
+              title="删除会话"
+              description={`确定删除会话“${pendingDelete?.title || "未命名会话"}”吗？会话中的消息将一并删除，该操作不可恢复。`}
+              confirmText="删除"
+              danger
+              onCancel={() => setPendingDelete(null)}
+              onConfirm={() => {
+                if (pendingDelete) onDeleteConversation(pendingDelete.id);
+                setPendingDelete(null);
+              }}
+            />,
+            document.body,
+          )}
     </div>
   );
 }

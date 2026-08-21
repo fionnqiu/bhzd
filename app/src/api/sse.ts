@@ -18,6 +18,7 @@ const KNOWN_EVENTS: AgentEventType[] = [
   "rag.retrieval.completed",
   "citation.attached",
   "confirmation.required",
+  "task.draft",
   "run.completed",
   "run.failed",
   "run.usage",

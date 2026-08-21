@@ -1,3 +1,4 @@
+import { Children, isValidElement, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { FileImage, FileText, FileVideo, Music2 } from "lucide-react";
@@ -77,6 +78,53 @@ function safeMarkdownUrl(url: string) {
   return "";
 }
 
+/**
+ * 代码块外壳：语言标签 + 复制按钮的头部栏（对齐 Kimi/DeepSeek 的代码块处理）。
+ * react-markdown 渲染 ``` 围栏代码时 pre 的子节点恒为 <code className="language-x">，
+ * 语言名从该 className 提取；复制取 pre 渲染后的纯文本，避免依赖 children 结构。
+ */
+function MarkdownCodeBlock({ children }: { children?: ReactNode }) {
+  const preRef = useRef<HTMLPreElement>(null);
+  const [copied, setCopied] = useState(false);
+
+  const language = (() => {
+    const code = Children.toArray(children).find((child) => isValidElement(child));
+    const className = isValidElement<{ className?: string }>(code)
+      ? code.props.className
+      : undefined;
+    return /language-([\w-]+)/.exec(className ?? "")?.[1] ?? null;
+  })();
+
+  const copyCode = async () => {
+    const text = preRef.current?.innerText ?? "";
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // 剪贴板不可用（权限或非安全上下文）时静默失败，不影响阅读
+    }
+  };
+
+  return (
+    <div className="md-codeblock">
+      <div className="md-codeblock-header">
+        <span className="md-codeblock-lang">{language ?? "code"}</span>
+        <button
+          type="button"
+          className="md-codeblock-copy"
+          aria-label="复制代码"
+          onClick={() => void copyCode()}
+        >
+          {copied ? "已复制" : "复制"}
+        </button>
+      </div>
+      <pre ref={preRef}>{children}</pre>
+    </div>
+  );
+}
+
 const markdownComponents: Components = {
   a({ href, children }) {
     if (!href) return <>{children}</>;
@@ -95,6 +143,10 @@ const markdownComponents: Components = {
   // learners or disrupt the compact transcript, so Markdown images stay hidden.
   img() {
     return null;
+  },
+  // 围栏代码块套上语言标签 + 复制按钮的头部栏外壳（样式见 cockpit.css .md-codeblock）
+  pre(props) {
+    return <MarkdownCodeBlock>{props.children}</MarkdownCodeBlock>;
   },
 };
 

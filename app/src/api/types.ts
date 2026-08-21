@@ -123,6 +123,11 @@ export interface ConversationDetail extends Conversation {
    * activities remain a faithful transcript instead of gaining synthetic rows.
    */
   activities_by_run?: Record<string, ConversationActivityEntry[]>;
+  /**
+   * 历史会话中的任务草稿投影（run_id → 最新草稿），
+   * 回答底部的预览/同步按钮据此复原；旧服务端可能缺失该键。
+   */
+  task_drafts_by_run?: Record<string, TaskDraft>;
 }
 
 export type RunStatus = "running" | "waiting_confirmation" | "completed" | "failed" | "cancelled";
@@ -173,6 +178,50 @@ export interface Confirmation {
   expires_at: string;
   created_at: string;
   run_id?: string;
+}
+
+/**
+ * Agent 任务草稿卡（task_drafts 投影；形状与后端 build_task_card 对齐）。
+ * 与旧确认门任务卡同一存储契约。
+ */
+export interface TaskDraftCard {
+  title?: string;
+  goal?: string;
+  description?: string;
+  data_type?: string | null;
+  cap_ids?: string[];
+  cap_names?: { cap_id: string; name: string }[];
+  knowledge_points?: { title?: string; content?: string }[];
+  exercises?: {
+    question?: string;
+    type?: string;
+    options?: string[];
+    reference_answer?: string;
+  }[];
+  est_minutes?: number;
+}
+
+/**
+ * task.draft 事件与会话详情的草稿投影。每次状态变化（生成/同步）都以
+ * 完整投影重发，回放取最后一条即当前状态。
+ */
+export interface TaskDraft {
+  id: string;
+  status: "draft" | "synced";
+  source: string;
+  cards: TaskDraftCard[];
+  task_ids: string[];
+  created_at?: string;
+  synced_at?: string | null;
+}
+
+/** POST /api/task-drafts/{id}/sync 响应（tasks.py） */
+export interface TaskDraftSyncResponse {
+  draft_id: string;
+  status: "synced";
+  task_ids: string[];
+  tasks: TaskSummary[];
+  already_synced: boolean;
 }
 
 export interface PlanStep {
@@ -295,6 +344,8 @@ export interface AgentEventPayloads {
   "rag.retrieval.completed": { seq: number; hit_count: number; latency_ms: number };
   "citation.attached": { seq: number; citations: Citation[] };
   "confirmation.required": { seq: number; confirmation: Confirmation };
+  /** 任务草稿完整投影（生成/同步各一次，后写覆盖先写；agent/task_drafts.py） */
+  "task.draft": { seq: number; draft: TaskDraft };
   "run.completed": { seq: number; summary?: string };
   "run.failed": { seq: number; error: string };
   "run.usage": {
@@ -1196,7 +1247,10 @@ export type ProviderProtocol = "chat_completions" | "anthropic_messages" | "resp
 
 export type ProviderRole = "primary" | "fallback" | "embedding" | "rerank" | "grader" | "none";
 
-/** Provider DTO；服务端只回显固定掩码，编辑器不得把掩码当作替换密钥提交。 */
+/**
+ * Provider DTO；一个供应商可以承担多个 roles，但每个 role 在运行时只
+ * 对应一个模型。服务端仍返回 role 作为旧客户端的首角色投影。
+ */
 export interface ProviderConfig {
   id: string;
   name: string;
@@ -1204,6 +1258,7 @@ export interface ProviderConfig {
   base_url: string;
   model: string;
   role: ProviderRole;
+  roles: ProviderRole[];
   enabled: boolean;
   timeout_seconds: number;
   extra: Record<string, unknown>;

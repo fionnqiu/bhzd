@@ -587,6 +587,13 @@
   min-width: 0;
 }
 
+/* 任务草稿入口：与助手回答正文左对齐（让开头像列宽 + 间距） */
+.task-draft-section {
+  display: flex;
+  justify-content: flex-start;
+  margin: var(--space-1) 0 var(--space-2) calc(28px + var(--space-2));
+}
+
 .assistant-avatar {
   display: inline-grid;
   flex: 0 0 28px;
@@ -594,10 +601,10 @@
   width: 28px;
   height: 28px;
   margin-top: 1px;
-  border: 1px solid var(--teal);
-  border-radius: 50%;
-  background: var(--color-primary-soft);
-  color: var(--teal);
+  /* 底色/图标色由 .agent-avatar 统一提供（品牌色实心 + 白图标），
+     宿主只保留尺寸与圆角方块形状。 */
+  border: 0;
+  border-radius: 8px;
 }
 
 .assistant-avatar svg {
@@ -1125,6 +1132,8 @@
   height: calc(100dvh - var(--space-5) - var(--space-6));
   min-height: 0;
   overflow: hidden;
+  /* 居中悬浮胶囊与顶部渐进模糊面纱的定位基准 */
+  position: relative;
 }
 
 .cockpit-workbench .cockpit-center {
@@ -1332,42 +1341,6 @@
   color: var(--color-primary);
   text-decoration: underline;
   text-underline-offset: 3px;
-}
-
-/* --------------------------------------------------------- Runtime context */
-
-.cockpit-runtime-context {
-  display: grid;
-  gap: var(--space-3);
-}
-
-.runtime-context-section {
-  border-top: 1px solid var(--color-border);
-  padding-top: var(--space-3);
-}
-
-.runtime-context-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--space-2);
-}
-
-.runtime-context-heading h2 {
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-}
-
-.runtime-context-heading span {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-}
-
-.runtime-citations {
-  display: grid;
-  gap: var(--space-2);
 }
 
 /* ------------------------------------------------------------ Transcript */
@@ -1667,7 +1640,9 @@
 /* ------------------------------------------------------------ Transcript */
 .cockpit-workbench .chat-stream {
   gap: 0;
-  padding: 0 0 28px;
+  /* 顶部留白给居中悬浮胶囊 + 渐进模糊面纱：首条消息从面纱下方开始，
+     滚动时消息从面纱下穿过（胶囊不再占布局高度，内容区直达顶部） */
+  padding: 72px 0 28px;
 }
 
 .conversation-heading {
@@ -1689,19 +1664,39 @@
   font-size: 15px;
 }
 
-/* The header now sits outside the transcript. Render it as a compact floating
-   pill aligned with the content column instead of a full-bleed strip, so the
-   conversation context reads as a lightweight label rather than a banner. */
+/* The header floats as a centered pill above the transcript, and the content
+   column extends to the full top height underneath it.  A progressive blur
+   veil sits between them: the backdrop blur is masked so it reads strongest
+   (most frosted) at the very top edge and fades out downward. */
 .cockpit-workbench .conversation-info-bar {
-  flex: 0 0 auto;
-  align-self: flex-start;
-  width: auto;
-  max-width: 100%;
-  margin: 0 0 12px;
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6; /* 压在渐进模糊面纱之上 */
+  /* 固定为与内容列同宽（.cockpit-center 的 min(100%, 900px)），标题靠左 */
+  width: min(100%, 900px);
+  margin: 0;
   padding: 6px 14px;
   border-radius: var(--radius-full);
   box-shadow: var(--shadow-sm);
   min-width: 0;
+}
+
+/* 顶部渐进模糊面纱：mask 让模糊强度从顶部向下渐隐，指针事件穿透不挡滚动 */
+.cockpit-workbench .cockpit-top-veil {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 76px;
+  z-index: 5;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--color-bg) 42%, transparent);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.8) 40%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.8) 40%, transparent 100%);
 }
 
 /* 长标题在胶囊内省略，不撑破布局 */
@@ -1722,7 +1717,8 @@
 .cockpit-workbench .bubble {
   max-width: 82%;
   color: var(--ink-soft);
-  font-size: 15px;
+  /* 16px/1.75 对齐 Kimi、DeepSeek 等主流 agent 对话的正文阅读密度 */
+  font-size: 16px;
   line-height: 1.75;
 }
 
@@ -1857,14 +1853,6 @@
   display: grid;
   min-width: 0;
   gap: var(--space-3);
-}
-
-.cockpit-workbench .cockpit-runtime-context {
-  gap: 14px;
-}
-
-.cockpit-workbench .runtime-context-section {
-  border-top-color: var(--material-edge-hairline);
 }
 
 /* --------------------------------------------------------------- Composer */
@@ -2228,12 +2216,14 @@
   }
 
   .cockpit-workbench .chat-stream {
-    padding: 0 0 20px;
+    /* 移动端同样给悬浮胶囊 + 面纱留出顶部净空 */
+    padding: 64px 0 20px;
   }
 
-  /* Mobile keeps the same floating pill, just slightly tighter. */
+  /* Mobile keeps the same floating pill; width mirrors the narrower content
+     column (46rem) so pill edges stay aligned with the transcript. */
   .cockpit-workbench .conversation-info-bar {
-    margin: 0 0 10px;
+    width: min(100%, 46rem);
     padding: 6px 12px;
   }
 }
@@ -2316,6 +2306,12 @@ html[data-theme="dark"]
   color: #c8e2ff;
 }
 
+html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] .assistant-avatar {
+  /* 深色下 --accent 变亮（#65a9ef），白图标对比度不足，头像底色压深一档 */
+  background: #2b6cb8;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
 html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] .composer-send-btn {
   background: #3a4955;
 }
@@ -2396,28 +2392,17 @@ html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] .composer
 }
 
 .cockpit-workbench .assistant-avatar {
-  position: relative;
   width: 30px;
   height: 30px;
   flex-basis: 30px;
   margin-top: 2px;
-  border-color: var(--line);
-  border-radius: 8px;
-  background: #edf7f5;
-  box-shadow: 0 1px 2px rgba(18, 79, 72, 0.1);
-  color: #19776d;
-}
-
-.cockpit-workbench .assistant-avatar::after {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: 7px;
-  height: 7px;
-  border: 1.5px solid var(--surface);
-  border-radius: 50%;
-  background: #e1a13c;
-  content: "";
+  /* 实心品牌蓝 + 白色图标（Kimi/DeepSeek 式助手身份）；旧版描边浅底与
+     右下角状态点已随身份简化移除。 */
+  border: 0;
+  border-radius: 9px;
+  background: var(--accent);
+  box-shadow: 0 1px 2px rgba(36, 119, 214, 0.28);
+  color: #fff;
 }
 
 .cockpit-workbench .message-label {
@@ -2458,8 +2443,10 @@ html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] .composer
 /* Markdown 阅读排版：助手回复是长文阅读面，标题/引用/代码/列表需要
    与纯文本不同的层次（颜色全部走工作台令牌，暗色偏好自动跟随）。 */
 .cockpit-workbench .bubble-markdown {
-  color: var(--ink-soft);
-  line-height: 1.75;
+  /* 长文正文用近墨色（--ink）而非次级灰：DeepSeek/Kimi 的回答正文对比度更高，
+     16px 正文配 1.8 行高提升中文长文阅读舒适度。 */
+  color: var(--ink);
+  line-height: 1.8;
 }
 
 .cockpit-workbench .bubble-markdown p,
@@ -2483,6 +2470,25 @@ html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] .composer
   letter-spacing: 0.01em;
 }
 
+/* 标题字号与 16px 正文拉开层级（基础样式中 h2/h3 与正文同号甚至更小），
+   对齐 Kimi/DeepSeek 长文回答的清晰层级。 */
+.cockpit-workbench .bubble-markdown h1 {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.cockpit-workbench .bubble-markdown h2 {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.cockpit-workbench .bubble-markdown h3,
+.cockpit-workbench .bubble-markdown h4,
+.cockpit-workbench .bubble-markdown h5,
+.cockpit-workbench .bubble-markdown h6 {
+  font-size: 16px;
+}
+
 .cockpit-workbench .bubble-markdown a {
   color: var(--accent);
   text-decoration-color: color-mix(in srgb, var(--accent) 42%, transparent);
@@ -2490,6 +2496,11 @@ html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] .composer
 
 .cockpit-workbench .bubble-markdown a:hover {
   text-decoration-color: var(--accent);
+}
+
+.cockpit-workbench .bubble-markdown li + li {
+  /* 列表项间距随 1.8 行高同步放宽，长列表不至于挤成一团 */
+  margin-top: 4px;
 }
 
 .cockpit-workbench .bubble-markdown li::marker {
@@ -2513,11 +2524,52 @@ html[data-theme="dark"] .shell[data-shell-variant="student-workbench"] .composer
 }
 
 .cockpit-workbench .bubble-markdown pre {
+  /* 外壳（边框/圆角/底色/下间距）由 .md-codeblock 承载，pre 只保留代码排版 */
+  margin: 0;
   padding: 12px 14px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* 代码块外壳：语言标签 + 复制按钮的头部栏（对齐 Kimi/DeepSeek）。
+   令牌化颜色，暗色偏好（html[data-theme=dark]）自动跟随。 */
+.cockpit-workbench .md-codeblock {
+  margin: 0 0 10px;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 10px;
-  /* 用工作台令牌而非硬编码色，暗色偏好（html[data-theme=dark]）自动跟随 */
   background: var(--surface-soft);
+}
+
+.cockpit-workbench .md-codeblock-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-size: 12px;
+}
+
+.cockpit-workbench .md-codeblock-lang {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.02em;
+}
+
+.cockpit-workbench .md-codeblock-copy {
+  padding: 1px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.cockpit-workbench .md-codeblock-copy:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .cockpit-workbench .bubble-markdown pre code {

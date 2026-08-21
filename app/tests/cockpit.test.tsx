@@ -903,7 +903,7 @@ describe("对话页 · 运行事件流", () => {
     expect(screen.queryByText("结果摘要")).not.toBeInTheDocument();
   });
 
-  it("citation.attached → 引用来源进入对话画布", async () => {
+  it("citation.attached → 学生端对话画布不渲染引用来源", async () => {
     await startRun();
     emit("citation.attached", {
       seq: 2,
@@ -919,11 +919,9 @@ describe("对话页 · 运行事件流", () => {
         },
       ],
     });
-    const section = await screen.findByTestId("citation-section");
-    expect(within(section).getByText(/NER 标注入门规范/)).toBeInTheDocument();
-    const anchor = screen.getByTestId("chat-stream-bottom");
-    // Runtime context must stay before the anchor so bottom-following scrolls
-    // reveal citations and confirmation cards as soon as they arrive.
-    expect(section.compareDocumentPosition(anchor) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    // 引用数据仍进入运行状态，但对话 UI 不展示引用来源区块（产品要求隐藏）。
+    expect(screen.queryByTestId("citation-section")).not.toBeInTheDocument();
+    expect(screen.queryByText("引用来源")).not.toBeInTheDocument();
   });
 });

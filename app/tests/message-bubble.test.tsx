@@ -98,6 +98,24 @@ describe("助手消息 Markdown 预览", () => {
     expect(container.querySelector(".bubble-cursor")).not.toBeNull();
   });
 
+  it("围栏代码块带语言标签与复制按钮的头部栏", () => {
+    render(
+      <MessageBubble
+        message={message("assistant", ["```python", 'print("hi")', "```"].join("\n"))}
+      />,
+    );
+
+    expect(screen.getByText("python")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "复制代码" })).toBeInTheDocument();
+    expect(screen.getByText('print("hi")').closest(".md-codeblock")).not.toBeNull();
+  });
+
+  it("无语言标注的代码块头部栏回退为 code 标签", () => {
+    render(<MessageBubble message={message("assistant", ["```", "plain text", "```"].join("\n"))} />);
+
+    expect(screen.getByText("code")).toBeInTheDocument();
+  });
+
   it("只解析助手回复，用户输入仍按字面文本显示", () => {
     const { container } = render(
       <MessageBubble message={message("user", "**这是用户输入，不应加粗**")} />,

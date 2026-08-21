@@ -11,7 +11,7 @@ import {
   type RunStreamExhausted,
   type RunStreamInterruption,
 } from "../../../api/sse";
-import type { AgentRunProgress, Citation, Confirmation, PlanStep } from "../../../api/types";
+import type { AgentRunProgress, Citation, Confirmation, PlanStep, TaskDraft } from "../../../api/types";
 import type { ExecutionKind, TraceEntry } from "./types";
 
 const SENSITIVE_SUMMARY =
@@ -56,6 +56,8 @@ export interface RunStreamCallbacks {
   onRetrievalStarted: (seq: number) => void;
   onRetrievalCompleted: (result: { hitCount: number; latencyMs: number }, seq: number) => void;
   onConfirmation: (confirmation: Confirmation, seq: number) => void;
+  /** task.draft：任务草稿完整投影（生成/同步各一次，后写覆盖先写） */
+  onTaskDraft: (draft: TaskDraft, seq: number) => void;
   onCitations: (citations: Citation[]) => void;
   onCompleted: (summary: string | null, seq: number) => void;
   onFailed: (error: string, seq: number) => void;
@@ -125,6 +127,7 @@ export function attachRunStream(
     cb.onRetrievalCompleted({ hitCount: p.hit_count, latencyMs: p.latency_ms }, seq),
   );
   stream.on("confirmation.required", (p, seq) => cb.onConfirmation(p.confirmation, seq));
+  stream.on("task.draft", (p, seq) => cb.onTaskDraft(p.draft, seq));
   stream.on("citation.attached", (p) => cb.onCitations(p.citations));
   stream.on("run.completed", (p, seq) => {
     cb.onCompleted(p.summary ?? null, seq);

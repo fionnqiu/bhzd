@@ -32,7 +32,7 @@ interface TaskCardShape {
   exercises?: { question?: string; type?: string }[];
 }
 
-function TaskCardBody({ card }: { card: TaskCardShape }) {
+export function TaskCardBody({ card }: { card: TaskCardShape }) {
   return (
     <div className="task-card">
       <strong>{card.title ?? "标注练习任务"}</strong>

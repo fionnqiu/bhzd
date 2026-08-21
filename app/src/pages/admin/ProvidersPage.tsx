@@ -6,8 +6,8 @@
  *   永远不会作为替换值提交；后端发现/测试端点负责复用服务端密钥。
  * - base_url 安全校验（NF9）由后端执行：INVALID_BASE_URL 的中文错误落到
  *   字段旁而不是 toast——表单错误出现在字段旁是 PRD 表单交互口径。
- * - 角色独占（同角色至多一个）由后端事务保证；前端在"替换已有持有者"时
- *   先弹确认框说明后果，无持有者时直接设置，减少打断。
+ * - 一个供应商可以选择多个角色，而每个角色仍由后端事务保持全局独占；
+ *   前端在一次保存涉及多个已有持有者时合并提示，避免逐角色打断。
  * - 连接测试结果直接写回行的 last_test（POST test 的响应即入库结果），
  *   不需整表刷新——行内即时反馈延迟/错误是 PRD-04 §3.3 验收点。
  */
@@ -20,6 +20,7 @@ import type {
   Paginated,
   ProviderConfig,
   ProviderModelDiscoveryResult,
+  ProviderRole,
   ProviderTestResult,
 } from "../../api/types";
 import {
@@ -56,7 +57,7 @@ interface ProviderForm {
   base_url: string;
   model: string;
   api_key: string;
-  role: string;
+  roles: ProviderRole[];
   timeout_seconds: string;
   enabled: boolean;
   model_inputs: ModelInput[];
@@ -183,7 +184,7 @@ const EMPTY_FORM: ProviderForm = {
   base_url: "",
   model: "",
   api_key: "",
-  role: "none",
+  roles: [],
   timeout_seconds: "30",
   enabled: true,
   model_inputs: [],
@@ -196,18 +197,119 @@ function toForm(p: ProviderConfig): ProviderForm {
     base_url: p.base_url,
     model: p.model,
     api_key: p.api_key_set ? p.api_key_masked || MASKED_API_KEY : "",
-    role: p.role,
+    roles: providerRoles(p),
     timeout_seconds: String(p.timeout_seconds),
     enabled: p.enabled,
     model_inputs: modelInputsFromExtra(p.extra),
   };
 }
 
+/** Normalize the new array DTO while keeping older list responses editable. */
+function providerRoles(p: Pick<ProviderConfig, "roles" | "role">): ProviderRole[] {
+  const values = Array.isArray(p.roles) ? p.roles : [p.role];
+  return Array.from(
+    new Set(values.filter((role): role is ProviderRole => role !== "none")),
+  );
+}
+
 /** 角色徽章（主/回退/嵌入/重排是系统关键路径，给强调色） */
 function RoleBadge({ role }: { role: string }) {
-  if (role === "none") return <span className="badge badge-neutral">无</span>;
   const tone = role === "primary" ? "primary" : role === "fallback" ? "warning" : "info";
   return <span className={`badge badge-${tone}`}>{PROVIDER_ROLE_LABELS[role] ?? role}</span>;
+}
+
+interface ProviderRoleMultiSelectProps {
+  value: readonly ProviderRole[];
+  onChange: (value: ProviderRole[]) => void;
+}
+
+/**
+ * Role selector deliberately keeps the popover open while toggling so an
+ * administrator can assign several roles to one model in a single pass.
+ * Clearing every selection represents the legacy "none" role.
+ */
+function ProviderRoleMultiSelect({ value, onChange }: ProviderRoleMultiSelectProps) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const listboxId = useId();
+  const roleOptions = PROVIDER_ROLE_OPTIONS.filter((option) => option.value !== "none");
+  const selectedLabel = roleOptions
+    .filter((option) => value.includes(option.value as ProviderRole))
+    .map((option) => option.label)
+    .join("、");
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus({ preventScroll: true });
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  const toggle = (role: ProviderRole) => {
+    onChange(
+      value.includes(role)
+        ? value.filter((currentRole) => currentRole !== role)
+        : [...value, role],
+    );
+  };
+
+  return (
+    <div className="provider-input-types" ref={rootRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="provider-input-types-trigger"
+        role="combobox"
+        aria-label="角色"
+        aria-haspopup="listbox"
+        aria-controls={listboxId}
+        aria-expanded={open}
+        onClick={() => setOpen((currentOpen) => !currentOpen)}
+      >
+        <span className="provider-input-types-value">{selectedLabel || "无角色"}</span>
+        <ChevronDown size={16} aria-hidden="true" />
+      </button>
+      {open ? (
+        <div
+          id={listboxId}
+          className="provider-input-types-listbox"
+          role="listbox"
+          aria-multiselectable="true"
+        >
+          {roleOptions.map((option) => {
+            const role = option.value as ProviderRole;
+            const selected = value.includes(role);
+            return (
+              <button
+                key={role}
+                type="button"
+                className="provider-input-types-option"
+                role="option"
+                aria-selected={selected}
+                onClick={() => toggle(role)}
+              >
+                <span>{option.label}</span>
+                {selected ? <Check size={16} aria-hidden="true" /> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 /** 最近测试结果单元格：只展示安全的测试状态、延迟与错误短码。 */
@@ -250,11 +352,10 @@ export default function ProvidersPage() {
   const [testingId, setTestingId] = useState<string | null>(null);
   // 删除目标单独保存，确认取消或失败时仍保留原列表行，避免误删造成视觉丢失。
   const [deleteTarget, setDeleteTarget] = useState<ProviderConfig | null>(null);
-  // Role assignment remains exclusive. Saving from the drawer explains a replacement
-  // before the backend performs its transactional handoff.
+  // Saving several roles can displace several providers; keep all conflicts in
+  // one confirmation so the transactional handoff is explicit to the operator.
   const [roleConfirm, setRoleConfirm] = useState<{
-    role: string;
-    holderName: string;
+    conflicts: { role: ProviderRole; holderName: string }[];
   } | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
@@ -302,7 +403,7 @@ export default function ProvidersPage() {
 
   const set = <K extends keyof ProviderForm>(key: K, value: ProviderForm[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
-    if (key === "model" || key === "role") setFormTestResult(null);
+    if (key === "model" || key === "roles") setFormTestResult(null);
   };
 
   const providerExtra = () => ({
@@ -427,10 +528,10 @@ export default function ProvidersPage() {
           base_url: form.base_url.trim(),
           model: form.model.trim(),
           api_key: form.api_key,
-          role: form.role,
+          roles: form.roles,
           // A configured runtime role must be runnable immediately; operators can
           // still suspend it later using the explicit table-level toggle.
-          enabled: form.role === "none" ? form.enabled : true,
+          enabled: form.roles.length === 0 ? form.enabled : true,
           timeout_seconds: timeout,
           extra: providerExtra(),
         });
@@ -445,8 +546,8 @@ export default function ProvidersPage() {
           ...(form.api_key && form.api_key !== MASKED_API_KEY
             ? { api_key: form.api_key }
             : {}),
-          role: form.role,
-          enabled: form.role === "none" ? form.enabled : true,
+          roles: form.roles,
+          enabled: form.roles.length === 0 ? form.enabled : true,
           timeout_seconds: timeout,
           extra: providerExtra(),
         });
@@ -470,12 +571,14 @@ export default function ProvidersPage() {
 
   const requestSave = () => {
     if (validateSave() === null) return;
-    const holder =
-      form.role !== "none"
-        ? items.find((item) => item.role === form.role && item.id !== savedEditor?.id)
-        : undefined;
-    if (holder) {
-      setRoleConfirm({ role: form.role, holderName: holder.name });
+    const conflicts = form.roles.flatMap((role) => {
+      const holder = items.find(
+        (item) => providerRoles(item).includes(role) && item.id !== savedEditor?.id,
+      );
+      return holder ? [{ role, holderName: holder.name }] : [];
+    });
+    if (conflicts.length > 0) {
+      setRoleConfirm({ conflicts });
       return;
     }
     void save();
@@ -526,7 +629,7 @@ export default function ProvidersPage() {
               base_url: form.base_url.trim(),
               api_key: form.api_key,
               model: form.model.trim(),
-              role: form.role,
+              role: form.roles[0] ?? "none",
             },
             { timeoutMs: 9_000 },
           )
@@ -594,7 +697,23 @@ export default function ProvidersPage() {
       title: "模型名",
       render: (p) => <span className="font-mono text-sm">{p.model}</span>,
     },
-    { key: "role", title: "角色", width: "100px", render: (p) => <RoleBadge role={p.role} /> },
+    {
+      key: "roles",
+      title: "角色",
+      width: "180px",
+      render: (p) => {
+        const roles = providerRoles(p);
+        return roles.length ? (
+          <div className="provider-input-types-cell">
+            {roles.map((role) => (
+              <RoleBadge key={role} role={role} />
+            ))}
+          </div>
+        ) : (
+          <span className="badge badge-neutral">无</span>
+        );
+      },
+    },
     {
       key: "model_inputs",
       title: "模型输入",
@@ -816,11 +935,9 @@ export default function ProvidersPage() {
           />
         </Field>
         <Field label="角色">
-          <Select
-            aria-label="角色"
-            value={form.role}
-            onChange={(e) => set("role", e.target.value)}
-            options={PROVIDER_ROLE_OPTIONS}
+          <ProviderRoleMultiSelect
+            value={form.roles}
+            onChange={(roles) => set("roles", roles)}
           />
         </Field>
         <div className="provider-timeout-test-row">
@@ -862,14 +979,19 @@ export default function ProvidersPage() {
         </div>
       </Drawer>
 
-      {/* 角色替换确认（同角色独占：替换前讲清后果） */}
+      {/* 角色替换确认（每个角色独占：一次保存可替换多个持有者） */}
       <ConfirmDialog
         open={roleConfirm !== null}
         title="确认角色设置"
         confirmText="确认设置"
         description={
           roleConfirm
-            ? `将替换当前${PROVIDER_ROLE_LABELS[roleConfirm.role] ?? roleConfirm.role}「${roleConfirm.holderName}」——原供应商将被降为"无角色"。系统运行时同角色只使用一个供应商。`
+            ? `将替换${roleConfirm.conflicts
+                .map(
+                  ({ role, holderName }) =>
+                    `${PROVIDER_ROLE_LABELS[role] ?? role}「${holderName}」`,
+                )
+                .join("、")}——原供应商对应角色将被移除。每个角色只对应一个模型。`
             : undefined
         }
         onConfirm={async () => {
@@ -888,7 +1010,11 @@ export default function ProvidersPage() {
         danger
         description={
           deleteTarget
-            ? `确定删除「${deleteTarget.name}」吗？此操作不可恢复；若它当前承担${PROVIDER_ROLE_LABELS[deleteTarget.role] ?? deleteTarget.role}，后续 Agent 调用将使用备用或降级策略。`
+            ? `确定删除「${deleteTarget.name}」吗？此操作不可恢复；若它当前承担${providerRoles(
+                deleteTarget,
+              )
+                .map((role) => PROVIDER_ROLE_LABELS[role] ?? role)
+                .join("、") || "无角色"}，后续 Agent 调用将使用备用或降级策略。`
             : undefined
         }
         onConfirm={deleteProvider}

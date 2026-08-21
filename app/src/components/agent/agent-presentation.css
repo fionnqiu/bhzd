@@ -6,9 +6,11 @@
   display: inline-grid;
   place-items: center;
   flex: 0 0 auto;
-  border: 1px solid color-mix(in srgb, var(--color-primary) 28%, transparent);
-  background: color-mix(in srgb, var(--color-primary-soft) 78%, var(--color-surface));
-  color: var(--color-primary);
+  /* 品牌色实心底 + 白色图标：对齐 Kimi/DeepSeek/MiniMax 的助手身份处理。
+     旧版浅底描边芯片在浅色对话流上辨识度低，故改为实心块。 */
+  border: 0;
+  background: var(--color-primary);
+  color: #fff;
 }
 
 .agent-avatar-spark {

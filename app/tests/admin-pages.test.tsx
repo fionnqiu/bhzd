@@ -75,6 +75,7 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     base_url: "https://api.openai.example.com/v1",
     model: "o4-mini",
     role: "primary",
+    roles: ["primary", "fallback"],
     enabled: true,
     timeout_seconds: 30,
     extra: { model_inputs: ["text", "image"] },
@@ -94,6 +95,7 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     protocol: "chat_completions",
     model: "gpt-x",
     role: "none",
+    roles: [],
     extra: {},
     last_test: {
       ok: false,
@@ -114,6 +116,7 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     renderPage(<ProvidersPage />);
     expect(await screen.findByText("Responses 主模型")).toBeInTheDocument();
     expect(screen.getByText("主模型")).toBeInTheDocument();
+    expect(screen.getByText("回退模型")).toBeInTheDocument();
     expect(screen.getByText("Responses")).toBeInTheDocument();
     expect(screen.getByText(/连接.*TIMEOUT/)).toBeInTheDocument();
     expect(screen.getByText("未测试")).toBeInTheDocument();
@@ -173,6 +176,7 @@ describe("ProvidersPage（PRD-04 §3）", () => {
         base_url: "http://192.168.1.10/v1",
         model: "m1",
         api_key: "sk-secret",
+        roles: [],
       }),
     );
   });
@@ -273,28 +277,71 @@ describe("ProvidersPage（PRD-04 §3）", () => {
     expect(screen.getByText("Responses 主模型")).toBeInTheDocument();
   });
 
-  it("只在编辑抽屉设置角色，并在替换已有持有者前确认后保存", async () => {
-    mockedPut.mockResolvedValueOnce({ ...P2, role: "primary" });
+  it("编辑抽屉可设置多个角色，并合并已有持有者的替换确认", async () => {
+    mockedPut.mockResolvedValueOnce({
+      ...P2,
+      role: "primary",
+      roles: ["primary", "fallback"],
+    });
     renderPage(<ProvidersPage />);
     const row = (await screen.findByText("备用模型")).closest("tr")!;
     fireEvent.click(within(row).getByRole("button", { name: "编辑" }));
     fireEvent.click(screen.getByRole("combobox", { name: "角色" }));
-    // 自定义 Select 的 listbox 通过 Portal 挂在全局文档，不能限定到抽屉节点。
+    // 角色多选列表留在打开状态，连续选择两个角色后一次性确认替换。
     fireEvent.click(screen.getByRole("option", { name: "主模型" }));
+    fireEvent.click(screen.getByRole("option", { name: "回退模型" }));
     fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
 
-    expect(await screen.findByText(/将替换当前主模型「Responses 主模型」/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/将替换主模型「Responses 主模型」、回退模型「Responses 主模型」/),
+    ).toBeInTheDocument();
     expect(mockedPut).not.toHaveBeenCalledWith("/api/admin/providers/p2", expect.anything());
     fireEvent.click(screen.getByRole("button", { name: "确认设置" }));
     await waitFor(() =>
       expect(mockedPut).toHaveBeenCalledWith(
         "/api/admin/providers/p2",
-        expect.objectContaining({ role: "primary" }),
+        expect.objectContaining({ roles: ["primary", "fallback"] }),
       ),
     );
     expect(mockedPost).not.toHaveBeenCalledWith(
       "/api/admin/providers/p2/set-role",
       expect.anything(),
+    );
+  });
+
+  it("新建供应商提交角色数组", async () => {
+    renderPage(<ProvidersPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "新建供应商" }));
+    fireEvent.change(screen.getByPlaceholderText("例如：主模型"), {
+      target: { value: "多角色模型" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("https://api.example.com/v1"), {
+      target: { value: "https://api.example.com/v1" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("输入 API Key"), {
+      target: { value: "sk-multi-role" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("例如：o4-mini / gpt-4o-mini"), {
+      target: { value: "multi-model" },
+    });
+    fireEvent.click(screen.getByRole("combobox", { name: "角色" }));
+    fireEvent.click(screen.getByRole("option", { name: "主模型" }));
+    fireEvent.click(screen.getByRole("option", { name: "回退模型" }));
+    fireEvent.click(screen.getByRole("button", { name: "创建供应商" }));
+    expect(
+      await screen.findByText(/将替换主模型「Responses 主模型」、回退模型「Responses 主模型」/),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "确认设置" }));
+
+    await waitFor(() =>
+      expect(mockedPost).toHaveBeenCalledWith(
+        "/api/admin/providers",
+        expect.objectContaining({
+          model: "multi-model",
+          roles: ["primary", "fallback"],
+          enabled: true,
+        }),
+      ),
     );
   });
 
@@ -431,7 +478,12 @@ describe("ProvidersPage（PRD-04 §3）", () => {
   });
 
   it("抽屉保存模型输入并在设置角色时自动启用供应商", async () => {
-    mockedPut.mockResolvedValueOnce({ ...P2, role: "primary", enabled: true });
+    mockedPut.mockResolvedValueOnce({
+      ...P2,
+      role: "primary",
+      roles: ["primary"],
+      enabled: true,
+    });
     renderPage(<ProvidersPage />);
     const row = (await screen.findByText("备用模型")).closest("tr")!;
     fireEvent.click(within(row).getByRole("button", { name: "编辑" }));
@@ -452,7 +504,7 @@ describe("ProvidersPage（PRD-04 §3）", () => {
         expect.objectContaining({
           enabled: true,
           extra: { model_inputs: ["text", "image"] },
-          role: "primary",
+          roles: ["primary"],
         }),
       ),
     );

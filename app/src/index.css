@@ -347,6 +347,48 @@ img {
   outline-offset: 2px;
 }
 
+/* ---------------------------------------------------------- 全局滚动条 */
+/* macOS 悬浮胶囊风格：透明轨道 + 圆角拇指，无箭头按钮，静止克制、悬停可发现。
+   规则不带类前缀、特异性最低——cockpit transcript、侧栏等局部定制仍会覆盖这里。 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  /* 透明 border + padding-box 裁剪：10px 槽位里视觉只剩 ~6px 的悬浮胶囊 */
+  background-color: var(--color-border-strong);
+  border: 2px solid transparent;
+  border-radius: var(--radius-full);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-text-muted);
+}
+
+/* Firefox 对应能力：细滚动条 + 透明轨道，颜色令牌与上面一致。
+   必须隔离在 @supports 内：Chrome 121+ 只要命中非初始值的 scrollbar-width/color，
+   就会切换到标准渲染路径并忽略全部 ::-webkit-scrollbar 定制（实测如此），
+   因此标准属性只发给不识别 WebKit 伪元素的 Firefox。 */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) transparent;
+  }
+}
+
+/* 高对比模式下拇指加深一档，保证可发现性（可达性兜底） */
+@media (prefers-contrast: more) {
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--color-text-secondary);
+  }
+}
+
 /* -------------------------------------------------------------- 布局骨架 */
 /* .shell = 侧边栏 + 主区；各 Layout（Student/Teacher/RagAdmin/Admin）共用 */
 .shell {
@@ -1319,6 +1361,21 @@ html[data-theme="dark"]
 /* Empty and loading content are explanatory copy rather than row data, so they may wrap. */
 .table td.table-empty {
   white-space: normal;
+}
+
+/* 任务反馈表（学生任务详情「最近/本次提交反馈」）：列宽固定按 colgroup 比例分配，
+   长题目/长答案在单元格内换行，不再把表格撑出横向滚动。 */
+.task-feedback-table .table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.task-feedback-table .table td {
+  white-space: normal;
+  /* 无空格的长串（URL、英文长词）也能断开，防止固定布局下溢出 */
+  overflow-wrap: anywhere;
+  /* 多行单元格顶对齐，换行后的可读性优于居中 */
+  vertical-align: top;
 }
 
 /* Cards that already provide the visual frame can reuse scrolling without a second border. */

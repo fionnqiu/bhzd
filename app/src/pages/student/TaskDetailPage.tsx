@@ -348,7 +348,8 @@ export default function TaskDetailPage() {
     }
   };
 
-  // Feedback and attempt rows stay single-line; the shared table viewport handles narrow screens.
+  // Attempt rows stay single-line and scroll horizontally; the feedback table instead
+  // fixes its width to the container and wraps long answers (see .task-feedback-table).
   const feedbackColumns: Column<SubmitTaskResponse["feedback"][number]>[] = [
     {
       key: "key",
@@ -913,6 +914,7 @@ export default function TaskDetailPage() {
                 columns={feedbackColumns}
                 rows={feedback.feedback}
                 rowKey={(item) => item.key}
+                wrapperClassName="task-feedback-table"
               />
             ) : null}
             <div>

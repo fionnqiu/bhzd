@@ -29,7 +29,10 @@ export const PROTOCOL_LABELS: Record<string, string> = Object.fromEntries(
   PROTOCOL_OPTIONS.map((o) => [o.value, o.label]),
 );
 
-/** 供应商角色（provider_configs.role；同角色全局至多一个，admin.py 独占赋值） */
+/**
+ * 供应商角色（provider_configs.roles_json）：单个供应商可同时承担多个
+ * 角色，但每个角色全局至多对应一个模型；none 仅是空数组的兼容投影。
+ */
 export const PROVIDER_ROLE_OPTIONS = [
   { value: "primary", label: "主模型" },
   { value: "fallback", label: "回退模型" },

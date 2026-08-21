@@ -285,9 +285,10 @@ export default function UsersPage() {
     {
       key: "actions",
       title: "操作",
-      width: "230px",
+      width: "250px",
       render: (u) => (
-        <div className="flex gap-1" style={{ flexWrap: "wrap" }}>
+        // 三个操作按钮固定同一行，列宽同步留足，避免“重置密码”折行
+        <div className="flex gap-1" style={{ flexWrap: "nowrap", whiteSpace: "nowrap" }}>
           <Button size="sm" variant="secondary" onClick={() => openRoleModal(u)}>
             编辑角色
           </Button>

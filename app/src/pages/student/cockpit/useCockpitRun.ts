@@ -15,6 +15,8 @@ import type {
   MessageAttachment,
   PlanStep,
   RunDetail,
+  TaskDraft,
+  TaskDraftSyncResponse,
   ToolCall,
 } from "../../../api/types";
 import { attachRunStream } from "./runStream";
@@ -343,6 +345,8 @@ export function useCockpitRun() {
   const [cards, setCards] = useState<EmbeddedCardData[]>([]);
   const [citations, setCitations] = useState<Citation[]>([]);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
+  // 任务草稿（回答底部按钮的数据源）：runId → 该 run 最新完整投影
+  const [taskDraftsByRun, setTaskDraftsByRun] = useState<Record<string, TaskDraft>>({});
   const [confirming, setConfirming] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -975,6 +979,10 @@ export function useCockpitRun() {
             setStatus("awaiting_confirmation");
             appendConfirmationActivity(c, seq);
           },
+          onTaskDraft: (draft, seq) => {
+            advanceActivitySequence(seq);
+            setTaskDraftsByRun((prev) => ({ ...prev, [id]: draft }));
+          },
           onCitations: (incoming) => {
             // 按文档+章节去重：多轮问答可能重复引用同一出处
             setCitations((prev) => {
@@ -1081,6 +1089,8 @@ export function useCockpitRun() {
     setCards([]);
     setCitations([]);
     setConfirmation(null);
+    // 注意不清 taskDraftsByRun：同一对话内发起新 run 后，上一轮回答下方
+    // 的草稿按钮仍需可用；草稿清理由 reset/loadConversation 显式处理。
     setSummary(null);
     setError(null);
     setStreamRecovery(null);
@@ -1355,11 +1365,41 @@ export function useCockpitRun() {
     };
   }, [confirmation, confirming, expire]);
 
+  /**
+   * 同步任务草稿到学习任务。点击卡片按钮即学生对该内容的显式确认，
+   * 后端按草稿幂等落库；本地以响应为准置已同步（历史 run 没有活动 SSE，
+   * 不能依赖 task.draft 事件回流）。
+   */
+  const syncTaskDraft = useCallback(
+    async (runKey: string, draftId: string): Promise<boolean> => {
+      try {
+        const res = await api.post<TaskDraftSyncResponse>(
+          `/api/task-drafts/${draftId}/sync`,
+          {},
+        );
+        setTaskDraftsByRun((prev) => {
+          const current = prev[runKey];
+          if (!current || current.id !== draftId) return prev;
+          return { ...prev, [runKey]: { ...current, status: "synced", task_ids: res.task_ids } };
+        });
+        if (!res.already_synced) {
+          toast.success("已同步到学习任务");
+        }
+        return true;
+      } catch (err) {
+        toast.error(err instanceof ApiRequestError ? err.message : "同步失败，请稍后重试");
+        return false;
+      }
+    },
+    [toast],
+  );
+
   /** 新会话：回到空白态（欢迎态），关闭旧流 */
   const reset = useCallback(() => {
     if (startInFlightRef.current) return;
     closeStream();
     clearRunState();
+    setTaskDraftsByRun({});
     setMessages([]);
     setStatus("idle");
     setRunId(null);
@@ -1378,6 +1418,7 @@ export function useCockpitRun() {
       runIdRef.current = null;
       setConversationId(detail.id);
       setHistoricalActivitiesByRun(historicalActivityMap(detail.activities_by_run));
+      setTaskDraftsByRun(detail.task_drafts_by_run ?? {});
       setMessages(
         detail.messages
           .filter((m) => m.role !== "tool")
@@ -1412,6 +1453,8 @@ export function useCockpitRun() {
     citations,
     confirmation,
     confirming,
+    taskDraftsByRun,
+    syncTaskDraft,
     summary,
     error,
     streamRecovery,

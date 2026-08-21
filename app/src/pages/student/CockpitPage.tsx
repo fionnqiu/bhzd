@@ -295,9 +295,15 @@ export default function CockpitPage() {
   );
   return (
     <div className="cockpit cockpit-workbench">
-      {/* Keep the title band outside the constrained conversation column so it
-          can span the full main area without being clipped by the scroll shell. */}
-      {showWelcome ? null : <ConversationInfoBar conversationTitle={conversationTitle} />}
+      {/* Keep the title pill and its progressive blur veil outside the */}
+      {/* constrained conversation column: both are absolutely positioned, so */}
+      {/* the transcript extends to the full top height and scrolls beneath them. */}
+      {showWelcome ? null : (
+        <>
+          <div className="cockpit-top-veil" aria-hidden="true" />
+          <ConversationInfoBar conversationTitle={conversationTitle} />
+        </>
+      )}
       <div className={`cockpit-center${showWelcome ? " cockpit-center-welcome" : ""}`}>
         {/* Welcome intentionally owns the visual Hero -> Prompt -> quick-link order.
             Once a transcript exists, the Composer returns outside the scroller so
@@ -322,6 +328,11 @@ export default function CockpitPage() {
                 run={run}
                 onFocusComposer={() => composerRef.current?.focus()}
                 conversationId={conversationId}
+                onPrefillComposer={(text) => {
+                  // 任务卡「继续修改」：预填修订话术并交回学生确认后发送
+                  setComposerValue(text);
+                  composerRef.current?.focus();
+                }}
               />
             )}
 
