@@ -53,13 +53,22 @@ def _draft_row(db_path: str, run_id: str):
 
 
 class _JsonProviders:
-    """返回固定任务卡 JSON 的 Provider 替身（complete 契约见 composer.compose_text）。"""
+    """返回固定任务卡 JSON 的 Provider 替身（complete 契约见 composer.compose_text）。
+
+    生成前澄清（intake）与草稿生成共用同一 complete 入口：按系统提示
+    分流——intake 一律 READY 放行，草稿返回脚本化 payload。
+    """
 
     payload = ""
 
     @classmethod
-    async def complete(cls, _messages, *, role, **_kwargs):
-        return {"text": cls.payload, "model": "stub", "usage": {}}
+    async def complete(cls, messages, *, role, **_kwargs):
+        system = str(messages[0].get("content")) if messages else ""
+        if "READY" in system:  # TASK_INTAKE_SYSTEM 的 READY 契约标记
+            return {"text": "READY：需求已明确", "model": "stub", "usage": {}}
+        if "只返回一个 JSON" in system:  # TASK_DRAFT_SYSTEM
+            return {"text": cls.payload, "model": "stub", "usage": {}}
+        return {"text": None, "model": "stub", "usage": {}}
 
     @classmethod
     async def stream_deltas(cls, _messages, *, role, **_kwargs):
@@ -84,8 +93,8 @@ def test_draft_falls_back_to_template_without_provider(db, tmp_db_path, user_id,
     card = payload["cards"][0]
     assert card["title"] == "图像标注练习任务"
     assert card["data_type"] == "image"
-    # 图谱 stub 的 cap_ids 经证据链注入草稿卡，而不是由模型指定
-    assert card["cap_ids"] == ["CAP-AUD-WAKE-COMMAND-001"]
+    # 图谱定位已彻底移出任务计划：任务卡不再关联能力点
+    assert card["cap_ids"] == []
     assert card["knowledge_points"] and card["exercises"]
 
 
@@ -369,3 +378,211 @@ def test_revision_request_includes_previous_draft_only_for_revision_wording(
         for messages in captured
         for message in messages
     ), "全新任务请求不应被旧草稿带偏"
+
+
+# ---------------------------------------------------------------------------
+# 生成前 LLM 自由澄清（intake）
+# ---------------------------------------------------------------------------
+
+
+class _ScriptedProviders:
+    """脚本化 Provider：按系统提示分流 intake/草稿/最终合成三路，并记录调用。"""
+
+    intake_reply = "你想练哪一类图像标注？"
+    draft_payload = ""
+    compose_reply: str | None = "这是给你的任务说明。"
+    intake_calls = 0
+    draft_calls = 0
+
+    @classmethod
+    def reset(cls) -> None:
+        cls.intake_reply = "你想练哪一类图像标注？"
+        cls.draft_payload = ""
+        cls.compose_reply = "这是给你的任务说明。"
+        cls.intake_calls = 0
+        cls.draft_calls = 0
+
+    @classmethod
+    async def complete(cls, messages, *, role, **_kwargs):
+        system = str(messages[0].get("content")) if messages else ""
+        if "READY" in system:  # TASK_INTAKE_SYSTEM 的 READY 契约标记
+            cls.intake_calls += 1
+            return {"text": cls.intake_reply, "model": "stub", "usage": {}}
+        if "只返回一个 JSON" in system:  # TASK_DRAFT_SYSTEM
+            cls.draft_calls += 1
+            return {"text": cls.draft_payload or None, "model": "stub", "usage": {}}
+        return {"text": cls.compose_reply, "model": "stub", "usage": {}}
+
+    @classmethod
+    async def stream_deltas(cls, _messages, *, role, **_kwargs):
+        if False:
+            yield {}
+
+
+_VALID_DRAFT_JSON = json.dumps(
+    {
+        "title": "图像框选入门任务",
+        "goal": "掌握边界框标注规范",
+        "knowledge_points": [{"title": "边界框规则", "content": "框必须贴合目标外缘。"}],
+        "exercises": [
+            {
+                "question": "边界框应贴合到哪里？",
+                "type": "open_ended",
+                "options": [],
+                "reference_answer": "目标物体的最外缘像素。",
+            }
+        ],
+        "est_minutes": 30,
+    },
+    ensure_ascii=False,
+)
+
+
+def _follow_up_run(db, user_id: str, conversation_id: str, input_text: str) -> str:
+    import uuid as _uuid
+
+    run_id = _uuid.uuid4().hex
+    db.execute(
+        """
+        INSERT INTO agent_runs (id, conversation_id, user_id, status, input_text, created_at)
+        VALUES (?, ?, ?, 'running', ?, datetime('now'))
+        """,
+        (run_id, conversation_id, user_id, input_text),
+    )
+    db.commit()
+    return run_id
+
+
+def _intake_state(db_path: str, run_id: str) -> dict | None:
+    conn = open_db(db_path)
+    try:
+        row = conn.execute(
+            "SELECT plan_json FROM agent_runs WHERE id = ?", (run_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row or not row["plan_json"]:
+        return None
+    return json.loads(row["plan_json"]).get("task_intake")
+
+
+def test_intake_asks_question_before_generating(db, tmp_db_path, user_id, monkeypatch):
+    """模糊任务请求：先出澄清问题，本轮不生成草稿/计划。"""
+
+    install_stub_tools(monkeypatch)
+    _ScriptedProviders.reset()
+    monkeypatch.setattr(composer, "_providers", lambda: _ScriptedProviders)
+
+    run_id, conv_id = insert_run(db, user_id, "帮我生成一个学习任务")
+    asyncio.run(orchestrator.execute_run(run_id, tmp_db_path))
+
+    message = db.execute(
+        "SELECT content FROM messages WHERE conversation_id = ? AND role = 'assistant'",
+        (conv_id,),
+    ).fetchone()
+    assert message["content"] == "你想练哪一类图像标注？"
+    assert _intake_state(tmp_db_path, run_id)["rounds"] == 1
+    assert _draft_row(tmp_db_path, run_id) is None
+    assert db.execute(
+        "SELECT status FROM agent_runs WHERE id = ?", (run_id,)
+    ).fetchone()["status"] == "completed"
+    assert _ScriptedProviders.intake_calls == 1
+    assert _ScriptedProviders.draft_calls == 0
+
+
+def test_intake_ready_generates_draft_with_requirement(db, tmp_db_path, user_id, monkeypatch):
+    """模型 READY：复述进生成依据，同一轮直接生成任务草稿。"""
+
+    install_stub_tools(monkeypatch)
+    _ScriptedProviders.reset()
+    _ScriptedProviders.intake_reply = "READY：为你生成图像标注入门任务"
+    _ScriptedProviders.draft_payload = _VALID_DRAFT_JSON
+    monkeypatch.setattr(composer, "_providers", lambda: _ScriptedProviders)
+
+    run_id, _ = insert_run(db, user_id, "帮我生成一个图像标注的学习任务")
+    asyncio.run(orchestrator.execute_run(run_id, tmp_db_path))
+
+    draft = _draft_row(tmp_db_path, run_id)
+    assert draft is not None
+    card = json.loads(draft["card_json"])["cards"][0]
+    assert "原始需求：帮我生成一个图像标注的学习任务" in card["goal"]
+    assert "需求确认：为你生成图像标注入门任务" in card["goal"]
+    assert _ScriptedProviders.intake_calls == 1
+    assert _ScriptedProviders.draft_calls == 1
+
+
+def test_intake_continues_across_turns_and_caps_at_three(db, tmp_db_path, user_id, monkeypatch):
+    """每轮一问；第 4 轮无论模型还想问什么都强制生成（硬封顶）。"""
+
+    install_stub_tools(monkeypatch)
+    _ScriptedProviders.reset()  # intake 永远只提问
+    _ScriptedProviders.draft_payload = _VALID_DRAFT_JSON
+    monkeypatch.setattr(composer, "_providers", lambda: _ScriptedProviders)
+
+    first_run, conversation_id = insert_run(db, user_id, "帮我生成一个图像标注的学习任务")
+    asyncio.run(orchestrator.execute_run(first_run, tmp_db_path))
+    assert _intake_state(tmp_db_path, first_run)["rounds"] == 1
+
+    second_run = _follow_up_run(db, user_id, conversation_id, "框选")
+    asyncio.run(orchestrator.execute_run(second_run, tmp_db_path))
+    assert _intake_state(tmp_db_path, second_run)["rounds"] == 2
+
+    third_run = _follow_up_run(db, user_id, conversation_id, "零基础")
+    asyncio.run(orchestrator.execute_run(third_run, tmp_db_path))
+    assert _intake_state(tmp_db_path, third_run)["rounds"] == 3
+    assert _draft_row(tmp_db_path, third_run) is None
+
+    fourth_run = _follow_up_run(db, user_id, conversation_id, "都可以")
+    asyncio.run(orchestrator.execute_run(fourth_run, tmp_db_path))
+    draft = _draft_row(tmp_db_path, fourth_run)
+    assert draft is not None, "第 4 轮必须强制生成"
+    card = json.loads(draft["card_json"])["cards"][0]
+    assert "原始需求：帮我生成一个图像标注的学习任务" in card["goal"]
+    assert "框选" in card["goal"] and "零基础" in card["goal"]
+    # 封顶路径不再调用 intake；3 轮提问 + 0 次额外调用
+    assert _ScriptedProviders.intake_calls == 3
+    assert _ScriptedProviders.draft_calls == 1
+
+
+def test_revision_skips_intake(db, tmp_db_path, user_id, monkeypatch):
+    """修订话术 + 已有草稿：跳过澄清直接重新生成。"""
+
+    install_stub_tools(monkeypatch)
+    _ScriptedProviders.reset()
+    _ScriptedProviders.intake_reply = "READY：为你生成图像标注入门任务"
+    _ScriptedProviders.draft_payload = _VALID_DRAFT_JSON
+    monkeypatch.setattr(composer, "_providers", lambda: _ScriptedProviders)
+
+    first_run, conversation_id = insert_run(db, user_id, "帮我生成一个图像标注的学习任务")
+    asyncio.run(orchestrator.execute_run(first_run, tmp_db_path))
+    assert _draft_row(tmp_db_path, first_run) is not None
+    assert _ScriptedProviders.intake_calls == 1
+
+    revise_run = _follow_up_run(db, user_id, conversation_id, "请修改刚才的学习任务：加一道选择题")
+    asyncio.run(orchestrator.execute_run(revise_run, tmp_db_path))
+    assert _draft_row(tmp_db_path, revise_run) is not None
+    assert _ScriptedProviders.intake_calls == 1, "修订请求不得再触发澄清"
+    assert _ScriptedProviders.draft_calls == 2
+
+
+def test_new_recognized_intent_abandons_intake(db, tmp_db_path, user_id, monkeypatch):
+    """澄清轮中改问知识问题：按正常 RAG 链路处理，不被旧澄清劫持。"""
+
+    install_stub_tools(monkeypatch)
+    _ScriptedProviders.reset()
+    monkeypatch.setattr(composer, "_providers", lambda: _ScriptedProviders)
+
+    first_run, conversation_id = insert_run(db, user_id, "帮我生成一个学习任务")
+    asyncio.run(orchestrator.execute_run(first_run, tmp_db_path))
+    assert _intake_state(tmp_db_path, first_run)["rounds"] == 1
+
+    question_run = _follow_up_run(db, user_id, conversation_id, "NER 标注的规范是什么？")
+    asyncio.run(orchestrator.execute_run(question_run, tmp_db_path))
+
+    assert _ScriptedProviders.intake_calls == 1, "知识问题不得进入任务澄清"
+    assert _draft_row(tmp_db_path, question_run) is None
+    message = db.execute(
+        "SELECT content FROM messages WHERE run_id = ? AND role = 'assistant'",
+        (question_run,),
+    ).fetchone()
+    assert message is not None and message["content"]

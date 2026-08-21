@@ -118,6 +118,11 @@ class AppConfig(BaseSettings):
     private_memory_context_char_limit: int = Field(default=2400, ge=256, le=6000)
     private_memory_atom_char_limit: int = Field(default=280, ge=80, le=800)
     private_memory_atoms_per_message: int = Field(default=2, ge=1, le=4)
+    # Agent learning writes are narrowly scoped domain operations.  The kill
+    # switch and per-user daily budget provide an operator-level brake without
+    # exposing a generic SQL, shell, or filesystem capability to the model.
+    agent_learning_auto_enabled: bool = True
+    agent_learning_daily_limit: int = Field(default=20, ge=1, le=200)
 
     # NODE_ENV 不带 BHZD_ 前缀，是旧栈沿用名，单独映射
     node_env: str = Field(default="development", validation_alias="NODE_ENV")

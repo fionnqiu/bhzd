@@ -266,6 +266,10 @@ const CARD_TITLES: Record<string, string> = {
   "rag.answer": "规范解答",
   "rag.search": "资料召回",
   "diagnostic.preview": "诊断报告",
+  "learning.task.auto_create": "学习任务已创建",
+  "learning.progress.record": "学习进度已更新",
+  "learning.mastery.sync": "技能掌握度已同步",
+  "learning.exercise.review": "练习点评已生成",
 };
 
 /** 单张嵌入卡：内联紧凑展示 + Drawer 专注视图（NF19） */

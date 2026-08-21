@@ -48,7 +48,9 @@ test.describe("学生端 PRD 主线", () => {
     await injectSession(page, STUDENT);
     await page.goto("/");
     const input = page.locator("textarea").first();
-    await input.fill("我想学习文本标注入门");
+    // 信息完整的请求（类型+场景+水平）：生成前澄清应直接 READY 进入生成；
+    // 无模型环境回退规则路径，同样直达草稿。
+    await input.fill("我是零基础，想学习文本 NER 实体标注入门，帮我生成一个练习任务");
     await input.press("Enter");
     // 执行过程以步骤流呈现（plan.updated / tool.call.* 经 SSE 到达）
     await expect(page.getByTestId("agent-activity-timeline")).toBeVisible({ timeout: 20000 });

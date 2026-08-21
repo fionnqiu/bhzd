@@ -106,6 +106,7 @@ def apply_updates(
     *,
     source: str,
     ref_id: str | None = None,
+    commit: bool = True,
 ) -> list[dict]:
     """实际落库：upsert mastery + 每条写 mastery_events，返回应用结果（含新旧分）。
 
@@ -144,7 +145,11 @@ def apply_updates(
                 "new_score": new,
             }
         )
-    db.commit()
+    # Agent capability writes pass commit=False so mastery rows, action state,
+    # and audit record share one transaction. Existing callers retain the
+    # original commit-on-success behavior.
+    if commit:
+        db.commit()
     return applied
 
 

@@ -59,6 +59,48 @@ _CONTENT_SOURCE_MANUAL = "manual"
 _CONTENT_SOURCE_COPIED = "copied"
 
 
+def _student_rule_text(value: Any) -> str:
+    """Project reviewed rule data into bounded learner-readable text.
+
+    Teaching-unit rules may be structured provenance objects rather than a
+    sentence.  Only reviewed statements are exposed to learners; arbitrary
+    ``str(dict)``/``repr`` output would leak implementation metadata and make
+    the generated lesson unreadable.
+    """
+
+    if isinstance(value, str):
+        return value.strip()
+    if not isinstance(value, (dict, list)):
+        return ""
+
+    statements: list[str] = []
+
+    def collect(item: Any, *, include_statement: bool = False) -> None:
+        if isinstance(item, str):
+            if include_statement and item.strip():
+                statements.append(item.strip())
+            return
+        if isinstance(item, list):
+            for child in item:
+                collect(child, include_statement=include_statement)
+            return
+        if not isinstance(item, dict):
+            return
+        # ``statement`` is the reviewed prose field used by both external
+        # facts and project policy.  Nested policy definitions are traversed
+        # as well, so future units can add statement-bearing rule groups.
+        if isinstance(item.get("statement"), str) and item["statement"].strip():
+            statements.append(item["statement"].strip())
+        for key, child in item.items():
+            if key == "statement":
+                continue
+            if key in {"external_format_facts", "project_policy"} or isinstance(child, (dict, list)):
+                collect(child)
+
+    collect(value)
+    return "\n".join(dict.fromkeys(statements))
+
+
 def _mark_task_content_done(
     conn: sqlite3.Connection,
     task_id: str,
@@ -254,7 +296,7 @@ def _default_task_content(
         objectives = [
             str(item).strip() for item in unit.get("learning_objectives") or [] if str(item).strip()
         ]
-        rule = str(unit.get("rule_explanation") or "").strip()
+        rule = _student_rule_text(unit.get("rule_explanation"))
         exercise = unit.get("exercise") if isinstance(unit.get("exercise"), dict) else {}
         action = str(exercise.get("student_action") or "").strip()
         answer = exercise.get("answer")
@@ -749,16 +791,26 @@ def queue_task_content(
 
 
 def _content_json(text: str) -> dict[str, Any] | None:
-    """Parse a provider JSON object, tolerating a fenced response."""
+    """Extract the first provider JSON object despite harmless wrapper text.
 
-    candidate = text.strip()
-    if candidate.startswith("```"):
-        candidate = candidate.strip("`").split("\n", 1)[-1]
-    try:
-        payload = json.loads(candidate)
-    except (TypeError, json.JSONDecodeError):
+    Models sometimes add a ``json`` fence or a short explanation before/after
+    the object.  ``raw_decode`` keeps parsing strict for the target object
+    while ignoring only those non-target characters.
+    """
+
+    if not isinstance(text, str):
         return None
-    return payload if isinstance(payload, dict) else None
+    candidate = text.lstrip("\ufeff").strip()
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(candidate):
+        if char != "{":
+            continue
+        try:
+            payload, _ = decoder.raw_decode(candidate[index:])
+        except json.JSONDecodeError:
+            continue
+        return payload if isinstance(payload, dict) else None
+    return None
 
 
 async def _generate_task_content_uncached(
@@ -825,7 +877,7 @@ async def _generate_task_content_uncached(
             {
                 "title": unit.get("title"),
                 "learning_objectives": unit.get("learning_objectives", []),
-                "rule_explanation": unit.get("rule_explanation", ""),
+                "rule_explanation": _student_rule_text(unit.get("rule_explanation")),
                 "exercise": (
                     unit.get("exercise", {}).get("student_action", "")
                     if isinstance(unit.get("exercise"), dict)

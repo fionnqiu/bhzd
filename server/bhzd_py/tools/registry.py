@@ -64,6 +64,7 @@ def _build_tools() -> dict[str, ToolSpec]:
         course_search,
         diagnostic_tools,
         graph_reason,
+        learning_tools,
         mastery_tools,
         rag_admin_tools,
         rag_tools,
@@ -86,6 +87,10 @@ def _build_tools() -> dict[str, ToolSpec]:
         rag_admin_tools.PUBLISH_DOCUMENT_SPEC,
         rag_admin_tools.ARCHIVE_DOCUMENT_SPEC,
         rag_admin_tools.SAVE_EVAL_CASE_SPEC,
+        learning_tools.TASK_AUTO_CREATE_SPEC,
+        learning_tools.PROGRESS_RECORD_SPEC,
+        learning_tools.MASTERY_SYNC_SPEC,
+        learning_tools.EXERCISE_REVIEW_SPEC,
     ]
     return {spec.name: spec for spec in specs}
 

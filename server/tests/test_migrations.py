@@ -20,7 +20,7 @@ EXPECTED_MIGRATIONS = [
     "021_rag_eval_sets_and_retrieval.sql", "022_rag_reprocess_batches.sql",
     "023_remove_content_admin.sql", "024_task_content_generation_observability.sql",
     "025_task_grading_recovery.sql", "026_provider_multi_roles.sql",
-    "027_task_drafts.sql",
+    "027_task_drafts.sql", "028_agent_learning_capabilities.sql",
 ]
 
 EXPECTED_TABLES = {
@@ -36,7 +36,7 @@ EXPECTED_TABLES = {
     "conversation_memory_chunks", "private_memory_items", "private_memory_sources",
     "private_memory_fts", "admin_alert_ignores", "message_attachments",
     "task_knowledge_points", "task_exercises", "task_exercise_submissions",
-    "task_drafts",
+    "task_drafts", "agent_learning_actions", "task_exercise_reviews",
 }
 
 # Each plan mirrors a production predicate and ordering requirement.  Checking the
@@ -275,6 +275,7 @@ def test_provider_protocol_migration_preserves_legacy_row_data(tmp_path):
     (legacy_migrations / "025_task_grading_recovery.sql").unlink()
     (legacy_migrations / "026_provider_multi_roles.sql").unlink()
     (legacy_migrations / "027_task_drafts.sql").unlink()
+    (legacy_migrations / "028_agent_learning_capabilities.sql").unlink()
     database_path = str(tmp_path / "provider-migration.sqlite")
     conn = connect(database_path)
     try:
@@ -375,6 +376,7 @@ def test_scenario_removal_migration_unifies_mastery_and_drops_business_columns(t
     (legacy_migrations / "025_task_grading_recovery.sql").unlink()
     (legacy_migrations / "026_provider_multi_roles.sql").unlink()
     (legacy_migrations / "027_task_drafts.sql").unlink()
+    (legacy_migrations / "028_agent_learning_capabilities.sql").unlink()
     database_path = str(tmp_path / "scenario-removal.sqlite")
     conn = connect(database_path)
     try:

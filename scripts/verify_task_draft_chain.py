@@ -70,30 +70,38 @@ def main() -> None:
 
     created_task_ids: list[str] = []
     try:
-        # 2) 发起任务生成
+        # 2) 发起任务生成（生成前澄清：无草稿则按澄清问题跟答，最多 3 轮）
         status, run = api("POST", "/api/runs", {"input": "帮我生成一个图像标注的学习任务"}, token, CSRF)
         assert status == 202, (status, run)
-        run_id = run["run_id"]
         conv_id = run["conversation_id"]
-        print("run accepted:", run_id)
 
-        # 3) 轮询完成
-        final = None
-        for _ in range(60):
-            status, detail = api("GET", f"/api/runs/{run_id}", token=token)
-            assert status == 200, (status, detail)
-            if detail["run"]["status"] in ("completed", "failed"):
-                final = detail
+        def wait_completed(rid: str) -> dict:
+            for _ in range(60):
+                status, detail = api("GET", f"/api/runs/{rid}", token=token)
+                assert status == 200, (status, detail)
+                if detail["run"]["status"] in ("completed", "failed"):
+                    assert detail["run"]["status"] == "completed", detail["run"]
+                    return detail
+                time.sleep(1)
+            raise AssertionError(f"run {rid} 未在 60s 内完成")
+
+        answers = ["框选", "零基础", "都可以"]
+        drafts: dict = {}
+        for turn in range(4):
+            wait_completed(run["run_id"] if turn == 0 else follow["run_id"])
+            status, conv = api("GET", f"/api/conversations/{conv_id}", token=token)
+            assert status == 200, (status, conv)
+            drafts = conv.get("task_drafts_by_run") or {}
+            if drafts:
                 break
-            time.sleep(1)
-        assert final and final["run"]["status"] == "completed", final and final["run"]["status"]
-        print("run completed")
-
-        # 4) 会话详情取草稿
-        status, conv = api("GET", f"/api/conversations/{conv_id}", token=token)
-        assert status == 200, (status, conv)
-        drafts = conv.get("task_drafts_by_run") or {}
-        assert len(drafts) == 1, drafts
+            assert turn < 3, "澄清超过 3 轮仍未生成（封顶失效）"
+            question = conv["messages"][-1]["content"]
+            print(f"intake turn {turn + 1} question:", question[:60])
+            status, follow = api("POST", "/api/runs",
+                                 {"input": answers[turn], "conversation_id": conv_id}, token, CSRF)
+            assert status == 202, (status, follow)
+        assert drafts, "未拿到任务草稿"
+        print("draft ready after intake turns")
         projection = next(iter(drafts.values()))
         draft_id = projection["id"]
         assert projection["status"] == "draft"

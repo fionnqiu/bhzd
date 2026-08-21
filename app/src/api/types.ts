@@ -595,7 +595,7 @@ export interface TaskSummary {
   cap_ids: string[];
   source: TaskSource;
   status: TaskStatus;
-  /** MVP 按状态映射的确定性进度（tasks.py `_PROGRESS_BY_STATUS`） */
+  /** Explicit Agent progress when present; legacy rows use status fallback. */
   progress: number;
   latest_score: number | null;
   counts_toward_mastery: boolean;
@@ -630,6 +630,14 @@ export interface TaskExerciseSubmission {
   manual_review_required?: boolean;
 }
 
+export interface TaskExerciseReview {
+  id: string;
+  score: number;
+  feedback: string;
+  provider_role: "grader" | string;
+  created_at: string;
+}
+
 export interface TaskExercise {
   id: string;
   question: string;
@@ -638,6 +646,7 @@ export interface TaskExercise {
   sort_order: number;
   created_at: string;
   submission: TaskExerciseSubmission | null;
+  reviews?: TaskExerciseReview[];
 }
 
 export interface TaskAttempt {

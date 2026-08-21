@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import logging
 import re
@@ -617,8 +618,9 @@ def _build_plan(
         ], None)
 
     # learn_goal / preset_start / task_convert / teacher_task：
-    # 读步骤保留 RAG 召回 + 图谱定位（蓝图 §10.3 证据链）；任务卡生成移出
-    # 计划步骤，由 _finalize 用 task_draft_args 生成草稿（PRD 交互变更：
+    # 读步骤只保留 RAG 召回作为草稿生成的证据链；图谱定位按产品决策
+    # 彻底移出任务计划（任务卡不再关联能力点）。任务卡生成移出计划步骤，
+    # 由 _finalize 用 task_draft_args 生成草稿（PRD 交互变更：
     # 回答底部按钮打开预览卡，卡上按钮直接同步/继续修改）。
     source = {
         intents.KIND_PRESET_START: "preset",
@@ -633,6 +635,9 @@ def _build_plan(
         "description": question,
         "data_type": data_type,
         "source": source,
+        # Preserve the existing draft-preview UX unless the learner explicitly
+        # asks for immediate creation ("直接/自动创建").
+        "auto_create": bool(re.search(r"(?:直接|自动)(?:地)?(?:创建|生成|安排)", question)),
     }
     stages = _extract_task_stages(question, base_title=title, data_type=data_type)
     if stages:
@@ -641,8 +646,6 @@ def _build_plan(
             step(1, "检索相关规范资料", "rag.search",
                  {"query": question,
                   "filters": {"data_type": data_type}}),
-            step(2, "定位关联能力", "graph.reason",
-                 {"action": "locate", "query": question, "data_type": data_type}),
     ], task_draft_args)
 
 
@@ -718,7 +721,7 @@ def _make_ctx(db, config, user, run, conv, args) -> ToolContext:
 
 
 def _execute_read_step(
-    db, config, user, run, conv, step, spec
+    db, config, user, run, conv, step, spec, *, is_write: bool = False
 ) -> Any:
     """执行读工具并发布可回放的安全生命周期事件。
 
@@ -729,7 +732,8 @@ def _execute_read_step(
     """
     input_summary = events.summarize_tool_input(step["args"], title=step["title"])
     execution_kind = events.execution_kind(spec.name)
-    tool_call_id = _insert_tool_call(db, run["id"], spec.name, "read", step["args"])
+    permission = "write" if is_write else "read"
+    tool_call_id = _insert_tool_call(db, run["id"], spec.name, permission, step["args"])
     step["tool_call_id"] = tool_call_id
     _emit_progress(
         db,
@@ -737,7 +741,7 @@ def _execute_read_step(
         phase="tool",
         status="running",
         title=f"正在执行：{step['title']}",
-        detail=f"调用只读工具 {spec.name}",
+        detail=(f"调用受控学习工具 {spec.name}" if is_write else f"调用只读工具 {spec.name}"),
     )
     if spec.name == "rag.search":
         _emit_progress(
@@ -750,7 +754,7 @@ def _execute_read_step(
         )
     events.emit(db, run["id"], events.TOOL_CALL_REQUESTED, {
         "tool_call_id": tool_call_id, "tool": spec.name,
-        "permission": "read",
+        "permission": permission,
         "execution_kind": execution_kind,
         "input_summary": input_summary,
         # Keep the legacy key for older clients; both values are already safe.
@@ -781,7 +785,7 @@ def _execute_read_step(
     events.emit(db, run["id"], events.TOOL_CALL_COMPLETED, {
         "tool_call_id": tool_call_id, "tool": spec.name, "status": status,
         "duration_ms": duration_ms,
-        "is_write": 0,
+        "is_write": 1 if is_write else 0,
         "execution_kind": execution_kind,
         "output_summary": events.summarize_tool_result(result, status=status),
         # Result cards still need a typed payload.  Redaction happens before
@@ -795,7 +799,7 @@ def _execute_read_step(
         status=status,
         title=(f"已完成：{step['title']}" if status == "completed"
                else f"未完成：{step['title']}"),
-        detail=f"只读工具 {spec.name}，耗时 {duration_ms} ms",
+        detail=(f"受控学习工具 {spec.name}，耗时 {duration_ms} ms" if is_write else f"只读工具 {spec.name}，耗时 {duration_ms} ms"),
     )
     if spec.name == "rag.search":
         hit_count = result.get("hit_count", 0) if isinstance(result, dict) else 0
@@ -1322,8 +1326,14 @@ async def _run_steps(
             )
             continue
         _enrich_step_args(step, steps, results)
-        if spec.permission == "read" and spec.auto_execute:
-            results[step["id"]] = _execute_read_step(db, config, user, run, conv, step, spec)
+        if spec.auto_execute:
+            # Domain write tools marked auto_execute stay inside the durable
+            # tool-call/event boundary; their gateway enforces typed inputs,
+            # ownership, idempotency, and the operator kill switch.
+            results[step["id"]] = _execute_read_step(
+                db, config, user, run, conv, step, spec,
+                is_write=spec.permission == "write",
+            )
         else:
             stopped = _open_write_gate(db, config, user, run, conv, step, spec)
             _persist_plan(db, run["id"], steps)
@@ -1364,6 +1374,184 @@ def _persist_clarification(
     )
     db.commit()
 
+# ---------------------------------------------------------------------------
+# 任务需求澄清（intake）：生成学习任务前的 LLM 自由追问
+# ---------------------------------------------------------------------------
+
+# 追问硬封顶：模型可以自由决定问什么，但最多 3 轮后必须生成（PRD 交互决策）
+_INTAKE_MAX_ROUNDS = 3
+_INTAKE_KINDS = frozenset({intents.KIND_LEARN_GOAL, intents.KIND_TASK_CONVERT})
+# 澄清轮内的短回答（"框选"/"零基础"）多为 unknown；其余已识别意图视为新请求，
+# 澄清状态随上一轮 run 自然失效（就近原则，与规则澄清一致）。
+_INTAKE_CONTINUATION_KINDS = frozenset({
+    intents.KIND_UNKNOWN,
+    intents.KIND_LEARN_GOAL,
+    intents.KIND_TASK_CONVERT,
+})
+
+
+def _persist_intake(db: sqlite3.Connection, run_id: str, state: dict[str, Any]) -> None:
+    """Persist one intake state so the next request can continue the dialogue."""
+
+    db.execute(
+        "UPDATE agent_runs SET plan_json = ? WHERE id = ?",
+        (json.dumps({"task_intake": state}, ensure_ascii=False), run_id),
+    )
+    db.commit()
+
+
+def _load_latest_intake(db: sqlite3.Connection, run: sqlite3.Row) -> dict[str, Any] | None:
+    """Return only the immediately preceding completed run's intake state.
+
+    Same proximity rule as ``_load_latest_clarification``: a newer unrelated
+    run must not let an older intake hijack the current request.
+    """
+
+    previous = db.execute(
+        """
+        SELECT status, plan_json
+        FROM agent_runs
+        WHERE conversation_id = ?
+          AND rowid < (SELECT rowid FROM agent_runs WHERE id = ?)
+        ORDER BY rowid DESC
+        LIMIT 1
+        """,
+        (run["conversation_id"], run["id"]),
+    ).fetchone()
+    if previous is None or previous["status"] != "completed" or not previous["plan_json"]:
+        return None
+    try:
+        payload = json.loads(previous["plan_json"])
+    except json.JSONDecodeError:
+        return None
+    state = payload.get("task_intake")
+    if (
+        not isinstance(state, dict)
+        or not isinstance(state.get("rounds"), int)
+        or not isinstance(state.get("origin"), str)
+        or not isinstance(state.get("started_rowid"), int)
+    ):
+        return None
+    return state
+
+
+def _parse_intake_reply(text: str) -> tuple[bool, str]:
+    """READY 开头 → (True, 理解复述)；否则 (False, 问题原文)。"""
+
+    normalized = text.strip()
+    match = re.match(
+        r"^READY\s*[：:]\s*(?P<summary>.+)$", normalized, re.IGNORECASE | re.DOTALL
+    )
+    if match:
+        return True, match.group("summary").strip()[:600]
+    return False, normalized
+
+
+def _collect_intake_requirement(
+    db: sqlite3.Connection,
+    conversation_id: str,
+    state: dict[str, Any],
+    *,
+    ready_summary: str | None = None,
+) -> str:
+    """把澄清过程整合为生成依据：原始请求 + 各轮补充 + READY 复述。
+
+    用 agent_runs.input_text 而不是 messages：编排单测与直接插入的运行
+    没有用户消息行，但运行行始终存在。
+    """
+
+    rows = db.execute(
+        """
+        SELECT input_text FROM agent_runs
+        WHERE conversation_id = ? AND rowid >= ?
+        ORDER BY rowid ASC
+        """,
+        (conversation_id, state["started_rowid"]),
+    ).fetchall()
+    seen: list[str] = []
+    for row in rows:
+        text = (row["input_text"] or "").strip()
+        if text and text != state["origin"] and text not in seen:
+            seen.append(text)
+    parts = [f"原始需求：{state['origin']}"]
+    if seen:
+        parts.append("补充说明：" + "；".join(seen)[:800])
+    if ready_summary:
+        parts.append(f"需求确认：{ready_summary}")
+    return "\n".join(parts)
+
+
+def _is_task_revision(db: sqlite3.Connection, run: sqlite3.Row) -> bool:
+    """修订话术 + 会话内已有草稿 → 跳过澄清直接重新生成。"""
+
+    if not task_drafts.revision_cue(run["input_text"]):
+        return False
+    row = db.execute(
+        "SELECT 1 FROM task_drafts WHERE conversation_id = ? LIMIT 1",
+        (run["conversation_id"],),
+    ).fetchone()
+    return row is not None
+
+
+async def _handle_task_intake(
+    db: sqlite3.Connection,
+    run: sqlite3.Row,
+    goal_text: str,
+) -> tuple[str, str | None]:
+    """任务意图的 LLM 澄清门。
+
+    返回 ("completed", None)：已输出澄清问题，本轮结束；
+    ("legacy", None)：模型不可用，调用方回退既有规则追问/生成路径；
+    ("ready", requirement)：可以生成，requirement 为整合后的生成依据。
+    """
+
+    intake = _load_latest_intake(db, run)
+    if intake is None:
+        started_rowid = db.execute(
+            "SELECT rowid FROM agent_runs WHERE id = ?", (run["id"],)
+        ).fetchone()["rowid"]
+        intake = {"rounds": 0, "origin": goal_text, "started_rowid": started_rowid}
+    # 硬封顶：无论模型还想问什么，第 4 轮直接生成
+    if intake["rounds"] >= _INTAKE_MAX_ROUNDS:
+        return "ready", _collect_intake_requirement(db, run["conversation_id"], intake)
+    history = _load_chat_history(db, run["conversation_id"])
+    messages = [{"role": "system", "content": prompts.TASK_INTAKE_SYSTEM}, *history]
+    text = await composer.compose_text(messages)
+    if not text:
+        return "legacy", None
+    ready, payload = _parse_intake_reply(text)
+    if ready:
+        return "ready", _collect_intake_requirement(
+            db, run["conversation_id"], intake, ready_summary=payload
+        )
+
+    intake["rounds"] += 1
+    _persist_intake(db, run["id"], intake)
+    _emit_progress(
+        db,
+        run["id"],
+        phase="synthesis",
+        status="running",
+        title="正在了解你的学习需求",
+    )
+    await _emit_assistant_text(db, run["id"], run["conversation_id"], payload)
+    _emit_progress(
+        db,
+        run["id"],
+        phase="synthesis",
+        status="completed",
+        title="需求澄清问题已生成",
+    )
+    _finalize_run(
+        db,
+        run["id"],
+        event_type=events.RUN_COMPLETED,
+        payload={"summary": payload},
+        status="completed",
+    )
+    return "completed", None
+
+
 
 def _emit_plan_updated(db: sqlite3.Connection, run_id: str, steps: list[dict[str, Any]]) -> None:
     payload_steps: list[dict[str, Any]] = []
@@ -1400,18 +1588,6 @@ async def _finalize(
             title="正在生成学习任务草稿",
             detail="正在把学习目标整理成任务卡",
         )
-        # cap_ids 只来自图谱工具结果（证据链接地），不由模型指定
-        if not task_draft_args.get("cap_ids"):
-            for step in steps:
-                if step.get("tool") != "graph.reason":
-                    continue
-                caps = (results.get(step["id"]) or {}).get("cap_ids")
-                if caps:
-                    task_draft_args["cap_ids"] = caps
-                    for stage in task_draft_args.get("stages") or []:
-                        if isinstance(stage, dict) and not stage.get("cap_ids"):
-                            stage["cap_ids"] = list(caps)
-                    break
         draft_projection = None
         try:
             draft_projection = await task_drafts.generate_task_draft(
@@ -1430,6 +1606,33 @@ async def _finalize(
         if draft_projection:
             # 合成回答的证据里加入草稿卡，模型才能把卡内容整理进回答
             results = {**results, "task_draft": {"cards": draft_projection["cards"]}}
+            # The approved low-risk policy lets an explicit task request write
+            # the normalized cards immediately.  The capability gateway still
+            # owns all validation, idempotency, quotas, audit, and rollback;
+            # the existing manual draft-sync endpoint remains unchanged.
+            try:
+                if not task_draft_args.get("auto_create"):
+                    raise LookupError("explicit_auto_create_not_requested")
+                actor = db.execute("SELECT * FROM users WHERE id = ?", (run["user_id"],)).fetchone()
+                if actor is None:
+                    raise LookupError("agent_user_not_found")
+                auto_step = {
+                    "id": "learning-task-auto-create",
+                    "title": "同步学习任务",
+                    "tool": "learning.task.auto_create",
+                    "args": {
+                        "cards": draft_projection["cards"],
+                        "idempotency_key": f"{run['id']}:task-draft",
+                    },
+                    "status": "pending",
+                }
+                auto_result = _execute_read_step(
+                    db, get_config(), actor, run, conv, auto_step,
+                    spec=registry.get("learning.task.auto_create"), is_write=True,
+                )
+                results = {**results, "learning_task_auto_create": auto_result}
+            except Exception:
+                logger.exception("运行 %s 自动同步学习任务失败", run["id"])
 
     async def _forward_delta(delta: str) -> None:
         nonlocal streamed
@@ -1543,6 +1746,25 @@ async def execute_run(run_id: str, db_path: str) -> None:
             task_text=goal_text,
             current_text=run["input_text"],
         )
+
+        # 任务意图（learn_goal/task_convert）：生成前先在对话中弄清需求。
+        # 修订话术（会话内已有草稿）跳过澄清直接重新生成；模型不可用时
+        # outcome=legacy，落到既有规则追问/生成路径，行为与旧链路一致。
+        in_intake_scope = intent.kind in _INTAKE_KINDS or (
+            intent.kind == intents.KIND_UNKNOWN
+            and _load_latest_intake(db, run) is not None
+        )
+        if in_intake_scope and not _is_task_revision(db, run):
+            outcome, requirement = await _handle_task_intake(db, run, goal_text)
+            if outcome == "completed":
+                return
+            if outcome == "ready":
+                goal_text = requirement
+                if intent.kind == intents.KIND_UNKNOWN:
+                    # 澄清轮内的短回答（unknown）到达 READY：按任务链路推进
+                    intent = dataclasses.replace(
+                        intent, kind=intents.KIND_TASK_CONVERT, missing=[]
+                    )
 
         is_identity_turn = intent.kind == intents.KIND_AGENT_IDENTITY
         is_recall_turn = intent.kind == intents.KIND_CONVERSATION_RECALL

@@ -31,6 +31,7 @@ def audit(
     after: Any = None,
     ip: str | None = None,
     user_agent: str | None = None,
+    commit: bool = True,
 ) -> str:
     """写一条 audit_logs 并返回记录 id。
 
@@ -68,4 +69,6 @@ def audit(
         ),
     )
     conn.commit()
+    if commit:
+        conn.commit()
     return record_id

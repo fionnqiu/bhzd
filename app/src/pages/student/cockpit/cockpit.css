@@ -544,6 +544,197 @@
   }
 }
 
+/* 学习任务业务轨道：把“生成 → 确认 → 创建”固定成一条可扫读的路径。
+   它与执行时间线并列但不覆盖回答内容；每个阶段有稳定的 marker 尺寸，
+   因而状态图标切换不会改变行宽或推动后续内容。 */
+.learning-workflow {
+  display: grid;
+  max-width: min(calc(100% - 40px), 46rem);
+  margin-left: 40px;
+  gap: 10px;
+  padding: 11px 12px 12px;
+  border: 1px solid var(--color-primary-border);
+  border-radius: 12px;
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+}
+
+.learning-workflow-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.learning-workflow-heading {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.learning-workflow-header strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.learning-workflow-count {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
+.learning-workflow-track {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.learning-workflow-track-6 {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.learning-workflow-step {
+  position: relative;
+  display: grid;
+  grid-template-rows: 24px minmax(28px, auto);
+  min-width: 0;
+  padding-right: 10px;
+}
+
+.learning-workflow-marker {
+  z-index: 1;
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+}
+
+.learning-workflow-step-copy {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  gap: 2px;
+  padding-top: 6px;
+}
+
+.learning-workflow-step-title {
+  overflow-wrap: anywhere;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+}
+
+.learning-workflow-step-detail {
+  overflow-wrap: anywhere;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.learning-workflow-connector {
+  position: absolute;
+  top: 12px;
+  right: 0;
+  left: 24px;
+  height: 1px;
+  background: var(--color-border);
+}
+
+.learning-workflow-step-completed .learning-workflow-marker {
+  border-color: color-mix(in srgb, var(--color-success) 48%, var(--color-border));
+  color: var(--color-success);
+}
+
+.learning-workflow-step-running .learning-workflow-marker {
+  border-color: var(--color-primary-border);
+  color: var(--color-primary);
+}
+
+.learning-workflow-step-waiting .learning-workflow-marker {
+  border-color: color-mix(in srgb, var(--color-warning) 48%, var(--color-border));
+  color: var(--color-warning);
+}
+
+.learning-workflow-step-failed .learning-workflow-marker {
+  border-color: color-mix(in srgb, var(--color-danger) 48%, var(--color-border));
+  color: var(--color-danger);
+}
+
+.learning-workflow-step-completed .learning-workflow-step-title {
+  color: var(--color-text-secondary);
+}
+
+.learning-workflow-step-running .learning-workflow-step-title,
+.learning-workflow-step-waiting .learning-workflow-step-title {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .learning-workflow-step-running .learning-workflow-marker svg {
+    animation: cockpit-spin 1s linear infinite;
+  }
+}
+
+@media (max-width: 560px) {
+  .learning-workflow {
+    max-width: calc(100% - 34px);
+    margin-left: 34px;
+    padding: 10px;
+  }
+
+  .learning-workflow-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .learning-workflow-heading {
+    grid-column: 1 / -1;
+  }
+
+  .learning-workflow-track {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .learning-workflow-track-6 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .learning-workflow-step {
+    grid-template-columns: 24px minmax(0, 1fr);
+    grid-template-rows: minmax(32px, auto);
+    min-height: 40px;
+    padding: 0 0 8px;
+  }
+
+  .learning-workflow-step-copy {
+    padding: 3px 0 0 8px;
+  }
+
+  .learning-workflow-connector {
+    top: 24px;
+    right: auto;
+    bottom: 0;
+    left: 11px;
+    width: 1px;
+    height: auto;
+  }
+}
+
 .bubble {
   display: flex;
 }

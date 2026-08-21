@@ -33,6 +33,12 @@ logger = logging.getLogger(__name__)
 _REVISION_CUE_RE = re.compile(r"修改|调整|更新|换成|改\s*一\s*下")
 
 
+def revision_cue(text: str) -> bool:
+    """判断输入是否带修订话术（编排层据此让修订请求跳过澄清直接重生成）。"""
+
+    return bool(_REVISION_CUE_RE.search(text or ""))
+
+
 def _card_args_from_llm(base_args: dict[str, Any], llm_card: dict[str, Any] | None) -> dict[str, Any]:
     """只合并 LLM 的文案字段；接地字段（data_type/cap_ids/stages）不动。"""
 
@@ -84,18 +90,12 @@ def _build_cards(
 
 
 def _evidence_context(results: dict[str, Any]) -> dict[str, Any]:
-    """从读工具结果提取给模型的证据：能力标签 + 资料切片（限幅防溢出）。"""
+    """从读工具结果提取给模型的证据：规范资料切片（限幅防溢出）。"""
 
-    cap_hints: list[str] = []
     evidence: list[dict[str, str]] = []
     for result in results.values():
         if not isinstance(result, dict):
             continue
-        for node in result.get("nodes") or []:
-            if isinstance(node, dict):
-                label = str(node.get("label") or node.get("id") or "").strip()
-                if label and label not in cap_hints:
-                    cap_hints.append(label)
         for hit in result.get("hits") or []:
             if not isinstance(hit, dict):
                 continue
@@ -103,7 +103,7 @@ def _evidence_context(results: dict[str, Any]) -> dict[str, Any]:
             excerpt = str(hit.get("chunk") or hit.get("text") or hit.get("excerpt") or "").strip()
             if title or excerpt:
                 evidence.append({"title": title[:120], "excerpt": excerpt[:300]})
-    return {"cap_hints": cap_hints[:8], "evidence": evidence[:5]}
+    return {"evidence": evidence[:5]}
 
 
 def build_draft_messages(
@@ -119,7 +119,6 @@ def build_draft_messages(
     payload: dict[str, Any] = {
         "学习目标": task_args.get("goal") or task_args.get("description") or "",
         "数据类型": task_args.get("data_type") or "未指定",
-        "关联能力点": context["cap_hints"],
         "规范资料摘录": context["evidence"],
     }
     if stages:

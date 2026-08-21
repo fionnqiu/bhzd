@@ -234,6 +234,53 @@ describe("对话页 · 运行事件流", () => {
     expect(screen.getByTestId("agent-current-action")).toHaveTextContent("正在定位关联能力");
   });
 
+  it("学习任务生成链路以业务阶段轨道展示草稿、确认和创建", async () => {
+    await startRun();
+    emit("plan.updated", {
+      seq: 2,
+      steps: [
+        { id: "task-content", title: "生成任务内容", tool: "task.preview", status: "running" },
+      ],
+    });
+
+    const workflow = await screen.findByTestId("learning-workflow");
+    expect(within(workflow).getByTestId("learning-workflow-step-content")).toHaveClass(
+      "learning-workflow-step-running",
+    );
+
+    emit("task.draft", {
+      seq: 3,
+      draft: {
+        id: "draft-1",
+        status: "draft",
+        source: "agent",
+        cards: [{ title: "音频转写入门" }],
+        task_ids: [],
+      },
+    });
+    expect(within(workflow).getByTestId("learning-workflow-step-content")).toHaveClass(
+      "learning-workflow-step-completed",
+    );
+    expect(within(workflow).getByTestId("learning-workflow-step-confirm")).toHaveClass(
+      "learning-workflow-step-waiting",
+    );
+
+    emit("task.draft", {
+      seq: 4,
+      draft: {
+        id: "draft-1",
+        status: "synced",
+        source: "agent",
+        cards: [{ title: "音频转写入门" }],
+        task_ids: ["task-1"],
+      },
+    });
+    expect(within(workflow).getByTestId("learning-workflow-step-created")).toHaveClass(
+      "learning-workflow-step-completed",
+    );
+    expect(within(workflow).getByText("5/5 已完成")).toBeInTheDocument();
+  });
+
   it("执行事件显示受控阶段，但不泄露内部思考或参数", async () => {
     await startRun();
     expect(screen.getByTestId("agent-activity-timeline")).toBeInTheDocument();

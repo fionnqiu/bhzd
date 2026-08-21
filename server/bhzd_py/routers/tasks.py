@@ -355,7 +355,13 @@ def _task_summary(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
         "cap_ids": _task_json(row, "cap_ids_json", []),
         "source": row["source"],
         "status": row["status"],
-        "progress": _PROGRESS_BY_STATUS.get(row["status"], 0.0),
+        # Agent progress writes an explicit bounded value; legacy tasks keep
+        # the historical status-derived fallback until they receive one.
+        "progress": (
+            float(row["progress"])
+            if "progress" in row.keys() and row["progress"] is not None
+            else _PROGRESS_BY_STATUS.get(row["status"], 0.0)
+        ),
         "latest_score": _latest_score(conn, row["id"]),
         "counts_toward_mastery": bool(row["counts_toward_mastery"]),
         "due_at": row["due_at"],
@@ -469,7 +475,18 @@ def _student_content(
             "ORDER BY created_at DESC, rowid DESC LIMIT 1",
             (exercise["id"], student_id),
         ).fetchone()
-        visible_exercises.append(_exercise_dto(exercise, submission))
+        dto = _exercise_dto(exercise, submission)
+        # Reviews are append-only Agent/grader feedback.  Expose only the
+        # current learner's bounded review projection; reference answers and
+        # provider payloads remain private to the backend.
+        reviews = conn.execute(
+            "SELECT id, score, feedback, provider_role, created_at "
+            "FROM task_exercise_reviews WHERE submission_id = ? AND user_id = ? "
+            "ORDER BY created_at DESC, rowid DESC",
+            (submission["id"], student_id),
+        ).fetchall() if submission is not None else []
+        dto["reviews"] = [dict(review) for review in reviews]
+        visible_exercises.append(dto)
     return [_knowledge_point_dto(point) for point in points], visible_exercises
 
 
@@ -519,6 +536,36 @@ def _mark_submission_grading_failed(conn: sqlite3.Connection, submission_id: str
     conn.commit()
 
 
+def _trigger_agent_learning_events(conn: sqlite3.Connection, submission_id: str) -> None:
+    """Project grader completion into review history and bounded remediation."""
+
+    try:
+        from ..agent import learning_capabilities
+
+        row = conn.execute(
+            "SELECT s.student_id, s.score, e.task_id FROM task_exercise_submissions s "
+            "JOIN task_exercises e ON e.id = s.exercise_id WHERE s.id = ?",
+            (submission_id,),
+        ).fetchone()
+        if row is None or row["score"] is None:
+            return
+        user = conn.execute("SELECT * FROM users WHERE id = ?", (row["student_id"],)).fetchone()
+        if user is None:
+            return
+        learning_capabilities.record_completed_review(conn, user, submission_id)
+        learning_capabilities.create_remediation_task(
+            conn,
+            user,
+            task_id=row["task_id"],
+            submission_id=submission_id,
+            score=int(row["score"]),
+        )
+    except Exception:
+        # Grading is already durable; review/remediation are additive follow-up
+        # actions and must not turn a successful score into a failed submission.
+        logger.warning("Agent 学习事件投影失败", exc_info=True)
+
+
 async def _grade_submission_async(
     submission_id: str, *, database_path: str | None = None
 ) -> None:
@@ -561,6 +608,7 @@ async def _grade_submission_async(
                 (score, feedback, dt.datetime.now(dt.timezone.utc).isoformat(), submission_id),
             )
             conn.commit()
+            _trigger_agent_learning_events(conn, submission_id)
             return
         from ..agent import providers
 
@@ -593,6 +641,7 @@ async def _grade_submission_async(
             (score, feedback, dt.datetime.now(dt.timezone.utc).isoformat(), submission_id),
         )
         conn.commit()
+        _trigger_agent_learning_events(conn, submission_id)
     except Exception:
         logger.warning("task exercise grading failed", exc_info=True)
         try:

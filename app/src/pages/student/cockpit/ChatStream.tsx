@@ -13,6 +13,7 @@ import MessageBubble from "./MessageBubble";
 import EmbeddedCard from "./EmbeddedCard";
 import TaskDraftSection from "./TaskDraftSection";
 import ActivityTimeline from "./ActivityTimeline";
+import LearningWorkflow from "./LearningWorkflow";
 import ConfirmationGate from "./ConfirmationGate";
 import { isStudentHiddenEmbeddedTool } from "./constants";
 import type { CockpitRun } from "./useCockpitRun";
@@ -166,6 +167,13 @@ export default function ChatStream({
         {transcriptMessages.map((message) => (
           <Fragment key={message.id}>
             {message.role === "assistant" && message.runId ? (
+              <LearningWorkflow
+                activities={run.historicalActivitiesByRun[message.runId] ?? []}
+                draft={run.taskDraftsByRun[message.runId] ?? null}
+                live={false}
+              />
+            ) : null}
+            {message.role === "assistant" && message.runId ? (
               <ActivityTimeline
                 activities={run.historicalActivitiesByRun[message.runId] ?? []}
                 activityGroupId={`history-${message.runId}`}
@@ -181,6 +189,13 @@ export default function ChatStream({
           // 任务流分组：步骤流 → 工具结果卡 → 确认卡 同属一条执行流水线，
           // 让"生成 → 预览 → 确认 → 同步到学习任务"的全过程对用户可见。
           <div className="run-flow" data-testid="run-flow">
+            <LearningWorkflow
+              activities={run.activities}
+              planSteps={run.planSteps}
+              draft={run.taskDraftsByRun[run.runId] ?? null}
+              confirmation={run.confirmation}
+              runStatus={run.status}
+            />
             <ActivityTimeline
               activities={run.activities}
               planSteps={run.planSteps}

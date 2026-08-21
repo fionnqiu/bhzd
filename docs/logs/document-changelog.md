@@ -4,6 +4,24 @@
 
 ---
 
+## [18:05] 修复学习内容规则文本与 Provider JSON 解析
+
+**变更文件：**
+- `server/bhzd_py/tools/task_tools.py`：结构化 `rule_explanation` 投影为学生可读的审核声明；Provider 提示词复用该投影；JSON 提取兼容围栏及前后非目标字符。
+- `server/tests/test_task_learning_content.py`：新增视频帧标注单元回归和 Provider 包装文本解析回归。
+
+**变更原因：**
+- 视频单元的规则对象此前通过 `str(dict)` 写入知识点，学生看到 Python 字典结构而非学习规则；模型返回 JSON 外附说明或代码围栏时也会被误判为无效内容。
+
+**验证：**
+- 聚焦测试 17 passed；完整后端套件 508 passed；Ruff、`compileall`、`git diff --check` 通过。
+- 已重启确认属于本 checkout 的后端：旧监听 PID `27176` / 父 `52080`；新 uv PID `10080`、监听 PID `34204` / 父 `31408`（2026-08-21 18:05）。`GET /api/health`、视频能力节点接口均返回 200，未认证启动学习接口返回 401。
+
+**仍需事实核验：**
+- 真实 Provider 的具体输出质量仍取决于运行环境配置；本次已覆盖包装字符解析和离线模板路径。
+
+---
+
 ## [2026-08-17] docs/ragDatas/ 批量生成 RAG 资料文件并上传
 
 **变更文件：**
@@ -345,3 +363,45 @@
 
 **仍需事实核验：**
 - 多阶段任务的 LLM 卡 JSON 结构（stages 数组）依赖模型遵从度，已有模板回退兜底但未经真实模型输出验证；「继续修改」的修订效果同理（提示词组装已有测试覆盖）。
+
+## [2026-08-21 17:05] 任务生成前的模型自由澄清（≤3 轮）+ 图谱定位彻底移出任务计划
+
+**变更文件：**
+- `server/bhzd_py/agent/orchestrator.py`：新增 intake 状态机（`_handle_task_intake`/`_load_latest_intake`/`_persist_intake`/`_parse_intake_reply`/`_collect_intake_requirement`/`_is_task_revision`）；任务意图（learn_goal/task_convert）生成前先由模型自由追问（READY 契约放行），服务端 3 轮硬封顶；修订话术+已有草稿跳过澄清；任务计划移除 graph.reason 步骤（只留 rag.search 作证据链），删除 _finalize 的 cap_ids 注入。
+- `server/bhzd_py/agent/prompts.py`：新增 TASK_INTAKE_SYSTEM（每轮一问、READY：放行契约）。
+- `server/bhzd_py/agent/task_drafts.py`：草稿提示词移除「关联能力点」；新增公开 revision_cue。
+- `tests/e2e/smoke.spec.ts`：AC1 输入改为信息完整请求（类型+场景+水平），兼容澄清 READY 与离线回退两条路径。
+- `docs/master-checklist.md`：补写任务生成前澄清与图谱定位不参与的口径。
+- `scripts/verify_task_draft_chain.py`：验证脚本支持澄清轮跟答（≤3 轮）。
+- 测试：`server/tests/test_task_drafts.py` 新增 5 例 intake 行为（提问/READY/3 轮封顶/修订豁免/新意图放弃）+ 更新 3 例（cap_ids 为空、provider 桩按系统提示分流）。
+
+**变更原因：**
+- 用户反馈两点：①不需要在任务生成过程中展示图谱定位；②Agent 不能什么都不问就直接生成，需要先在对话中弄清用户情况和需求。经确认的决策：图谱定位彻底移除；澄清内容交给配置的模型动态决定（纯 LLM 自由追问）；最多 3 轮后必须生成。
+
+**验证：**
+- 后端 `uv run pytest -q` 全量 506 passed；intake 行为 16 例覆盖（提问/READY/封顶/修订/放弃/离线回退）。
+- 后端按 AGENTS.md 重启：旧进程 PID 46848（父 35156，并行会话于 15:42 后重启过）→ 新进程 PID 27176（父 52080），2026-08-21 17:02，`GET /api/health` 200。
+- 真实链路验证（`scripts/verify_task_draft_chain.py` 直连 8787）通过：生成 → 草稿 → 同步 → 幂等 → CSRF 负向，验证数据已清理。
+- e2e AC1 在真实浏览器 chromium 与 msedge 双通道通过（信息完整请求直达生成：按钮 → 预览弹窗 → 同步回执）。
+
+**仍需事实核验：**
+- 澄清问题的质量与 READY 时机依赖真实模型表现（本环境无可用 provider，走离线回退验证）；建议在有模型的环境实测一轮多轮澄清对话。
+
+## [2026-08-21 20:52] 受控学习域 Agent 自动操作能力
+
+**变更文件：**
+- `server/bhzd_py/agent/learning_capabilities.py`、`server/bhzd_py/tools/learning_tools.py`、`server/bhzd_py/migrations/028_agent_learning_capabilities.sql`：新增当前学生范围内的任务自动创建、进度记录、评分后掌握度同步和 grader 点评；统一属主校验、状态迁移、幂等、限流、kill switch、审计和追加式 review。
+- `server/bhzd_py/agent/orchestrator.py`、`server/bhzd_py/tools/registry.py`、`server/bhzd_py/routers/tasks.py`、`server/bhzd_py/mastery/service.py`：接入自动执行工具、显式自动创建指令、评分完成事件投影和事务式 mastery 更新；不开放 Shell、文件系统或原始 SQL。
+- `app/src/api/types.ts`、`app/src/pages/student/cockpit/constants.ts`、`app/src/pages/student/cockpit/EmbeddedCard.tsx`：补充自动学习能力的类型与安全回执标签。
+- `server/tests/test_agent_learning_capabilities.py`、`server/tests/test_migrations.py`：新增能力网关、幂等、评分证据、review 追加和迁移契约测试。
+
+**变更原因：**
+- 按已批准计划，让 Agent 能直接调用受控学习域后端服务；自动同步只使用已成功评分的练习，历史题目、答案和评分保持不可变。
+
+**验证：**
+- `uv run pytest -q`：510 passed，保留 1 个既有 Starlette/httpx 弃用警告。
+- 前端 `npm run typecheck`、定向 Vitest 47 tests、`npm run build` 通过；Python 编译和 `git diff --check` 通过。
+- 重启后端：旧监听 PID 42628（BHZD checkout 父链）→ 最终监听 PID 44120，2026-08-21 20:57；`GET /api/health` 返回 200，运行数据库已应用迁移 028，并存在 `agent_learning_actions`、`task_exercise_reviews` 表。
+
+**仍需事实核验：**
+- 当前环境未做真实 grader Provider 的网络质量验收；自动点评依赖已配置的 grader，失败时保留评分结果并不阻断主任务。

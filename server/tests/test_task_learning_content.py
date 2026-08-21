@@ -11,6 +11,7 @@ from bhzd_py.tools import task_tools
 
 CAP = "CAP-AUD-SEGMENT-ALIGN-001"
 IMAGE_CAP = "CAP-IMG-BOX-ANNOTATE-001"
+VIDEO_CAP = "CAP-VID-FRAME-ANNOTATE-001"
 
 
 def _create_student_task(api, user):
@@ -202,6 +203,50 @@ def test_graph_learning_uses_reviewed_unit_when_provider_is_unavailable(api, mon
     assert "occlusion 表示目标仍在图像范围内" in body["knowledge_points"][1]["content"]
     assert body["exercises"][0]["question"] == "提交 JSON：分别判断 occluded 和 truncated，不得把两个状态合并为单一标签。"
     assert "reference_answer" not in body["exercises"][0]
+
+
+def test_video_unit_projects_structured_rules_to_student_text(api, monkeypatch):
+    """Structured video rules must not be persisted as Python dict text."""
+
+    monkeypatch.setattr(task_tools, "schedule_task_content", lambda *_args, **_kwargs: None)
+    student = api.login_as("content-video-unit@test.local")
+    response = api.client.post(
+        "/api/tasks/start-learning",
+        json={"cap_node_id": VIDEO_CAP, "generate_content": True},
+        headers=student["headers"],
+    )
+    assert response.status_code == 200, response.text
+    task_id = response.json()["task_id"]
+
+    async def unavailable(*_args, **_kwargs):
+        raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr(providers, "complete", unavailable)
+    database_path = api.conn.execute("PRAGMA database_list").fetchone()[2]
+    generated = asyncio.run(task_tools.generate_task_content(task_id, database_path=database_path))
+
+    assert generated["status"] == "done"
+    body = api.client.get(f"/api/tasks/{task_id}", headers=student["headers"]).json()
+    rule_content = body["knowledge_points"][1]["content"]
+    assert "frame_index=12" in rule_content
+    assert "object_ref 升序排列" in rule_content
+    assert "external_format_facts" not in rule_content
+    assert "project_policy" not in rule_content
+    assert "{'" not in rule_content
+    assert body["exercises"][0]["question"].startswith("提交 JSON：annotations 数组")
+
+
+def test_content_json_ignores_provider_wrapper_text():
+    """Provider prose and a JSON fence must not turn valid content into fallback."""
+
+    payload = task_tools._content_json(
+        'Here is the requested payload:\n```json\n'
+        '{"knowledge_points": [], "exercises": []}\n'
+        '```\nDone.'
+    )
+    assert payload == {"knowledge_points": [], "exercises": []}
+
+
 def test_content_generation_uses_the_persisted_stage_description(api, monkeypatch):
     """A staged Agent row must give its own description to the content worker."""
 
