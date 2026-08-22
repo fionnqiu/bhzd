@@ -41,7 +41,7 @@
 
 4. **RAG 检索质量**
    - 引入查询改写（Query Rewriting）：短 query 扩写后再检索，提升召回准确率
-   - 明确不引入：LangGraph、LangChain、ReAct、GraphRAG（已自研替代，存在架构冲突）
+   - Agent 编排迁移为 LangGraph 确定性状态图；只在知识问答中引入受限只读 ReAct 子图与查询时 GraphRAG 融合，不引入完整 LangChain Agent/Chain
 
 ### 1.2 技术目标
 
@@ -74,7 +74,7 @@
 | P2-9 | 管理端导航平铺优化 | ⚪ P2 | 1h | 独立 |
 | P2-10 | 用户页批量操作+导出 | ⚪ P2 | 4h | 独立 |
 | P2-11 | 审计日志行展开详情 | ⚪ P2 | 2h | 独立 |
-| ❌ | LangGraph / LangChain / ReAct / GraphRAG | ❌ 不引入 | — | — |
+| P0-10 | LangGraph 混合架构迁移（含受限 ReAct/查询时 GraphRAG） | ✅ 已完成 | 原生 StateGraph | 现有 Agent 编排器 |
 
 > **P0 总计：约 40h（~1周）｜P1：约 28h（~3.5天）｜P2：随迭代按需**
 
@@ -1226,14 +1226,14 @@ def estimate_tokens(text: str) -> int:
 
 ---
 
-## 六、明确不引入项（已确认，无需开发）
+## 六、Agent 架构边界与明确不引入项
 
 | 技术 | 不引入原因 |
 |------|-----------|
-| **LangGraph** | 自研编排器（`orchestrator.py`）已完全覆盖；与确定性状态机架构冲突；项目蓝图已明确移除 |
-| **LangChain** | 全链路已自研（RAG/Agent/向量/提示）；本地哈希嵌入降级是自研专有能力，LangChain 无法原生支持 |
-| **ReAct 框架** | LLM 自主选工具会破坏确定性状态机边界；学习域自动工具仅能调用四个受限业务能力，受属主、状态机、幂等、限流、审计和 kill switch 约束。诊断/掌握度等高风险旧工具继续走确认门；学习任务默认保留草稿显式同步，只有明确“直接/自动创建”指令或评分完成事件才走受控自动创建；图谱定位不参与任务生成 |
-| **GraphRAG** | 能力图谱（166节点，人工维护）与RAG（规范文档）职责已分离；自动抽取实体建图破坏人工质控优势 |
+| **LangGraph** | ✅ 学生/教师所有可恢复业务流程均由原生 StateGraph 编排；`agent/graph_runtime.py` 使用旁路 SQLite checkpoint，`agent_runs`、`agent_events`、确认门和 SSE 仍是业务事实源 |
+| **LangChain Agent/Chain** | ❌ 不引入；LangGraph 的 `langchain-core` 传递依赖仅用于运行时协议，不改写现有 Provider、RAG、向量和提示实现 |
+| **受限 ReAct 子图** | ✅ 仅服务知识问答的只读探索；白名单为 `rag.search`、`graph.reason`、`course.search`，最大步数/超时/结果数均受策略限制，写工具在执行前拒绝 |
+| **查询时 GraphRAG** | ✅ 只融合已有人工能力图谱、课程单元和 RAG 证据，结果进入学生图私有合成上下文；不自动抽取实体、不自动建图、不写入图谱 |
 
 ---
 

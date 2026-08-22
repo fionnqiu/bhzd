@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 import json
 import logging
 import re
@@ -26,10 +25,19 @@ import uuid
 from typing import Any, Awaitable, Callable, Coroutine
 
 from ..config import get_config
-from ..db import connect, utc_now_iso
+from ..db import utc_now_iso
 from ..tools import registry
 from ..tools.registry import ToolContext
-from . import composer, conversation_memory, events, intents, media, prompts, task_drafts
+from . import (
+    composer,
+    conversation_memory,
+    events,
+    graph_runtime,
+    intents,
+    media,
+    prompts,
+    task_drafts,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1345,7 +1353,19 @@ async def _run_steps(
 
 
 def _persist_plan(db: sqlite3.Connection, run_id: str, steps: list[dict[str, Any]]) -> None:
+    existing_graph: dict[str, Any] = {}
+    row = db.execute("SELECT plan_json FROM agent_runs WHERE id = ?", (run_id,)).fetchone()
+    try:
+        previous = json.loads(row["plan_json"] or "{}") if row else {}
+        if isinstance(previous, dict) and isinstance(previous.get("graph"), dict):
+            existing_graph = previous["graph"]
+    except json.JSONDecodeError:
+        existing_graph = {}
     plan = {"steps": steps}
+    if existing_graph:
+        # Graph-only metadata (routing, task draft args, fused evidence) must
+        # survive the business plan rewrite performed after every tool step.
+        plan["graph"] = existing_graph
     db.execute(
         "UPDATE agent_runs SET plan_json = ? WHERE id = ?",
         (json.dumps(plan, ensure_ascii=False, default=str), run_id),
@@ -1572,9 +1592,17 @@ async def _finalize(
     *,
     goal_text: str | None = None,
     task_draft_args: dict[str, Any] | None = None,
+    graphrag_evidence: dict[str, Any] | None = None,
 ) -> None:
-    """全部步骤走完后的收尾：任务草稿 → 最终消息 → 引用/用量 → run.completed。"""
+    """全部步骤走完后的收尾：草稿/证据 → 最终消息 → run.completed。
+
+    GraphRAG evidence is a read-only query-time projection.  It is added to
+    the private synthesis input only after the exploration subgraph has
+    completed, so the browser still receives the existing redacted events.
+    """
     results = _collect_results(db, steps)
+    if isinstance(graphrag_evidence, dict) and graphrag_evidence:
+        results = {**results, "graphrag": graphrag_evidence}
     streamed = False
 
     # 任务类意图：先出任务草稿（LLM 生成 + 模板回退），再合成最终回答，
@@ -1708,298 +1736,12 @@ async def _finalize(
 
 
 async def execute_run(run_id: str, db_path: str) -> None:
-    """启动一轮运行（POST /api/runs 后由 asyncio.create_task 调用）。"""
-    db = connect(db_path)
-    try:
-        run, conv, user = _load_run_context(db, run_id)
-        events.emit(db, run_id, events.RUN_STARTED,
-                    {"run_id": run_id, "conversation_id": run["conversation_id"]})
+    """Start a student run through the native durable LangGraph workflow."""
 
-        # router 可能把 attachment 预置在 plan_json 里（schema 无附件列的变通）
-        attachment = None
-        if run["plan_json"]:
-            try:
-                attachment = json.loads(run["plan_json"]).get("attachment")
-            except json.JSONDecodeError:
-                attachment = None
-
-        legacy_media_token = (
-            attachment.get("attachment_token")
-            if isinstance(attachment, dict) and isinstance(attachment.get("attachment_token"), str)
-            else None
-        )
-        attachment_rows = attachment.get("attachments") if isinstance(attachment, dict) else None
-        media_tokens = (
-            [entry["attachment_token"] for entry in attachment_rows if isinstance(entry, dict)
-             and isinstance(entry.get("attachment_token"), str)]
-            if isinstance(attachment_rows, list)
-            else ([legacy_media_token] if legacy_media_token else [])
-        )
-        media_attachments = [
-            item for token in media_tokens if (item := media.get(token, run["user_id"])) is not None
-        ]
-        intent, goal_text = _resolve_initial_intent(db, run, conv, attachment)
-        intent = _apply_l3_task_preference(
-            db,
-            intent,
-            user_id=run["user_id"],
-            task_text=goal_text,
-            current_text=run["input_text"],
-        )
-
-        # 任务意图（learn_goal/task_convert）：生成前先在对话中弄清需求。
-        # 修订话术（会话内已有草稿）跳过澄清直接重新生成；模型不可用时
-        # outcome=legacy，落到既有规则追问/生成路径，行为与旧链路一致。
-        in_intake_scope = intent.kind in _INTAKE_KINDS or (
-            intent.kind == intents.KIND_UNKNOWN
-            and _load_latest_intake(db, run) is not None
-        )
-        if in_intake_scope and not _is_task_revision(db, run):
-            outcome, requirement = await _handle_task_intake(db, run, goal_text)
-            if outcome == "completed":
-                return
-            if outcome == "ready":
-                goal_text = requirement
-                if intent.kind == intents.KIND_UNKNOWN:
-                    # 澄清轮内的短回答（unknown）到达 READY：按任务链路推进
-                    intent = dataclasses.replace(
-                        intent, kind=intents.KIND_TASK_CONVERT, missing=[]
-                    )
-
-        is_identity_turn = intent.kind == intents.KIND_AGENT_IDENTITY
-        is_recall_turn = intent.kind == intents.KIND_CONVERSATION_RECALL
-        needs_direct_chat = is_identity_turn or is_recall_turn or intents.next_question(intent) is not None or (
-            intent.kind == intents.KIND_DIAGNOSE_UPLOAD
-            and not (attachment and attachment.get("diagnostic_token"))
-        ) or bool(media_tokens)
-        if needs_direct_chat:
-            try:
-                if await _complete_direct_chat(
-                    db,
-                    run,
-                    run["conversation_id"],
-                    media_attachments=media_attachments,
-                ):
-                    return
-            finally:
-                # Media tokens are single-run capabilities. Releasing them
-                # after direct composition prevents replay or token reuse.
-                for token in media_tokens:
-                    media.discard(token, run["user_id"])
-            if is_identity_turn:
-                # Do not let an unavailable provider reclassify an identity
-                # question as a planning request and trigger RAG tools.
-                await _complete_identity_fallback(db, run)
-                return
-            if is_recall_turn:
-                await _emit_assistant_text(
-                    db,
-                    run["id"],
-                    run["conversation_id"],
-                    prompts.CONVERSATION_RECALL_UNAVAILABLE,
-                )
-                _finalize_run(
-                    db,
-                    run["id"],
-                    event_type=events.RUN_COMPLETED,
-                    payload={"summary": prompts.CONVERSATION_RECALL_UNAVAILABLE},
-                    status="completed",
-                )
-                return
-            _emit_progress(
-                db,
-                run_id,
-                phase="system",
-                status="completed",
-                title="已切换到规则引导",
-                detail="当前将提供明确的下一步建议",
-            )
-
-        # 信息不足：每轮只追问一个最关键问题（PRD-06 §6.2），本轮即完成
-        question = intents.next_question(intent)
-        if question:
-            # Store the original request and slots before publishing the
-            # question, so the next request can safely resume after a reload.
-            _persist_clarification(
-                db, run_id, intents.make_clarification(intent, goal_text), attachment
-            )
-            _emit_progress(
-                db,
-                run_id,
-                phase="synthesis",
-                status="running",
-                title="正在准备下一步问题",
-            )
-            await _emit_assistant_text(db, run_id, run["conversation_id"], question)
-            _emit_progress(
-                db,
-                run_id,
-                phase="synthesis",
-                status="completed",
-                title="下一步问题已生成",
-            )
-            _finalize_run(
-                db,
-                run_id,
-                event_type=events.RUN_COMPLETED,
-                payload={"summary": question},
-                status="completed",
-            )
-            return
-
-        if intent.kind == intents.KIND_DIAGNOSE_UPLOAD and not (
-            attachment and attachment.get("diagnostic_token")
-        ):
-            # 想诊断但没带文件：引导上传（话术表无对应行，用上传面板引导文案）
-            notice = "请先上传需要诊断的标注结果文件（支持 JSON / TextGrid / COCO / VOC），我会先做格式校验。"
-            _emit_progress(
-                db,
-                run_id,
-                phase="synthesis",
-                status="running",
-                title="正在准备上传指引",
-            )
-            await _emit_assistant_text(db, run_id, run["conversation_id"], notice)
-            _emit_progress(
-                db,
-                run_id,
-                phase="synthesis",
-                status="completed",
-                title="上传指引已生成",
-            )
-            _finalize_run(
-                db,
-                run_id,
-                event_type=events.RUN_COMPLETED,
-                payload={"summary": notice},
-                status="completed",
-            )
-            return
-
-        _emit_progress(
-            db,
-            run_id,
-            phase="planning",
-            status="running",
-            title="正在制定执行计划",
-            detail="正在安排可验证的处理步骤",
-        )
-        steps, task_draft_args = _build_plan(intent, run, conv, attachment, goal_text=goal_text)
-        _persist_plan(db, run_id, steps)
-        _emit_plan_updated(db, run_id, steps)
-        _emit_progress(
-            db,
-            run_id,
-            phase="planning",
-            status="completed",
-            title="执行计划已生成",
-            detail=f"已安排 {len(steps)} 个步骤",
-        )
-        # Persist only the data type used by this run; the retired context is
-        # intentionally absent from both the plan and run record.
-        resolved_run_data_type = run["data_type"] or intent.data_type
-        _update_run(db, run_id, data_type=resolved_run_data_type)
-        if resolved_run_data_type:
-            # 会话级数据类型同步落库：后续「继续修改/再来一个」等无类型短句
-            # 经 _context_values 继承本轮范围，不再重复追问数据类型。
-            db.execute(
-                "UPDATE conversations SET data_type = ? WHERE id = ?",
-                (resolved_run_data_type, run["conversation_id"]),
-            )
-            db.commit()
-
-        finished = await _run_steps(db, get_config(), user, run, conv, steps, 0)
-        if not finished:
-            _emit_plan_updated(db, run_id, steps)
-            return  # 停在写确认门，等待 confirmations 路由续跑
-        _emit_plan_updated(db, run_id, steps)
-        await _finalize(db, run, conv, intent, steps, goal_text=goal_text,
-                        task_draft_args=task_draft_args)
-    except Exception:
-        logger.exception("运行 %s 未处理异常", run_id)
-        try:
-            _fail_run(db, run_id, _GENERIC_ERROR)
-        except Exception:
-            logger.exception("运行 %s 失败态写入也失败", run_id)
-    finally:
-        db.close()
+    await graph_runtime.run_student_graph(run_id, db_path)
 
 
 async def continue_run(run_id: str, db_path: str) -> None:
-    """确认后的续跑（confirmations 路由 apply 成功后调用）。
+    """Resume a confirmed student graph through its checkpoint thread."""
 
-    从计划里第一个未完成的步骤继续；已确认的写步骤以其 tool_call
-    结果为准标记 completed。若遇下一个写门则再次停下等待。
-    """
-    db = connect(db_path)
-    try:
-        run, conv, user = _load_run_context(db, run_id)
-        if run["status"] in _RUN_TERMINAL:
-            return
-        try:
-            plan = json.loads(run["plan_json"] or "{}")
-        except json.JSONDecodeError:
-            plan = {}
-        steps = plan.get("steps") or []
-        if not steps:
-            _fail_run(db, run_id, _GENERIC_ERROR)
-            return
-
-        # 定位刚被确认的写步骤：tool_call 已由确认路由置 completed
-        start_index = len(steps)
-        resumed_confirmation = False
-        for index, step in enumerate(steps):
-            if step["status"] == "waiting":
-                step["status"] = "completed"
-                resumed_confirmation = True
-            if step["status"] not in ("completed", "failed"):
-                start_index = index
-                break
-        else:
-            start_index = len(steps)
-
-        _update_run(db, run_id, status="running")
-        if resumed_confirmation:
-            _emit_progress(
-                db,
-                run_id,
-                phase="tool",
-                status="completed",
-                title="写入操作已确认",
-                detail="正在继续后续计划",
-            )
-        _emit_progress(
-            db,
-            run_id,
-            phase="planning",
-            status="running",
-            title="正在继续执行计划",
-            detail="已根据确认结果恢复未完成步骤",
-        )
-        run_data_type, conversation_data_type = (
-            _context_values(run, conv)
-        )
-        intent = intents.apply_context(
-            intents.detect(run["input_text"]),
-            data_type=conversation_data_type,
-            prefer_context=True,
-        )
-        intent = intents.apply_context(
-            intent,
-            data_type=run_data_type,
-            prefer_context=True,
-        )
-        finished = await _run_steps(db, get_config(), user, run, conv, steps, start_index)
-        if not finished:
-            _emit_plan_updated(db, run_id, steps)
-            return
-        _emit_plan_updated(db, run_id, steps)
-        await _finalize(db, run, conv, intent, steps)
-    except Exception:
-        logger.exception("续跑 %s 未处理异常", run_id)
-        try:
-            _fail_run(db, run_id, _GENERIC_ERROR)
-        except Exception:
-            logger.exception("续跑 %s 失败态写入也失败", run_id)
-    finally:
-        db.close()
+    await graph_runtime.resume_student_graph(run_id, db_path)

@@ -4,6 +4,7 @@ version = "0.0.0"
 description = "标航智导教学 Agent 平台后端（全权重构版）"
 requires-python = ">=3.11"
 dependencies = [
+  "aiosqlite>=0.20.0",
   "argon2-cffi>=23.1.0",
   "cryptography>=42.0.0",
   "email-validator>=2.2.0",
@@ -26,6 +27,8 @@ dependencies = [
   "websockets>=12.0",
   "rapidocr-onnxruntime>=1.4.4",
   "pypdfium2>=4.30.0",
+  "langgraph>=1.2.11",
+  "langgraph-checkpoint-sqlite>=3.1.1",
 ]
 
 [dependency-groups]

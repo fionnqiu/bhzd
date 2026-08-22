@@ -18,9 +18,9 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from ..db import connect, utc_now_iso
+from ..db import utc_now_iso
 from ..tools import teacher_agent_tools
-from . import composer, events, media, teacher_prompts
+from . import composer, events, graph_runtime, media, teacher_prompts
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +214,14 @@ def _persist_plan(
 ) -> None:
     """Keep enough opaque state for reload/confirmation without preserving raw goals."""
 
+    existing_graph: dict[str, Any] = {}
+    row = db.execute("SELECT plan_json FROM agent_runs WHERE id = ?", (run_id,)).fetchone()
+    try:
+        previous = json.loads(row["plan_json"] or "{}") if row else {}
+        if isinstance(previous, dict) and isinstance(previous.get("graph"), dict):
+            existing_graph = previous["graph"]
+    except json.JSONDecodeError:
+        existing_graph = {}
     db.execute(
         "UPDATE agent_runs SET plan_json = ? WHERE id = ?",
         (
@@ -225,6 +233,9 @@ def _persist_plan(
                         "target_cap_ids": target_cap_ids,
                         "data_type": data_type,
                     },
+                    # LangGraph routing metadata is opaque and must survive
+                    # every business-plan rewrite, including confirmation.
+                    "graph": existing_graph,
                 },
                 ensure_ascii=False,
             ),
@@ -621,170 +632,6 @@ def _open_publish_confirmation(
 
 
 async def execute_run(run_id: str, db_path: str) -> None:
-    """Execute one durable teacher-Agent run outside the request event loop."""
+    """Execute one teacher Agent run through the native LangGraph workflow."""
 
-    db = connect(db_path)
-    media_token: str | None = None
-    owner_id: str | None = None
-    try:
-        run, conversation, user = _load_context(db, run_id)
-        owner_id = run["user_id"]
-        if run["status"] in _RUN_TERMINAL:
-            return
-        events.emit(
-            db,
-            run_id,
-            events.RUN_STARTED,
-            {"run_id": run_id, "conversation_id": run["conversation_id"]},
-        )
-        requested_draft, target_cap_ids, data_type, attachment = _request_envelope(run)
-        media_token = (
-            attachment.get("attachment_token")
-            if isinstance(attachment, dict)
-            else None
-        )
-        media_attachment = media.get(media_token, run["user_id"]) if media_token else None
-        wants_draft = _wants_draft(run["input_text"], requested_draft)
-        steps = [
-            {
-                "id": "s1",
-                "title": "汇总班级学习数据",
-                "tool": "teacher.class_insights",
-                "status": "pending",
-            }
-        ]
-        if wants_draft:
-            steps.append(
-                {
-                    "id": "s2",
-                    "title": "生成针对性任务草稿",
-                    "tool": "teacher.task_draft_preview",
-                    "status": "pending",
-                }
-            )
-        _persist_plan(
-            db,
-            run_id=run_id,
-            steps=steps,
-            request_draft=wants_draft,
-            target_cap_ids=target_cap_ids,
-            data_type=data_type,
-        )
-        events.emit_progress(
-            db,
-            run_id,
-            phase="planning",
-            status="completed",
-            title="已制定教师工作台计划",
-            detail="仅使用当前班级的匿名聚合数据",
-            activity_id=f"teacher-plan:{run_id}",
-        )
-        _update_plan_event(db, run_id, steps)
-
-        insights = await _execute_insight_step(
-            db, run=run, teacher_id=user["id"], step=steps[0]
-        )
-        _update_plan_event(db, run_id, steps)
-
-        preview: dict[str, Any] | None = None
-        if wants_draft:
-            preview = await _execute_preview_step(
-                db,
-                run=run,
-                teacher_id=user["id"],
-                step=steps[1],
-                insights=insights,
-                target_cap_ids=target_cap_ids,
-                data_type=data_type,
-            )
-            _update_plan_event(db, run_id, steps)
-
-        if preview and preview.get("ready_to_save"):
-            confirmation_id, _tool_call_id = _open_publish_confirmation(
-                db, run=run, steps=steps, preview=preview
-            )
-            _persist_plan(
-                db,
-                run_id=run_id,
-                steps=steps,
-                request_draft=wants_draft,
-                target_cap_ids=target_cap_ids,
-                data_type=data_type,
-            )
-            _update_plan_event(db, run_id, steps)
-            fallback = (
-                f"已基于班级匿名聚合数据生成「{preview['draft']['title']}」任务。"
-                "请复核内容后确认发布；确认后会发送给当前班级的在班学生。"
-            )
-            text, usage, _streamed = await _compose_response(
-                db,
-                run=run,
-                insights=insights,
-                preview=preview,
-                fallback=fallback,
-                media_attachment=media_attachment,
-            )
-            _record_usage(db, run_id, usage)
-            _finish_waiting_for_confirmation(
-                db,
-                run_id=run_id,
-                conversation_id=conversation["id"],
-                confirmation_id=confirmation_id,
-                preview={
-                    "summary": f"将发布学习任务「{preview['draft']['title']}」",
-                    "class_id": run["class_id"],
-                    "draft": preview["draft"],
-                    "insights": preview["insights"],
-                    "notice": "确认后会为当前班级的在班学生创建任务并发送通知。",
-                },
-                response_text=text,
-            )
-            return
-
-        fallback = (
-            preview["reason"]
-            if preview and isinstance(preview.get("reason"), str)
-            else "已汇总当前班级的匿名学习数据，可根据薄弱能力继续生成针对性任务草稿。"
-        )
-        text, usage, _streamed = await _compose_response(
-            db,
-            run=run,
-            insights=insights,
-            preview=preview,
-            fallback=fallback,
-            media_attachment=media_attachment,
-        )
-        _record_usage(db, run_id, usage)
-        _insert_message(
-            db,
-            conversation_id=conversation["id"],
-            run_id=run_id,
-            role="assistant",
-            content=text,
-        )
-        _finish_run(
-            db,
-            run_id=run_id,
-            status="completed",
-            event_type=events.RUN_COMPLETED,
-            payload={"summary": text[:240]},
-        )
-    except Exception:
-        logger.exception("teacher Agent run %s failed", run_id)
-        try:
-            _finish_run(
-                db,
-                run_id=run_id,
-                status="failed",
-                event_type=events.RUN_FAILED,
-                payload={"error": _GENERIC_ERROR},
-                error=_GENERIC_ERROR,
-            )
-        except Exception:
-            logger.exception("failed to persist terminal teacher Agent state for %s", run_id)
-    finally:
-        if media_token and owner_id:
-            # Attachment tokens are one-run capabilities and must not survive
-            # a completed, failed, or confirmation-waiting teacher run.
-            media.discard(media_token, owner_id)
-        db.close()
+    await graph_runtime.run_teacher_graph(run_id, db_path)

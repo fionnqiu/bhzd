@@ -22,6 +22,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..agent import events as agent_events
+from ..agent import graph_runtime
 from ..agent import media
 from ..agent.confirmation_state import (
     CANCELLED,
@@ -1291,6 +1292,10 @@ def confirm_task(
 
             for generated_task_id in content_task_ids:
                 queue_task_content(db, generated_task_id)
+        # Wake the interrupted LangGraph thread after the business confirmation
+        # transaction settles the run.  The graph sees the terminal business
+        # status and exits without creating a second confirmation.
+        spawn(graph_runtime.resume_teacher_graph(run["id"], get_config().resolved_database_path))
     except ApiError:
         raise
     except Exception:

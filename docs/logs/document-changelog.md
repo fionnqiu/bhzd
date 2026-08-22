@@ -405,3 +405,57 @@
 
 **仍需事实核验：**
 - 当前环境未做真实 grader Provider 的网络质量验收；自动点评依赖已配置的 grader，失败时保留评分结果并不阻断主任务。
+
+## [2026-08-22 23:35] LangGraph 确定性编排兼容迁移
+
+**变更文件：**
+- `server/pyproject.toml`、`server/uv.lock`：加入并锁定 `langgraph` 运行依赖。
+- `server/bhzd_py/agent/graph_runtime.py`：新增学生/教师 `StateGraph` 运行时桥，仅传递不含敏感业务数据的 run 坐标。
+- `server/bhzd_py/agent/orchestrator.py`、`server/bhzd_py/agent/teacher_orchestrator.py`：公共执行入口改由 LangGraph 图调度，原有持久化工作流保留为业务节点回调。
+- `server/tests/test_agent_graph_runtime.py`：新增初始执行、确认续跑、非法路由收敛和教师图入口契约测试。
+- `docs/master-checklist.md`：更新 Agent 架构边界，记录 LangGraph 已引入，LangChain Agent/Chain、ReAct、GraphRAG 仍不引入。
+
+**变更原因：**
+- 按已批准迁移 brief，将 Agent 编排入口切换到 LangGraph，同时保留 `agent_runs`、`agent_events`、确认门、Provider 和 SSE 回放契约，避免引入第二套业务事实源。
+
+**验证：**
+- LangGraph `StateGraph` 导入和异步图调用通过；图契约测试通过。
+- 定向 Agent 回归 52 passed；组合运行中的 1 个教师测试单独复跑通过，确认是测试隔离抖动而非迁移失败。
+- Ruff、Python 编译和 `git diff --check` 通过。
+
+**仍需事实核验：**
+- 后端全量 pytest、类型检查和真实运行中的 8787 健康/API 验证尚待本轮最终门禁完成；真实 Provider 质量不在本次本地自动化证据范围内。
+
+## [2026-08-22 02:57] 混合架构 LangGraph 原生迁移完成
+
+**变更文件：**
+- `server/bhzd_py/agent/graph_runtime.py`、`student_graph.py`、`teacher_graph.py`、`exploration.py`、`readonly_react.py`：学生与教师可恢复流程改为原生 LangGraph StateGraph；知识问答增加受限只读 ReAct 和查询时 GraphRAG 融合；checkpoint 采用旁路 SQLite，缺失/损坏时安全收敛，不暴露内部状态。
+- `server/bhzd_py/agent/orchestrator.py`、`teacher_orchestrator.py`：删除旧 `_legacy` 编排入口，保留业务表、SSE、Provider、确认门和权限语义。
+- `server/bhzd_py/migrations/029_langgraph_checkpoints.sql`、`server/tests/test_migrations.py`：登记 checkpoint/writes schema 契约。
+- `docs/master-checklist.md`：同步混合架构边界、完成状态和明确不引入完整 LangChain Agent/Chain 的说明。
+
+**变更原因：**
+- 按已批准的混合架构 brief 完成全量原生迁移，避免旧手写业务编排与 LangGraph 并存；只读探索与写入确认保持清晰的安全边界。
+
+**验证：**
+- 聚焦图运行时、探索、教师图和迁移测试：18 passed；Agent 组合回归：88 passed；Ruff、compileall、uv lock 和 `git diff --check` 按门禁执行。
+
+**仍需事实核验：**
+- 完整后端 pytest、mypy 及真实 8787 API/Provider 验证以本轮最终门禁结果为准；本地自动化不等同于真实 Provider 质量验收。
+
+## [2026-08-22 03:05] LangGraph checkpoint 恢复边界修复
+
+**变更文件：**
+- `server/bhzd_py/agent/graph_runtime.py`：将异步 checkpoint 初始化、编译和调用纳入统一异常保护；使用 `aget_state` 校验异步 checkpoint；缺失或损坏 checkpoint 时保留 `waiting_confirmation` 业务边界，避免误报失败。
+- `server/tests/test_agent_checkpoint_failures.py`：新增 sidecar 首次创建、缺失/损坏、初始化失败、确认中保留和终态保护测试。
+
+**变更原因：**
+- 发现 `AsyncSqliteSaver` 在事件循环线程调用同步 `graph.get_state()` 会阻断合法确认续跑；同时 sidecar 初始化异常可能绕过原有失败收敛逻辑。
+
+**验证：**
+- `uv run pytest -q`：528 passed，保留 1 个既有 Starlette/httpx 弃用警告。
+- checkpoint 专项、确认续跑和教师图测试通过；触及文件 Ruff、Python compileall、`git diff --check` 通过。
+- `uv sync --locked` 通过；Python 3.12 定向 mypy 对新增 LangGraph 文件通过。
+
+**仍需事实核验：**
+- 按项目既有基线，mypy 在当前 Python 3.11 环境被已安装 `numpy` 的 Python 3.12-only 类型语法阻断；真实 Provider 质量与 8787 运行态 API 仍未在本次离线门禁中声称完成。
