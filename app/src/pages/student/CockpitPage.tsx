@@ -44,9 +44,10 @@ export default function CockpitPage() {
   // Keep the composer locked while an Agent run is active, except for the
   // exact text confirmation that completes an already reviewed task preview.
   const canConfirmTaskWithText =
-    run.status === "awaiting_confirmation" &&
-    run.confirmation?.action_type === "task.create" &&
-    isTaskSyncConfirmationCommand(composerValue);
+    isTaskSyncConfirmationCommand(composerValue) &&
+    ((run.status === "awaiting_confirmation" &&
+      run.confirmation?.action_type === "task.create") ||
+      (run.runId !== null && run.taskDraftsByRun[run.runId]?.status === "draft"));
   const composerRef = useRef<ComposerHandle>(null);
   const refreshedRunRef = useRef<string | null>(null);
   const consumedSessionIntentRef = useRef<number | null>(null);

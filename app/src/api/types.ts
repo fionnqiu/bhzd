@@ -238,7 +238,7 @@ export interface PlanStep {
  */
 /** Backend phase names are intentionally coarse and exclude hidden reasoning. */
 export type AgentRunProgressPhase =
-  "understanding" | "planning" | "tool" | "retrieval" | "synthesis" | "system";
+  "understanding" | "planning" | "tool" | "retrieval" | "synthesis" | "confirmation" | "system";
 
 export type AgentRunProgressStatus = "running" | "completed" | "waiting_confirmation" | "failed";
 

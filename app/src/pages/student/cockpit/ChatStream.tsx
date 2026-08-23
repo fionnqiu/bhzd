@@ -142,9 +142,11 @@ export default function ChatStream({
       ? "正在整理学习目标"
       : run.status === "tool_running"
         ? "正在准备练习内容"
-        : run.status === "awaiting_confirmation"
-          ? "等待确认"
-          : null;
+      : run.status === "awaiting_confirmation"
+        ? run.runId && run.taskDraftsByRun[run.runId]?.status === "draft"
+          ? "等待保存到系统"
+          : "等待确认"
+        : null;
 
   // 任务草稿按钮跟随产生它的回答（按 runId 关联），而不是漂在对话末尾；
   // 历史回放与流式新回答共用同一渲染入口。

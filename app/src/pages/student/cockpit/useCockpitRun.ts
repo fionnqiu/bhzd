@@ -100,6 +100,9 @@ const SENSITIVE_RESULT_KEY =
   /^(?:authorization|proxy-authorization|cookie|set-cookie|api[_ -]?key|access[_ -]?token|token|secret|password|session[_ -]?id|diagnostic[_ -]?token)$/i;
 
 const TASK_SYNC_CONFIRMATION_COMMANDS = new Set([
+  "保存",
+  "保存到系统",
+  "保存学习计划",
   "同步到系统中",
   "同步到学习任务",
   "同步到学习任务中",
@@ -386,6 +389,12 @@ export function useCockpitRun() {
   // The confirm and cancel buttons are siblings. A ref closes the brief window
   // before React disables them, so one task preview cannot submit two writes.
   const confirmationActionRef = useRef<string | null>(null);
+  // A draft-sync command is handled by the same guarded path as the visible
+  // card button; this ref avoids a second chat run while the callback is
+  // declared later in the hook.
+  const syncTaskDraftRef = useRef<(runKey: string, draftId: string) => Promise<boolean>>(
+    async () => false,
+  );
   // Composer submission is declared before the confirmation callback below.
   // A ref lets a typed confirmation phrase reuse that same guarded write path
   // without creating a second Agent run or duplicating confirmation logic.
@@ -868,9 +877,23 @@ export function useCockpitRun() {
           onProgress: (progress, seq) => {
             advanceActivitySequence(seq);
             // `understanding` is model interpretation and remains hidden. The
-            // remaining stages are bounded, observable lifecycle summaries.
-            if (progress.phase !== "planning" && progress.phase !== "synthesis") return;
-            const stage: ActivityStage = progress.phase === "synthesis" ? "responding" : "planning";
+            // confirmation phase is retained because it is the durable
+            // learner action boundary for an unsynced task draft.
+            if (
+              progress.phase !== "planning" &&
+              progress.phase !== "synthesis" &&
+              progress.phase !== "confirmation"
+            )
+              return;
+            const stage: ActivityStage =
+              progress.phase === "synthesis"
+                ? "responding"
+                : progress.phase === "confirmation"
+                  ? "confirmation"
+                  : "planning";
+            if (progress.phase === "confirmation" && progress.status === "waiting_confirmation") {
+              setStatus("awaiting_confirmation");
+            }
             const activityId = progress.activity_id ?? `${progress.phase}:${id}`;
             appendActivity(
               activityEntry(
@@ -1113,6 +1136,19 @@ export function useCockpitRun() {
         await confirmRef.current();
         return true;
       }
+      const activeDraft = runIdRef.current ? taskDraftsByRun[runIdRef.current] : null;
+      if (
+        activeDraft?.status === "draft" &&
+        isTaskSyncConfirmationCommand(text) &&
+        runIdRef.current
+      ) {
+        // “保存” confirms the visible draft in this conversation. It must not
+        // become a free-form model turn because only the sync endpoint can
+        // prove that the learning task was durably created.
+        const activeRunKey = runIdRef.current;
+        setMessages((prev) => [...prev, { id: nextId("user"), role: "user", content: text }]);
+        return await syncTaskDraftRef.current(activeRunKey, activeDraft.id);
+      }
       if (startInFlightRef.current) return false;
       startInFlightRef.current = true;
       closeStream();
@@ -1185,7 +1221,7 @@ export function useCockpitRun() {
         return false;
       }
     },
-    [appendActivity, attachStream, clearRunState, closeStream],
+    [appendActivity, attachStream, clearRunState, closeStream, taskDraftsByRun],
   );
 
   /** 失败重试：按最近一次输入原样重发 */
@@ -1385,14 +1421,29 @@ export function useCockpitRun() {
         if (!res.already_synced) {
           toast.success("已同步到学习任务");
         }
+        if (runIdRef.current === runKey) {
+          // The API response is the durable receipt. Only this response may
+          // move the live run from waiting-for-sync to completed.
+          setMessages((prev) => [
+            ...prev,
+            { id: nextId("sys"), role: "system", content: "已同步到系统" },
+          ]);
+          setStatus("completed");
+          setSummary("已同步到系统");
+          setError(null);
+          setStreamRecovery(null);
+          settleVisibleActivities("completed", activitySequenceRef.current);
+          setReconciledActivity(null);
+        }
         return true;
       } catch (err) {
         toast.error(err instanceof ApiRequestError ? err.message : "同步失败，请稍后重试");
         return false;
       }
     },
-    [toast],
+    [settleVisibleActivities, toast],
   );
+  syncTaskDraftRef.current = syncTaskDraft;
 
   /** 新会话：回到空白态（欢迎态），关闭旧流 */
   const reset = useCallback(() => {

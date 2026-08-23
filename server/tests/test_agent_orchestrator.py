@@ -369,10 +369,10 @@ def test_goal_reply_reuses_captured_scope_and_becomes_the_plan_goal(
     card = _task_draft_card(db, third_run)
     assert card["goal"] == "学习规范"
     assert card["data_type"] == "text"
-    # 任务类意图不再停在 task.create 写门：草稿生成后本轮即完成
+    # 草稿生成后必须等待用户保存；此时不能冒充已经同步完成。
     assert db.execute(
         "SELECT status FROM agent_runs WHERE id = ?", (third_run,)
-    ).fetchone()["status"] == "completed"
+    ).fetchone()["status"] == "waiting_confirmation"
 
 
 def test_full_goal_after_goal_question_does_not_inherit_old_scope(
@@ -801,7 +801,7 @@ def test_task_intent_generates_draft_without_write_gate(db, tmp_db_path, user_id
     asyncio.run(orchestrator.execute_run(run_id, tmp_db_path))
 
     run = db.execute("SELECT * FROM agent_runs WHERE id = ?", (run_id,)).fetchone()
-    assert run["status"] == "completed"
+    assert run["status"] == "waiting_confirmation"
     tool_names = {
         row["tool_name"]
         for row in db.execute(
@@ -827,7 +827,7 @@ def test_task_intent_generates_draft_without_write_gate(db, tmp_db_path, user_id
     ]
     assert draft_events
     assert draft_events[-1]["payload"]["draft"]["id"] == draft["id"]
-    assert _event_types(rows)[-1] == events.RUN_COMPLETED
+    assert events.RUN_COMPLETED not in _event_types(rows)
     message = db.execute(
         "SELECT content FROM messages WHERE conversation_id = ? AND role = 'assistant'",
         (conv_id,),

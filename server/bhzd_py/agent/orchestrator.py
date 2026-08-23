@@ -514,6 +514,8 @@ def _emit_progress(
     activity_id = f"planning:{run_id}" if phase == "planning" else None
     if phase == "synthesis":
         activity_id = f"answer:{run_id}"
+    elif phase == "confirmation":
+        activity_id = f"confirmation:{run_id}"
     events.emit_progress(
         db,
         run_id,
@@ -1634,33 +1636,34 @@ async def _finalize(
         if draft_projection:
             # 合成回答的证据里加入草稿卡，模型才能把卡内容整理进回答
             results = {**results, "task_draft": {"cards": draft_projection["cards"]}}
-            # The approved low-risk policy lets an explicit task request write
-            # the normalized cards immediately.  The capability gateway still
-            # owns all validation, idempotency, quotas, audit, and rollback;
-            # the existing manual draft-sync endpoint remains unchanged.
-            try:
-                if not task_draft_args.get("auto_create"):
-                    raise LookupError("explicit_auto_create_not_requested")
-                actor = db.execute("SELECT * FROM users WHERE id = ?", (run["user_id"],)).fetchone()
-                if actor is None:
-                    raise LookupError("agent_user_not_found")
-                auto_step = {
-                    "id": "learning-task-auto-create",
-                    "title": "同步学习任务",
-                    "tool": "learning.task.auto_create",
-                    "args": {
-                        "cards": draft_projection["cards"],
-                        "idempotency_key": f"{run['id']}:task-draft",
-                    },
-                    "status": "pending",
-                }
-                auto_result = _execute_read_step(
-                    db, get_config(), actor, run, conv, auto_step,
-                    spec=registry.get("learning.task.auto_create"), is_write=True,
-                )
-                results = {**results, "learning_task_auto_create": auto_result}
-            except Exception:
-                logger.exception("运行 %s 自动同步学习任务失败", run["id"])
+            # The approved low-risk policy lets an explicit immediate-create
+            # request write normalized cards. Ordinary drafts deliberately
+            # wait for the learner's later save command without logging a
+            # false failure for that normal path.
+            if task_draft_args.get("auto_create"):
+                try:
+                    actor = db.execute(
+                        "SELECT * FROM users WHERE id = ?", (run["user_id"],)
+                    ).fetchone()
+                    if actor is None:
+                        raise LookupError("agent_user_not_found")
+                    auto_step = {
+                        "id": "learning-task-auto-create",
+                        "title": "同步学习任务",
+                        "tool": "learning.task.auto_create",
+                        "args": {
+                            "cards": draft_projection["cards"],
+                            "idempotency_key": f"{run['id']}:task-draft",
+                        },
+                        "status": "pending",
+                    }
+                    auto_result = _execute_read_step(
+                        db, get_config(), actor, run, conv, auto_step,
+                        spec=registry.get("learning.task.auto_create"), is_write=True,
+                    )
+                    results = {**results, "learning_task_auto_create": auto_result}
+                except Exception:
+                    logger.exception("运行 %s 自动同步学习任务失败", run["id"])
 
     async def _forward_delta(delta: str) -> None:
         nonlocal streamed
@@ -1725,6 +1728,30 @@ async def _finalize(
     )
     _emit_citations_if_any(db, run["id"], steps, results)
     _emit_usage_if_any(db, run["id"], usage)
+    auto_create_succeeded = bool(
+        isinstance(results.get("learning_task_auto_create"), dict)
+        and not results["learning_task_auto_create"].get("error")
+        and results["learning_task_auto_create"].get("task_ids")
+    )
+    if (
+        task_draft_args is not None
+        and draft_projection
+        and draft_projection["status"] == "draft"
+        and not auto_create_succeeded
+    ):
+        # A generated draft is not the durable learning task. Keep the run
+        # paused until the learner explicitly says “保存” or uses the card
+        # action; only the sync endpoint can emit the terminal completion.
+        _emit_progress(
+            db,
+            run["id"],
+            phase="confirmation",
+            status="waiting_confirmation",
+            title="等待保存到系统",
+            detail="学习任务草稿已生成，保存成功后本轮才完成",
+        )
+        _update_run(db, run["id"], status="waiting_confirmation")
+        return
     payload: dict[str, Any] = {"summary": summary}
     _finalize_run(
         db,

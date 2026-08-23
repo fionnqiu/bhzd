@@ -1040,6 +1040,33 @@ def sync_task_draft(
         _task_summary(conn, _get_own_task(conn, task_id, current.user["id"]))
         for task_id in result["task_ids"]
     ]
+    # The draft run is deliberately non-terminal until this transaction has
+    # created the learning task and re-read its owner-scoped summaries. Emit
+    # the terminal event only after both the draft and run state are durable.
+    run_id = row["run_id"]
+    run = conn.execute(
+        "SELECT status FROM agent_runs WHERE id = ? AND user_id = ?",
+        (run_id, current.user["id"]),
+    ).fetchone()
+    if run is not None and run["status"] == "waiting_confirmation":
+        from ..agent import events as agent_events
+
+        now = utc_now_iso()
+        conn.execute(
+            "UPDATE agent_runs SET status = 'completed', completed_at = ?, error = NULL WHERE id = ?",
+            (now, run_id),
+        )
+        agent_events.emit(
+            conn,
+            run_id,
+            agent_events.RUN_COMPLETED,
+            {
+                "summary": "已同步到系统",
+                "sync": {"draft_id": result["draft_id"], "task_ids": result["task_ids"]},
+            },
+            commit=False,
+        )
+        conn.commit()
     return {
         "draft_id": result["draft_id"],
         "status": "synced",

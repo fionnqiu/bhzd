@@ -880,6 +880,44 @@ describe("对话页 · 运行事件流", () => {
     expect(screen.getByText("同步到学习任务中")).toBeInTheDocument();
   });
 
+  it("用户发送“保存”时同步当前草稿，不创建普通聊天运行", async () => {
+    mockedPost.mockImplementation(async (path: string) => {
+      if (path === "/api/runs") return { run_id: "r1", conversation_id: "c1" };
+      if (path === "/api/events") return { accepted: 1 };
+      if (path === "/api/task-drafts/draft-save/sync") {
+        return {
+          draft_id: "draft-save",
+          status: "synced",
+          task_ids: ["task-save"],
+          tasks: [],
+          already_synced: false,
+        };
+      }
+      throw new ApiRequestError(404, "NOT_FOUND", `未预期的 POST ${path}`);
+    });
+    await startRun();
+    emit("task.draft", {
+      seq: 2,
+      draft: {
+        id: "draft-save",
+        status: "draft",
+        source: "agent",
+        cards: [{ title: "保存测试任务" }],
+        task_ids: [],
+      },
+    });
+
+    const input = await screen.findByLabelText("对话输入");
+    fireEvent.change(input, { target: { value: "保存" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() =>
+      expect(mockedPost).toHaveBeenCalledWith("/api/task-drafts/draft-save/sync", {}),
+    );
+    expect(mockedPost.mock.calls.filter(([path]) => path === "/api/runs")).toHaveLength(1);
+    expect(screen.getByText("已同步到系统")).toBeInTheDocument();
+  });
+
   it("任务同步请求未完成时，连续点击只提交一次确认", async () => {
     let resolveConfirmation: (() => void) | undefined;
     // Keep the write pending so the second interaction exercises the synchronous

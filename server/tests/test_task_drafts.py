@@ -180,10 +180,42 @@ def _create_draft_via_api(client, tmp_db_path, text: str = "我想学图像标�
     response = client.post("/api/runs", json={"input": text}, headers=csrf_headers())
     assert response.status_code == 202, response.text
     run_id = response.json()["run_id"]
-    wait_run_status(tmp_db_path, run_id, ("completed",))
+    # Draft generation is intentionally non-terminal: the learner must save
+    # it before the Agent run may emit run.completed.
+    wait_run_status(tmp_db_path, run_id, ("waiting_confirmation",))
     draft = _draft_row(tmp_db_path, run_id)
     assert draft is not None
     return draft["id"]
+
+
+def test_draft_generation_waits_for_sync_before_terminal_event(client, tmp_db_path):
+    draft_id = _create_draft_via_api(client, tmp_db_path)
+    conn = open_db(tmp_db_path)
+    try:
+        run_id = conn.execute(
+            "SELECT run_id FROM task_drafts WHERE id = ?", (draft_id,)
+        ).fetchone()["run_id"]
+        run = conn.execute("SELECT status FROM agent_runs WHERE id = ?", (run_id,)).fetchone()
+        assert run["status"] == "waiting_confirmation"
+        assert not any(
+            row["event_type"] == events.RUN_COMPLETED
+            for row in fetch_events(tmp_db_path, run_id)
+        )
+    finally:
+        conn.close()
+
+    synced = client.post(f"/api/task-drafts/{draft_id}/sync", headers=csrf_headers())
+    assert synced.status_code == 200
+    conn = open_db(tmp_db_path)
+    try:
+        run_id = conn.execute(
+            "SELECT run_id FROM task_drafts WHERE id = ?", (draft_id,)
+        ).fetchone()["run_id"]
+        assert conn.execute("SELECT status FROM agent_runs WHERE id = ?", (run_id,)).fetchone()["status"] == "completed"
+        terminal = [row for row in fetch_events(tmp_db_path, run_id) if row["event_type"] == events.RUN_COMPLETED]
+        assert terminal[-1]["payload"]["summary"] == "已同步到系统"
+    finally:
+        conn.close()
 
 
 def test_sync_endpoint_creates_task_with_content_and_is_idempotent(client, tmp_db_path):
