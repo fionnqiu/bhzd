@@ -70,6 +70,22 @@ vi.mock("../src/api/client", () => {
   };
 });
 
+// ProfilePage 改名后需要读取会话与刷新会话；其余学生页不消费 AuthContext。
+vi.mock("../src/auth/AuthContext", () => ({
+  useAuth: () => ({
+    user: {
+      id: "u1",
+      email: "student@demo.bhzd",
+      name: "演示同学",
+      role: "student",
+      email_verified: true,
+    },
+    bootstrapping: false,
+    logout: vi.fn(),
+    refreshSession: vi.fn(),
+  }),
+}));
+
 const mockedGet = vi.mocked(api.get);
 const mockedPost = vi.mocked(api.post);
 const mockedDelete = vi.mocked(api.delete);
@@ -969,7 +985,7 @@ describe("RagQaPage", () => {
 /* ---------------------------------------------------------------- 个人中心 */
 
 describe("ProfilePage", () => {
-  it("渲染能力地图；加入班级失败展示后端错误提示", async () => {
+  it("学习任务记录保留、能力地图/诊断摘要/成长记录已移除；加入班级失败展示后端错误提示", async () => {
     mockedGet.mockImplementation((path: string) => {
       if (path === "/api/profile")
         return Promise.resolve({
@@ -981,22 +997,7 @@ describe("ProfilePage", () => {
           favorites_note: "收藏资料功能为 P1 规划项，当前版本暂未开放",
           classes: [{ id: "class-1", name: "个人中心测试班", joined_at: "2026-08-09T08:00:00Z" }],
         });
-      if (path === "/api/profile/mastery")
-        return Promise.resolve({
-          items: [
-            {
-              cap_id: "CAP-1",
-              cap_name: "标注情感与副语言",
-              score: 0.3,
-              source: "exercise",
-              updated_at: "2026-07-01T00:00:00Z",
-            },
-          ],
-          total: 1,
-        });
       if (path === "/api/tasks") return Promise.resolve({ items: [], total: 0 });
-      // 收藏资料已为真实端点（008 起 favorites 表）：本用例空列表 → 空态
-      if (path === "/api/profile/favorites") return Promise.resolve({ items: [], total: 0 });
       return Promise.reject(new ApiRequestError(404, "NOT_FOUND", `未 mock 的 GET ${path}`));
     });
     mockedPost.mockRejectedValue(
@@ -1004,9 +1005,11 @@ describe("ProfilePage", () => {
     );
     renderPage(<ProfilePage />, "/profile", "/profile");
 
-    // 能力地图：薄弱记录 + 分数
-    expect(await screen.findByText("标注情感与副语言")).toBeInTheDocument();
-    expect(screen.getByText("30%")).toBeInTheDocument();
+    // 学习任务记录保留；能力地图/诊断摘要/成长记录按产品要求下线
+    expect(await screen.findByText("学习任务记录")).toBeInTheDocument();
+    expect(screen.queryByText("能力地图")).not.toBeInTheDocument();
+    expect(screen.queryByText("诊断摘要")).not.toBeInTheDocument();
+    expect(screen.queryByText("成长记录")).not.toBeInTheDocument();
     // 个人中心不再承载收藏入口，避免把资料收藏误认为学习主流程。
     expect(screen.queryByText("还没有收藏")).not.toBeInTheDocument();
 

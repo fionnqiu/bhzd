@@ -127,6 +127,14 @@ class ChangePasswordIn(BaseModel):
     new_password_envelope: PasswordEnvelope = Field(alias="newPasswordEnvelope")
 
 
+class UpdateProfileIn(BaseModel):
+    """自助资料更新：目前仅姓名（长度口径与注册 RegisterIn.name 一致）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=50)
+
+
 # ---------------------------------------------------------------- 口令公钥与内部助手
 
 def _password_material(request: Request) -> PasswordEncryptionMaterial:
@@ -687,6 +695,40 @@ def change_password(
         target_id=current.user["id"],
     )
     return {"message": "密码修改成功，其他设备已退出登录"}
+
+@router.patch("/api/auth/profile")
+def update_own_profile(
+    body: UpdateProfileIn,
+    current: CurrentUser = Depends(csrf_protect),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """三类账号共用的自助改名（csrf_protect 同时覆盖用户会话与管理端会话）。
+
+    放在 auth 而非 profile.py：profile 路由整体挂在学生门户角色门上
+    （require_student_portal_user），而改名是学生/教师/管理员共有的身份操作，
+    与学习画像无关。
+    """
+    name = body.name.strip()
+    # min_length=1 在 strip 之前判定，纯空白名需要显式拦截
+    if not name:
+        raise ApiError(422, "VALIDATION_ERROR", "姓名不能为空")
+    user_id = current.user["id"]
+    conn.execute(
+        "UPDATE users SET name = ?, updated_at = ? WHERE id = ?",
+        (name, utc_now_iso(), user_id),
+    )
+    conn.commit()
+    audit(
+        conn,
+        current.user,
+        "auth.update_name",
+        target_type="user",
+        target_id=user_id,
+        before={"name": current.user["name"]},
+        after={"name": name},
+    )
+    row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    return {"user": _user_dto(row)}
 
 @router.post("/api/auth/forgot-password")
 def forgot_password(

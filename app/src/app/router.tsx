@@ -53,6 +53,7 @@ const GraphPage = lazyRoute(() => import("../pages/student/GraphPage"));
 const TasksPage = lazyRoute(() => import("../pages/student/TasksPage"));
 const TaskDetailPage = lazyRoute(() => import("../pages/student/TaskDetailPage"));
 const ProfilePage = lazyRoute(() => import("../pages/student/ProfilePage"));
+const AccountProfilePage = lazyRoute(() => import("../pages/shared/AccountProfilePage"));
 const DashboardPage = lazyRoute(() => import("../pages/teacher/DashboardPage"));
 const ClassesPage = lazyRoute(() => import("../pages/teacher/ClassesPage"));
 const ClassDetailPage = lazyRoute(() => import("../pages/teacher/ClassDetailPage"));
@@ -201,6 +202,8 @@ export const routes: RouteObject[] = [
       { path: "tasks/:taskId", element: <TaskPublishPage /> },
       { path: "analytics", element: <AnalyticsPage /> },
       { path: "analytics/students", element: <StudentAnalyticsPage /> },
+      // 通用个人中心（账号信息 + 改密），入口在左下角账号菜单
+      { path: "profile", element: <AccountProfilePage /> },
       // Keep old review bookmarks useful without retaining a review screen.
       {
         path: "review",
@@ -238,6 +241,8 @@ export const routes: RouteObject[] = [
       { path: "users", element: <UsersPage /> },
       { path: "security", element: <SecurityPage /> },
       { path: "audit-logs", element: <AuditLogsPage /> },
+      // 通用个人中心（账号信息 + 改密），与教师端共用 AccountProfilePage
+      { path: "profile", element: <AccountProfilePage /> },
       // RAG 知识库管理——从独立的 /rag-admin 壳迁入，路径统一为 /admin/rag/*
       { path: "rag", element: <DocumentsPage /> },
       { path: "rag/upload", element: <UploadPage /> },

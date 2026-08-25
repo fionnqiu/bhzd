@@ -1,27 +1,26 @@
 /**
  * 个人中心页（PRD-01 §9）。
  *
- * 聚合数据：/api/profile（任务统计/诊断摘要/成长记录/设置）、
- * /api/profile/mastery（能力地图）与 /api/tasks（最近任务记录）。
+ * 聚合数据：/api/profile（任务统计/设置）与 /api/tasks（最近任务记录）。
  *
  * 关键决策（为什么）：
- * - 能力地图统一按薄弱优先排序：学生第一眼应看到"最该补的"
- *   （与预设页薄弱优先同口径）；点击能力行开抽屉看近 30 天掌握度趋势
- *   （GET mastery/trend），趋势是学生判断"学习方法是否有效"的直接证据。
+ * - 能力地图/诊断摘要/成长记录板块已按产品要求移除，页面聚焦学习任务
+ *   与账号设置；对应 mastery/trend 取数与趋势抽屉一并下线。
+ * - 姓名可自助修改（PATCH /api/auth/profile，三类账号共用），保存后
+ *   refreshSession 让侧边栏账号菜单同步新姓名。
  * - share_diagnostics 默认关闭（PRD-06 待确认项 #2 的产品决策）：关闭时教师
  *   只能看班级聚合统计，开启后才可查看本人诊断详情；开关改动即 PATCH 生效。
  * - 修改密码在站内校验原密码；成功后当前会话保留，其他设备会话由服务端吊销。
  *
- * 类型说明：api/types.ts 由其他任务并行维护，新增 DTO（趋势/设置）。
+ * 类型说明：api/types.ts 由其他任务并行维护，新增 DTO（设置）。
  * 一律页内声明，与后端 profile.py 响应逐字段对齐。
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
 import type {
   JoinClassResponse,
   LeaveClassResponse,
-  MasteryRecord,
   Paginated,
   ProfileClass,
   ProfileOverview,
@@ -31,26 +30,21 @@ import {
   Button,
   Card,
   DataTable,
-  Drawer,
-  EmptyState,
   ErrorState,
   Field,
   Input,
-  MasteryBadge,
   Modal,
   PageHeader,
-  ProgressBar,
   Spinner,
   StatusBadge,
-  Tag,
   ConfirmDialog,
   useToast,
 } from "../../components";
+import { useAuth } from "../../auth/AuthContext";
 import { createPasswordEnvelope } from "../../auth/passwordCrypto";
 import {
   errMsg,
   formatDateTime,
-  masterySourceLabel,
 } from "./shared";
 
 /** 最近任务条数（PRD-01 §9：任务记录做紧凑列表，全量进 /tasks） */
@@ -63,59 +57,17 @@ interface ProfileSettings {
   share_diagnostics: boolean;
 }
 
-/** GET /api/profile/mastery/trend 的时间序列点（mastery_events 按时间升序） */
-interface MasteryTrendPoint {
-  date: string;
-  cap_id: string;
-  old_score: number;
-  new_score: number;
-  source: string;
-  created_at: string;
-}
-
-/**
- * 掌握度趋势迷你折线（纯 SVG 无依赖）：new_score 序列按时间升序描点。
- * 为什么手画而不用图表库：趋势只是"方向感"参考，一条折线足够，
- * 引入图表库只为这张小图不值（NO new npm deps 约束同向）。
- */
-function TrendSparkline({ points }: { points: number[] }) {
-  const W = 280;
-  const H = 64;
-  const PAD = 6;
-  if (points.length === 0) return null;
-  if (points.length === 1) {
-    // 单点无法成线：画一个点，避免空图误解为"无数据"
-    const y = H - PAD - points[0] * (H - PAD * 2);
-    return (
-      <svg width={W} height={H} role="img" aria-label="掌握度趋势（1 次记录）">
-        <circle cx={W / 2} cy={y} r={4} fill="var(--color-primary)" />
-      </svg>
-    );
-  }
-  const coords = points.map((score, index) => {
-    const x = PAD + (index / (points.length - 1)) * (W - PAD * 2);
-    const y = H - PAD - score * (H - PAD * 2);
-    return `${x},${y}`;
-  });
-  return (
-    <svg width={W} height={H} role="img" aria-label="掌握度趋势">
-      {/* 0.8/0.4 档位参考线：与 MasteryBadge 阈值同一口径 */}
-      <line x1={PAD} x2={W - PAD} y1={H - PAD - 0.8 * (H - PAD * 2)} y2={H - PAD - 0.8 * (H - PAD * 2)} stroke="var(--color-success)" strokeDasharray="4 4" strokeWidth={1} opacity={0.5} />
-      <line x1={PAD} x2={W - PAD} y1={H - PAD - 0.4 * (H - PAD * 2)} y2={H - PAD - 0.4 * (H - PAD * 2)} stroke="var(--color-danger)" strokeDasharray="4 4" strokeWidth={1} opacity={0.5} />
-      <polyline points={coords.join(" ")} fill="none" stroke="var(--color-primary)" strokeWidth={2} />
-    </svg>
-  );
-}
-
 export default function ProfilePage() {
   const toast = useToast();
+  const { refreshSession } = useAuth();
 
   const [profile, setProfile] = useState<(ProfileOverview & { settings?: ProfileSettings }) | null>(null);
-  const [mastery, setMastery] = useState<MasteryRecord[] | null>(null);
   const [recentTasks, setRecentTasks] = useState<TaskSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [nameInput, setNameInput] = useState("");
+  const [savingName, setSavingName] = useState(false);
   const [inviteCode, setInviteCode] = useState("");
   const [joining, setJoining] = useState(false);
   const [savingShare, setSavingShare] = useState(false);
@@ -126,23 +78,17 @@ export default function ProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
 
-  // 能力趋势抽屉：点击能力行打开，drawer 内拉该 cap 近 30 天事件序列
-  const [trendCap, setTrendCap] = useState<MasteryRecord | null>(null);
-  const [trend, setTrend] = useState<MasteryTrendPoint[] | null>(null);
-
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
     try {
-      // 四路并发：任一失败整体进错误态（个人中心是聚合页，缺一角会误导）
-      const [profileRes, masteryRes, tasksRes] = await Promise.all([
+      // 两路并发：任一失败整体进错误态（个人中心是聚合页，缺一角会误导）
+      const [profileRes, tasksRes] = await Promise.all([
         api.get<ProfileOverview & { settings?: ProfileSettings }>("/api/profile", undefined, { signal }),
-        api.get<Paginated<MasteryRecord>>("/api/profile/mastery", undefined, { signal }),
         api.get<Paginated<TaskSummary>>("/api/tasks", undefined, { signal }),
       ]);
       if (signal?.aborted) return;
       setProfile(profileRes);
-      setMastery(masteryRes.items);
       setRecentTasks(tasksRes.items.slice(0, RECENT_TASK_LIMIT));
     } catch (err) {
       if (!signal?.aborted) setError(errMsg(err));
@@ -157,37 +103,31 @@ export default function ProfilePage() {
     return () => controller.abort();
   }, [load]);
 
-  // 打开趋势抽屉时拉取该能力近 30 天序列；换能力重拉，关闭时清空防串数据
+  // 姓名输入框跟随加载结果初始化；保存成功后 profile 更新会再次同步
   useEffect(() => {
-    if (!trendCap) {
-      setTrend(null);
+    setNameInput(profile?.user.name ?? "");
+  }, [profile?.user.name]);
+
+  /** 自助改名：PATCH /api/auth/profile 后刷新会话，侧边栏账号菜单同步新姓名。 */
+  const saveName = async () => {
+    const name = nameInput.trim();
+    if (!name) {
+      toast.error("姓名不能为空");
       return;
     }
-    const controller = new AbortController();
-    setTrend(null);
-    api
-      .get<{ items: MasteryTrendPoint[] }>("/api/profile/mastery/trend", {
-        cap_id: trendCap.cap_id,
-        days: 30,
-      }, { signal: controller.signal })
-      .then((res) => {
-        if (!controller.signal.aborted) setTrend(res.items);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setTrend([]);
-      });
-    return () => controller.abort();
-  }, [trendCap]);
-
-  /** 能力地图统一排序：按分数升序，让薄弱能力优先进入视线。 */
-  const masteryGroups = useMemo(() => {
-    return [
-      {
-        name: "能力掌握度",
-        records: [...(mastery ?? [])].sort((a, b) => a.score - b.score),
-      },
-    ];
-  }, [mastery]);
+    if (name === profile?.user.name) return;
+    setSavingName(true);
+    try {
+      const res = await api.patch<{ user: ProfileOverview["user"] }>("/api/auth/profile", { name });
+      setProfile((prev) => (prev ? { ...prev, user: res.user } : prev));
+      await refreshSession();
+      toast.success("姓名已更新");
+    } catch (err) {
+      toast.error(errMsg(err));
+    } finally {
+      setSavingName(false);
+    }
+  };
 
   /** 加入班级：邀请码 → join-class（幂等；无效码后端 404 中文提示） */
   const joinClass = async () => {
@@ -300,7 +240,7 @@ export default function ProfilePage() {
       </div>
     );
   }
-  if (error || !profile || !mastery) {
+  if (error || !profile) {
     return <ErrorState message={error ?? "加载失败"} onRetry={load} />;
   }
 
@@ -311,165 +251,76 @@ export default function ProfilePage() {
     <div>
       <PageHeader title="个人中心" />
 
-      <div className="grid grid-cols-2 mb-4">
-        {/* 能力地图（薄弱优先；点击能力行看 30 天趋势） */}
-        <Card title="能力地图">
-          {mastery.length === 0 ? (
-            <EmptyState
-              title="还没有掌握度记录"
-              action={
-                <Link to="/presets" className="btn btn-primary btn-sm">
-                  去预设学习
-                </Link>
-              }
-            />
-          ) : (
-            <div className="flex flex-col gap-4">
-              {masteryGroups.map((group) => (
-                <div key={group.name}>
-                  <h3 className="mb-2" style={{ fontSize: "var(--font-size-base)" }}>
-                    {group.name}
-                  </h3>
-                  <div className="flex flex-col gap-3">
-                    {group.records.map((record) => (
-                      <div key={record.cap_id}>
-                        <div className="flex items-center justify-between gap-2 mb-2">
-                          {/* 能力名改为按钮：点击开趋势抽屉（图谱入口移到抽屉内） */}
-                          <button
-                            type="button"
-                            className="text-sm"
-                            style={{
-                              background: "none",
-                              border: "none",
-                              padding: 0,
-                              cursor: "pointer",
-                              color: "var(--color-primary)",
-                            }}
-                            onClick={() => setTrendCap(record)}
-                          >
-                            {record.cap_name}
-                          </button>
-                          <MasteryBadge score={record.score} />
-                        </div>
-                        <ProgressBar value={record.score} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-
-        <div className="flex flex-col gap-4">
-          {/* 学习任务记录（统计 chips + 最近 10 条紧凑表） */}
-          <Card
-            title="学习任务记录"
-            actions={
-              <Link to="/tasks" className="text-sm">
-                查看全部 →
-              </Link>
-            }
-          >
-            <div className="flex items-center gap-2 flex-wrap mb-3">
-              <span className="badge badge-primary">进行中 {statusCount("in_progress")}</span>
-              <span className="badge badge-neutral">未开始 {statusCount("not_started")}</span>
-              <span className="badge badge-success">已完成 {statusCount("completed")}</span>
-            </div>
-            <DataTable<TaskSummary>
-              ariaLabel="学习任务记录"
-              columns={[
-                { key: "title", title: "任务" },
-                {
-                  key: "status",
-                  title: "状态",
-                  width: "90px",
-                  render: (row) => <StatusBadge status={row.status} />,
-                },
-                {
-                  key: "latest_score",
-                  title: "得分",
-                  width: "70px",
-                  render: (row) =>
-                    row.latest_score == null ? "—" : `${Math.round(row.latest_score * 100)}`,
-                },
-              ]}
-              rows={recentTasks}
-              empty="还没有学习任务"
-            />
-          </Card>
-
-          {/* 诊断摘要 */}
-          <Card
-            title="诊断摘要"
-            actions={
-              <Link to="/" className="text-sm">
-                去 Agent 查看 →
-              </Link>
-            }
-          >
-            {profile.recent_diagnostic_summaries.length === 0 ? (
-              <EmptyState title="还没有诊断摘要" hint="上传一次标注结果，获取第一次诊断" />
-            ) : (
-              <div className="flex flex-col gap-2">
-                {profile.recent_diagnostic_summaries.map((summary) => (
-                  <div key={summary.id} className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-2">
-                      <Tag>{summary.file_format}</Tag>
-                      <span className="text-sm">{summary.error_count} 个错误</span>
-                    </span>
-                    <span className="text-xs text-muted">{formatDateTime(summary.created_at)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
+      {/* 学习任务记录（统计 chips + 最近 10 条紧凑表） */}
+      <Card
+        title="学习任务记录"
+        className="mb-4"
+        actions={
+          <Link to="/tasks" className="text-sm">
+            查看全部 →
+          </Link>
+        }
+      >
+        <div className="flex items-center gap-2 flex-wrap mb-3">
+          <span className="badge badge-primary">进行中 {statusCount("in_progress")}</span>
+          <span className="badge badge-neutral">未开始 {statusCount("not_started")}</span>
+          <span className="badge badge-success">已完成 {statusCount("completed")}</span>
         </div>
-      </div>
-
-      <div className="grid grid-cols-2 mb-4">
-        {/* 成长记录（mastery_events 时间线；来源中文化） */}
-        <Card title="成长记录">
-          {profile.growth.length === 0 ? (
-            <EmptyState title="还没有成长记录" />
-          ) : (
-            <div className="flex flex-col gap-2">
-              {profile.growth.map((event, index) => (
-                <div key={index} className="flex items-center justify-between gap-2">
-                  <span className="text-sm">
-                    {event.cap_name}
-                    <span className="text-xs text-muted">
-                      {" "}
-                      {Math.round(event.old_score * 100)}% → {Math.round(event.new_score * 100)}%
-                    </span>
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <Tag>{masterySourceLabel(event.source)}</Tag>
-                    <span className="text-xs text-muted">{formatDateTime(event.created_at)}</span>
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-
-      </div>
+        <DataTable<TaskSummary>
+          ariaLabel="学习任务记录"
+          columns={[
+            { key: "title", title: "任务" },
+            {
+              key: "status",
+              title: "状态",
+              width: "90px",
+              render: (row) => <StatusBadge status={row.status} />,
+            },
+            {
+              key: "latest_score",
+              title: "得分",
+              width: "70px",
+              render: (row) =>
+                row.latest_score == null ? "—" : `${Math.round(row.latest_score * 100)}`,
+            },
+          ]}
+          rows={recentTasks}
+          empty="还没有学习任务"
+        />
+      </Card>
 
       {/* 账号设置 */}
       <Card title="账号设置">
         <div className="grid grid-cols-2">
-          <div>
-            <p className="text-sm mb-2">
-              <span className="text-secondary">姓名：</span>
-              {profile.user.name}
-            </p>
-            <p className="text-sm mb-4">
+          <div className="flex flex-col gap-4">
+            {/* 姓名可自助修改（PATCH /api/auth/profile）；邮箱为登录标识不可改 */}
+            <Field label="姓名" hint="修改后侧边栏账号菜单同步更新。">
+              <div className="flex items-center gap-2">
+                <Input
+                  aria-label="姓名"
+                  value={nameInput}
+                  onChange={(e) => setNameInput(e.target.value)}
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={savingName}
+                  disabled={nameInput.trim() === profile.user.name}
+                  onClick={() => void saveName()}
+                >
+                  保存
+                </Button>
+              </div>
+            </Field>
+            <p className="text-sm">
               <span className="text-secondary">邮箱：</span>
               {profile.user.email}
             </p>
-            <Button variant="secondary" size="sm" onClick={() => setPasswordChangeOpen(true)}>
-              修改密码（使用原密码）
-            </Button>
+            <div>
+              <Button variant="secondary" size="sm" onClick={() => setPasswordChangeOpen(true)}>
+                修改密码（使用原密码）
+              </Button>
+            </div>
           </div>
           <div className="flex flex-col gap-4">
             <Field label="已加入班级" hint="你可以查看当前班级，退出后仍可使用邀请码重新加入。">
@@ -596,50 +447,6 @@ export default function ProfilePage() {
         onConfirm={() => (leaveClassTarget ? leaveClass(leaveClassTarget) : undefined)}
         onCancel={() => setLeaveClassTarget(null)}
       />
-
-      {/* 能力趋势抽屉：近 30 天掌握度事件折线（mastery/trend 升序序列） */}
-      <Drawer
-        open={trendCap !== null}
-        title={trendCap ? `${trendCap.cap_name} · 近 30 天趋势` : ""}
-        onClose={() => setTrendCap(null)}
-      >
-        {trendCap ? (
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm text-secondary">当前掌握度</span>
-              <MasteryBadge score={trendCap.score} />
-            </div>
-            {trend === null ? (
-              <div className="loading-block">
-                <Spinner /> 正在加载趋势…
-              </div>
-            ) : trend.length === 0 ? (
-              <p className="text-sm text-secondary">近 30 天暂无掌握度变化记录。</p>
-            ) : (
-              <>
-                <TrendSparkline points={trend.map((p) => p.new_score)} />
-                <p className="text-xs text-muted">
-                  共 {trend.length} 次变化；虚线为「已掌握 80%」与「待加强 40%」参考线。
-                </p>
-                <ul className="flex flex-col gap-2">
-                  {[...trend].reverse().slice(0, 5).map((point, index) => (
-                    <li key={index} className="flex items-center justify-between gap-2 text-sm">
-                      <span>
-                        {Math.round(point.old_score * 100)}% → {Math.round(point.new_score * 100)}%
-                        <span className="text-xs text-muted">（{masterySourceLabel(point.source)}）</span>
-                      </span>
-                      <span className="text-xs text-muted">{point.date}</span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-            <Link to={`/graph?node=${trendCap.cap_id}`} className="btn btn-secondary btn-sm">
-              在能力图谱中查看 →
-            </Link>
-          </div>
-        ) : null}
-      </Drawer>
     </div>
   );
 }

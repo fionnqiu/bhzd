@@ -454,3 +454,46 @@ def test_share_diagnostics_patch_validation(api):
     user = api.login_as("share2@test.local")
     resp = api.client.patch("/api/profile", json={}, headers=user["headers"])
     assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------- 自助改名（PATCH /api/auth/profile，三类账号共用）
+
+
+def test_update_own_name_roundtrip(api):
+    """改名 → users 表与响应 DTO 一致（去首尾空白）；变更写审计。"""
+    user = api.login_as("rename@test.local", name="旧名字")
+    resp = api.client.patch(
+        "/api/auth/profile", json={"name": " 新名字 "}, headers=user["headers"]
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["user"]["name"] == "新名字"
+    row = api.conn.execute(
+        "SELECT name FROM users WHERE id = ?", (user["user_id"],)
+    ).fetchone()
+    assert row["name"] == "新名字"
+    audited = api.conn.execute(
+        "SELECT COUNT(*) AS n FROM audit_logs WHERE action = 'auth.update_name' AND actor_id = ?",
+        (user["user_id"],),
+    ).fetchone()["n"]
+    assert audited == 1
+
+
+def test_update_own_name_allows_teacher(api):
+    """教师被学生门户角色门挡在 /api/profile 外，但改名是身份操作，所有角色可用。"""
+    user = api.login_as("teacher-rename@test.local", role="teacher")
+    resp = api.client.patch(
+        "/api/auth/profile", json={"name": "王老师"}, headers=user["headers"]
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["user"]["name"] == "王老师"
+
+
+def test_update_own_name_validation(api):
+    """纯空白名显式 422（min_length=1 在 strip 之前判定，挡不住空格）；缺 name 字段 422。"""
+    user = api.login_as("rename2@test.local")
+    resp = api.client.patch(
+        "/api/auth/profile", json={"name": "   "}, headers=user["headers"]
+    )
+    assert resp.status_code == 422
+    resp = api.client.patch("/api/auth/profile", json={}, headers=user["headers"])
+    assert resp.status_code == 422

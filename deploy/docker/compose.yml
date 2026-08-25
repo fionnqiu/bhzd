@@ -1,0 +1,80 @@
+name: bhzd
+
+services:
+  backend:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/backend.Dockerfile
+      args:
+        # The test host may need a regional PyPI mirror when direct PyPI access
+        # is rate-limited or unavailable; production can leave the default.
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    env_file:
+      # Keep credentials and the stable encryption key outside the checkout so
+      # the source tree and its migration archive never contain secrets.
+      - ${BHZD_SECRETS_FILE:-/srv/bhzd-secrets/app.env}
+    environment:
+      # The approved profile is development over self-signed IP HTTPS because
+      # SMTP is not configured; do not reuse this profile for real accounts.
+      NODE_ENV: ${NODE_ENV:-development}
+      BHZD_HOST: 0.0.0.0
+      BHZD_PORT: 8787
+      BHZD_PUBLIC_ORIGIN: ${BHZD_PUBLIC_ORIGIN:-https://8.135.7.150}
+      BHZD_CORS_ORIGINS: ${BHZD_CORS_ORIGINS:-https://8.135.7.150}
+      BHZD_DATABASE_PATH: /app/var/bhzd.sqlite
+      BHZD_DATA_DIR: /app/data
+      BHZD_UPLOAD_DIR: /app/var/uploads
+      BHZD_MAIL_OUTBOX_PATH: /app/var/mail_outbox.log
+    user: "10001:10001"
+    expose:
+      - "8787"
+    volumes:
+      - /srv/bhzd-data/var:/app/var
+      - /srv/bhzd-data/ragData:/app/docs/ragData:ro
+    restart: unless-stopped
+    mem_limit: 768m
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    networks:
+      - bhzd
+
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/frontend.Dockerfile
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      # Preserve the standard HTTPS entry point while exposing the approved
+      # alternate host port for environments that cannot use 443 directly.
+      - "15173:443"
+    volumes:
+      # The certificate is user-created on the server and mounted read-only;
+      # the Nginx image contains only its public proxy configuration.
+      - /srv/bhzd-secrets/tls/fullchain.pem:/etc/nginx/tls/fullchain.pem:ro
+      - /srv/bhzd-secrets/tls/privkey.pem:/etc/nginx/tls/privkey.pem:ro
+    restart: unless-stopped
+    mem_limit: 128m
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "3"
+    networks:
+      - bhzd
+
+networks:
+  # A dedicated bridge network keeps the backend private and makes the stack
+  # portable to another host without changing proxy addresses.
+  bhzd:
+    driver: bridge

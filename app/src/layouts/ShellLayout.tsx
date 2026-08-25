@@ -198,6 +198,14 @@ export default function ShellLayout({
   const desktopOperationsSidebarCollapsed =
     isOperationsWorkbench && desktopWorkbenchSidebarCollapsed;
   const portalHomePath = PORTALS.find((portal) => portal.key === portalKey)?.path ?? "/";
+  // 每个门户的个人中心路径：学生端保留功能完整的 /profile，
+  // 教师端与系统管理端使用共用的精简页（账号信息 + 改密）。
+  const profilePath =
+    portalKey === "teacher"
+      ? "/teacher/profile"
+      : portalKey === "admin"
+        ? "/admin/profile"
+        : "/profile";
   const sidebarIsHidden = (compactSidebar && !sidebarOpen) || desktopWorkbenchSidebarCollapsed;
   const showPageHeaderSidebarExpand = desktopWorkbenchSidebarCollapsed && !isStudentCockpitRoute;
   const desktopSidebarContextValue = useMemo(
@@ -231,27 +239,23 @@ export default function ShellLayout({
           </div>
         </div>
       </div>
-      {portalKey === "student" ? (
-        <>
-          <div className="dropdown-divider" />
-          <Link
-            to="/profile"
-            className="dropdown-item"
-            aria-disabled={studentWorkbenchNavigationDisabled || undefined}
-            tabIndex={studentWorkbenchNavigationDisabled ? -1 : undefined}
-            onClick={(event) => {
-              if (studentWorkbenchNavigationDisabled) {
-                event.preventDefault();
-                return;
-              }
-              setOpenMenu(null);
-              closeCompactSidebar();
-            }}
-          >
-            <UserRound size={14} /> 个人中心
-          </Link>
-        </>
-      ) : null}
+      <div className="dropdown-divider" />
+      <Link
+        to={profilePath}
+        className="dropdown-item"
+        aria-disabled={studentWorkbenchNavigationDisabled || undefined}
+        tabIndex={studentWorkbenchNavigationDisabled ? -1 : undefined}
+        onClick={(event) => {
+          if (studentWorkbenchNavigationDisabled) {
+            event.preventDefault();
+            return;
+          }
+          setOpenMenu(null);
+          closeCompactSidebar();
+        }}
+      >
+        <UserRound size={14} /> 个人中心
+      </Link>
       {availablePortals.length > 1 ? (
         <>
           <div className="dropdown-divider" />

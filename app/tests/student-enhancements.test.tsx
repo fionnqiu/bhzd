@@ -62,6 +62,7 @@ vi.mock("../src/auth/AuthContext", () => ({
     },
     bootstrapping: false,
     logout: vi.fn(),
+    refreshSession: vi.fn(),
   }),
   AuthProvider: ({ children }: { children: ReactNode }) => children,
 }));
@@ -738,70 +739,21 @@ function installProfileGet(shareDiagnostics: boolean) {
         favorites: [],
         settings: { share_diagnostics: shareDiagnostics },
       });
-    if (path === "/api/profile/mastery")
-      return Promise.resolve({
-        items: [
-          {
-            cap_id: "C1",
-            cap_name: "能力甲",
-            score: 0.5,
-            source: "exercise",
-            updated_at: "2026-07-31T00:00:00Z",
-          },
-        ],
-        total: 1,
-      });
     if (path === "/api/tasks") return Promise.resolve({ items: [], total: 0 });
-    if (path === "/api/profile/favorites")
-      return Promise.resolve({
-        items: [
-          {
-            id: "f9",
-            item_type: "rag_document",
-            item_id: "d1",
-            title: "规范文档A",
-            meta: {},
-            created_at: "2026-07-01T10:00:00Z",
-          },
-        ],
-        total: 1,
-      });
-    if (path === "/api/profile/mastery/trend")
-      return Promise.resolve({
-        items: [
-          {
-            date: "2026-07-20",
-            cap_id: "C1",
-            old_score: 0.3,
-            new_score: 0.4,
-            source: "exercise",
-            created_at: "2026-07-20T10:00:00Z",
-          },
-          {
-            date: "2026-07-31",
-            cap_id: "C1",
-            old_score: 0.4,
-            new_score: 0.5,
-            source: "exercise",
-            created_at: "2026-07-31T10:00:00Z",
-          },
-        ],
-        total: 2,
-        days: 30,
-        cap_id: "C1",
-      });
     return Promise.reject(new ApiRequestError(404, "NOT_FOUND", `未 mock 的 GET ${path}`));
   });
 }
 
 describe("ProfilePage 增强", () => {
-  it("能力地图真实列表渲染并隐藏收藏入口", async () => {
+  it("能力地图/诊断摘要/成长记录已移除，学习任务记录保留", async () => {
     installProfileGet(false);
     renderPage(<Route path="/profile" element={<ProfilePage />} />, "/profile");
 
-    expect(await screen.findByRole("button", { name: "能力甲" })).toBeInTheDocument();
-    expect(screen.queryByText("规范文档A")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "删除收藏 规范文档A" })).not.toBeInTheDocument();
+    expect(await screen.findByText("学习任务记录")).toBeInTheDocument();
+    // 三个板块按产品要求下线，页面与取数（mastery/trend）一并移除
+    expect(screen.queryByText("能力地图")).not.toBeInTheDocument();
+    expect(screen.queryByText("诊断摘要")).not.toBeInTheDocument();
+    expect(screen.queryByText("成长记录")).not.toBeInTheDocument();
   });
 
   it("诊断分享开关：勾选即 PATCH share_diagnostics", async () => {
@@ -827,22 +779,23 @@ describe("ProfilePage 增强", () => {
     });
   });
 
-  it("点击能力行打开趋势抽屉：拉取 trend 并渲染折线", async () => {
+  it("修改姓名：PATCH /api/auth/profile 并刷新会话", async () => {
     installProfileGet(false);
+    mockedPatch.mockImplementation((path: string) => {
+      if (path === "/api/auth/profile")
+        return Promise.resolve({
+          user: { id: "u1", email: "stu@example.com", name: "学生乙", role: "student" },
+        });
+      return Promise.reject(new ApiRequestError(500, "NOT_MOCKED", `未 mock 的 PATCH ${path}`));
+    });
     renderPage(<Route path="/profile" element={<ProfilePage />} />, "/profile");
 
-    fireEvent.click(await screen.findByRole("button", { name: "能力甲" }));
-    expect(await screen.findByText("能力甲 · 近 30 天趋势")).toBeInTheDocument();
+    const nameInput = await screen.findByLabelText("姓名");
+    expect(nameInput).toHaveValue("学生甲");
+    fireEvent.change(nameInput, { target: { value: "学生乙" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => {
-      expect(mockedGet).toHaveBeenCalledWith(
-        "/api/profile/mastery/trend",
-        {
-          cap_id: "C1",
-          days: 30,
-        },
-        expect.objectContaining({ signal: expect.anything() }),
-      );
+      expect(mockedPatch).toHaveBeenCalledWith("/api/auth/profile", { name: "学生乙" });
     });
-    expect(await screen.findByRole("img", { name: "掌握度趋势" })).toBeInTheDocument();
   });
 });
