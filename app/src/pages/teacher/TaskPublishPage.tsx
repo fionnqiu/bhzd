@@ -4,7 +4,8 @@
  * 关键决策（为什么）：
  * - 发布前先落库再 publish：publish 端点是"复制数据库行"给学生（teacher.py
  *   publish_teacher_task 直接 INSERT row 的 JSON 列），若未保存的最新编辑不
- *   先 PATCH，学生拿到的会是旧内容——所以"发布"按钮内部总是先保存草稿。
+ *   先 PATCH，学生拿到的会是旧内容。当前编辑器先保存任务元数据，再通过
+ *   单一事务端点替换学习内容，最后才发起发布，避免逐行删除/写入造成丢稿。
  * - 已发布任务（published_count>0）的原件不能被学生副本"静默漂移"：后端
  *   PATCH 会自动生成 version+1 新记录（version_bumped），页面用横幅提前
  *   告知，并在保存后切换到新版本继续编辑。
@@ -30,9 +31,9 @@ import type {
   GraphNode,
   Paginated,
   PublishTaskResponse,
-  TaskExercise,
   TaskContentGenerationSource,
   TaskContentStatus,
+  TeacherTaskContentPayload,
   TaskKnowledgePoint,
   TeacherTask,
 } from "../../api/types";
@@ -306,6 +307,11 @@ interface AiBannerState {
   llmUsed: boolean;
 }
 
+type ActionStatus = {
+  kind: "info" | "success" | "error";
+  message: string;
+} | null;
+
 /* ---------------------------------------------------------------- 页面 */
 
 export default function TaskPublishPage() {
@@ -333,6 +339,7 @@ export default function TaskPublishPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [actionStatus, setActionStatus] = useState<ActionStatus>(null);
   const [contentRetrying, setContentRetrying] = useState(false);
   // ---- AI 生成 / 已发布任务截止时间调整 ----
   const [generating, setGenerating] = useState(false);
@@ -487,6 +494,7 @@ export default function TaskPublishPage() {
   const resetTransient = () => {
     setAiBanner(null);
     setDueEdit("");
+    setActionStatus(null);
   };
 
   /**
@@ -586,17 +594,20 @@ export default function TaskPublishPage() {
     defer_content_generation: true,
   });
 
-  /** Persist the active learning-content tables after the task row exists. */
-  const persistContent = async (taskId: string, replaceCopiedContent = false) => {
+  /** Persist both active content tables through the backend transaction. */
+  const persistContent = async (taskId: string) => {
     // Empty rows are an intentional affordance while a teacher is composing.
-    // Ignore those placeholders, but reject partially authored rows so a save
-    // never silently drops work that the backend cannot represent.
-    const knowledgePoints = form.knowledgePoints.filter((point) => point.title.trim() || point.content.trim());
+    // Ignore those placeholders, but reject partially authored rows before the
+    // request so the form never silently discards a teacher's text.
+    const knowledgePoints = form.knowledgePoints.filter(
+      (point) => point.title.trim() || point.content.trim(),
+    );
     if (knowledgePoints.some((point) => !point.title.trim() || !point.content.trim())) {
       throw new Error("每项学习内容都需要填写标题和内容");
     }
     const exercises = form.exercises.filter(
-      (exercise) => exercise.question.trim() || exercise.options.trim() || exercise.reference_answer.trim(),
+      (exercise) =>
+        exercise.question.trim() || exercise.options.trim() || exercise.reference_answer.trim(),
     );
     if (exercises.some((exercise) => !exercise.question.trim())) {
       throw new Error("每道练习都需要填写题目");
@@ -610,77 +621,55 @@ export default function TaskPublishPage() {
     ) {
       throw new Error("选择题需要至少一个选项");
     }
-    const currentPoints = await api.get<{ items: TaskKnowledgePoint[] }>(
-      `/api/teacher/tasks/${taskId}/knowledge-points`,
-    );
-    const desiredPointIds = new Set(
-      replaceCopiedContent
-        ? []
-        : knowledgePoints
-            .filter((point) => !point.id.startsWith("draft-"))
-            .map((point) => point.id),
-    );
-    await Promise.all(
-      currentPoints.items
-        .filter((point) => !desiredPointIds.has(point.id))
-        .map((point) => api.delete(`/api/teacher/tasks/${taskId}/knowledge-points/${point.id}`)),
-    );
-    for (const [index, point] of knowledgePoints.entries()) {
-      const body = { title: point.title, content: point.content, sort_order: index };
-      if (replaceCopiedContent || point.id.startsWith("draft-")) {
-        await api.post(`/api/teacher/tasks/${taskId}/knowledge-points`, body);
-      } else {
-        await api.patch(`/api/teacher/tasks/${taskId}/knowledge-points/${point.id}`, body);
-      }
-    }
 
-    const currentExercises = await api.get<{ items: Array<TaskExercise & { reference_answer?: string | null }> }>(
-      `/api/teacher/tasks/${taskId}/exercises`,
-    );
-    const desiredExerciseIds = new Set(
-      replaceCopiedContent
-        ? []
-        : exercises
-            .filter((exercise) => exercise.id && !exercise.id.startsWith("draft-"))
-            .map((exercise) => exercise.id),
-    );
-    await Promise.all(
-      currentExercises.items
-        .filter((exercise) => !desiredExerciseIds.has(exercise.id))
-        .map((exercise) => api.delete(`/api/teacher/tasks/${taskId}/exercises/${exercise.id}`)),
-    );
-    for (const [index, exercise] of exercises.entries()) {
-      const body = {
-        question: exercise.question,
+    const payload: TeacherTaskContentPayload = {
+      knowledge_points: knowledgePoints.map((point, index) => ({
+        title: point.title.trim(),
+        content: point.content.trim(),
+        sort_order: index,
+      })),
+      exercises: exercises.map((exercise, index) => ({
+        question: exercise.question.trim(),
         type: exercise.type,
-        options: exercise.options.split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
+        options: exercise.options
+          .split(/\r?\n/)
+          .map((item) => item.trim())
+          .filter(Boolean),
         reference_answer: exercise.reference_answer.trim() || null,
         sort_order: index,
-      };
-      if (replaceCopiedContent || !exercise.id || exercise.id.startsWith("draft-")) {
-        await api.post(`/api/teacher/tasks/${taskId}/exercises`, body);
-      } else {
-        await api.patch(`/api/teacher/tasks/${taskId}/exercises/${exercise.id}`, body);
-      }
-    }
-
-    // Refresh generated IDs after create/version-copy so later saves update
-    // the current task rows rather than issuing PATCH requests for old IDs.
-    const [persistedPoints, persistedExercises] = await Promise.all([
-      api.get<{ items: TaskKnowledgePoint[] }>(`/api/teacher/tasks/${taskId}/knowledge-points`),
-      api.get<{ items: Array<TaskExercise & { reference_answer?: string | null }> }>(
-        `/api/teacher/tasks/${taskId}/exercises`,
-      ),
-    ]);
+      })),
+    };
+    const persisted = await api.put<TeacherTask>(
+      `/api/teacher/tasks/${taskId}/content`,
+      payload,
+    );
+    // The response carries fresh row IDs after a replacement.  Keeping those
+    // IDs in local state makes a later explicit save update the same task.
+    const returnedPoints = Array.isArray(persisted.knowledge_points)
+      ? persisted.knowledge_points
+      : knowledgePoints;
+    const returnedExercises = Array.isArray(persisted.exercises)
+      ? persisted.exercises
+      : exercises.map((exercise, index) => ({
+          id: exercise.id ?? `draft-exercise-${index}`,
+          question: exercise.question,
+          type: exercise.type,
+          options: exercise.options.split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
+          reference_answer: exercise.reference_answer || null,
+          sort_order: index,
+          created_at: "",
+          submission: null,
+        }));
     return {
-      knowledgePoints: persistedPoints.items,
-      exercises: persistedExercises.items.map((exercise) => ({
+      knowledgePoints: returnedPoints,
+      exercises: returnedExercises.map((exercise) => ({
         id: exercise.id,
         question: exercise.question,
         type: normalizeExerciseType(exercise.type),
         options: (exercise.options ?? []).join("\n"),
         reference_answer: exercise.reference_answer ?? "",
       })),
+      contentFields: contentFieldsFromTask(persisted),
     };
   };
 
@@ -690,16 +679,23 @@ export default function TaskPublishPage() {
     const res = form.taskId
       ? await api.patch<TeacherTask>(`/api/teacher/tasks/${form.taskId}`, body)
       : await api.post<TeacherTask>("/api/teacher/tasks", body);
+    // Establish the durable draft identity before the content request.  If the
+    // atomic content replacement is rejected, the next click must PATCH this
+    // draft instead of creating a second task and leaving the first orphaned.
+    patchForm({
+      taskId: res.id,
+      publishedCount: res.published_count ?? form.publishedCount,
+    });
     // version_bumped：原版本与学生副本保持不动，后续编辑落在 version+1 新记录上
     if (res.version_bumped) {
       toast.info(`已生成新版本 v${res.version}，不影响已开始的学生`);
     }
-    const persistedContent = await persistContent(res.id, Boolean(res.version_bumped));
+    const persistedContent = await persistContent(res.id);
     const hasAuthoredContent =
       persistedContent.knowledgePoints.length > 0 || persistedContent.exercises.length > 0;
     patchForm({
       taskId: res.id,
-      publishedCount: res.published_count,
+      publishedCount: res.published_count ?? form.publishedCount,
       knowledgePoints: persistedContent.knowledgePoints,
       exercises: persistedContent.exercises,
       ...(hasAuthoredContent
@@ -711,12 +707,12 @@ export default function TaskPublishPage() {
             contentGenerationMessage: null,
             contentLastAttemptAt: res.content_last_attempt_at ?? null,
           }
-        : {}),
+        : persistedContent.contentFields),
     });
     // A blank saved draft retains the legacy automatic-generation behavior, but
     // only the initial `none` state is queued implicitly. Failed generations
     // require the explicit retry action so a teacher can see the failure first.
-    if (!hasAuthoredContent && (res.content_status ?? "none") === "none") {
+    if (!hasAuthoredContent && persistedContent.contentFields.contentStatus === "none") {
       try {
         const queued = await api.post<TeacherTask>(`/api/teacher/tasks/${res.id}/content/retry`);
         patchForm(contentFieldsFromTask(queued));
@@ -729,13 +725,19 @@ export default function TaskPublishPage() {
   };
 
   const saveDraft = async () => {
-    if (!validate(false)) return;
+    if (!validate(false)) {
+      setActionStatus({ kind: "error", message: "请先补全任务名称和未完成的内容" });
+      return;
+    }
+    setActionStatus({ kind: "info", message: "正在保存草稿…" });
     setSaving(true);
     try {
       await saveTask();
       toast.success("草稿已保存");
+      setActionStatus({ kind: "success", message: "草稿已保存，学习内容和练习已同步" });
     } catch (err) {
       toast.error(errMsg(err));
+      setActionStatus({ kind: "error", message: errMsg(err, "草稿保存失败，已保留当前输入") });
     } finally {
       setSaving(false);
     }
@@ -770,7 +772,11 @@ export default function TaskPublishPage() {
   };
 
   const publish = async () => {
-    if (!validate(true)) return;
+    if (!validate(true)) {
+      setActionStatus({ kind: "error", message: "请先选择班级并补全可执行练习" });
+      return;
+    }
+    setActionStatus({ kind: "info", message: "正在保存任务内容并发布…" });
     setPublishing(true);
     try {
       // 先保存再发布：publish 复制的是数据库行（见模块注释）
@@ -781,11 +787,15 @@ export default function TaskPublishPage() {
         due_at: form.dueAt ? new Date(form.dueAt).toISOString() : null,
         counts_toward_mastery: form.counts,
       });
-      patchForm({ publishedCount: saved.published_count + res.published });
+      patchForm({
+        publishedCount: (saved.published_count ?? form.publishedCount) + res.published,
+      });
       toast.success(`已发布给 ${res.published} 名学生`);
+      setActionStatus({ kind: "success", message: `已发布给 ${res.published} 名学生` });
       void loadTasks();
     } catch (err) {
       toast.error(errMsg(err));
+      setActionStatus({ kind: "error", message: errMsg(err, "发布失败，已保留当前输入") });
     } finally {
       setPublishing(false);
     }
@@ -1007,13 +1017,18 @@ export default function TaskPublishPage() {
       ) : null}
 
       <div className="flex gap-2 mt-4">
-        <Button variant="secondary" onClick={() => void saveDraft()} loading={saving}>
+        <Button
+          variant="secondary"
+          onClick={() => void saveDraft()}
+          loading={saving}
+          disabled={publishing}
+        >
           保存草稿
         </Button>
         <Button
           onClick={() => void publish()}
           loading={publishing}
-          disabled={!hasExecutableExercise}
+          disabled={saving || !hasExecutableExercise}
           aria-describedby={!hasExecutableExercise ? "publish-exercise-requirement" : undefined}
         >
           发布
@@ -1027,6 +1042,22 @@ export default function TaskPublishPage() {
       {!form.classId && form.title.trim() ? (
         <p className="text-sm text-danger mt-2" role="alert">
           {errors.classId ?? "发布前请选择班级"}
+        </p>
+      ) : null}
+      {actionStatus ? (
+        <p
+          aria-label="发布结果"
+          aria-live="polite"
+          className={`text-sm mt-3 ${
+            actionStatus.kind === "error"
+              ? "text-danger"
+              : actionStatus.kind === "success"
+                ? "text-success"
+                : "text-secondary"
+          }`}
+          role={actionStatus.kind === "error" ? "alert" : "status"}
+        >
+          {actionStatus.message}
         </p>
       ) : null}
     </Card>

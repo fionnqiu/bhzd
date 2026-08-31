@@ -3,7 +3,7 @@
  *
  * 数据口径（为什么）：
  * - 所有数字直接渲染 GET /api/teacher/analytics 的聚合结果（后端从 mastery /
- *   task_attempts / diagnostic_summaries 真实计算，PRD-02 §6.3"干预建议必须
+ *   task_attempts / 已发布任务练习提交真实计算，PRD-02 §6.3"干预建议必须
  *   基于真实学习数据"），前端不做任何二次估算。
  * - 班级是必选筛选（PRD §6.2）：列表加载后自动选中第一个班级再发分析请求，
  *   避免"全班级混合"视图冲淡单个课堂的问题信号。
@@ -15,14 +15,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
-import type { Analytics, ClassInfo, Paginated } from "../../api/types";
+import type {
+  Analytics,
+  ClassInfo,
+  Paginated,
+  TeacherErrorAnalysis,
+} from "../../api/types";
 import {
   Card,
   DataTable,
   EmptyState,
   ErrorState,
   PageHeader,
-  ProgressBar,
   Select,
   Spinner,
   type Column,
@@ -88,7 +92,10 @@ export default function AnalyticsPage() {
             source: source || undefined,
             range,
           },
-          { signal },
+          // AI-backed analysis may need longer than the generic 10s request
+          // budget; the filter spinner remains visible until this bounded call
+          // settles or the user changes the filter.
+          { signal, timeoutMs: 30_000 },
         );
         if (signal?.aborted) return;
         setData(res);
@@ -140,6 +147,22 @@ export default function AnalyticsPage() {
     () => Math.max(1, ...(data?.trend.flatMap((d) => [d.submissions, d.completions]) ?? [1])),
     [data],
   );
+
+  /** Keep older rolling responses readable while the backend adds analysis metadata. */
+  const errorAnalysis: TeacherErrorAnalysis = data?.error_analysis ?? {
+    source: "none",
+    sample_count: 0,
+    generated_at: null,
+    provider_model: null,
+    notice: null,
+  };
+
+  const errorAnalysisLabel =
+    errorAnalysis.source === "ai"
+      ? "AI 动态分析"
+      : errorAnalysis.source === "fallback"
+        ? "本地降级统计"
+        : "暂无分析";
 
   if (classError) {
     return <ErrorState message={classError} />;
@@ -335,16 +358,42 @@ export default function AnalyticsPage() {
           </Card>
 
           <div className="grid teacher-two-column mb-4">
-            {/* 高频错误统计（诊断摘要聚合；严重度用徽章区分干预优先级） */}
+            {/* 高频错误只来自已发布任务提交；元数据如实标出 AI 或本地降级来源。 */}
             <Card title="高频错误统计">
+              <div
+                aria-label="错误分析来源"
+                className="text-xs text-secondary mb-3"
+                role="status"
+              >
+                <span>{errorAnalysisLabel}</span>
+                {errorAnalysis.sample_count > 0
+                  ? ` · ${errorAnalysis.sample_count} 个低分练习样本`
+                  : ""}
+              </div>
+              {errorAnalysis.notice ? (
+                <p className="text-xs text-secondary mb-3">{errorAnalysis.notice}</p>
+              ) : null}
               {data.top_errors.length === 0 ? (
                 <EmptyState title="暂无错误统计" />
               ) : (
-                <ul className="flex flex-col gap-2">
+                <ul className="flex flex-col gap-3">
                   {data.top_errors.map((err) => (
-                    <li key={err.error_type} className="flex items-center justify-between">
-                      <span className="font-mono text-sm">{err.error_type}</span>
-                      <span className="flex items-center gap-2">
+                    <li key={err.error_type} className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <strong className="text-sm">{err.label || err.error_type}</strong>
+                        {err.label && err.label !== err.error_type ? (
+                          <span className="font-mono text-xs text-muted block">{err.error_type}</span>
+                        ) : null}
+                        {err.affected_students !== undefined || err.task_ids !== undefined ? (
+                          <span className="text-xs text-secondary block mt-1">
+                            影响 {err.affected_students ?? 0} 名学生 · {err.task_ids?.length ?? 0} 个任务
+                          </span>
+                        ) : null}
+                        {err.suggestion ? (
+                          <span className="text-xs text-secondary block mt-1">建议：{err.suggestion}</span>
+                        ) : null}
+                      </div>
+                      <span className="flex items-center gap-2 shrink-0">
                         {err.major > 0 ? (
                           <span className="badge badge-danger">严重 {err.major}</span>
                         ) : null}

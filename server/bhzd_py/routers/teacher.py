@@ -384,6 +384,131 @@ def _refresh_teacher_content_status(conn: sqlite3.Connection, task_id: str) -> N
     )
 
 
+def _replace_teacher_content(
+    conn: sqlite3.Connection,
+    task_id: str,
+    body: TeacherTaskContentBody,
+    *,
+    now: str | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Validate the complete lesson before replacing either content table.
+
+    The browser used to reconcile rows with several delete/insert requests.  A
+    single transaction now validates every row first, then replaces both tables;
+    a malformed late exercise therefore cannot erase an already-authored lesson.
+    """
+
+    if len(body.knowledge_points) > 50 or len(body.exercises) > 100:
+        raise ApiError(400, "VALIDATION_ERROR", "学习内容或练习数量超出上限")
+
+    points: list[dict[str, Any]] = []
+    for index, raw in enumerate(body.knowledge_points):
+        if not isinstance(raw, dict):
+            raise ApiError(400, "VALIDATION_ERROR", "学习内容格式不正确")
+        title = str(raw.get("title") or "").strip()
+        content = str(raw.get("content") or "").strip()
+        sort_order = raw.get("sort_order", index)
+        if not title or not content:
+            raise ApiError(400, "VALIDATION_ERROR", "知识点标题和内容不能为空")
+        if len(title) > 200 or len(content) > 8000:
+            raise ApiError(400, "VALIDATION_ERROR", "知识点标题或内容过长")
+        if not isinstance(sort_order, int) or isinstance(sort_order, bool) or sort_order < 0:
+            raise ApiError(400, "VALIDATION_ERROR", "学习内容排序值无效")
+        points.append(
+            {
+                "title": title,
+                "content": content,
+                "sort_order": sort_order,
+            }
+        )
+
+    exercises: list[dict[str, Any]] = []
+    for index, raw in enumerate(body.exercises):
+        if not isinstance(raw, dict):
+            raise ApiError(400, "VALIDATION_ERROR", "练习格式不正确")
+        question = str(raw.get("question") or "").strip()
+        raw_type = str(raw.get("type") or "open_ended")
+        normalized_type = raw_type.strip().casefold().replace("-", "_")
+        kind = _normalize_exercise_type(normalized_type)
+        options_raw = raw.get("options")
+        if options_raw is None:
+            options_raw = []
+        if not isinstance(options_raw, list):
+            raise ApiError(400, "VALIDATION_ERROR", "练习选项格式不正确")
+        options = [str(option).strip() for option in options_raw if str(option).strip()]
+        if len(options) > 20 or any(len(option) > 500 for option in options):
+            raise ApiError(400, "VALIDATION_ERROR", "练习选项数量或长度超出上限")
+        reference_answer = str(raw.get("reference_answer") or "").strip() or None
+        sort_order = raw.get("sort_order", index)
+        if not question:
+            raise ApiError(400, "VALIDATION_ERROR", "练习题不能为空")
+        if len(question) > 4000:
+            raise ApiError(400, "VALIDATION_ERROR", "练习题不能超过 4000 个字符")
+        if reference_answer is not None and len(reference_answer) > 4000:
+            raise ApiError(400, "VALIDATION_ERROR", "参考答案不能超过 4000 个字符")
+        if kind != normalized_type and normalized_type not in {
+            "choice",
+            "single_choice",
+            "boolean",
+            "truefalse",
+            "判断",
+            "判断题",
+        }:
+            raise ApiError(400, "VALIDATION_ERROR", "练习题类型不受支持")
+        if kind == "true_false" and not options:
+            options = ["正确", "错误"]
+        if kind == "multiple_choice" and not options:
+            raise ApiError(400, "VALIDATION_ERROR", "选择题必须提供选项")
+        if not isinstance(sort_order, int) or isinstance(sort_order, bool) or sort_order < 0:
+            raise ApiError(400, "VALIDATION_ERROR", "练习排序值无效")
+        exercises.append(
+            {
+                "question": question,
+                "type": kind,
+                "options": options,
+                "reference_answer": reference_answer,
+                "sort_order": sort_order,
+            }
+        )
+
+    timestamp = now or utc_now_iso()
+    conn.execute("DELETE FROM task_knowledge_points WHERE task_id = ?", (task_id,))
+    conn.execute("DELETE FROM task_exercises WHERE task_id = ?", (task_id,))
+    for point in points:
+        conn.execute(
+            "INSERT INTO task_knowledge_points "
+            "(id, task_id, title, content, sort_order, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                uuid.uuid4().hex,
+                task_id,
+                point["title"],
+                point["content"],
+                point["sort_order"],
+                timestamp,
+                timestamp,
+            ),
+        )
+    for exercise in exercises:
+        conn.execute(
+            "INSERT INTO task_exercises "
+            "(id, task_id, question, type, options_json, reference_answer, sort_order, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                uuid.uuid4().hex,
+                task_id,
+                exercise["question"],
+                exercise["type"],
+                json.dumps(exercise["options"], ensure_ascii=False) if exercise["options"] else None,
+                exercise["reference_answer"],
+                exercise["sort_order"],
+                timestamp,
+            ),
+        )
+    _refresh_teacher_content_status(conn, task_id)
+    return points, exercises
+
+
 def _queue_generated_content(
     conn: sqlite3.Connection,
     task_ids: list[str],
@@ -854,6 +979,13 @@ class TeacherExercisePatchBody(BaseModel):
     sort_order: int | None = None
 
 
+class TeacherTaskContentBody(BaseModel):
+    """Complete replacement payload used by the publisher's save-before-publish step."""
+
+    knowledge_points: list[dict[str, Any]] = []
+    exercises: list[dict[str, Any]] = []
+
+
 class TeacherManualGradeBody(BaseModel):
     """Teacher-authored recovery grade for a submission awaiting review."""
 
@@ -995,6 +1127,39 @@ def teacher_task_detail(
 
 
 # ---------------------------------------------------------------- 教学任务学习内容
+
+
+@router.put("/api/teacher/tasks/{task_id}/content")
+def replace_teacher_task_content(
+    task_id: str,
+    body: TeacherTaskContentBody,
+    current: CurrentUser = Depends(csrf_protect),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Atomically save the reviewed lesson before a publish fan-out.
+
+    The endpoint intentionally replaces the two active content tables as one
+    unit.  It is separate from the legacy row-by-row endpoints so older clients
+    remain compatible while the current publisher gets rollback semantics.
+    """
+
+    _require_teacher_role(current)
+    with transaction(conn, immediate=True):
+        row = _assert_teacher_content_editable(conn, task_id, current.user["id"])
+        _replace_teacher_content(conn, row["id"], body)
+        task = _teacher_task_dto(conn, _get_own_teacher_task(conn, row["id"], current.user["id"]))
+    audit(
+        conn,
+        current.user,
+        "teacher_task.content.replace",
+        target_type="learning_task",
+        target_id=task_id,
+        after={
+            "knowledge_points": len(body.knowledge_points),
+            "exercises": len(body.exercises),
+        },
+    )
+    return task
 
 
 @router.get("/api/teacher/tasks/{task_id}/knowledge-points")
@@ -2103,35 +2268,21 @@ def analytics(
             ] = r["n"]
         trend = [by_day[d] for d in sorted(by_day)]
 
-    # ---- 高频错误：聚合诊断摘要报告里的 error_type ----
-    top_errors: list[dict] = []
-    if student_ids:
-        diag_clauses = [f"user_id IN ({_placeholders(student_ids)})"]
-        diag_params: list[Any] = list(student_ids)
-        if data_type:
-            diag_clauses.append("data_type = ?")
-            diag_params.append(data_type)
-        if since:
-            diag_clauses.append("created_at >= ?")
-            diag_params.append(since)
-        diag_rows = conn.execute(
-            f"SELECT report_json FROM diagnostic_summaries WHERE {' AND '.join(diag_clauses)}",
-            diag_params,
-        ).fetchall()
-        counter: dict[str, dict] = {}
-        for r in diag_rows:
-            try:
-                report = json.loads(r["report_json"])
-            except json.JSONDecodeError:
-                continue
-            for err in report.get("errors", []):
-                slot = counter.setdefault(
-                    err.get("error_type", "unknown"),
-                    {"error_type": err.get("error_type", "unknown"), "count": 0, "major": 0, "minor": 0},
-                )
-                slot["count"] += 1
-                slot["major" if err.get("severity") == "major" else "minor"] += 1
-        top_errors = sorted(counter.values(), key=lambda x: (-x["count"], x["error_type"]))[:5]
+    # ---- 高频错误：只取该班已发布任务的实际低分练习提交 ----
+    # Student diagnostic uploads lack a task/class relationship and must not
+    # leak into this card.  The analysis service lets a configured model name
+    # evidence groups while the server remains the authority for every count.
+    from ..agent.teacher_error_analysis import analyze_error_points
+
+    error_analysis = analyze_error_points(
+        conn,
+        teacher_id=teacher_id,
+        class_ids=class_ids,
+        data_type=data_type,
+        source=source,
+        since=since,
+    )
+    top_errors = error_analysis["items"]
 
     # ---- 干预建议：规则化生成，只引用上面算出的真实数字（PRD-02 §6.3）----
     suggestions: list[str] = []
@@ -2149,16 +2300,11 @@ def analytics(
             "建议跟进未完成学生并调整任务节奏"
         )
     if top_errors:
-        try:
-            from ..diagnosis.rules import RULE_NAMES
-
-            top = top_errors[0]
-            suggestions.append(
-                f"高频错误「{RULE_NAMES.get(top['error_type'], top['error_type'])}」"
-                f"出现 {top['count']} 次，建议课堂上集中讲解对应规范"
-            )
-        except Exception:
-            pass
+        top = top_errors[0]
+        suggestions.append(
+            f"高频错误「{top['label']}」出现 {top['count']} 次，"
+            f"影响 {top['affected_students']} 名学生，建议课堂上集中讲解"
+        )
     if not suggestions and student_ids:
         suggestions.append("当前数据未发现明显短板，可按计划推进后续教学内容")
 
@@ -2166,6 +2312,10 @@ def analytics(
         "heatmap": heatmap,
         "trend": trend,
         "top_errors": top_errors,
+        "error_analysis": {
+            key: error_analysis[key]
+            for key in ("source", "sample_count", "generated_at", "provider_model", "notice")
+        },
         "suggestions": suggestions,
         "student_count": len(student_ids),
         "sample_warning": len(student_ids) < MIN_SAMPLE,

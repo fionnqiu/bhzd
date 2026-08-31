@@ -1223,6 +1223,39 @@ export interface PublishTaskResponse {
   class_id: string;
 }
 
+/** PUT /api/teacher/tasks/{id}/content：编辑器一次性替换两类活动内容。 */
+export interface TeacherTaskContentPayload {
+  knowledge_points: Array<Pick<TaskKnowledgePoint, "title" | "content" | "sort_order">>;
+  exercises: Array<{
+    question: string;
+    type: "open_ended" | "multiple_choice" | "true_false";
+    options: string[];
+    reference_answer: string | null;
+    sort_order: number;
+  }>;
+}
+
+/** One server-counted error point; labels may come from AI, counts never do. */
+export interface TeacherErrorPoint {
+  error_type: string;
+  label?: string;
+  count: number;
+  major: number;
+  minor: number;
+  affected_students?: number;
+  task_ids?: string[];
+  suggestion?: string | null;
+}
+
+/** Metadata makes provider output and deterministic fallback distinguishable. */
+export interface TeacherErrorAnalysis {
+  source: "ai" | "fallback" | "none" | string;
+  sample_count: number;
+  generated_at: string | null;
+  provider_model: string | null;
+  notice: string | null;
+}
+
 /** GET /api/teacher/analytics（teacher.py analytics；数字全部来自真实学习数据） */
 export interface Analytics {
   heatmap: {
@@ -1233,7 +1266,9 @@ export interface Analytics {
     student_count: number;
   }[];
   trend: { date: string; submissions: number; completions: number }[];
-  top_errors: { error_type: string; count: number; major: number; minor: number }[];
+  top_errors: TeacherErrorPoint[];
+  /** Optional while older backend instances roll forward; the page has a safe empty fallback. */
+  error_analysis?: TeacherErrorAnalysis;
   suggestions: string[];
   student_count: number;
   /** 学生 <3 人时为 true（PRD-06 §10.2 样本过小提示） */

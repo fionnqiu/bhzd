@@ -47,6 +47,7 @@ vi.mock("../src/api/client", () => {
 const mockedGet = vi.mocked(api.get);
 const mockedPost = vi.mocked(api.post);
 const mockedPatch = vi.mocked(api.patch);
+const mockedPut = vi.mocked(api.put);
 
 const testClass = {
   id: "c1",
@@ -182,6 +183,12 @@ beforeEach(() => {
     version: 1,
     version_bumped: false,
   });
+  mockedPut.mockImplementation((path) => {
+    if (path === "/api/teacher/tasks/t1/content") {
+      return Promise.resolve({ knowledge_points: [], exercises: [] });
+    }
+    return Promise.reject(new Error("未 mock 的 PUT " + String(path)));
+  });
 });
 
 describe("TaskPublishPage（PRD-02 §5）", () => {
@@ -239,6 +246,17 @@ describe("TaskPublishPage（PRD-02 §5）", () => {
       }
       return Promise.resolve({});
     });
+    mockedPut.mockImplementation((path) => {
+      if (path === "/api/teacher/tasks/t-agent-contract/content") {
+        return Promise.resolve({
+          ...agentTask,
+          version_bumped: false,
+          knowledge_points: agentTask.knowledge_points,
+          exercises: agentTask.exercises,
+        });
+      }
+      return Promise.reject(new Error("未 mock 的 PUT " + String(path)));
+    });
     mockedPost.mockImplementation((path) => {
       if (path === "/api/teacher/tasks/t-agent-contract/publish") {
         return Promise.resolve({ published: 5, class_id: "c1" });
@@ -274,22 +292,23 @@ describe("TaskPublishPage（PRD-02 §5）", () => {
       }),
     );
     await waitFor(() =>
-      expect(mockedPatch).toHaveBeenCalledWith(
-        "/api/teacher/tasks/t-agent-contract/knowledge-points/kp-agent",
-        {
-          title: "复盘要点",
-          content: "对照示例梳理本轮学习的关键判断依据。",
-          sort_order: 0,
-        },
-      ),
-    );
-    await waitFor(() =>
-      expect(mockedPatch).toHaveBeenCalledWith("/api/teacher/tasks/t-agent-contract/exercises/ex-agent", {
-        question: "提交前是否应复核所有必填项？",
-        type: "true_false",
-        options: ["正确", "错误"],
-        reference_answer: "正确",
-        sort_order: 0,
+      expect(mockedPut).toHaveBeenCalledWith("/api/teacher/tasks/t-agent-contract/content", {
+        knowledge_points: [
+          {
+            title: "复盘要点",
+            content: "对照示例梳理本轮学习的关键判断依据。",
+            sort_order: 0,
+          },
+        ],
+        exercises: [
+          {
+            question: "提交前是否应复核所有必填项？",
+            type: "true_false",
+            options: ["正确", "错误"],
+            reference_answer: "正确",
+            sort_order: 0,
+          },
+        ],
       }),
     );
     const taskSaveCall = mockedPatch.mock.calls.find(
@@ -406,19 +425,23 @@ describe("TaskPublishPage（PRD-02 §5）", () => {
       }),
     );
     await waitFor(() =>
-      expect(mockedPost).toHaveBeenCalledWith("/api/teacher/tasks/t1/knowledge-points", {
-        title: "情感标注规范",
-        content: "区分投诉、咨询和中性表达，并记录判断依据。",
-        sort_order: 0,
-      }),
-    );
-    await waitFor(() =>
-      expect(mockedPost).toHaveBeenCalledWith("/api/teacher/tasks/t1/exercises", {
-        question: "客户明确表达不满时，应标注为哪种情感？",
-        type: "multiple_choice",
-        options: ["负面", "中性"],
-        reference_answer: "负面",
-        sort_order: 0,
+      expect(mockedPut).toHaveBeenCalledWith("/api/teacher/tasks/t1/content", {
+        knowledge_points: [
+          {
+            title: "情感标注规范",
+            content: "区分投诉、咨询和中性表达，并记录判断依据。",
+            sort_order: 0,
+          },
+        ],
+        exercises: [
+          {
+            question: "客户明确表达不满时，应标注为哪种情感？",
+            type: "multiple_choice",
+            options: ["负面", "中性"],
+            reference_answer: "负面",
+            sort_order: 0,
+          },
+        ],
       }),
     );
     await waitFor(() =>
@@ -439,6 +462,131 @@ describe("TaskPublishPage（PRD-02 §5）", () => {
 
     expect(await screen.findByText("发布前请选择班级")).toBeInTheDocument();
     expect(mockedPost).not.toHaveBeenCalled();
+  });
+
+  it("saves authored learning content atomically and shows a persistent publish result", async () => {
+    renderPage();
+    expect(await screen.findByDisplayValue("请选择班级")).toBeInTheDocument();
+
+    fillTitle();
+    fillDescription();
+    addLearningContent();
+    addChoiceExercise();
+    fireEvent.change(screen.getByDisplayValue("请选择班级"), {
+      target: { value: "c1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发布" }));
+
+    await waitFor(() => {
+      expect(mockedPut).toHaveBeenCalledWith("/api/teacher/tasks/t1/content", {
+        knowledge_points: [
+          {
+            title: "情感标注规范",
+            content: "区分投诉、咨询和中性表达，并记录判断依据。",
+            sort_order: 0,
+          },
+        ],
+        exercises: [
+          {
+            question: "客户明确表达不满时，应标注为哪种情感？",
+            type: "multiple_choice",
+            options: ["负面", "中性"],
+            reference_answer: "负面",
+            sort_order: 0,
+          },
+        ],
+      });
+    });
+    expect(await screen.findByRole("status", { name: "发布结果" })).toHaveTextContent(
+      "已发布给 5 名学生",
+    );
+  });
+
+  it("retains the created draft id when content persistence fails so retry cannot duplicate the task", async () => {
+    let attempts = 0;
+    mockedPut.mockImplementation((path) => {
+      if (path !== "/api/teacher/tasks/t1/content") {
+        return Promise.reject(new Error("未 mock 的 PUT " + String(path)));
+      }
+      attempts += 1;
+      if (attempts === 1) return Promise.reject(new Error("内容保存失败"));
+      return Promise.resolve({ knowledge_points: [], exercises: [] });
+    });
+
+    renderPage();
+    expect(await screen.findByDisplayValue("请选择班级")).toBeInTheDocument();
+    fillTitle();
+    addChoiceExercise();
+    fireEvent.change(screen.getByDisplayValue("请选择班级"), {
+      target: { value: "c1" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+    expect(await screen.findByRole("alert", { name: "发布结果" })).toHaveTextContent(
+      "草稿保存失败，已保留当前输入",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+    await waitFor(() =>
+      expect(mockedPatch).toHaveBeenCalledWith("/api/teacher/tasks/t1", {
+        title: "客服语音情感标注实战",
+        description: null,
+        defer_content_generation: true,
+      }),
+    );
+  });
+
+  it("uses the content response state when a completed draft is cleared", async () => {
+    const existing = {
+      ...createAgentTask("t-cleared", "待清空任务"),
+      content_status: "done" as const,
+      content_generation_source: "manual" as const,
+    };
+    mockedGet.mockImplementation((path) => {
+      if (path === "/api/teacher/tasks") return Promise.resolve({ items: [existing], total: 1 });
+      if (path === "/api/teacher/tasks/t-cleared") return Promise.resolve(existing);
+      if (path === "/api/teacher/classes") return Promise.resolve({ items: [testClass], total: 1 });
+      if (path === "/api/graph/nodes") return Promise.resolve({ items: [], total: 0 });
+      return Promise.reject(new Error("未 mock 的 GET " + String(path)));
+    });
+    mockedPatch.mockResolvedValue({
+      ...existing,
+      content_status: "done",
+      content_generation_source: "manual",
+      version_bumped: false,
+    });
+    mockedPut.mockResolvedValue({
+      ...existing,
+      knowledge_points: [],
+      exercises: [],
+      content_status: "none",
+      content_generation_source: "none",
+      content_generated_at: null,
+      content_failure_reason: null,
+      content_generation_message: null,
+    });
+    mockedPost.mockImplementation((path) => {
+      if (path === "/api/teacher/tasks/t-cleared/content/retry") {
+        return Promise.resolve({
+          ...existing,
+          knowledge_points: [],
+          exercises: [],
+          content_status: "generating",
+          content_generation_source: "none",
+        });
+      }
+      return Promise.reject(new Error("未 mock 的 POST " + String(path)));
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: /待清空任务/ }));
+    fireEvent.click(screen.getByRole("button", { name: "删除学习内容 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "删除练习 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存草稿" }));
+
+    await waitFor(() =>
+      expect(mockedPost).toHaveBeenCalledWith("/api/teacher/tasks/t-cleared/content/retry"),
+    );
   });
 
   it("disables publishing and explains the executable-practice requirement", async () => {

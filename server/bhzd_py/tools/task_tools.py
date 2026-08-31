@@ -862,11 +862,36 @@ async def _generate_task_content_uncached(
                 "status": "done",
             }
         now = utc_now_iso()
-        conn.execute(
+        # The initial count read and this state transition can race a manual
+        # content save.  Keep the transition conditional on both the current
+        # lifecycle and empty content tables so a late worker never changes a
+        # reviewed lesson back to ``generating``.
+        started = conn.execute(
             "UPDATE learning_tasks SET content_status = 'generating', "
-            "content_last_attempt_at = COALESCE(content_last_attempt_at, ?) WHERE id = ?",
-            (now, task_id),
+            "content_last_attempt_at = COALESCE(content_last_attempt_at, ?) "
+            "WHERE id = ? AND COALESCE(content_status, 'none') IN ('none', 'generating', 'done') "
+            "AND NOT EXISTS (SELECT 1 FROM task_knowledge_points WHERE task_id = ?) "
+            "AND NOT EXISTS (SELECT 1 FROM task_exercises WHERE task_id = ?)",
+            (now, task_id, task_id, task_id),
         )
+        if started.rowcount != 1:
+            # A manual save won the race. Re-read its rows and leave the
+            # authoritative terminal marker untouched rather than generating
+            # a replacement lesson over the teacher's edits.
+            current_counts = _content_counts(conn, task_id)
+            if any(current_counts):
+                _mark_task_content_done(
+                    conn,
+                    task_id,
+                    source=_CONTENT_SOURCE_MANUAL,
+                    now=utc_now_iso(),
+                )
+                conn.commit()
+                return {
+                    "knowledge_points": current_counts[0],
+                    "exercises": current_counts[1],
+                    "status": "done",
+                }
         conn.commit()
         title = str(task["title"] or "学习任务")
         description = str(task["goal"] or "").strip()
